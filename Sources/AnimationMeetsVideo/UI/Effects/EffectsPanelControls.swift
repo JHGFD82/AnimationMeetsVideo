@@ -120,8 +120,11 @@ extension EffectsPanel {
                         editControl(control.id, of: effect, in: clip) { $0.number.toggleKeyframe(at: c.now.sourceNow) }
                     },
                     onSeek: onSeek,
-                    onShowGraph: graphs.map { graphs in { graphs.show(key) } },
+                    // A curve's numbers are its points, shaped on its effect's
+                    // graph, not values with eases to graph.
+                    onShowGraph: control.kind.isCurve ? nil : graphs.map { graphs in { graphs.show(key) } },
                     color: control.kind.isColor ? colorBinding(control, of: effect, c) : nil,
+                    summary: control.kind.isCurve ? curveSummary(shown, at: c.sourceNow(animated: control.isAnimated)) : nil,
                     menu: menu
                 ),
                 lane: ParameterLane(
@@ -136,6 +139,13 @@ extension EffectsPanel {
             )
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(EffectStackLayout.space)) }, action: placed)
         }
+    }
+
+    /// What a curve control's row says of it: how many points it has, or
+    /// that it changes nothing.
+    private func curveSummary(_ control: EffectControl, at time: CMTime) -> String {
+        let curve = control.curve(at: time)
+        return curve.isIdentity ? "Straight" : "\(curve.points.count) points"
     }
 
     /// A variable font axis of a Text effect's font, as a control's row is,

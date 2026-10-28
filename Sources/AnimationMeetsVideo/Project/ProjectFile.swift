@@ -1089,6 +1089,8 @@ extension ProjectFile {
             case .mode: .choice(BlendMode.allCases.map(\.rawValue), noun: "blend mode")
             case .matteMode: .choice(MatteMode.allCases.map(\.rawValue), noun: "matte mode")
             case _ where kind.isChoice: .choice(kind.choiceOptions.map(\.id), noun: kind.name.lowercased())
+            // A curve's points, as many as it has.
+            case _ where kind.isCurve: .numbers(count: nil)
             default: count > 1 ? .numbers(count: count) : .number
             }
             var fields: [O.Field] = [

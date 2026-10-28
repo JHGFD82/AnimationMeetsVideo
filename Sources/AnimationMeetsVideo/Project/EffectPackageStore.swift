@@ -324,6 +324,10 @@ enum EffectPackageStore {
             ]),
             "point": object(common + [.optional("default", .numbers(count: 2))]),
             "color": object(common + [.required("default", .numbers(count: nil))]),
+            "curve": object(common + [
+                .optional("default", .array(.numbers(count: 2))),
+                .optional("tint", .choice(CurveTint.allCases.map(\.rawValue), noun: "tint")),
+            ]),
             "choice": object(common + [
                 .required("options", .array(.object(object([.required("id", .string), .required("name", .string)])))),
                 .required("default", .string),
@@ -345,14 +349,21 @@ enum EffectPackageStore {
             .required("arguments", .array(.string)),
             .optional("generates", .bool), .optional("changesEveryFrame", .bool),
             .optional("dependsOnPixelSize", .bool), .optional("flashes", .any), .optional("linear", .bool),
+            .optional("perPixel", .bool),
             .optional("reach", .string),
             .optional("input", .choice(EffectPackage.Edges.allCases.map(\.rawValue), noun: "input")),
             .optional("pictures", .array(.object(object([
                 .required("id", .string),
                 .required("from", .choice(EffectPackage.Picture.Source.allCases.map(\.rawValue), noun: "picture source")),
                 .optional("delay", .string), .optional("missing", .choice(["transparent", "picture"], noun: "missing picture")),
-                .optional("ahead", .string),
+                .optional("ahead", .string), .optional("control", .string),
             ])))),
+            .optional("graph", .object(object([
+                .optional("curves", .array(.string)),
+                .optional("handles", .array(.object(object([
+                    .required("name", .string), .required("x", .string), .required("y", .string), .required("set", .any),
+                ])))),
+            ]))),
             .optional("drawsWhen", .string),
             .optional("repeat", .object(object([
                 .required("count", .string), .optional("index", .string),
@@ -439,13 +450,27 @@ enum EffectPackageStore {
                 guard (entry["ahead"] != nil) == (source == .motion) else {
                     throw JSONShapeError(message: "The motion, and only the motion, says how many frames ahead it is", path: path)
                 }
-                guard source == .moment || !pictures.contains(where: { $0.source == source }) else {
+                guard source == .moment || source == .curve || !pictures.contains(where: { $0.source == source }) else {
                     throw JSONShapeError(message: "It already reads a picture from \(source.rawValue)", path: path + ".from")
                 }
                 guard (entry["delay"] != nil) == (source == .moment), entry["missing"] == nil || source == .moment else {
                     throw JSONShapeError(message: "A moment, and only a moment, has a delay and says what a missing one is", path: path)
                 }
-                pictures.append(EffectPackage.Picture(id: pictureID, source: source, missingIsPicture: entry["missing"] as? String == "picture"))
+                var control: ControlKind?
+                if let name = entry["control"] as? String {
+                    guard source == .curve else {
+                        throw JSONShapeError(message: "Only a curve is made from a control", path: path + ".control")
+                    }
+                    guard names[name] == .curve else {
+                        throw JSONShapeError(message: "\"\(name)\" isn't one of its curve controls", path: path + ".control")
+                    }
+                    control = ControlKind(package: id, control: name)
+                } else if source == .curve {
+                    throw JSONShapeError(message: "A curve names the curve control it is made from", path: path)
+                }
+                pictures.append(EffectPackage.Picture(
+                    id: pictureID, source: source, missingIsPicture: entry["missing"] as? String == "picture", control: control
+                ))
             }
             var flags: [String: EffectExpression.ValueType] = [:]
             if pictures.contains(where: { $0.source == .input }) { flags["hasInput"] = .number }
@@ -492,6 +517,15 @@ enum EffectPackageStore {
             if json["input"] != nil, kernelType != .general {
                 throw JSONShapeError(message: "Only a general kernel reads past its picture's edges", path: "input")
             }
+            let perPixel = json["perPixel"] as? Bool ?? false
+            if perPixel {
+                guard kernelType == .general else {
+                    throw JSONShapeError(message: "Only a general kernel says it reads only its own pixel; a color kernel always does", path: "perPixel")
+                }
+                guard reach == nil, json["input"] == nil else {
+                    throw JSONShapeError(message: "A kernel that reads only its own pixel reads nothing beside it, so it has no reach or input", path: "perPixel")
+                }
+            }
             let flashes: EffectPackage.Flashing
             switch json["flashes"] {
             case nil: flashes = .never
@@ -523,6 +557,8 @@ enum EffectPackageStore {
                 after.append(EffectPackage.Filter(name: name, when: when, parameters: parameters, edges: edges))
             }
 
+            let graph = try (json["graph"] as? [String: Any]).map { try self.graph($0, package: id, names: names) }
+
             return EffectPackage(
                 url: url, id: id, version: version, name: json["name"] as! String,
                 category: EffectCategory(rawValue: json["category"] as! String)!, systemImage: json["symbol"] as! String,
@@ -534,8 +570,59 @@ enum EffectPackageStore {
                 dependsOnPixelSize: json["dependsOnPixelSize"] as? Bool ?? false, flashes: flashes,
                 rateControls: rates, reach: reach, pictures: pictures, drawsWhen: drawsWhen, repeats: repeats,
                 edges: (json["input"] as? String).flatMap(EffectPackage.Edges.init(rawValue:)) ?? .clear, after: after,
-                linear: json["linear"] as? Bool ?? false
+                linear: json["linear"] as? Bool ?? false, graph: graph, readsOnlyItsPixel: perPixel
             )
+        }
+
+        /// The tone graph `entry` describes: the curves it edits, and its
+        /// handles, whose places are expressions of the controls and whose
+        /// drags set number controls from `x` and `y`, the tones dragged to.
+        private func graph(_ entry: [String: Any], package: String, names: [String: EffectExpression.ValueType]) throws -> EffectPackage.Graph {
+            var graph = EffectPackage.Graph()
+            for (index, name) in (entry["curves"] as? [String] ?? []).enumerated() {
+                guard names[name] == .curve else {
+                    throw JSONShapeError(message: "\"\(name)\" isn't one of its curve controls", path: "graph.curves[\(index)]")
+                }
+                graph.curves.append(ControlKind(package: package, control: name))
+            }
+            let handles = entry["handles"] as? [[String: Any]] ?? []
+            guard handles.isEmpty || (names["x"] == nil && names["y"] == nil) else {
+                throw JSONShapeError(message: "A handle's sets read x and y as where it is dragged to, so no control can be called x or y", path: "graph.handles")
+            }
+            var dragged = names
+            dragged["x"] = .number
+            dragged["y"] = .number
+            func number(_ text: String, _ names: [String: EffectExpression.ValueType], _ path: String) throws -> EffectExpression {
+                let parsed: EffectExpression
+                do {
+                    parsed = try EffectExpression(text, names: names)
+                } catch {
+                    throw JSONShapeError(message: error.message, path: path)
+                }
+                guard parsed.type == .number else { throw JSONShapeError(message: "Expected one number, not \(parsed.type.noun)", path: path) }
+                return parsed
+            }
+            for (index, handle) in handles.enumerated() {
+                let path = "graph.handles[\(index)]"
+                guard let given = handle["set"] as? [String: Any], !given.isEmpty else {
+                    throw JSONShapeError(message: "Expected an object naming the controls a drag sets", path: path + ".set")
+                }
+                var sets: [(control: ControlKind, value: EffectExpression)] = []
+                for (control, value) in given.sorted(by: { $0.key < $1.key }) {
+                    let place = path + ".set." + control
+                    guard names[control] == .number else {
+                        throw JSONShapeError(message: "\"\(control)\" isn't one of its number controls", path: place)
+                    }
+                    guard let text = value as? String else { throw JSONShapeError(message: "Expected text", path: place) }
+                    sets.append((ControlKind(package: package, control: control), try number(text, dragged, place)))
+                }
+                graph.handles.append(EffectPackage.Graph.Handle(
+                    name: handle["name"] as! String,
+                    x: try number(handle["x"] as! String, names, path + ".x"), y: try number(handle["y"] as! String, names, path + ".y"),
+                    sets: sets
+                ))
+            }
+            return graph
         }
 
         /// The kernel's Metal source, which must be a file in the package
@@ -608,6 +695,17 @@ enum EffectPackageStore {
                 return ControlDefinition(
                     kind, name, owner, defaults: entry["default"] as? [Double] ?? [0, 0], unit: " px", componentNames: ["Δx", "Δy"]
                 )
+            case "curve":
+                let points = (entry["default"] as? [[Double]])?.map { ToneCurve.Point(x: $0[0], y: $0[1]) }
+                let curve = points.map(ToneCurve.init(points:)) ?? .identity
+                if let points, curve.points != points {
+                    throw JSONShapeError(
+                        message: "A curve's points go from left to right, at least \(ToneCurve.minimumGap) apart, within 0 to 1, two or more",
+                        path: path + ".default"
+                    )
+                }
+                let tint = (entry["tint"] as? String).flatMap(CurveTint.init(rawValue:)) ?? .white
+                return ControlDefinition(kind, name, owner, curve: curve, tint: tint)
             case "color":
                 var values = entry["default"] as! [Double]
                 guard values.count == 3 || values.count == 4 else {
@@ -640,6 +738,7 @@ enum EffectPackageStore {
             case "number": .number
             case "point": .point
             case "choice": .choice
+            case "curve": .curve
             default: .vector(control.defaultValues.count)
             }
         }

@@ -7,7 +7,7 @@ guide to [writing a package](#making-a-package), and the app makes one
 new or from a look, and installs one opened from Finder. What remains is
 under [Not yet](#not-yet). `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
-Swift (BuiltInEffects.swift), the 76 looks that ship as packages
+Swift (BuiltInEffects.swift), the 77 looks that ship as packages
 (Resources/Effects) and the person's packages, which
 `EffectPackageStore` reads from the Effects folder at launch. A
 package's look is listed, saved and drawn like any other
@@ -78,6 +78,8 @@ Posterize.amveffect/
 | `dependsOnPixelSize` | `true` when the picture depends on the size it is drawn at (Neon Edges, Dither), as `EffectKind.dependsOnPixelSize`. |
 | `flashes` | `true` for an effect that can flash several times a second, or a condition saying when, such as `"abs(hueSpeed) > 3"`, checked with each control at its largest value across its keyframes; the panel shows the warning of [Safety](psychedelic-effects.md#safety-flashing). |
 | `reach` | Warp and general kernels: how far, in output pixels, it reads from each pixel, an [expression](#arguments). Core Image renders only the pixels needed from it. Left out, the whole canvas. |
+| `perPixel` | `true` for a general kernel that reads its picture only at the pixel it draws: it draws over the picture as a color kernel does and doesn't read beside each pixel (`EffectPackage.readsOnlyItsPixel`), so it can read other pictures, such as a [curve's table](#curves), and still work pixel by pixel. It has no `reach` or `input`. |
+| `graph` | The tone graph the effects panel shows above its controls (see [Graph](#graph)). |
 | `input` | General kernels: `"clamped"` (edges repeat, for kernels that read beside a pixel) or `"clear"` (transparent past the edges, the default). |
 | `after` | Built-in Core Image filters applied to the kernel's result, in order (see [Built-in filters](#built-in-filters)). |
 | `linear` | `true` for a look that works on linear light (1 is reference white) rather than on the picture as the timeline encodes it: every picture it reads is turned into light, premultiplied, before its first pass, and its result back after its last pass and its filters (`LinearLight`). A blur needs it to average light, so a highlight keeps its brightness as it spreads and it looks the same in SDR and HDR (see [effects-blur.md](effects-blur.md#light-not-code-values)). |
@@ -101,6 +103,7 @@ expression calls the control, and what a project saves as the control's
 | `point` | A position from the middle of the frame, in the timeline's pixels | `default` (`[0, 0]`) |
 | `color` | Red, green and blue, 0–1, and alpha (1 if left out) | `default` |
 | `choice` | One of a list | `options` (`[{ "id": "bayer4", "name": "Bayer 4×4" }, …]`), `default` |
+| `curve` | A tone curve: points from black to white (see [Curves](#curves)) | `default` (`[[0, 0], [1, 1]]`, the points), `tint` (`white`, `red`, `green` or `blue`: its line's color on the graph) |
 
 `unit` is one of `%`, `°`, `px`, `s`, `×`, `/s`, `turns/s`, `frames` or
 none, and decides how a value is shown and dragged (`ControlKind.unit`).
@@ -139,6 +142,8 @@ It may use these names:
 - `center(p)`: point control `p` as a position in output pixels
 - `index(c)`: the position of choice `c`'s option in its list, from 0
 - `rad(x)`, `fract(x)`, `floor(x)`, `min`, `max`, `abs`, `pi`
+- `pow(x, y)` and `log(x)` (the natural logarithm), each 0 where it has
+  no real value (a logarithm of 0 or less), as dividing by zero is
 
 Posterize's `"levels"` is the simplest case. Kaleidoscope's angle, which
 combines two controls and the time, is
@@ -376,6 +381,7 @@ space, in the order listed:
 | `against` | The clip's picture as it was before an earlier step, picked in the effect's Against row (see [Against](effects.md#against)). | `hasAgainst` |
 | `moment` | The picture reaching this step `delay` seconds earlier, an expression rounded to a frame; at each [pass](#repeating), that pass's. No delay is the picture reaching the step before any pass. One the composition hasn't is transparent, or with `"missing": "picture"` the picture reaching the step, as Slit-Scan's bands are. | |
 | `motion` | The motion from this frame to the footage's frame `ahead` frames later, an expression, as a picture: red across and green up, in output pixels, measured by `BlockMatchFlow`, the block matcher morphs use, over the frame. Not measured while the viewer plays. The composition loads the frame ahead with each control at its largest, as it plans moments. | `hasMotion` |
+| `curve` | The curve control `control` names, as its table: see [Curves](#curves). Several may be read, one per curve. | |
 
 A picture that isn't there (no input dropped, no earlier frame yet, no
 motion while playing) is transparent. One that is set but can't be had,
@@ -398,6 +404,78 @@ pasting and presets treat them as the built-in effects'.
 Pictures need a general kernel, the only kind that reads more than one.
 Expressions also gain `frameDuration` (the timeline's frame, in seconds)
 and the functions `mod` and `round`.
+
+### Curves
+
+Status: **built**; Curves uses it. A `curve` control holds a tone curve
+(`ToneCurve`): points from black (0) to reference white (1) across and
+up, joined by a monotone cubic that passes through each and never
+overshoots between two, so a curve that rises keeps the tones in order.
+Before its first point it holds that point's tone, after its last that
+one's, and past white (HDR highlights) a curve ending at white carries
+on along the slope of its last stretch. Its points are at least 0.01
+apart.
+
+A curve is saved as its points' numbers in turn, `[x0, y0, x1, y1, …]`,
+and keyframes as any control's numbers do, point by point: adding or
+removing a point does so at every keyframe, each on its own curve there
+(`EffectControl.insertCurvePoint`), so keyframes always have the same
+points to blend. A curve has no components for the keyframe graph editor
+and can't be a Keyframing effect's target; its row in the effects panel
+says how many points it has, and it is edited on the effect's
+[graph](#graph), which a package with curves should have.
+
+Expressions can't read a curve. The kernel does, through a picture:
+
+```json
+"pictures": [{ "id": "master", "from": "curve", "control": "masterCurve" }]
+```
+
+The app makes it from the curve at that moment (`ToneCurveTable`): one
+row of 512 pixels, tones from black to white across, each holding the
+tone it becomes in red and in green the slope past white. The kernel
+receives it as a `coreimage::sampler` and reads it with the prelude's
+`curveTone(table, t)`, which interpolates between pixels, holds below
+black and carries on past white. Pictures need a general kernel; give it
+`"perPixel": true` so it still works pixel by pixel. Curves's kernel is
+the example:
+
+```metal
+float4 s = src.sample(src.transform(dest.coord()));
+float3 t = toTones(straight(s), space);
+float3 m = float3(curveTone(master, t.r), curveTone(master, t.g), curveTone(master, t.b));
+```
+
+### Graph
+
+Status: **built**. `graph` gives the effect a tone graph in the effects
+panel, above its controls: tones from black to white across, what they
+become up (see [effects-correction.md](effects-correction.md#tone-graphs)
+for how it is used).
+
+```json
+"graph": {
+  "curves": ["masterCurve", "redCurve", "greenCurve", "blueCurve"],
+  "handles": [
+    { "name": "Gamma",
+      "x": "(inputBlack + (inputWhite - inputBlack) * pow(0.5, levelsGamma)) / 100",
+      "y": "(outputBlack + outputWhite) / 200",
+      "set": { "levelsGamma": "log((x * 100 - inputBlack) / (inputWhite - inputBlack)) / log(0.5)" } }
+  ]
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `curves` | The curve controls it edits, in the order its picker lists them. With curves the graph draws them; without, it draws what the kernel does to each tone, measured by drawing a row of grays through it (`ToneResponse`), red, green and blue apart when they differ. |
+| `handles` | Points on the graph that move number controls. `x` and `y` say where one is, in tones, as expressions of the controls. `set` names each number control a drag sets and its new value: an expression of the controls as they were when the drag began, and of `x` and `y`, the tones the handle is dragged to. A handle whose sets never read `y` moves only across, and the other way round. |
+
+Handles are checked when the package loads, as other expressions are:
+`x` and `y` read only the controls, `set` names only number controls,
+and no control may be called `x` or `y`. Set values are limited to the
+control's range as any edit is. The graph is part of the panel, not of
+the picture: it changes nothing drawn, so a package's `version` needn't
+rise for one.
 
 ### Repeating
 
@@ -514,7 +592,7 @@ the Swift it replaced: its controls one by one, its pictures against
 reference frames recorded from the Swift, and the recipes using it.
 Most were generated from that Swift; Feedback, Slit-Scan and Flow
 Smear, which the Swift drew by chaining Core Image filters, have
-kernels of their own. The 51 looks added since were written as packages
+kernels of their own. The 52 looks added since were written as packages
 from the start: Color Correction
 ([effects-correction.md](effects-correction.md)), Blur & Sharpen
 ([effects-blur.md](effects-blur.md)), Keying & Masks
@@ -578,6 +656,10 @@ from the start: Color Correction
 - **Several kernels in one package**, chained, with intermediate images.
 - **New categories** defined by packages.
 - **A package's own help text** and a preview picture in the library.
+- **Other graph axes**: a curve across the hues, which wraps around, for
+  hue-versus-hue and hue-versus-saturation curves; and a graph in linear
+  light, for handles on light rather than tones (Broadcast Safe's
+  Brightest).
 
 ## Building it
 

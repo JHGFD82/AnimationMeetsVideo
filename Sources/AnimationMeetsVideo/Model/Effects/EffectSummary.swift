@@ -28,8 +28,9 @@ extension Effect {
             } else {
                 let values = control.number.value.values
                 guard values != (start?.number.value.values ?? control.kind.defaultValues) else { return nil }
-                // A colour's four numbers say little; that it was set is enough.
-                text = control.kind.isColor
+                // A colour's four numbers say little, a curve's points less;
+                // that it was set is enough.
+                text = control.kind.isColor || control.kind.isCurve
                     ? "\(control.kind.name) set"
                     : "\(control.kind.name) \(values.map(Self.format).joined(separator: ", "))\(control.kind.unit)"
             }

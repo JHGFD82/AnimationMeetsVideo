@@ -134,6 +134,17 @@ extension EffectsPanel {
                         )
                     }
                 }
+                if effect.kind.toneGraph != nil {
+                    PlayheadReader(playhead: playhead) { _ in
+                        besideLane(
+                            ToneGraph(effect: effect, time: c.sourceNow(animated: true), isDimmed: dimmed) { kind, change in
+                                editEffect(effect.id, in: clip) { $0.changeControl(kind, change) }
+                            }
+                            .frame(height: ToneGraph.panelHeight)
+                            .padding(.horizontal, 8)
+                        )
+                    }
+                }
                 if effect.kind.isKeyframing {
                     keyframingRows(effect, c, effectDimmed: dimmed)
                 }

@@ -883,6 +883,39 @@ struct UISnapshots {
         )
     }
 
+    /// The tone graphs: Curves with an S curve on RGB and red lifted, the
+    /// RGB curve picked; Levels with its black, gamma and white handles on
+    /// its measured line; Highs & Lows with shadows lifted.
+    @Test func toneGraphs() async throws {
+        func setting(_ id: String, _ settings: [String: [Double]]) throws -> Effect {
+            var effect = Effect(kind: try #require(EffectKind(rawValue: id)))
+            for index in effect.controls.indices {
+                if let values = settings[effect.controls[index].kind.savedName] {
+                    effect.controls[index].number = AnimatedValue(ComponentValue(values: values))
+                }
+            }
+            return effect
+        }
+        let size = CGSize(width: 440, height: ToneGraph.panelHeight)
+        let cases: [(String, Effect)] = [
+            ("tone-graph-curves", try setting("curves", [
+                "masterCurve": [0, 0, 0.25, 0.18, 0.75, 0.84, 1, 1], "redCurve": [0, 0.08, 1, 1],
+            ])),
+            ("tone-graph-levels", try setting("levels", [
+                "inputBlack": [12], "inputWhite": [88], "levelsGamma": [1.6], "outputBlack": [4],
+            ])),
+            ("tone-graph-highs-lows", try setting("shadowsHighlights", ["shadows": [70], "highlights": [-40]])),
+        ]
+        for (name, effect) in cases {
+            try await SnapshotSupport.render(
+                ToneGraph(effect: effect, time: .zero, onEdit: { _, _ in })
+                    .frame(width: size.width, height: size.height)
+                    .background(Design.Surface.overlay.color),
+                name, size: size, settle: .seconds(1)
+            )
+        }
+    }
+
     /// A Sound layer's sound effects in the inspector: an EQ and a
     /// compressor, closed, and the menu to add more.
     @Test func layerSoundEffectsList() throws {

@@ -29,8 +29,10 @@ private enum Scale {
 
 @Suite struct CorrectionLookTests {
     private static let spaces: [ProjectColorSpace] = [.rec709, .rec2020PQ]
+    /// The kernels that read only their own pixel: each a color kernel,
+    /// but Curves, a general one only to read its curves' tables.
     private static let ids = [
-        "levels", "shadowsHighlights", "hueSaturation", "vibrance", "hueRange", "grayPoint", "blackAndWhite", "colorize",
+        "levels", "curves", "shadowsHighlights", "hueSaturation", "vibrance", "hueRange", "grayPoint", "blackAndWhite", "colorize",
         "sepia", "invert", "threshold", "broadcastSafe",
     ]
     /// Grays, a skin tone, saturated and muted colors, as tones.
@@ -69,7 +71,7 @@ private enum Scale {
         #expect(listed == Self.ids)
         for id in Self.ids {
             let package = try #require(try kind(id).definition.package, "\(id)")
-            #expect(package.kernelType == .color, "\(id)")
+            #expect(package.kernelType == .color || package.readsOnlyItsPixel, "\(id)")
             #expect(PackageKernels.problem(for: package) == nil, "\(id)")
             #expect(!(try kind(id).readsBesidePixels), "\(id)")
         }

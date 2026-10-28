@@ -34,6 +34,9 @@ struct EffectPackage: Sendable {
             /// frames later, as a picture: red across, green up, in output
             /// pixels.
             case motion
+            /// A curve control as a table of tones (`ToneCurveTable`),
+            /// which the prelude's `curveTone` reads.
+            case curve
         }
 
         var id: String
@@ -45,6 +48,39 @@ struct EffectPackage: Sendable {
         var missingIsPicture = false
         /// For the motion: how many frames ahead it is measured to.
         var ahead: EffectExpression?
+        /// For a curve: the curve control it is made from.
+        var control: ControlKind?
+    }
+
+    /// The tone graph the effects panel shows above the effect's controls
+    /// (see docs/effect-packages.md, "Graph"): tones from black to white
+    /// across, what they become up.
+    struct Graph: Sendable {
+        /// A point on the graph that moves controls: where it is, from
+        /// them, and what dragging it sets them to, from where it is
+        /// dragged.
+        struct Handle: Sendable {
+            var name: String
+            var x: EffectExpression
+            var y: EffectExpression
+            /// Each control a drag sets, and to what: an expression of the
+            /// controls and of `x` and `y`, the tones dragged to.
+            var sets: [(control: ControlKind, value: EffectExpression)]
+
+            /// Whether dragging it across or up changes anything.
+            var movesAcross: Bool { sets.contains { $0.value.reads("x") } }
+            var movesUp: Bool { sets.contains { $0.value.reads("y") } }
+        }
+
+        /// The curve controls it edits, one at a time, in the order its
+        /// picker lists them; none for a graph that shows what the kernel
+        /// does to each tone instead (`ToneResponse`).
+        var curves: [ControlKind] = []
+        var handles: [Handle] = []
+
+        /// Whether it draws the effect's measured response: when it has no
+        /// curves of its own to draw.
+        var showsResponse: Bool { curves.isEmpty }
     }
 
     /// Running the kernel once per copy or band (see
@@ -119,6 +155,7 @@ struct EffectPackage: Sendable {
     /// Whether it draws from moments of the footage besides this one.
     var readsMoments: Bool { pictures.contains { $0.source == .moment } }
 
+
     /// How many frames ahead in the footage `effect`, of this kind, reads
     /// the motion to, for the composition to have that frame; nil for one
     /// that doesn't read motion. With each control at its largest, as
@@ -136,6 +173,13 @@ struct EffectPackage: Sendable {
     /// filters. A blur averages light so, and a highlight keeps its
     /// brightness as it spreads, the same in SDR, PQ and HLG.
     var linear = false
+    /// The tone graph the effects panel shows for it, if any.
+    var graph: Graph?
+    /// Whether it is a general kernel that reads its picture only at the
+    /// pixel it draws (`perPixel`): it reads other pictures, such as a
+    /// curve's table, but works on each pixel where it is, as a color
+    /// kernel does.
+    var readsOnlyItsPixel = false
 
     var kind: EffectKind { EffectKind(package: id) }
 

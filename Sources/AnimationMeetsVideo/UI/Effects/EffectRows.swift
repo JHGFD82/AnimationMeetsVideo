@@ -109,6 +109,9 @@ struct ParameterRow<MenuContent: View>: View {
     var onShowGraph: (() -> Void)?
     /// For a color: picked with a color well instead of typed as numbers.
     var color: Binding<CGColor>?
+    /// Shown instead of the values, for a control edited elsewhere: a
+    /// curve, on its effect's graph.
+    var summary: String?
     @ViewBuilder let menu: () -> MenuContent
 
     var body: some View {
@@ -163,7 +166,11 @@ struct ParameterRow<MenuContent: View>: View {
                 .help(linked ? "Width and height change together" : "Width and height change separately")
             }
 
-            if let color {
+            if let summary {
+                Text(summary)
+                    .foregroundStyle(Design.textTertiary)
+                    .lineLimit(1)
+            } else if let color {
                 HeldColorWell(name: name, selection: color)
                     .labelsHidden()
                     .controlSize(.small)

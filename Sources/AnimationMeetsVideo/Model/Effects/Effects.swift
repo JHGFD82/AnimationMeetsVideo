@@ -212,7 +212,7 @@ struct EffectKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// settled first, and a Stroke below it has no outline to follow.
     var readsBesidePixels: Bool {
         guard let package = definition.package else { return category == .distortion }
-        return package.kernelType != .color || !package.after.isEmpty
+        return (package.kernelType != .color && !package.readsOnlyItsPixel) || !package.after.isEmpty
     }
 
     /// Whether it replaces the picture with one it makes, rather than
@@ -285,7 +285,15 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// as the timeline's encoded values (as a transition's dip color is).
     var isColor: Bool { definition.isColor }
 
-    /// The names of its components, for a graph's legend.
+    /// Whether it is a tone curve, edited on its effect's graph (see
+    /// `ToneCurve`), not as numbers.
+    var isCurve: Bool { definition.isCurve }
+
+    /// The color a curve's line is drawn in.
+    var curveTint: CurveTint { definition.curveTint }
+
+    /// The names of its components, for a graph's legend; none for a
+    /// curve, whose numbers are its points, not values to graph.
     var componentNames: [String] {
         definition.componentNames ?? (isChoice ? [] : isColor ? ["Red", "Green", "Blue", "Alpha"] : [name])
     }

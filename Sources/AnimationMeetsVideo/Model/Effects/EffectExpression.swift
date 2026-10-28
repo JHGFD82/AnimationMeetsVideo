@@ -19,6 +19,8 @@ struct EffectExpression: Equatable, Sendable {
         case point
         /// A choice control, read through `index`.
         case choice
+        /// A curve control, which only a kernel reads, as a picture.
+        case curve
 
         var noun: String {
             switch self {
@@ -26,6 +28,7 @@ struct EffectExpression: Equatable, Sendable {
             case .vector(let count): "\(count) numbers"
             case .point: "a point"
             case .choice: "a choice"
+            case .curve: "a curve"
             }
         }
     }
@@ -53,7 +56,9 @@ struct EffectExpression: Equatable, Sendable {
 
     /// The functions, by how many numbers they take; `center` and `index`
     /// take a control's name instead.
-    static let functions: [String: Int] = ["rad": 1, "fract": 1, "floor": 1, "round": 1, "abs": 1, "min": 2, "max": 2, "mod": 2]
+    static let functions: [String: Int] = [
+        "rad": 1, "fract": 1, "floor": 1, "round": 1, "abs": 1, "min": 2, "max": 2, "mod": 2, "pow": 2, "log": 1,
+    ]
 
     /// Every name a package's control can't take.
     static var reservedNames: Set<String> {
@@ -95,6 +100,22 @@ struct EffectExpression: Equatable, Sendable {
         evaluate(values).first ?? 0
     }
 
+    /// Whether it reads `name`, a control's or a built-in one.
+    func reads(_ name: String) -> Bool {
+        func reads(_ node: Node) -> Bool {
+            switch node {
+            case .number: false
+            case .name(let read), .center(let read), .index(let read): read == name
+            case .negate(let operand): reads(operand)
+            case .binary(_, let lhs, let rhs), .comparison(_, let lhs, let rhs): reads(lhs) || reads(rhs)
+            case .call(_, let arguments): arguments.contains(where: reads)
+            }
+        }
+        return reads(root)
+    }
+
+    private static func finite(_ value: Double) -> Double { value.isFinite ? value : 0 }
+
     private static func evaluate(_ node: Node, _ values: some Values) -> [Double] {
         func scalar(_ node: Node) -> Double { evaluate(node, values).first ?? 0 }
         switch node {
@@ -130,6 +151,10 @@ struct EffectExpression: Equatable, Sendable {
             case "round": return [numbers[0].rounded()]
             case "mod": return [numbers[1] == 0 ? 0 : numbers[0] - numbers[1] * (numbers[0] / numbers[1]).rounded(.down)]
             case "abs": return [abs(numbers[0])]
+            // Only where it is a real number: 0 for a negative base's
+            // fraction, as for a logarithm of 0 or less.
+            case "pow": return [finite(pow(numbers[0], numbers[1]))]
+            case "log": return [numbers[0] > 0 ? log(numbers[0]) : 0]
             case "min": return [min(numbers[0], numbers[1])]
             default: return [max(numbers[0], numbers[1])]
             }
@@ -238,6 +263,7 @@ struct EffectExpression: Equatable, Sendable {
             guard current == "(" else {
                 guard let type = names[name] else { throw Problem(message: "Unknown name \"\(name)\"") }
                 guard type != .choice else { throw Problem(message: "\"\(name)\" is a choice; read it as index(\(name))") }
+                guard type != .curve else { throw Problem(message: "\"\(name)\" is a curve; a kernel reads it as a picture from it") }
                 return (.name(name), type)
             }
             index += 1

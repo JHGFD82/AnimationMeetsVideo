@@ -978,8 +978,9 @@ struct Drawing {
                         guard let earlier = kept[against] else { unavailable = true; break }
                         pictures[wanted.id] = earlier
                         flags["hasAgainst"] = 1
-                    case .moment:
-                        // Fetched for each pass as it is drawn.
+                    case .moment, .curve:
+                        // Fetched for each pass as it is drawn; a curve's
+                        // table made from the step's own numbers.
                         break
                     case .motion:
                         // To the frame ahead in the footage, as the morph
