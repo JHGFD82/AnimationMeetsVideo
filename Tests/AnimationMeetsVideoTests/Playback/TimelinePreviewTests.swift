@@ -72,6 +72,34 @@ import Testing
         #expect(previews.previews(of: ids, in: fixture.project)[inner] === third[inner])
     }
 
+    /// The editor's previews, for nested clips, are asked for one at a
+    /// time: asking for one keeps the others, and an edit inside one builds
+    /// only that one again.
+    @Test func nestedClipPreviewsAreMadeOneAtATime() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let size = fixture.project.timelines[0].frameSize
+        let inner = fixture.project.addTimeline(name: "Inner", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let other = fixture.project.addTimeline(name: "Other", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let clip = try await fixture.addClip(luma: 60, to: inner)
+        _ = try await fixture.addClip(luma: 60, to: other)
+
+        let nested = NestedTimelinePreviews(settleDelay: .milliseconds(40))
+        // Nothing to build from before the editor hands it a project.
+        #expect(nested.preview(of: inner) == nil)
+        nested.projectChanged(fixture.project)
+        let first = try #require(nested.preview(of: inner))
+        let second = try #require(nested.preview(of: other))
+        #expect(nested.preview(of: inner) === first)
+        #expect(nested.preview(of: UUID()) == nil)
+
+        fixture.setTransform([(.opacity, [50])], ofClip: clip.clipID, in: inner)
+        nested.projectChanged(fixture.project)
+        await nested.settle()
+        #expect(nested.preview(of: inner) !== first)
+        #expect(nested.preview(of: other) === second)
+    }
+
     @Test func framesComeFromTheTimeline() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

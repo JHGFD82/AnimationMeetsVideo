@@ -47,6 +47,9 @@ struct TimelineEditorSurface<Library: View>: View {
         nonmutating set { playhead.time = newValue }
     }
     @State private var trimPreview = TrimPreviewModel()
+    /// The timelines nested clips play, as pictures along those clips and
+    /// in the trim preview.
+    @State private var nestedPreviews = NestedTimelinePreviews()
     /// Turns what the surface shows into the viewer's player items (see
     /// `ViewerPipeline`); made when the surface appears, with its player
     /// and renderer.
@@ -332,6 +335,7 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .environment(graphs)
         .environment(activePanel)
+        .environment(nestedPreviews)
         .background(ActivePanelMonitor(active: activePanel))
         .background {
             if let projectState {
@@ -361,6 +365,7 @@ struct TimelineEditorSurface<Library: View>: View {
             // The browser's timeline filmstrips, values included, which the
             // browser itself isn't redrawn for.
             TimelinePreviews.shared.projectChanged(project)
+            nestedPreviews.projectChanged(project)
             // Show Up to Here lets go of an effect that is gone.
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
             // The viewer works out what the edit changed (see
@@ -584,25 +589,39 @@ struct TimelineEditorSurface<Library: View>: View {
 
     /// Shows a slipped clip's first and last frames over the viewer, or the
     /// frame at the edge being trimmed, or stops with nil. Only clips with
-    /// pictures from a file have frames.
+    /// pictures from a file, and nested timelines, have frames; a nested
+    /// timeline's are its own, timed in its frames.
     private func showTrimPreview(of clip: TimelineClip?, frames: TrimPreviewFrames) {
-        guard let clip, let timeline, case .media(let mediaID) = clip.source,
-              let media = project.mediaClip(id: mediaID), media.kind == .video, let url = media.url
-        else {
+        guard let clip, let timeline else {
             trimPreview.clear()
             return
         }
         let finalFrame = CMTimeMaximum(clip.trimStart, CMTimeSubtract(clip.trimEnd, timeline.frameDuration))
         // Backwards, the clip starts on its trim's last frame.
         let (first, last) = clip.isReversed ? (finalFrame, clip.trimStart) : (clip.trimStart, finalFrame)
-        trimPreview.show(
-            url: url,
-            first: media.fileTime(forSourceTime: first),
-            last: media.fileTime(forSourceTime: last),
-            labelFirst: first,
-            labelLast: last,
-            frames: frames
-        )
+        switch clip.source {
+        case .media(let mediaID):
+            guard let media = project.mediaClip(id: mediaID), media.kind == .video, let url = media.url else { break }
+            trimPreview.show(
+                .file(url),
+                first: media.fileTime(forSourceTime: first),
+                last: media.fileTime(forSourceTime: last),
+                labelFirst: first,
+                labelLast: last,
+                frames: frames
+            )
+            return
+        case .timeline(let nestedID):
+            guard let preview = nestedPreviews.preview(of: nestedID) else { break }
+            trimPreview.show(
+                .timeline(preview), first: first, last: last, labelFirst: first, labelLast: last,
+                labelFrameRate: project.timeline(id: nestedID)?.frameRate, frames: frames
+            )
+            return
+        default:
+            break
+        }
+        trimPreview.clear()
     }
 
     /// Scrubbing moves the shared playhead and seeks the player directly —

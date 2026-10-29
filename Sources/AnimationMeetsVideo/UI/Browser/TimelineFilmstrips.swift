@@ -438,6 +438,9 @@ struct TimelineFrame: View {
     let preview: TimelinePreview?
     let time: CMTime
     let height: CGFloat
+    /// Off, no picture is made: the one shown stays, or one already kept
+    /// for this time is shown, as for a file's (`FilmstripThumbnail`).
+    var loads = true
     @State private var loaded: NSImage?
 
     private var key: String {
@@ -447,14 +450,14 @@ struct TimelineFrame: View {
     var body: some View {
         ZStack {
             Rectangle().fill(.black)
-            if let loaded {
-                Image(nsImage: loaded)
+            if let shown = loaded ?? (loads ? nil : preview?.cachedImage(at: time, height: height)) {
+                Image(nsImage: shown)
                     .resizable()
                     .scaledToFit()
             }
         }
-        .task(id: key) {
-            guard let preview else { return }
+        .task(id: loads ? key : nil) {
+            guard loads, let preview else { return }
             if let cached = preview.cachedImage(at: time, height: height) {
                 loaded = cached
                 return

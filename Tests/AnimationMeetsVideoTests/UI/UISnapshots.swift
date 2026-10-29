@@ -1146,7 +1146,7 @@ struct UISnapshots {
     @Test func trimEdgePreview() throws {
         let model = TrimPreviewModel()
         let missing = URL(fileURLWithPath: "/nonexistent/clip.mov")
-        model.show(url: missing, first: .zero, last: .zero, labelFirst: CMTime(value: 49, timescale: 24), labelLast: .zero, frames: .first)
+        model.show(.file(missing), first: .zero, last: .zero, labelFirst: CMTime(value: 49, timescale: 24), labelLast: .zero, frames: .first)
         try SnapshotSupport.render(
             TrimPreviewOverlay(model: model, frameRate: 24, aspectRatio: 16 / 9).padding(20),
             "trim-edge-preview", size: CGSize(width: 520, height: 340)
@@ -1201,6 +1201,47 @@ struct UISnapshots {
         .background(Design.Surface.base.color)
         .preferredColorScheme(.dark)
         try await SnapshotSupport.render(view, "clip-blocks", size: CGSize(width: 560, height: 460), settle: .seconds(2))
+    }
+
+    /// Nested timeline clips showing the timeline's own frames, as video
+    /// clips show their file's: the second plays a second later into the
+    /// same timeline, so its pictures sit a second further left, as a slip
+    /// draws them.
+    @Test func nestedClipBlocks() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let url = fixture.directory.appending(path: "steps.mov")
+        try await writeMovie(to: url, segments: [(40, 24), (200, 24), (110, 24), (235, 24)])
+        let media = MediaClip(
+            name: "steps", kind: .video, url: url, duration: CMTime(value: 4, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let size = fixture.project.timelines[0].frameSize
+        let inner = fixture.project.addTimeline(name: "Chorus", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        _ = fixture.project.importClip(media, intoTimeline: inner)
+        let timeline = try #require(fixture.project.timeline(id: inner))
+        let previews = NestedTimelinePreviews()
+        previews.projectChanged(fixture.project)
+
+        func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600) }
+        let nested = TimelineClip(source: .timeline(inner), startOffset: seconds(0.4), trimStart: .zero, trimEnd: seconds(3))
+        var slipped = nested
+        slipped.trimStart = seconds(1)
+        slipped.trimEnd = seconds(4)
+        let tone = Design.ClipTone.nested.color
+        func row(_ clip: TimelineClip, tool: TimelineTool = .arrow) -> some View {
+            ClipBlockView(model: .sample(clip, info: .timeline(timeline), color: tone, height: 64, tool: tool), handlers: LiveClipHandlers(.inert()))
+                .frame(width: 520, height: 64, alignment: .topLeading)
+        }
+        let view = VStack(alignment: .leading, spacing: 14) {
+            row(nested)
+            row(slipped, tool: .slip)
+        }
+        .padding(20)
+        .environment(previews)
+        .background(Design.Surface.base.color)
+        .preferredColorScheme(.dark)
+        try await SnapshotSupport.render(view, "nested-clip-blocks", size: CGSize(width: 560, height: 182), settle: .seconds(3))
     }
 
     /// A selected effect outlined whole, its controls included, in the
