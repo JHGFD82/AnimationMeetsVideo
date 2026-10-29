@@ -151,7 +151,8 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         // being built again, as a drag during playback needs.
         #expect(live.unrenderedVideoComposition == nil)
         var unrendered = cached
-        unrendered.videoComposition = try #require(cached.unrenderedVideoComposition)
+        let composition = try #require(cached.unrenderedVideoComposition)
+        unrendered.videoComposition = composition
         let fromClips = try await centerGray(of: unrendered, at: time)
         #expect(abs(fromClips - expected) < 8)
     }

@@ -392,8 +392,8 @@ struct ClipBlockView: View {
         // leave from; not as the timeline scrolls, which moves every
         // block's frame on every step. `frameBox` is a box, so recording
         // it redraws nothing.
-        .onGeometryChange(for: CGRect.self, of: { proxy in
-            isLifted || !arrivalChecked ? proxy.frame(in: .global) : .null
+        .onGeometryChange(for: CGRect.self, of: { [wantsFrame = isLifted || !arrivalChecked] proxy in
+            wantsFrame ? proxy.frame(in: .global) : .null
         }) { frame in
             guard frame != .null else { return }
             frameBox.frame = frame
@@ -482,7 +482,7 @@ struct ClipBlockView: View {
     }
 
     /// How far apart a clip whose speed changes is anchored to its file.
-    static let waveformAnchorStep: CGFloat = 16
+    nonisolated static let waveformAnchorStep: CGFloat = 16
 
     /// Which file time each point across the drawn part of `clip` plays,
     /// `inset` points after its start and `width` wide. At one speed it is

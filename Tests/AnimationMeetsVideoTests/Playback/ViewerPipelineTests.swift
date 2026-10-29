@@ -237,7 +237,7 @@ import Testing
     }
 
     @Test func aRenderFinishingDuringABuildIsBuiltNext() async throws {
-        var h = Harness()
+        let h = Harness()
         h.pipeline.send(.appeared(h.source(), at: .zero))
         try await eventually { h.builder.gate.waiters == 1 }
         h.pipeline.send(.renderFinished)

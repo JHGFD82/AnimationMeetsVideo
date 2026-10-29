@@ -59,7 +59,7 @@ import Testing
         let (reloaded, changed) = running.reloading(url, as: read(url))
         #expect(changed?.controls.map(\.name) == ["Glow"] && reloaded.problems.isEmpty)
 
-        try EffectRegistry.$override.withValue(running) {
+        EffectRegistry.$override.withValue(running) {
             project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects.append(Effect(kind: installed.kind)) }
         }
         try EffectRegistry.$override.withValue(reloaded) {
@@ -93,7 +93,7 @@ import Testing
         var project = EditingProject.empty
         let created = project.addShapeLayer(.rectangle, to: project.rootTimelineID)
         let shape = try #require(created)
-        try EffectRegistry.$override.withValue(running) {
+        EffectRegistry.$override.withValue(running) {
             var effect = Effect(kind: installed.kind)
             effect.changeControl(strength) { $0.setComponent(0, to: 0.25, at: .zero) }
             project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects.append(effect) }
@@ -274,8 +274,8 @@ import Testing
         var project = EditingProject.empty
         let created = project.addShapeLayer(.rectangle, to: project.rootTimelineID)
         let shape = try #require(created)
-        let keys = try [before, after].map { registry in
-            try EffectRegistry.$override.withValue(registry) {
+        let keys = [before, after].map { registry in
+            EffectRegistry.$override.withValue(registry) {
                 var project = project
                 project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects.append(Effect(kind: EffectKind(package: "com.example.tint"))) }
                 return StructureKey(composition: CompositionKey(project: project))

@@ -156,7 +156,8 @@ import Testing
         #expect(FrameRedrawer.canDraw(rendered, values: nil))
 
         var unrendered = withRenders
-        unrendered.videoComposition = try #require(withRenders.unrenderedVideoComposition)
+        let composition = try #require(withRenders.unrenderedVideoComposition)
+        unrendered.videoComposition = composition
         let again = SourceCapture()
         again.arm(at: time)
         try await draw(unrendered, at: time, capture: again)
