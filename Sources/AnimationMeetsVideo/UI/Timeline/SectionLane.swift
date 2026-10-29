@@ -120,11 +120,8 @@ struct SectionLane: View {
                     .focused($isNameFocused)
                     .onSubmit { commitRename() }
                     .onExitCommand { cancelRename() }
-                    .onAppear {
-                        isNameFocused = true
-                        // Like renaming a file: the whole name is selected.
-                        DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
-                    }
+                    // Its whole name is selected (`FieldTextSelection`).
+                    .onAppear { isNameFocused = true }
                     .onChange(of: isNameFocused) { _, focused in if !focused { commitRename() } }
             } else {
                 Text(section.name)

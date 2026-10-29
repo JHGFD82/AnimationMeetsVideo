@@ -34,6 +34,14 @@ shortcuts. The keys are left alone while text is being typed, and the
 arrow, Home and End keys also while a list or other control has the
 keyboard (the browser's Clips list uses the arrows).
 
+A one-line field that starts being edited has its whole value selected,
+however editing starts (a click on the field, a click on a value or
+name that opens one, Tab, Rename), so typing replaces the value as
+renaming a file in the Finder does. Clicks in a field already being
+edited place the caret. One observer installed at launch does this for
+every field (`FieldTextSelection`); text views of several lines are left
+alone.
+
 **Help > Keyboard Shortcuts** (⌘/, `KeyboardShortcutsView`) lists these
 with the Clips list's keys and the File menu's shortcuts in one window;
 keep it in step with this table. VoiceOver reads each row's keys by
@@ -173,6 +181,8 @@ the snap line's arrival.
   `accessibilityHint`. A `SheetCallout` reads as its severity and message
   ("Warning: …"); the sheet's title is a header.
 - Animate through `editorAnimation` or check `Design.Motion.isReduced`.
+- Don't select a field's text by hand when it starts being edited;
+  `FieldTextSelection` already selects all of it.
 
 ## Not implemented yet
 
