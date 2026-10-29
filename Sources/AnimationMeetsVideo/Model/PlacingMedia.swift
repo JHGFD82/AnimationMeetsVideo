@@ -39,6 +39,13 @@ extension EditingProject {
         piece.isTimeline ? canEmbed(piece.assetID, into: timelineID) : mediaClip(id: piece.assetID) != nil
     }
 
+    /// Whether `pieces` can all go into `timelineID` together, as a drop
+    /// onto a timeline in the browser puts them: there are some, and each
+    /// can be placed there.
+    func canPlaceAll(_ pieces: [MediaPiece], in timelineID: UUID) -> Bool {
+        !pieces.isEmpty && pieces.allSatisfy { canPlace($0, in: timelineID) }
+    }
+
     /// The kind of new layer a piece goes on by itself: a timeline's is video.
     func defaultLayerKind(for piece: MediaPiece) -> LayerKind {
         piece.isTimeline ? .video : defaultLayerKind(forAsset: piece.assetID)

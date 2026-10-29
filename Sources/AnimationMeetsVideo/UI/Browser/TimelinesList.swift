@@ -43,6 +43,10 @@ struct TimelinesList: View {
     /// Embeds timelines in the active timeline on one layer, back to back,
     /// all of each, or a range of the one timeline.
     let onEmbed: ([UUID], CMTimeRange?) -> Void
+    /// Puts pieces (timelines dragged onto another, or chosen from Embed
+    /// In) into the timeline given, on one new layer at its top; false
+    /// when they can't go.
+    var onEmbedInto: ([MediaPiece], UUID) -> Bool = { _, _ in false }
     let onDuplicate: (UUID) -> Void
     var onRename: (UUID, String) -> Void = { _, _ in }
     /// Opens a timeline in a window of its own; nil where there is none.
@@ -62,6 +66,8 @@ struct TimelinesList: View {
     @Environment(UsesFinder.self) private var finder: UsesFinder?
     /// Deleting timelines others use, waiting to be agreed to.
     @State private var pendingRemoval: RemovalRequest?
+    /// The parts of timelines a drag that they take is over.
+    @State private var dropHovered: Set<TimelineDropPart> = []
 
     /// A timeline at its place in the tree.
     struct Node: Identifiable {
@@ -136,8 +142,8 @@ struct TimelinesList: View {
             case .filmstrips:
                 TimelineFilmstrips(
                     project: project, activeTimelineID: activeTimelineID, order: all,
-                    picked: $picked, renamingID: $renamingID,
-                    onOpen: open, onRename: onRename,
+                    picked: $picked, renamingID: $renamingID, dropHovered: $dropHovered,
+                    onOpen: open, onRename: onRename, onEmbedInto: onEmbedInto,
                     onEmbed: embedOrBeep, onDuplicate: onDuplicate, onDelete: deleteOrBeep, onFindAll: findAll,
                     menu: { id in AnyView(menu(id, order: all)) }
                 )
@@ -320,6 +326,16 @@ struct TimelinesList: View {
             onEmbed(embeddable, nil)
         }
         .disabled(embeddable.isEmpty)
+        // Dragging onto a timeline in this tab, from the menu: into any
+        // timeline that takes all of them.
+        let pieces = targets.compactMap { project.timeline(id: $0) }.map { MediaPiece.timeline($0.id, from: .zero, to: $0.duration) }
+        let homes = order.filter { project.canPlaceAll(pieces, in: $0) }.compactMap { project.timeline(id: $0) }
+        Menu(targets.count > 1 ? "Embed \(targets.count) Timelines In" : "Embed In") {
+            ForEach(homes) { home in
+                Button(home.name) { if !onEmbedInto(pieces, home.id) { NSSound.beep() } }
+            }
+        }
+        .disabled(homes.isEmpty)
         Button("Rename Timeline") {
             picked.click(id)
             renamingID = id
@@ -348,10 +364,19 @@ struct TimelinesList: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 2)
         .selectedRow(isSelected)
+        .overlay {
+            if dropHovered.lights(timeline.id) {
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(Design.accent, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
         // Inside the press below: on the outside, the press's drag gesture
         // takes the mouse first and the timeline never starts a drag.
         .contentShape(Rectangle())
         .draggable(Self.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
+        // Other timelines dropped on it go into it.
+        .timelineDropTarget(TimelineDropPart(timelineID: timeline.id, part: 0), project: project, hovered: $dropHovered, onDrop: onEmbedInto)
         // On the press, with the system's click count and keys: a tap
         // gesture for the single click waits to rule out a double-click,
         // and quick clicks were lost (see `onMouseDown`).

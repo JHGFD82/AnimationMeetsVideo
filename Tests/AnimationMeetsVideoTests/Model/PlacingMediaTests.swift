@@ -46,6 +46,29 @@ import Testing
         #expect(intoItself == nil && intoChild == nil)
     }
 
+    /// Timelines dragged onto another in the browser go in only when every
+    /// one of them can: one that would hold the target spoils the drop.
+    @Test func aDropOntoATimelineTakesAllOfItOrNothing() {
+        var project = EditingProject.empty
+        let main = project.rootTimelineID
+        let size = CGSize(width: 1920, height: 1080)
+        let verse = project.addTimeline(name: "Verse", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let chorus = project.addTimeline(name: "Chorus", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let a = video("A")
+        project.clips = [a]
+        _ = project.addPieces([MediaPiece(assetID: a.id, start: t(0), end: t(48))], intoTimeline: verse)
+        _ = project.addPieces([MediaPiece(assetID: a.id, start: t(0), end: t(48))], intoTimeline: chorus)
+        _ = project.addPieces([MediaPiece(assetID: a.id, start: t(0), end: t(48))], intoTimeline: main)
+        _ = project.embedTimeline(chorus, intoTimeline: main)
+        let whole = { (id: UUID) in MediaPiece.timeline(id, from: .zero, to: project.timeline(id: id)!.duration) }
+
+        #expect(project.canPlaceAll([whole(verse)], in: chorus))
+        #expect(!project.canPlaceAll([], in: chorus))
+        // Main holds Chorus, so it can't go inside it; nor can Verse with it.
+        #expect(!project.canPlaceAll([whole(verse), whole(main)], in: chorus))
+        #expect(!project.canPlaceAll([whole(chorus)], in: chorus))
+    }
+
     @Test func piecesOfSeveralAssetsGoBackToBackOnOneLayerInTheOrderGiven() throws {
         var project = EditingProject.empty
         let a = video("A"), b = video("B")
