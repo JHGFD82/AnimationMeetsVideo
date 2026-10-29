@@ -60,9 +60,14 @@ up, for an effect whose package has a `graph`
 - **Curves** draws its four curves, the one picked in the RGB, Red,
   Green and Blue picker bold with its points, the others faint in their
   colors. Drag a point to move it, between its neighbors; click where
-  there is none to add one there, or drag from there to add and move it;
-  double-click a point, or pick it and press Delete, to delete it. Add
-  Point (or +) puts one in the widest gap. Dragging a curve that is off
+  there is none, between the edges, to add one there, or drag from there
+  to add and move it; double-click a point, or pick it and press Delete,
+  to delete it. Add Point (or +) puts one in the widest gap. The edges,
+  the first and last points, are drawn as small marks and can't be
+  deleted or dragged on the graph, nor moved up or down: a slider under
+  the graph has a thumb under each that moves it across
+  (`ToneCurveEdgeSlider`); with an edge picked (by its thumb or Tab), ←
+  and → move it too. Dragging a curve that is off
   turns it on. With keyframes, a point dragged between them makes a
   keyframe, and one added or deleted is added to or deleted from every
   keyframe.
@@ -83,8 +88,9 @@ up, for an effect whose package has a `graph`
 Picking a point or handle (a click, or Tab) shows its tones beside the
 graph; the arrow keys move it a hundredth (a tenth with Shift). VoiceOver
 reads each point and handle as an element, adjusting it moves it up or
-down (a handle that only moves across, across), with actions to move it
-across and to delete a point. A drag is one undo step, held to one side
+down (a handle that only moves across, or a curve's edge, across), with actions to move it
+across and to delete a point other than an edge; each thumb of the edge
+slider is an element too, which adjusting moves across. A drag is one undo step, held to one side
 of the project while it lasts, as an EQ band's is.
 
 ### What else could use it

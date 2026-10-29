@@ -152,10 +152,16 @@ struct ToneCurve: Equatable, Sendable {
         return copy
     }
 
+    /// Whether point `index` is the first or the last, the curve's edges,
+    /// which stay: they can be moved, never deleted, and points are added
+    /// only between them.
+    func isEdge(_ index: Int) -> Bool { index == 0 || index == points.count - 1 }
+
     /// Where a point at `x` would go among the points, or nil when it is
-    /// within `minimumGap` of one.
+    /// outside the edges or within `minimumGap` of a point.
     func insertionIndex(atX x: Double) -> Int? {
-        guard x.isFinite, (0...1).contains(x), !points.contains(where: { abs($0.x - x) < Self.minimumGap }) else { return nil }
+        guard x.isFinite, let first = points.first, let last = points.last, x > first.x, x < last.x,
+              !points.contains(where: { abs($0.x - x) < Self.minimumGap }) else { return nil }
         return points.firstIndex { $0.x > x } ?? points.count
     }
 
@@ -168,9 +174,12 @@ struct ToneCurve: Equatable, Sendable {
         return copy
     }
 
-    /// The curve without point `index`; itself when only two are left.
+    /// Whether point `index` can be deleted: any but the edges.
+    func canRemove(_ index: Int) -> Bool { points.indices.contains(index) && !isEdge(index) }
+
+    /// The curve without point `index`; itself when it is an edge.
     func removing(_ index: Int) -> ToneCurve {
-        guard points.count > 2, points.indices.contains(index) else { return self }
+        guard canRemove(index) else { return self }
         var copy = self
         copy.points.remove(at: index)
         return copy
@@ -230,13 +239,13 @@ extension EffectControl {
         return index
     }
 
-    /// Removes point `index` from the curve and every keyframe's, leaving
-    /// at least two.
+    /// Removes point `index` from the curve and every keyframe's; never
+    /// an edge (the first or last point).
     mutating func removeCurvePoint(_ index: Int) {
-        guard kind.isCurve, ToneCurve(values: number.value.values).points.count > 2 else { return }
+        guard kind.isCurve, ToneCurve(values: number.value.values).canRemove(index) else { return }
         number.mapValues { value in
             var values = value.values
-            guard values.count > 4, values.indices.contains(index * 2 + 1) else { return value }
+            guard index > 0, values.count > 4, values.indices.contains(index * 2 + 3) else { return value }
             values.removeSubrange((index * 2)...(index * 2 + 1))
             return ComponentValue(values: values)
         }

@@ -503,7 +503,8 @@ overshoots between two, so a curve that rises keeps the tones in order.
 Before its first point it holds that point's tone, after its last that
 one's, and past white (HDR highlights) a curve ending at white carries
 on along the slope of its last stretch. Its points are at least 0.01
-apart.
+apart. Its first and last points are its edges: they can be moved but
+not deleted, and points are added only between them.
 
 A curve is saved as its points' numbers in turn, `[x0, y0, x1, y1, …]`,
 and keyframes as any control's numbers do, point by point: adding or
