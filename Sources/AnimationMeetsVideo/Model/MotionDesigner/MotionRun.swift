@@ -252,9 +252,16 @@ struct MotionRun: Equatable {
         return nil
     }
 
-    mutating func setEased(_ eased: Bool, ofPoint id: UUID) {
+    /// Sets a point's ease by its preset (`ClipTimeMap.setEase`).
+    mutating func setEase(_ preset: KeyframeEase.Preset, ofPoint id: UUID) {
         guard let (p, _) = piece(holdingPoint: id) else { return }
-        edit(p, keepingFootage: true) { $0.setEased(eased, of: id) }
+        edit(p, keepingFootage: true) { $0.setEase(preset, of: id) }
+    }
+
+    /// Whether easing a point would change anything (`ClipTimeMap.canEase`).
+    func canEase(point id: UUID) -> Bool {
+        guard let (p, _) = piece(holdingPoint: id) else { return false }
+        return pieces[p].map.canEase(id)
     }
 
     /// Shapes an eased point's ramps (`ClipTimeMap.setEase`).

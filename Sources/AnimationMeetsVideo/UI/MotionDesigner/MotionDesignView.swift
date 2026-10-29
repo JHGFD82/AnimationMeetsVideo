@@ -167,9 +167,8 @@ struct MotionDesignView: View {
         case "h": if let point = session.selectedPoint { session.setKind(.hit, ofPoint: point.id) }
         case "p": if session.selectedPoint != nil { session.focusesPace = true }
         case "e":
-            if let point = session.selectedPoint {
-                session.perform(point.eased ? "Sharpen" : "Ease") { $0.setEased(!point.eased, ofPoint: point.id) }
-            }
+            // Easy Ease, or Linear again, as F9 eases a keyframe.
+            if let point = session.selectedPoint { session.setEase(point.eased ? .linear : .easyEase, ofPoint: point.id) }
         default: return false
         }
         return true

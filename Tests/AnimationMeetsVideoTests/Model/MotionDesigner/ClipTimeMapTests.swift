@@ -142,7 +142,7 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         let added8 = map.addMarker(atSource: seconds(8))
         let fourth = try #require(added8)
         map.move(fourth, to: seconds(7))
-        for point in map.points { map.setEased(true, of: point.id) }
+        for point in map.points { map.setEase(.easyEase, of: point.id) }
         let clip = try played(map)
         #expect(clip.time.speed.isAnimated)
         for point in map.points {
@@ -268,7 +268,7 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
     @Test func easedCornersReadBackWithoutTheirRampKeyframes() throws {
         var (map, ids) = map(markers: [2, 4, 7])
         map.move(ids[1], to: seconds(6))
-        map.setEased(true, of: ids[1])
+        map.setEase(.easyEase, of: ids[1])
         let clip = try played(map)
         #expect(clip.time.speed.keyframes.count > 3)
         let read = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
@@ -283,12 +283,67 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         let written = try played(shaped)
         let reread = ClipTimeMap(reading: written, frameDuration: CMTime(value: 1, timescale: 24))
         let ease = try #require(reread.points.first { $0.source == seconds(4) }?.ease)
-        #expect(abs(ease.before - 0.6) < 1e-4 && abs(ease.after - 0.2) < 1e-4)
+        #expect(abs((ease.before ?? 0) - 0.6) < 1e-4 && abs((ease.after ?? 0) - 0.2) < 1e-4)
         let again = try played(reread)
         #expect(again.time.speed.keyframes.count == written.time.speed.keyframes.count)
         for (a, b) in zip(again.time.speed.keyframes, written.time.speed.keyframes) {
             #expect(abs(a.time.seconds - b.time.seconds) < 2.0 / 240_000)
         }
         #expect(read.points.allSatisfy { [seconds(2), seconds(4), seconds(7)].contains($0.source) })
+    }
+
+    /// A corner from 50% to 300%: 2 s of footage over 4 s, then 3 s over 1 s.
+    private func corner() -> (map: ClipTimeMap, ids: [UUID]) {
+        var (map, ids) = map(markers: [2, 4, 7])
+        map.move(ids[1], to: seconds(6))
+        return (map, ids)
+    }
+
+    @Test func easeInAndEaseOutRampOnlyOnTheirSide() throws {
+        for (preset, speed) in [(KeyframeEase.Preset.easeIn, 300.0), (.easeOut, 50.0)] {
+            var (map, ids) = corner()
+            map.setEase(preset, of: ids[1])
+            #expect(map.points[1].easePreset == preset)
+            let clip = try played(map)
+            // Ease In arrives at the speed after the point; Ease Out leaves
+            // at the speed before it. The keyframe eases the same side.
+            let keyframe = try #require(clip.time.speed.keyframes.first { $0.time == map.points[1].source })
+            #expect(abs(keyframe.value - speed) < 1e-6)
+            #expect((keyframe.easeIn != nil) == (preset == .easeIn))
+            #expect((keyframe.easeOut != nil) == (preset == .easeOut))
+            #expect(!clip.time.speed.keyframes.contains { $0.hold })
+            for point in map.points {
+                #expect(near(clip.timelineTime(forSourceTime: point.source), point.time.seconds, within: 1e-5))
+            }
+            // And it reads back as the same ease.
+            let read = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
+            #expect(read.points.first { $0.source == seconds(4) }?.easePreset == preset)
+        }
+    }
+
+    @Test func easyEaseSharesTheChangeOfSpeedBetweenItsRamps() throws {
+        var (map, ids) = corner()
+        map.setEase(.easyEase, of: ids[1])
+        let clip = try played(map)
+        // A third of 2 s before and of 3 s after: the 250% change is split
+        // 2:3, so the point passes through 150%.
+        let keyframe = try #require(clip.time.speed.keyframes.first { $0.time == map.points[1].source })
+        #expect(abs(keyframe.value - 150) < 1e-6)
+        // Linear takes the ease away, and the corner steps again.
+        map.setEase(.linear, of: ids[1])
+        #expect(map.points[1].ease == nil)
+        #expect(try played(map).time.speed.keyframes.contains { $0.hold })
+    }
+
+    @Test func onlyAPointWhereTheSpeedChangesCanEase() {
+        let (three, ids) = corner()
+        #expect(three.canEase(ids[1]))
+        // The open ends carry on at the speed beside the outermost points.
+        #expect(!three.canEase(ids[0]))
+        #expect(!three.canEase(ids[2]))
+        // Two points: both outermost, so the speed is the same throughout.
+        var (two, pair) = map(markers: [2, 4])
+        two.move(pair[1], to: seconds(6))
+        #expect(!pair.contains { two.canEase($0) })
     }
 }

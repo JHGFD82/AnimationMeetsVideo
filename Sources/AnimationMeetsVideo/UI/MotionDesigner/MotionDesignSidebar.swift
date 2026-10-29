@@ -65,7 +65,7 @@ struct MotionDesignSidebar: View {
         VStack(alignment: .leading, spacing: Design.Space.close) {
             heading("Retime to the music")
             Text("Grab the line to put a marker on that frame, and drag it along the music. Make a frame that must land on a beat a hit, and everything else retimes around it.")
-            Text("A pace marker sets the speed after it. Ease a point to ramp the speed through it instead of stepping.")
+            Text("A pace marker sets the speed after it. Give a point Ease In, Ease Out or Easy Ease to ramp the speed into it, out of it or through it, as a keyframe's ease does.")
             Text("M puts a marker under the playhead; ← → move the selected point a frame.")
                 .foregroundStyle(Design.textTertiary)
         }
@@ -105,15 +105,7 @@ struct MotionDesignSidebar: View {
             if let found = session.run.piece(holdingPoint: point.id) {
                 footageNote(session.run.pieces[found.piece])
             }
-            Toggle("Ease through this point", isOn: Binding(get: { point.eased }, set: { eased in
-                session.perform(eased ? "Ease" : "Sharpen") { $0.setEased(eased, ofPoint: point.id) }
-            }))
-            .font(Design.Typeface.label)
-            .help("Ramp the speed through this point instead of stepping (E)")
-            if let ease = point.ease {
-                rampSlider("Ramp in", value: ease.before, point: point, before: true)
-                rampSlider("Ramp out", value: ease.after, point: point, before: false)
-            }
+            easeControls(point)
             HStack(spacing: Design.Space.close) {
                 Button { session.nudgeSelected(byFrames: -1) } label: { Image(systemName: "chevron.left") }
                     .help("A frame earlier (←)")
@@ -128,9 +120,54 @@ struct MotionDesignSidebar: View {
         }
     }
 
-    /// How far one of a point's ramps reaches into its stretch, as the
-    /// handle on the graph sets it. A drag of the slider is one undo step.
-    private func rampSlider(_ label: String, value: Double, point: TimePoint, before: Bool) -> some View {
+    /// The point's ease, chosen from the keyframe eases by name, and how
+    /// far its Ease In and Ease Out reach. Where the speed doesn't change at
+    /// the point there's nothing to ease, which a note says.
+    @ViewBuilder
+    private func easeControls(_ point: TimePoint) -> some View {
+        let canEase = session.run.canEase(point: point.id)
+        HStack(spacing: Design.Space.close) {
+            Text("Ease")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textSecondary)
+                .frame(width: 58, alignment: .leading)
+            Picker("Ease", selection: Binding(get: { point.easePreset }, set: { session.setEase($0, ofPoint: point.id) })) {
+                ForEach(TimeEase.presets) { preset in
+                    Text(preset.name).tag(preset)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .disabled(!canEase && !point.eased)
+            .accessibilityLabel("Ease")
+            .help("\(Self.easeDetail(point.easePreset)) (E for Easy Ease)")
+        }
+        if !canEase {
+            Text(MotionDesignSession.nothingToEase)
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if let ease = point.ease {
+            if let before = ease.before { easeSlider("Ease In", value: before, point: point, before: true) }
+            if let after = ease.after { easeSlider("Ease Out", value: after, point: point, before: false) }
+        }
+    }
+
+    /// What an ease does to the speed at a point, as the keyframe eases'
+    /// details say what they do to a value.
+    static func easeDetail(_ preset: KeyframeEase.Preset) -> String {
+        switch preset {
+        case .linear, .hold: "Steps to the new speed at this point"
+        case .easeIn: "Ramps the speed into this point"
+        case .easeOut: "Ramps the speed out of this point"
+        case .easyEase: "Ramps the speed into this point and out of it"
+        }
+    }
+
+    /// How far a point's Ease In or Ease Out reaches into its stretch, as
+    /// the handle on the graph sets it. A drag of the slider is one undo
+    /// step.
+    private func easeSlider(_ label: String, value: Double, point: TimePoint, before: Bool) -> some View {
         let percent = "\(Int((value * 100).rounded()))%"
         return HStack(spacing: Design.Space.close) {
             Text(label)
@@ -140,13 +177,13 @@ struct MotionDesignSidebar: View {
             Slider(
                 value: Binding(get: { value }, set: { reach in
                     guard let ease = point.ease else { return }
-                    session.perform("Shape Ease") {
+                    session.perform("Shape \(label)") {
                         $0.setEase(TimeEase(before: before ? reach : ease.before, after: before ? ease.after : reach), ofPoint: point.id)
                     }
                 }),
                 in: TimeEase.reach
             ) { editing in
-                if editing { session.beginDragIfNeeded() } else { session.endDrag("Shape Ease") }
+                if editing { session.beginDragIfNeeded() } else { session.endDrag("Shape \(label)") }
             }
             .accessibilityLabel(label)
             .accessibilityValue("\(percent) of the stretch")
@@ -157,8 +194,8 @@ struct MotionDesignSidebar: View {
                 .accessibilityHidden(true)
         }
         .help(before
-              ? "How far into the stretch before this point the speed ramps"
-              : "How far into the stretch after this point the speed ramps")
+              ? "How far into the stretch before this point the Ease In reaches"
+              : "How far into the stretch after this point the Ease Out reaches")
     }
 
     private func kind(of point: TimePoint) -> Kind {

@@ -78,7 +78,8 @@ time graph and the music.
   read out over it, once for stretches either side of a point at one
   speed. Points use the keyframes' marks: hits in the bright "placed"
   tone, markers quieter, a pace marker squared off where the speed steps
-  with its pace beside it, an eased point pinched; the selected one is
+  with its pace beside it, an eased point pinched on the sides it eases,
+  as a keyframe's mark is; the selected one is
   ringed in the accent.
 - **A hit's pin** runs from its frame in the strip, through the graph,
   to its beat in the music lane.
@@ -123,15 +124,17 @@ time graph and the music.
   change, as for any edit, swapping it while playing once the changes
   pause; the playhead is the editor's too.
 - **The sidebar** shows the monitor, then what is
-  selected: a point's kind (Hit, Marker, Pace), its pace (typed), Ease
-  and its ramps in and out,
+  selected: a point's kind (Hit, Marker, Pace), its pace (typed), its
+  Ease (Linear, Ease In, Ease Out, Easy Ease) and how far its Ease In and
+  Ease Out reach,
   a frame earlier or later and Remove; or a clip's start and end and a
   frame earlier or later. With nothing selected it says what to do.
   Warnings sit under that; Cancel and Done at the foot.
 - A pace marker before a hit, or a hit right after a pace marker, asks
   first, naming what it costs.
 - Keys: Space plays, M puts a marker under the playhead, H makes the
-  selected point a hit, P edits its pace, E eases it, Delete removes it,
+  selected point a hit, P edits its pace, E gives it Easy Ease (or
+  Linear again), Delete removes it,
   ← → move it (or else the playhead, even with a clip selected) a frame
   and ⇧ ten, N turns snapping on and off as on the timeline, Escape lets
   go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the
@@ -197,22 +200,44 @@ doesn't step at the outermost point.
 
 ### Easing
 
-A point can be eased, so the speed ramps through it instead of stepping
-(E, the sidebar's **Ease through this point**, or the menu). Its ramps
-are shaped by **handles**: with an eased point selected, the graph shows
-a handle on the line where each ramp ends, with a stem back to the
-point, as the graph editor's do. Dragging a handle along the line
-lengthens or shortens that ramp, from 5% to 90% of the stretch on its
-side (`TimeEase`), so a ramp can be short and sharp on one side and long
+A point is eased with the keyframe eases, by their names (the sidebar's
+**Ease** menu, the graph's menu, the point's VoiceOver actions, or E,
+which sets Easy Ease and back to Linear as F9 eases a keyframe):
+
+- **Linear**: the speed steps at the point. Every point starts so.
+- **Ease In**: the speed ramps into the point, arriving at the speed
+  after it.
+- **Ease Out**: the speed ramps out of the point, leaving at the speed
+  before it.
+- **Easy Ease**: both, the change of speed shared between the two ramps
+  by their lengths, so the speed turns at one rate across both and a
+  short ramp doesn't take all of it.
+
+Hold isn't offered: a sharp corner is written as a hold already, so it
+would be Linear again. Easing smooths a change of speed, so it works only
+where the speed changes at the point (`ClipTimeMap.canEase`): a point
+with points on both sides where the stretches play at different speeds,
+or a last pace marker whose pace isn't the speed before it. Otherwise
+the outermost points can't, since the open ends carry on at the speed
+beside them, so neither point of a run with two can, nor a lone pace
+marker; the sidebar says so and offers only Linear, and E or the menu
+says why in the sidebar instead of easing.
+
+Its ramps are shaped by **handles**: with an eased point selected, the
+graph shows a handle on the line where its Ease In and its Ease Out end,
+with a stem back to the point, as the graph editor's do. Dragging a
+handle along the line lengthens or shortens that side, from 5% to 90% of
+the stretch on its side (`TimeEase`, a third to begin with, as Easy
+Ease's influence), so a ramp can be short and sharp on one side and long
 on the other. Two ramps meeting in one stretch share 90% of it, each
 held to what the other leaves. The handles move only along the line,
 never up or down: bending it would move frames off their places. However
 the ramps are shaped, the rest of each stretch is solved to keep its
-length, so hits still land on their beats. The sidebar's **Ramp in** and
-**Ramp out** sliders, and the point's VoiceOver actions (longer or
-shorter ramp in or out, a tenth of the stretch at a time), do the same
-from the keyboard. Speeds are held to what Time allows (1% to 10000%,
-never through zero).
+length, so hits still land on their beats. The sidebar's **Ease In** and
+**Ease Out** sliders, and the point's VoiceOver actions (Longer and
+Shorter Ease In and Ease Out, a tenth of the stretch at a time), do the
+same from the keyboard. Speeds are held to what Time allows (1% to
+10000%, never through zero).
 
 ### Beat markers and snapping
 
@@ -292,8 +317,9 @@ A clip's speed keyframes become points:
   (the speed before the first point), and the keyframes that only shape
   an eased corner (linear, beside a keyframe eased toward them). A
   hand-made linear keyframe beside an eased one is taken for one of those.
-- A keyframe with eases makes an eased point, whose ramps reach as far
-  as the ramp keyframes beside it (a third of each stretch without them).
+- A keyframe with eases makes an eased point with the same ease (Ease
+  In, Ease Out or Easy Ease), whose ramps reach as far as the ramp
+  keyframes beside it (a third of each stretch without them).
 - A clip at one speed has no points; it plays at that speed until some
   are added.
 
@@ -315,11 +341,15 @@ starts:
 - A sharp corner, every pace marker included, is the keyframe before it
   set to **hold**, then a keyframe at the corner with the new speed: the
   pattern read back as a pace marker.
-- An eased corner ramps over the share of each stretch its handles reach
-  (a third by default), shrunk to share a stretch where two ramps would
-  cross, through the speed of the line joining the two stretches, with
-  Easy Ease on the corner's keyframe so the speed turns smoothly. A
-  linear keyframe ends each ramp. A point beside an eased one keeps its
+- An eased corner ramps over the share of the stretch on each side it
+  eases that its handles reach (a third by default), shrunk to share a
+  stretch where two ramps would cross. The corner's keyframe plays the
+  speed before it plus the change shared by the ramps' lengths (Ease In's
+  the speed after, Ease Out's the speed before), with the keyframe's own
+  Ease In, Ease Out or both on the sides that ramp, so the speed turns
+  smoothly and the point reads back with the same ease. A linear keyframe
+  ends each ramp; a side that doesn't ramp meets the stretch beside it at
+  its speed. A point beside an eased one keeps its
   keyframe even where the speed doesn't change there, since reading
   skips the ramp keyframes and needs both ends of each stretch; so a
   shaped ramp reads back with the reach it was given. The rest of
@@ -418,7 +448,8 @@ jumps to that keyframe's value, as After Effects' hold keyframes do.
 Following [accessibility.md](accessibility.md). The graph is a group
 named with its clips and hits; each point is an element read as its kind
 and time, then its frame and the speed after it, adjustable a frame at a
-time, with Make hit, Make marker, Set pace, Ease (or Sharpen) and Remove
+time, with Make hit, Make marker, Set pace, its other eases by name
+(Linear, Ease In, Ease Out, Easy Ease) where it can ease, and Remove
 as actions; the graph adds Add marker at playhead. Each clip in the strip
 reads its name and span, with a frame earlier or later as actions. The
 ruler is the playhead, adjustable a frame at a time. Everything a drag

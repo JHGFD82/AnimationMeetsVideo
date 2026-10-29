@@ -7,8 +7,8 @@ import SwiftUI
 /// reads as one line: steep where it plays fast, shallow where slow, and
 /// flat over a gap. Clicking the line drops a marker on that frame, and
 /// grabbing it drops one and drags it; a hit's pin runs from its frame down to its beat. A selected
-/// eased point shows a handle where each of its ramps ends, which slides
-/// along the line to lengthen or shorten that ramp.
+/// eased point shows a handle where its Ease In and Ease Out end, which
+/// slides along the line to lengthen or shorten that side's ramp.
 struct MotionDesignLanes: View {
     @Bindable var session: MotionDesignSession
 
@@ -269,14 +269,15 @@ struct MotionDesignLanes: View {
         guard let id = session.selectedPointID, let (p, i) = session.run.piece(holdingPoint: id) else { return [] }
         let piece = session.run.pieces[p]
         let point = piece.map.points[i]
-        guard let ease = point.ease else { return [] }
+        guard let ease = point.ease, piece.map.canEase(id) else { return [] }
         let clip = session.drafted(piece)
         let anchor = location(of: point, piece: p, stack: stack)
         let earlier = i > 0 ? piece.map.points[i - 1].source : piece.map.trimStart
         let later = i + 1 < piece.map.points.count ? piece.map.points[i + 1].source : piece.map.trimEnd
         var handles: [EaseHandle] = []
-        for (before, end) in [(true, point.source.seconds - ease.before * (point.source.seconds - earlier.seconds)),
-                              (false, point.source.seconds + ease.after * (later.seconds - point.source.seconds))] {
+        let ends = [ease.before.map { (true, point.source.seconds - $0 * (point.source.seconds - earlier.seconds)) },
+                    ease.after.map { (false, point.source.seconds + $0 * (later.seconds - point.source.seconds)) }]
+        for (before, end) in ends.compactMap({ $0 }) {
             let source = CMTime(seconds: end, preferredTimescale: ClipTimeMap.timescale)
             let at = CGPoint(x: session.x(of: clip.timelineTime(forSourceTime: source).seconds), y: stack.y(piece: p, source: source))
             // Only where the ramp has room to show.
@@ -342,7 +343,7 @@ struct MotionDesignLanes: View {
         let isSelected = point.id == session.selectedPointID
         let size: CGFloat = point.isHit ? 13 : 11
         let rect = CGRect(x: center.x - size / 2, y: center.y - size / 2, width: size, height: size)
-        let shape = KeyframeMarkShape(easedIn: point.eased, easedOut: point.eased, holds: point.pace != nil).path(in: rect)
+        let shape = KeyframeMarkShape(easedIn: point.ease?.before != nil, easedOut: point.ease?.after != nil, holds: point.pace != nil).path(in: rect)
         context.fill(shape, with: .color(point.isHit ? Design.snap : Design.textSecondary))
         context.stroke(shape, with: .color(.black.opacity(0.5)), lineWidth: 0.5)
         if isSelected {
@@ -467,7 +468,7 @@ struct MotionDesignLanes: View {
             .onEnded { _ in
                 switch drag {
                 case .point(_, _, let added): session.endDrag(added ? "Add Marker" : "Move Point")
-                case .handle: session.endDrag("Shape Ease")
+                case .handle(_, let before): session.endDrag(before ? "Shape Ease In" : "Shape Ease Out")
                 // A click on the line drops a marker on that frame, selected,
                 // and moves the playhead there to show it.
                 case .pressed(.line(let piece, let time)):
@@ -490,14 +491,30 @@ struct MotionDesignLanes: View {
             Button("Make Marker") { session.setKind(.marker, ofPoint: point.id) }
                 .disabled(point.kind == .marker)
             Button("Set Pace…") { session.focusesPace = true }
-            Toggle("Eased", isOn: Binding(get: { point.eased }, set: { eased in
-                session.perform(eased ? "Ease" : "Sharpen") { $0.setEased(eased, ofPoint: point.id) }
-            }))
+            Divider()
+            // The keyframe menus' eases, checked as the point is.
+            let canEase = session.run.canEase(point: point.id)
+            ForEach(TimeEase.presets) { preset in
+                Toggle(isOn: Binding(get: { point.easePreset == preset }, set: { _ in session.setEase(preset, ofPoint: point.id) })) {
+                    Text(preset.name)
+                }
+                .disabled(preset != .linear && !canEase)
+                .help(MotionDesignSidebar.easeDetail(preset))
+            }
             Divider()
             Button("Remove Point", role: .destructive) { session.deleteSelected() }
         } else {
             Button("Add Marker at Playhead") { session.addMarkerAtPlayhead() }
         }
+    }
+
+    /// A point's ease for VoiceOver: its preset, and how far each side
+    /// reaches into its stretch.
+    private static func easeText(_ point: TimePoint) -> String {
+        guard let ease = point.ease else { return KeyframeEase.Preset.linear.name }
+        let reaches = [ease.before.map { "Ease In over \(Int(($0 * 100).rounded())) percent" },
+                       ease.after.map { "Ease Out over \(Int(($0 * 100).rounded())) percent" }]
+        return ([point.easePreset.name] + reaches.compactMap { $0 }).joined(separator: ", ")
     }
 
     private var allPoints: [(point: TimePoint, piece: Int)] {
@@ -515,7 +532,7 @@ struct MotionDesignLanes: View {
         let speed = session.run.pieces[index].map.index(of: point.id).map { session.run.pieces[index].map.speed(after: $0) }
         return Rectangle()
             .accessibilityLabel("\(kind) at \(session.timecode(point.time))")
-            .accessibilityValue("Frame \(session.timecode(point.source))\(speed.map { ", then \(Self.speedText($0))" } ?? "")\(point.ease.map { ", eased, ramps in over \(Int(($0.before * 100).rounded())) percent and out over \(Int(($0.after * 100).rounded())) percent" } ?? "")")
+            .accessibilityValue("Frame \(session.timecode(point.source))\(speed.map { ", then \(Self.speedText($0))" } ?? ""), \(Self.easeText(point))")
             .accessibilityAddTraits(point.id == session.selectedPointID ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { session.select(point: point.id) }
             .accessibilityAdjustableAction { direction in
@@ -526,14 +543,19 @@ struct MotionDesignLanes: View {
                 Button("Make hit") { session.setKind(.hit, ofPoint: point.id) }
                 Button("Make marker") { session.setKind(.marker, ofPoint: point.id) }
                 Button("Set pace") { session.select(point: point.id); session.focusesPace = true }
-                Button(point.eased ? "Sharpen" : "Ease") {
-                    session.perform(point.eased ? "Sharpen" : "Ease") { $0.setEased(!point.eased, ofPoint: point.id) }
+                // The keyframe eases, named as on a keyframe.
+                if session.run.canEase(point: point.id) {
+                    ForEach(TimeEase.presets.filter { $0 != point.easePreset }) { preset in
+                        Button(preset.name) { session.setEase(preset, ofPoint: point.id) }
+                    }
                 }
-                if point.eased {
-                    Button("Longer ramp in") { session.select(point: point.id); session.reshapeSelectedEase(before: true, by: 0.1) }
-                    Button("Shorter ramp in") { session.select(point: point.id); session.reshapeSelectedEase(before: true, by: -0.1) }
-                    Button("Longer ramp out") { session.select(point: point.id); session.reshapeSelectedEase(before: false, by: 0.1) }
-                    Button("Shorter ramp out") { session.select(point: point.id); session.reshapeSelectedEase(before: false, by: -0.1) }
+                if point.ease?.before != nil {
+                    Button("Longer Ease In") { session.select(point: point.id); session.reshapeSelectedEase(before: true, by: 0.1) }
+                    Button("Shorter Ease In") { session.select(point: point.id); session.reshapeSelectedEase(before: true, by: -0.1) }
+                }
+                if point.ease?.after != nil {
+                    Button("Longer Ease Out") { session.select(point: point.id); session.reshapeSelectedEase(before: false, by: 0.1) }
+                    Button("Shorter Ease Out") { session.select(point: point.id); session.reshapeSelectedEase(before: false, by: -0.1) }
                 }
                 Button("Remove") { session.select(point: point.id); session.deleteSelected() }
             }

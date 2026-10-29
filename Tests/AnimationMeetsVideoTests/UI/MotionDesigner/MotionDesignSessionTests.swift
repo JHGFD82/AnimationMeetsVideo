@@ -170,4 +170,34 @@ import Testing
         session.endDrag("Move Clip")
         #expect(session.dragSnapTime == nil)
     }
+
+    @Test func easingSaysWhenThereIsNothingToEase() throws {
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 8, timescale: 1))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        let hit = try #require(session.addMarker(toPiece: clip.id, atTime: 1))
+        session.setKind(.hit, ofPoint: hit)
+        let marker = try #require(session.addMarker(toPiece: clip.id, atTime: 3))
+        session.perform("Move Point") { $0.movePoint(marker, to: CMTime(value: 4, timescale: 1)) }
+
+        // Two points: the speed is the same on both sides of each, so
+        // easing one changes nothing and says so, and takes no undo step.
+        let undoName = session.undoManager.undoActionName
+        session.setEase(.easyEase, ofPoint: marker)
+        #expect(session.selectedPoint?.easePreset == .linear)
+        #expect(session.message == MotionDesignSession.nothingToEase)
+        #expect(session.undoManager.undoActionName == undoName)
+
+        // A third point makes a corner there, which eases.
+        let end = try #require(session.addMarker(toPiece: clip.id, atTime: 6))
+        session.setKind(.hit, ofPoint: end)
+        session.perform("Move Point") { $0.movePoint(end, to: CMTime(value: 5, timescale: 1)) }
+        session.select(point: marker)
+        session.setEase(.easyEase, ofPoint: marker)
+        #expect(session.selectedPoint?.easePreset == .easyEase)
+        #expect(session.undoManager.undoActionName == "Easy Ease")
+    }
 }
