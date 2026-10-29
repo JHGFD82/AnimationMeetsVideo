@@ -43,10 +43,20 @@ else around it, by dragging frames along a time graph.
 ## The panel
 
 **Built** (`UI/MotionDesigner/`). The transport runs across the top:
-play the draft, the playhead's timecode, **Beats** (show them) and
-**Snap**, and zoom. The sidebar is on the left, and the lanes fill the
-rest, on one timeline across: a ruler, the footage, the time graph and
-the music.
+play the draft, the playhead's timecode, **Skimming**, **Snapping** and
+**Beats** (show them) as icon toggles in the timeline toolbar's style and
+glyphs (`Design.Symbol`), and zoom. The sidebar is on the left, and the
+lanes fill the rest, on one timeline across: a ruler, the footage, the
+time graph and the music.
+
+- **Skimming.** With it on, moving the pointer over the lanes shows the
+  frame under it in the monitor without moving the playhead, as the
+  timeline's skimming does (`PlaybackModel.skim`), with the timeline's
+  red skim line across the lanes. Only hovering skims, never a drag,
+  and leaving the lanes shows the playhead's frame again. It is on unless
+  turned off, and remembered between launches
+  (`Preferences.motionDesignerSkimming`), apart from the timeline's own
+  setting.
 
 - **The window.** The lanes show only the run's stretch of the timeline
   (`MotionDesignSession.window`): the run as it opened, and wherever it
@@ -123,7 +133,8 @@ the music.
 - Keys: Space plays, M puts a marker under the playhead, H makes the
   selected point a hit, P edits its pace, E eases it, Delete removes it,
   ← → move it (or the selected clip, or the playhead) a frame and ⇧ ten,
-  Escape lets go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the
+  N turns snapping on and off as on the timeline, Escape lets
+  go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the
   draft, ⌘Return is Done. Scrolling scrolls; ⌥ or ⌘ scrolling, or a
   pinch, zooms.
 - **The zoom's edge** is the editor's shared one (`RubberBandZoom`, see

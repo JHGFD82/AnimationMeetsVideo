@@ -24,6 +24,10 @@ enum Preferences {
     /// Whether the motion designer shows the song's beats and snaps to
     /// them. On unless turned off.
     static let motionDesignerShowsBeats = "motionDesignerShowsBeats"
+    /// Whether the motion designer's monitor shows the frame under the
+    /// pointer as it moves over the lanes. On unless turned off, as on the
+    /// timeline.
+    static let motionDesignerSkimming = "motionDesignerSkimming"
 
     // MARK: Library
 

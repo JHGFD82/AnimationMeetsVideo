@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreMedia
 import SwiftUI
 import Testing
@@ -58,4 +59,32 @@ struct MotionDesignLanesInteractionTests {
         #expect(abs(added.time.seconds - 4) <= session.secondsPerPoint)
         #expect(abs(session.playhead - 4) <= session.secondsPerPoint)
     }
+
+    @Test func hoveringSkimsWhileSkimmingIsOn() async throws {
+        let defaults = UserDefaults.standard
+        let remembered = defaults.object(forKey: Preferences.motionDesignerSkimming)
+        defer { defaults.set(remembered, forKey: Preferences.motionDesignerSkimming) }
+        let session = try session()
+        defer { session.end() }
+        // Skimming shows a frame only once the player has something to show.
+        session.playback.player.replaceCurrentItem(with: AVPlayerItem(asset: AVMutableComposition()))
+        session.skims = true
+        let harness = EventHarness(MotionDesignLanes(session: session), size: Self.size)
+        try await harness.settle()
+
+        // Over the graph at 4 s: the monitor shows 4 s, the playhead stays.
+        harness.mouse(.mouseMoved, at: CGPoint(x: onLine(session, at: 4).x, y: 150))
+        try await harness.settle()
+        let skimmed = try #require(session.playback.skimTime)
+        #expect(abs(skimmed.seconds - 4) <= session.timeline.frameDuration.seconds)
+        #expect(abs(session.playhead - 2) < 1e-6)
+
+        // Turned off, the skim ends and hovering shows nothing.
+        session.skims = false
+        #expect(session.playback.skimTime == nil)
+        harness.mouse(.mouseMoved, at: CGPoint(x: onLine(session, at: 5).x, y: 150))
+        try await harness.settle()
+        #expect(session.playback.skimTime == nil)
+    }
+
 }

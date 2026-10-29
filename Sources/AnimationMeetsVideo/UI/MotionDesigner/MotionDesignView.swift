@@ -67,21 +67,27 @@ struct MotionDesignView: View {
                 }
             }
             Groove(axis: .vertical).frame(height: 18)
-            Toggle(isOn: $session.showsBeats) {
-                Label("Beats", systemImage: Design.Symbol.tick)
+            // Icon toggles, as on the timeline's toolbar, with its glyphs
+            // for the same commands.
+            HStack(spacing: 2) {
+                Toggle(isOn: $session.skims) {
+                    Image(systemName: Design.Symbol.skim)
+                }
+                .help(session.skims ? "Skimming on: the monitor shows the frame under the pointer" : "Skimming off: the monitor shows the playhead")
+                .accessibilityLabel("Skimming")
+                Toggle(isOn: $session.snaps) {
+                    Image(systemName: Design.Symbol.snap)
+                }
+                .help(session.snaps ? "Snapping on: points and clips snap to beats, the playhead and clip edges (N)" : "Snapping off (N)")
+                .accessibilityLabel("Snapping")
+                Toggle(isOn: $session.showsBeats) {
+                    Image(systemName: Design.Symbol.beats)
+                }
+                .disabled(session.beats.isEmpty)
+                .help(session.beats.isEmpty ? "The song under these clips has no beats yet" : session.showsBeats ? "Hide the song's beats" : "Show the song's beats")
+                .accessibilityLabel("Beats")
             }
-            .toggleStyle(.button)
-            .controlSize(.small)
-            .disabled(session.beats.isEmpty)
-            .help(session.beats.isEmpty ? "The song under these clips has no beats yet" : "Show the song's beats")
-            .accessibilityValue(session.showsBeats ? "On" : "Off")
-            Toggle(isOn: $session.snaps) {
-                Label("Snap", systemImage: "arrow.right.to.line")
-            }
-            .toggleStyle(.button)
-            .controlSize(.small)
-            .help("Snap dragged points to beats, the playhead and clip edges")
-            .accessibilityValue(session.snaps ? "On" : "Off")
+            .toggleStyle(.icon)
             Spacer()
             ZoomControls(
                 fraction: $session.zoomFraction, keys: .command,
@@ -119,8 +125,8 @@ struct MotionDesignView: View {
 
     /// Space plays, M adds a marker under the playhead, H makes the
     /// selected point a hit, P edits its pace, E eases it, Delete removes
-    /// it, ← → move it (or the selected clip) a frame, ⇧ ten, Escape lets
-    /// go, and ⌘= ⌘- ⌘0 zoom. Not while typing in a field.
+    /// it, ← → move it (or the selected clip) a frame, ⇧ ten, N snaps,
+    /// Escape lets go, and ⌘= ⌘- ⌘0 zoom. Not while typing in a field.
     private func handleKey(_ event: NSEvent) -> Bool {
         if NSApp.keyWindow?.firstResponder is NSTextView { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -157,6 +163,7 @@ struct MotionDesignView: View {
         switch event.charactersIgnoringModifiers?.lowercased() {
         case " ": session.togglePlayback()
         case "m": session.addMarkerAtPlayhead()
+        case "n": session.snaps.toggle()
         case "h": if let point = session.selectedPoint { session.setKind(.hit, ofPoint: point.id) }
         case "p": if session.selectedPoint != nil { session.focusesPace = true }
         case "e":

@@ -76,7 +76,8 @@ struct MotionDesignLanes: View {
                     }
                     return true
                 },
-                onMagnifyEnded: { session.endPinch() }
+                onMagnifyEnded: { session.endPinch() },
+                onHover: { x in session.skim(atX: x) }
             )
         )
     }
@@ -698,9 +699,27 @@ struct MotionDesignLanes: View {
                     : nil
             )
             .frame(width: width, height: height)
+            MotionSkimLine(session: session, height: height)
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Where the pointer skims the lanes, drawn as the timeline's skimmer
+/// (`TimelineSkimLine`): a red hairline without a head. It reads the skim
+/// itself, so following the pointer redraws only this line.
+private struct MotionSkimLine: View {
+    let session: MotionDesignSession
+    let height: CGFloat
+
+    var body: some View {
+        if let time = session.playback.skimTime {
+            Rectangle()
+                .fill(Design.skim.opacity(0.7))
+                .frame(width: 1, height: height)
+                .offset(x: session.x(of: time.seconds).rounded() - 0.5)
+        }
     }
 }

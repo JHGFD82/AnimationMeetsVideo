@@ -45,6 +45,15 @@ final class MotionDesignSession: SecondsViewport {
         didSet { UserDefaults.standard.set(showsBeats, forKey: Preferences.motionDesignerShowsBeats) }
     }
     var snaps = true
+    /// Shows the frame under the pointer in the monitor as it moves over
+    /// the lanes, without moving the playhead, as the timeline's skimming
+    /// does. Kept between sessions.
+    var skims = UserDefaults.standard.object(forKey: Preferences.motionDesignerSkimming) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(skims, forKey: Preferences.motionDesignerSkimming)
+            if !skims { playback.endSkim() }
+        }
+    }
     /// What an edit couldn't do and why, until the next one.
     private(set) var message: String?
     /// A notice over the lanes, which any click puts away: why a clip held
@@ -130,6 +139,7 @@ final class MotionDesignSession: SecondsViewport {
     }
 
     func end() {
+        playback.endSkim()
         if playback.isPlaying { playback.player.pause() }
         if let windowEndObserver { playback.player.removeTimeObserver(windowEndObserver) }
         windowEndObserver = nil
@@ -419,6 +429,18 @@ final class MotionDesignSession: SecondsViewport {
     func seek(to seconds: Double) {
         let window = window
         playback.seek(to: CMTime(seconds: seconds.clamped(between: window.start, and: window.end), preferredTimescale: 48_000))
+    }
+
+    /// Shows the frame under the pointer at `x` in the lanes, within the
+    /// window, without moving the playhead; ends the skim off the lanes,
+    /// or with skimming off.
+    func skim(atX x: CGFloat?) {
+        guard skims, let x else {
+            playback.endSkim()
+            return
+        }
+        let seconds = seconds(atX: x).clamped(between: window.start, and: window.end)
+        playback.skim(to: timeline.snappedToFrame(CMTime(seconds: seconds, preferredTimescale: 600_000)))
     }
 
     /// Where the playhead is at `date`: the player's time while it plays.
