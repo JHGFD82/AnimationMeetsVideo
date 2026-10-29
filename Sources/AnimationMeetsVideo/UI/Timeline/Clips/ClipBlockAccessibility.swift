@@ -45,9 +45,9 @@ extension ClipBlockView {
     var accessibilityEditActions: some View {
         let frame = Timeline.frameDuration(for: model.frameRate)
         Button("Move one frame earlier") {
-            handlers.onMove(CMTimeMaximum(.zero, CMTimeSubtract(model.clip.startOffset, frame)), nil)
+            _ = handlers.onMove(CMTimeMaximum(.zero, CMTimeSubtract(model.clip.startOffset, frame)), nil)
         }
-        Button("Move one frame later") { handlers.onMove(CMTimeAdd(model.clip.startOffset, frame), nil) }
+        Button("Move one frame later") { _ = handlers.onMove(CMTimeAdd(model.clip.startOffset, frame), nil) }
         if let onOpenNested = handlers.onOpenNested { Button("Open timeline", action: onOpenNested) }
         if let piece = model.clip.footagePiece {
             Button("Show in clips browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
@@ -62,10 +62,10 @@ extension ClipBlockView {
         Button(model.isInGroup ? "Copy selection" : "Copy") { handlers.onClipboard(.copy) }
         Button(model.isInGroup ? "Duplicate selection" : "Duplicate") { handlers.onClipboard(.duplicate) }
         Button(model.isInGroup ? "Put selection in new timeline" : "Put in new timeline") { handlers.onClipboard(.nest) }
-        Button("Trim start one frame earlier") { handlers.onTrimStart(CMTimeSubtract(model.clip.trimStart, frame)) }
-        Button("Trim start one frame later") { handlers.onTrimStart(CMTimeAdd(model.clip.trimStart, frame)) }
-        Button("Trim end one frame earlier") { handlers.onTrimEnd(CMTimeSubtract(model.clip.trimEnd, frame)) }
-        Button("Trim end one frame later") { handlers.onTrimEnd(CMTimeAdd(model.clip.trimEnd, frame)) }
+        Button("Trim start one frame earlier") { _ = handlers.onTrimStart(CMTimeSubtract(model.clip.trimStart, frame)) }
+        Button("Trim start one frame later") { _ = handlers.onTrimStart(CMTimeAdd(model.clip.trimStart, frame)) }
+        Button("Trim end one frame earlier") { _ = handlers.onTrimEnd(CMTimeSubtract(model.clip.trimEnd, frame)) }
+        Button("Trim end one frame later") { _ = handlers.onTrimEnd(CMTimeAdd(model.clip.trimEnd, frame)) }
         if let transition = model.clip.transitionIn, model.joinedLead == nil {
             Button("Remove \(transition.kind.name) at start") { handlers.onRemoveTransition(.leading) }
         }

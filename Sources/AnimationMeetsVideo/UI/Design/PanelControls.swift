@@ -247,7 +247,7 @@ struct PanelMenuField<Value: Hashable>: View {
 
     var body: some View {
         Menu {
-            Picker(name, selection: Binding(get: { selection }, set: onPick)) {
+            Picker(name, selection: Binding(get: { selection }, set: { onPick($0) })) {
                 ForEach(options.indices, id: \.self) { index in
                     Text(options[index].name).tag(options[index].value)
                 }
