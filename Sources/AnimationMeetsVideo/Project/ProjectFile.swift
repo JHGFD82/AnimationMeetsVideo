@@ -154,6 +154,8 @@ struct ProjectFile: Codable {
         var echo: EchoEntry?
         /// `"changePitch"` or `"mute"`.
         var sound: String?
+        /// The motion designer's points; absent while it has written none.
+        var design: MotionDesignEntry?
 
         init?(_ time: ClipTime) {
             guard !time.isDefault else { return nil }
@@ -161,6 +163,7 @@ struct ProjectFile: Codable {
             frameBlending = time.frameBlending == .off ? nil : time.frameBlending.rawValue
             echo = time.echo.map { EchoEntry(count: $0.count, delay: $0.delay, decay: $0.decay) }
             sound = time.sound == .keepPitch ? nil : time.sound.rawValue
+            design = time.design.map(MotionDesignEntry.init)
         }
 
         var time: ClipTime {
@@ -171,7 +174,64 @@ struct ProjectFile: Codable {
             time.frameBlending = frameBlending.flatMap(FrameBlending.init(rawValue:)) ?? .off
             time.echo = echo.map { Echo(count: $0.count, delay: $0.delay.time, decay: $0.decay).clamped }
             time.sound = sound.flatMap(SoundMode.init(rawValue:)) ?? .keepPitch
+            time.design = design?.design
             return time
+        }
+    }
+
+    /// The motion designer's points on a clip (`MotionDesign`), with the
+    /// speed they were written as.
+    struct MotionDesignEntry: Codable {
+        struct Point: Codable {
+            var source: TimeEntry
+            /// `"hit"`, `"marker"` or `"pace"`.
+            var kind: String
+            /// A pace marker's speed after it, as a percentage.
+            var pace: Double?
+            var easeIn: EaseEntry?
+            var easeOut: EaseEntry?
+            /// `true` while its handles stay in line; absent otherwise.
+            var smooth: Bool?
+        }
+
+        var points: [Point]
+        var speed: PropertyEntry<Double>
+
+        init(_ design: MotionDesign) {
+            points = design.points.map { point in
+                let kind: String
+                var pace: Double?
+                switch point.kind {
+                case .hit: kind = "hit"
+                case .marker: kind = "marker"
+                case .pace(let speed):
+                    kind = "pace"
+                    pace = speed
+                }
+                return Point(
+                    source: TimeEntry(point.source), kind: kind, pace: pace,
+                    easeIn: point.easeIn.map(EaseEntry.init), easeOut: point.easeOut.map(EaseEntry.init),
+                    smooth: point.smooth ? true : nil
+                )
+            }
+            speed = PropertyEntry(design.speed) { $0 }
+        }
+
+        var design: MotionDesign {
+            MotionDesign(
+                points: points.map { point in
+                    let kind: TimePoint.Kind = switch point.kind {
+                    case "hit": .hit
+                    case "pace": .pace(ClipTime.clampedSpeed(point.pace ?? 100))
+                    default: .marker
+                    }
+                    return MotionDesign.Point(
+                        source: point.source.time, kind: kind, easeIn: point.easeIn?.ease, easeOut: point.easeOut?.ease,
+                        smooth: point.smooth ?? false
+                    )
+                },
+                speed: speed.property(default: 100.0) { ClipTime.clampedSpeed($0) }
+            )
         }
     }
 
@@ -1273,6 +1333,13 @@ extension ProjectFile {
                 .optional("frameBlending", .choice(["blend", "opticalFlow"], noun: "frame blending")),
                 .optional("echo", echo),
                 .optional("sound", .choice(["changePitch", "mute"], noun: "sound mode")),
+                .optional("design", .object(object([
+                    .required("points", .array(.object(object([
+                        .required("source", .time), .required("kind", .choice(["hit", "marker", "pace"], noun: "point kind")),
+                        .optional("pace", .number), .optional("easeIn", ShapeKit.ease), .optional("easeOut", ShapeKit.ease), .optional("smooth", .bool),
+                    ])))),
+                    .required("speed", property(.number)),
+                ]))),
             ]))),
             .optional("shutter", .object(object([
                 .optional("motionBlur", .object(object([.required("angle", .number), .required("samples", .integer)]))),

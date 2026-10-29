@@ -55,6 +55,7 @@ struct MotionRun: Equatable {
             drafted.trimEnd = map.trimEnd
             if let written = map.writtenSpeed() {
                 drafted.time.speed = written.speed
+                drafted.time.design = MotionDesign(map.points, speed: written.speed)
                 drafted.startOffset = written.start
             } else {
                 drafted.startOffset = start
@@ -258,16 +259,22 @@ struct MotionRun: Equatable {
         edit(p, keepingFootage: true) { $0.setEase(preset, of: id) }
     }
 
-    /// Whether easing a point would change anything (`ClipTimeMap.canEase`).
+    /// Whether either side of a point can ease (`ClipTimeMap.canEase`).
     func canEase(point id: UUID) -> Bool {
         guard let (p, _) = piece(holdingPoint: id) else { return false }
         return pieces[p].map.canEase(id)
     }
 
-    /// Shapes an eased point's ramps (`ClipTimeMap.setEase`).
-    mutating func setEase(_ ease: TimeEase, ofPoint id: UUID) {
+    /// Sets the handle on a side of a point (`ClipTimeMap.setHandle`).
+    mutating func setHandle(_ side: TimePoint.Side, ofPoint id: UUID, to ease: KeyframeEase?, alone: Bool = false) {
         guard let (p, _) = piece(holdingPoint: id) else { return }
-        edit(p, keepingFootage: true) { $0.setEase(ease, of: id) }
+        edit(p, keepingFootage: true) { $0.setHandle(side, of: id, to: ease, alone: alone) }
+    }
+
+    /// Keeps a point's handles in line or lets them part (`ClipTimeMap.setSmooth`).
+    mutating func setSmooth(_ smooth: Bool, ofPoint id: UUID) {
+        guard let (p, _) = piece(holdingPoint: id) else { return }
+        edit(p, keepingFootage: true) { $0.setSmooth(smooth, of: id) }
     }
 
     mutating func removePoint(_ id: UUID) {

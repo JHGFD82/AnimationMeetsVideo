@@ -183,22 +183,27 @@ import Testing
         let marker = try #require(session.addMarker(toPiece: clip.id, atTime: 3))
         session.perform("Move Point") { $0.movePoint(marker, to: CMTime(value: 4, timescale: 1)) }
 
-        // Two points: the speed is the same on both sides of each, so
-        // easing one changes nothing and says so, and takes no undo step.
+        // A hit on a straight line eases, as a keyframe does: it slows into
+        // the beat and out of it.
+        session.select(point: hit)
+        session.setEase(.easyEase, ofPoint: hit)
+        #expect(session.selectedPoint?.easePreset == .easyEase)
+        #expect(session.undoManager.undoActionName == "Easy Ease")
+
+        // A lone pace marker on the clip's first frame has no footage before
+        // it, and holds the stretch after it, so easing it says so and takes
+        // no undo step.
+        session.select(point: marker)
+        session.deleteSelected()
+        session.select(point: hit)
+        session.deleteSelected()
+        let first = try #require(session.addMarker(toPiece: clip.id, atTime: 0))
+        session.setKind(.pace(100), ofPoint: first)
         let undoName = session.undoManager.undoActionName
-        session.setEase(.easyEase, ofPoint: marker)
+        session.setEase(.easyEase, ofPoint: first)
         #expect(session.selectedPoint?.easePreset == .linear)
         #expect(session.message == MotionDesignSession.nothingToEase)
         #expect(session.undoManager.undoActionName == undoName)
-
-        // A third point makes a corner there, which eases.
-        let end = try #require(session.addMarker(toPiece: clip.id, atTime: 6))
-        session.setKind(.hit, ofPoint: end)
-        session.perform("Move Point") { $0.movePoint(end, to: CMTime(value: 5, timescale: 1)) }
-        session.select(point: marker)
-        session.setEase(.easyEase, ofPoint: marker)
-        #expect(session.selectedPoint?.easePreset == .easyEase)
-        #expect(session.undoManager.undoActionName == "Easy Ease")
     }
 
     @Test func undoAndRedoStepThroughTheDraft() throws {

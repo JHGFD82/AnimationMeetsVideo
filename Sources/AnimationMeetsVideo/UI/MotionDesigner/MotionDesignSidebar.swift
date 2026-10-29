@@ -126,9 +126,10 @@ struct MotionDesignSidebar: View {
         }
     }
 
-    /// The point's ease, chosen from the keyframe eases by name, and how
-    /// far its Ease In and Ease Out reach. Where the speed doesn't change at
-    /// the point there's nothing to ease, which a note says.
+    /// The point's ease, chosen from the keyframe eases by name, and the
+    /// handle on each side it eases: how far it reaches and the speed it
+    /// sets at the point. A point neither side of which can ease (beside a
+    /// pace) says so in a note.
     @ViewBuilder
     private func easeControls(_ point: TimePoint) -> some View {
         let canEase = session.run.canEase(point: point.id)
@@ -138,7 +139,7 @@ struct MotionDesignSidebar: View {
                 .foregroundStyle(Design.textSecondary)
                 .frame(width: 58, alignment: .leading)
             Picker("Ease", selection: Binding(get: { point.easePreset }, set: { session.setEase($0, ofPoint: point.id) })) {
-                ForEach(TimeEase.presets) { preset in
+                ForEach(TimePoint.presets) { preset in
                     Text(preset.name).tag(preset)
                 }
             }
@@ -153,55 +154,81 @@ struct MotionDesignSidebar: View {
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
-        } else if let ease = point.ease {
-            if let before = ease.before { easeSlider("Ease In", value: before, point: point, before: true) }
-            if let after = ease.after { easeSlider("Ease Out", value: after, point: point, before: false) }
+        } else if let place = session.selectedPlace {
+            if point.easeIn != nil, point.easeOut != nil {
+                // The keyboard's way to part them, as Option-dragging does.
+                Toggle("Handles in line", isOn: Binding(get: { point.smooth }, set: { smooth in
+                    session.perform(smooth ? "Join Handles" : "Break Handles") { $0.setSmooth(smooth, ofPoint: point.id) }
+                }))
+                .font(Design.Typeface.label)
+                .help("Keeps the speed from stepping at this point: tilting one handle tilts the other (Option-drag a handle to move it alone)")
+            }
+            ForEach([TimePoint.Side.before, .after], id: \.self) { side in
+                if let ease = point.ease(side), place.map.canEase(side, of: place.index) {
+                    handleControls(side, ease: ease, speed: place.map.speed(side, at: place.index), point: point)
+                }
+            }
         }
     }
 
-    /// What an ease does to the speed at a point, as the keyframe eases'
-    /// details say what they do to a value.
+    /// What an ease does at a point, as the keyframe eases' details say
+    /// what they do to a value.
     static func easeDetail(_ preset: KeyframeEase.Preset) -> String {
         switch preset {
-        case .linear, .hold: "Steps to the new speed at this point"
-        case .easeIn: "Ramps the speed into this point"
-        case .easeOut: "Ramps the speed out of this point"
-        case .easyEase: "Ramps the speed into this point and out of it"
+        case .linear, .hold: "Runs straight into and out of this point, so the speed steps here"
+        case .easeIn: "Slows the footage into this point"
+        case .easeOut: "Leaves this point slowly"
+        case .easyEase: "Slows into this point and leaves it slowly"
         }
     }
 
-    /// How far a point's Ease In or Ease Out reaches into its stretch, as
-    /// the handle on the graph sets it. A drag of the slider is one undo
-    /// step.
-    private func easeSlider(_ label: String, value: Double, point: TimePoint, before: Bool) -> some View {
-        let percent = "\(Int((value * 100).rounded()))%"
-        return HStack(spacing: Design.Space.close) {
-            Text(label)
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.textSecondary)
-                .frame(width: 58, alignment: .leading)
-            Slider(
-                value: Binding(get: { value }, set: { reach in
-                    guard let ease = point.ease else { return }
-                    session.perform("Shape \(label)") {
-                        $0.setEase(TimeEase(before: before ? reach : ease.before, after: before ? ease.after : reach), ofPoint: point.id)
-                    }
-                }),
-                in: TimeEase.reach
-            ) { editing in
-                if editing { session.beginDragIfNeeded() } else { session.endDrag("Shape \(label)") }
+    /// The handle on one side of a point, as dragging it on the graph sets
+    /// it: how far into the stretch it reaches, and the speed the line has
+    /// at the point. A drag of the slider is one undo step.
+    private func handleControls(_ side: TimePoint.Side, ease: KeyframeEase, speed: Double, point: TimePoint) -> some View {
+        let label = side == .before ? "Ease In" : "Ease Out"
+        let percent = "\(Int((ease.influence * 100).rounded()))%"
+        return VStack(alignment: .leading, spacing: Design.Space.close) {
+            HStack(spacing: Design.Space.close) {
+                Text(label)
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                    .frame(width: 58, alignment: .leading)
+                Slider(
+                    value: Binding(get: { ease.influence }, set: { reach in
+                        session.perform("Shape \(label)") {
+                            $0.setHandle(side, ofPoint: point.id, to: KeyframeEase(influence: reach, speed: ease.speed))
+                        }
+                    }),
+                    in: 0.05...1
+                ) { editing in
+                    if editing { session.beginDragIfNeeded() } else { session.endDrag("Shape \(label)") }
+                }
+                .accessibilityLabel("\(label) reach")
+                .accessibilityValue("\(percent) of the stretch")
+                Text(percent)
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textPrimary)
+                    .frame(width: 34, alignment: .trailing)
+                    .accessibilityHidden(true)
             }
-            .accessibilityLabel(label)
-            .accessibilityValue("\(percent) of the stretch")
-            Text(percent)
-                .font(Design.Typeface.numericSmall)
-                .foregroundStyle(Design.textPrimary)
-                .frame(width: 34, alignment: .trailing)
-                .accessibilityHidden(true)
+            .help(side == .before
+                  ? "How far into the stretch before this point its handle reaches"
+                  : "How far into the stretch after this point its handle reaches")
+            HStack(spacing: Design.Space.close) {
+                Text("Speed")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                    .frame(width: 58, alignment: .leading)
+                NumericField(value: speed, unit: "%", fractionDigits: 1, accessibilityName: "\(label) speed at this point in percent") { typed in
+                    session.setSelectedSpeed(side, to: typed)
+                }
+                .help(side == .before
+                      ? "The speed the footage arrives at this point with, as tilting the handle sets it"
+                      : "The speed the footage leaves this point with, as tilting the handle sets it")
+                Spacer(minLength: 0)
+            }
         }
-        .help(before
-              ? "How far into the stretch before this point the Ease In reaches"
-              : "How far into the stretch after this point the Ease Out reaches")
     }
 
     private func kind(of point: TimePoint) -> Kind {

@@ -1,22 +1,28 @@
+import CoreGraphics
 import CoreMedia
 import Foundation
 
 // The motion designer's working state for one clip: the frames the person
-// has pinned or dragged, and where on the timeline each plays (see
-// docs/motion-designer.md). Between two points the clip plays steadily, so
-// the map is a line through them; the speed keyframes it is written as come
-// from `TimeMapKeyframes`.
+// has pinned or dropped, where on the timeline each plays, and how the line
+// bends between them (see docs/motion-designer.md). The line is a value
+// graph of the clip's source time over timeline time, each stretch between
+// two points shaped by the eases either side as a keyframe's segment is;
+// the speed keyframes it is written as come from `TimeMapKeyframes`.
 
 /// A frame of a clip placed on the timeline in the motion designer.
 struct TimePoint: Identifiable, Equatable {
-    enum Kind: Equatable {
+    enum Kind: Equatable, Sendable {
         /// Pinned to the music: nothing but the person moves it.
         case hit
         /// Moved by the person, or by a pace marker before it.
         case marker
-        /// A marker that sets the speed after it, as a percentage.
+        /// A marker that holds the speed after it, as a percentage, to the
+        /// next point.
         case pace(Double)
     }
+
+    /// A side of a point.
+    enum Side { case before, after }
 
     var id = UUID()
     /// The frame, in the clip's source time.
@@ -24,49 +30,26 @@ struct TimePoint: Identifiable, Equatable {
     /// Where it plays on the timeline.
     var time: CMTime
     var kind: Kind
-    /// How the speed ramps into it, out of it or both, when it does
-    /// instead of stepping.
-    var ease: TimeEase?
+    /// How the line arrives at it and leaves it, as a keyframe's Ease In and
+    /// Ease Out: a handle reaching `influence` of the stretch on that side
+    /// along the timeline, at `speed` times the stretch's straight-line
+    /// speed, so 0 stops at the point and 1 carries on as the straight line
+    /// would. Nil on a side whose handle sits on the straight line, a third
+    /// of the way along, as a keyframe's linear side does.
+    var easeIn: KeyframeEase?
+    var easeOut: KeyframeEase?
+    /// Whether its handles stay in line, so the speed carries through it
+    /// without stepping. Points dropped on the line start so; moving one
+    /// handle alone breaks it.
+    var smooth = false
 
-    /// Whether the speed ramps through it instead of stepping.
-    var eased: Bool { ease != nil }
+    func ease(_ side: Side) -> KeyframeEase? { side == .before ? easeIn : easeOut }
 
-    /// Its ease, named as keyframes' are: Linear when it steps.
-    var easePreset: KeyframeEase.Preset { ease?.preset ?? .linear }
+    var eased: Bool { easeIn != nil || easeOut != nil }
 
-    var isHit: Bool { kind == .hit }
-
-    var pace: Double? {
-        if case .pace(let speed) = kind { return speed }
-        return nil
-    }
-}
-
-/// How far an eased point's ramps reach into the stretch on either side,
-/// as a share of that stretch: the ramps' handles on the graph. Nil on a
-/// side where the speed doesn't ramp, so a point eases in (`before`), out
-/// (`after`) or both, as a keyframe's Ease In, Ease Out and Easy Ease. The
-/// rest of each stretch plays steadily at the speed that keeps its length,
-/// so longer ramps never move a point.
-struct TimeEase: Equatable {
-    var before: Double?
-    var after: Double?
-
-    /// A share of a stretch a ramp may reach; two ramps meeting in one
-    /// stretch share `limit` of it.
-    static let reach = 0.05...0.9
-    static let limit = 0.9
-    /// How far a new ramp reaches, as Easy Ease's influence.
-    static let standardReach = 1.0 / 3
-
-    init(before: Double? = standardReach, after: Double? = standardReach) {
-        self.before = before?.clamped(between: Self.reach.lowerBound, and: Self.reach.upperBound)
-        self.after = after?.clamped(between: Self.reach.lowerBound, and: Self.reach.upperBound)
-    }
-
-    /// The preset it is, as a keyframe's ease is named.
-    var preset: KeyframeEase.Preset {
-        switch (before, after) {
+    /// Its ease, named as keyframes' are: Linear when neither side eases.
+    var easePreset: KeyframeEase.Preset {
+        switch (easeIn, easeOut) {
         case (.some, .some): .easyEase
         case (.some, nil): .easeIn
         case (nil, .some): .easeOut
@@ -74,21 +57,82 @@ struct TimeEase: Equatable {
         }
     }
 
-    /// The ease `preset` makes, keeping how far this one's ramps reach.
-    /// Nil for Linear and Hold, which step.
-    func setting(_ preset: KeyframeEase.Preset) -> TimeEase? {
-        let into = before ?? Self.standardReach, out = after ?? Self.standardReach
-        switch preset {
-        case .easeIn: return TimeEase(before: into, after: nil)
-        case .easeOut: return TimeEase(before: nil, after: out)
-        case .easyEase: return TimeEase(before: into, after: out)
-        case .linear, .hold: return nil
-        }
+    var isHit: Bool { kind == .hit }
+
+    var pace: Double? {
+        if case .pace(let speed) = kind { return speed }
+        return nil
     }
 
     /// The presets a point in the motion designer can take: Hold is how a
-    /// sharp corner is written, so it is Linear here.
+    /// pace marker steps, so it isn't offered as an ease.
     static let presets: [KeyframeEase.Preset] = [.linear, .easeIn, .easeOut, .easyEase]
+}
+
+/// One stretch of a clip's line: from a point, or the clip's first frame,
+/// to the next point, or its last frame. Timeline seconds across, source
+/// seconds up; between its ends it follows the cubic a keyframe segment
+/// would, its handles the eases leaving its start and arriving at its end.
+struct TimeStretch: Equatable {
+    var start: (time: Double, source: Double)
+    var end: (time: Double, source: Double)
+    var leaving: KeyframeEase?
+    var arriving: KeyframeEase?
+
+    static func == (a: TimeStretch, b: TimeStretch) -> Bool {
+        a.start == b.start && a.end == b.end && a.leaving == b.leaving && a.arriving == b.arriving
+    }
+
+    var duration: Double { end.time - start.time }
+    var footage: Double { end.source - start.source }
+
+    /// Its straight-line speed, as a percentage.
+    var speed: Double { duration > 0 ? footage / duration * 100 : -1 }
+
+    var isStraight: Bool {
+        // A side on the straight line, a third of the way along, is linear.
+        func straight(_ ease: KeyframeEase?) -> Bool {
+            guard let ease else { return true }
+            return abs(ease.speed - 1) < 1e-12 && abs(ease.influence - KeyframeEase.linearInfluence) < 1e-12
+        }
+        return straight(leaving) && straight(arriving)
+    }
+
+    /// The frame playing `time` seconds into the timeline.
+    func source(atTime time: Double) -> Double {
+        guard duration > 0 else { return end.source }
+        let fraction = ((time - start.time) / duration).clamped(between: 0, and: 1)
+        return start.source + footage * progress(fraction)
+    }
+
+    /// Where the frame at `source` seconds plays.
+    func time(atSource source: Double) -> Double {
+        guard footage > 0 else { return start.time }
+        let wanted = ((source - start.source) / footage).clamped(between: 0, and: 1)
+        if isStraight { return start.time + duration * wanted }
+        // Progress only grows across the stretch (handles are held to
+        // the stretch's unit square), so it can be searched.
+        var low = 0.0, high = 1.0
+        for _ in 0..<52 {
+            let middle = (low + high) / 2
+            if progress(middle) < wanted { low = middle } else { high = middle }
+        }
+        return start.time + duration * (low + high) / 2
+    }
+
+    /// How far through its footage the stretch has got when `fraction` of
+    /// its time has passed.
+    func progress(_ fraction: Double) -> Double {
+        isStraight ? fraction : KeyframeEase.progress(fraction, leaving: leaving, arriving: arriving)
+    }
+
+    /// The speed, as a percentage, `fraction` of the way through its time,
+    /// from the curve's slope.
+    func speed(atFraction fraction: Double) -> Double {
+        let step = 1e-4
+        let a = max(0, fraction - step), b = min(1, fraction + step)
+        return (progress(b) - progress(a)) / (b - a) * speed
+    }
 }
 
 /// One clip's points, in source order, and the footage it plays.
@@ -113,6 +157,8 @@ struct ClipTimeMap: Equatable {
     static let speedRange = 1.0...10_000.0
     /// What computed times are given in, as for ramped clips.
     static let timescale: CMTimeScale = 240_000
+    /// How far a new handle reaches, as Easy Ease's influence.
+    static let standardInfluence = KeyframeEase.linearInfluence
 
     init(trimStart: CMTime, trimEnd: CMTime, points: [TimePoint] = [], restingSpeed: Double = 100) {
         self.trimStart = trimStart
@@ -125,17 +171,18 @@ struct ClipTimeMap: Equatable {
 
     // MARK: Speeds
 
-    /// The speed from point `index` to the next, as a percentage; the open
-    /// end's after the last point.
+    /// The straight-line speed from point `index` to the next, as a
+    /// percentage; the open end's after the last point.
     func speed(after index: Int) -> Double {
         index + 1 < points.count ? stretchSpeed(index) : speedAfterLast
     }
 
     /// The open start's speed: the stretch after the first point's, or
-    /// what a lone point plays at.
+    /// what the clip played at before a lone point or a first pace marker,
+    /// whose pace is only the speed after it.
     var speedBeforeFirst: Double {
-        if points.count >= 2 { return stretchSpeed(0) }
-        return points.first?.pace ?? restingSpeed
+        if points.count >= 2, points[0].pace == nil { return stretchSpeed(0) }
+        return restingSpeed
     }
 
     /// The open end's speed: a last pace marker's, else the last stretch's.
@@ -144,38 +191,100 @@ struct ClipTimeMap: Equatable {
         return points.count >= 2 ? stretchSpeed(points.count - 2) : restingSpeed
     }
 
-    /// The speed between point `index` and the next.
+    /// The straight-line speed between point `index` and the next.
     private func stretchSpeed(_ index: Int) -> Double {
         let source = CMTimeSubtract(points[index + 1].source, points[index].source).seconds
         let time = CMTimeSubtract(points[index + 1].time, points[index].time).seconds
         return time > 0 ? source / time * 100 : -1
     }
 
-    /// Where a frame plays, along the line through the points.
-    func time(atSource source: CMTime) -> CMTime? {
-        guard let first = points.first, let last = points.last else { return nil }
-        func along(_ from: TimePoint, speed: Double) -> CMTime {
-            let seconds = from.time.seconds + CMTimeSubtract(source, from.source).seconds * 100 / speed
-            return CMTime(seconds: seconds, preferredTimescale: Self.timescale)
-        }
-        if source <= first.source { return along(first, speed: speedBeforeFirst) }
-        if source >= last.source { return along(last, speed: speedAfterLast) }
-        let next = points.firstIndex { $0.source > source }! - 1
-        return along(points[next], speed: speed(after: next))
+    /// The straight-line speed of the stretch on a side of point `index`.
+    func straightSpeed(_ side: TimePoint.Side, of index: Int) -> Double {
+        side == .before ? (index == 0 ? speedBeforeFirst : stretchSpeed(index - 1)) : speed(after: index)
     }
 
-    /// The frame playing at `time`, along the line through the points, past
-    /// the footage too.
+    /// The speed the line has at point `index` on a side, from its handle.
+    func speed(_ side: TimePoint.Side, at index: Int) -> Double {
+        let straight = straightSpeed(side, of: index)
+        guard let ease = effectiveEase(side, of: index) else { return straight }
+        return straight * ease.speed
+    }
+
+    // MARK: Stretches
+
+    /// The ease that shapes the line on a side of point `index`: none where
+    /// the side can't ease (`canEase`).
+    private func effectiveEase(_ side: TimePoint.Side, of index: Int) -> KeyframeEase? {
+        canEase(side, of: index) ? points[index].ease(side) : nil
+    }
+
+    /// The stretches of the line, in order: the open start from the clip's
+    /// first frame (where it has footage before the first point), each
+    /// stretch between points, and the open end to its last frame. The open
+    /// ends run at their speed, bent only by the outermost points' eases.
+    var stretches: [TimeStretch] {
+        guard let first = points.first, let last = points.last else { return [] }
+        var result: [TimeStretch] = []
+        let lead = CMTimeSubtract(first.source, trimStart).seconds
+        if lead > 0 {
+            result.append(TimeStretch(
+                start: (first.time.seconds - lead * 100 / speedBeforeFirst, trimStart.seconds),
+                end: (first.time.seconds, first.source.seconds),
+                leaving: nil, arriving: effectiveEase(.before, of: 0)
+            ))
+        }
+        for i in points.indices.dropLast() {
+            result.append(TimeStretch(
+                start: (points[i].time.seconds, points[i].source.seconds),
+                end: (points[i + 1].time.seconds, points[i + 1].source.seconds),
+                leaving: effectiveEase(.after, of: i), arriving: effectiveEase(.before, of: i + 1)
+            ))
+        }
+        let tail = CMTimeSubtract(trimEnd, last.source).seconds
+        if tail > 0 {
+            result.append(TimeStretch(
+                start: (last.time.seconds, last.source.seconds),
+                end: (last.time.seconds + tail * 100 / speedAfterLast, trimEnd.seconds),
+                leaving: effectiveEase(.after, of: points.count - 1), arriving: nil
+            ))
+        }
+        return result
+    }
+
+    /// Where a frame plays, along the line, past the footage too.
+    func time(atSource source: CMTime) -> CMTime? {
+        guard let first = points.first, let last = points.last else { return nil }
+        let seconds = source.seconds
+        let stretches = stretches
+        let result: Double
+        if let stretch = stretches.first(where: { $0.start.source <= seconds && seconds <= $0.end.source }) {
+            result = stretch.time(atSource: seconds)
+        } else if seconds < (stretches.first?.start.source ?? first.source.seconds) {
+            let from = stretches.first.map { ($0.start.time, $0.start.source) } ?? (first.time.seconds, first.source.seconds)
+            result = from.0 + (seconds - from.1) * 100 / speedBeforeFirst
+        } else {
+            let from = stretches.last.map { ($0.end.time, $0.end.source) } ?? (last.time.seconds, last.source.seconds)
+            result = from.0 + (seconds - from.1) * 100 / speedAfterLast
+        }
+        return CMTime(seconds: result, preferredTimescale: Self.timescale)
+    }
+
+    /// The frame playing at `time`, along the line, past the footage too.
     func source(atTime time: CMTime) -> CMTime? {
         guard let first = points.first, let last = points.last else { return nil }
-        func along(_ from: TimePoint, speed: Double) -> CMTime {
-            let seconds = from.source.seconds + CMTimeSubtract(time, from.time).seconds * speed / 100
-            return CMTime(seconds: seconds, preferredTimescale: Self.timescale)
+        let seconds = time.seconds
+        let stretches = stretches
+        let result: Double
+        if let stretch = stretches.first(where: { $0.start.time <= seconds && seconds <= $0.end.time }) {
+            result = stretch.source(atTime: seconds)
+        } else if seconds < (stretches.first?.start.time ?? first.time.seconds) {
+            let from = stretches.first.map { ($0.start.time, $0.start.source) } ?? (first.time.seconds, first.source.seconds)
+            result = from.1 + (seconds - from.0) * speedBeforeFirst / 100
+        } else {
+            let from = stretches.last.map { ($0.end.time, $0.end.source) } ?? (last.time.seconds, last.source.seconds)
+            result = from.1 + (seconds - from.0) * speedAfterLast / 100
         }
-        if time <= first.time { return along(first, speed: speedBeforeFirst) }
-        if time >= last.time { return along(last, speed: speedAfterLast) }
-        let index = points.firstIndex { $0.time > time }! - 1
-        return along(points[index], speed: speed(after: index))
+        return CMTime(seconds: result, preferredTimescale: Self.timescale)
     }
 
     /// Where the clip starts and ends on the timeline, along the line.
@@ -192,17 +301,29 @@ struct ClipTimeMap: Equatable {
 
     // MARK: Editing
 
-    /// Puts a marker on a frame where it plays now, which changes nothing
-    /// until it is moved. Nil outside the footage or on a point's frame;
-    /// with no points yet it goes where the clip plays it at `time`.
+    /// Puts a marker on a frame where it plays now. It is eased with its
+    /// handles in line at the speed the line has there, so adding it bends
+    /// nothing until it is moved. Nil outside the footage or on a point's
+    /// frame; with no points yet it goes where the clip plays it at `time`.
     @discardableResult
     mutating func addMarker(atSource source: CMTime, time placed: CMTime? = nil) -> UUID? {
         guard source >= trimStart, source <= trimEnd, !points.contains(where: { $0.source == source }),
               let time = time(atSource: source) ?? placed
         else { return nil }
-        let point = TimePoint(source: source, time: time, kind: .marker)
+        // The line's speed at the frame, which the new point's handles keep.
+        let seconds = source.seconds
+        let speed = stretches.first { $0.start.source <= seconds && seconds <= $0.end.source }.map { stretch in
+            stretch.speed(atFraction: stretch.duration > 0 ? (time.seconds - stretch.start.time) / stretch.duration : 0)
+        }
+        let point = TimePoint(source: source, time: time, kind: .marker, smooth: true)
         points.append(point)
         points.sort { $0.source < $1.source }
+        guard let index = index(of: point.id) else { return point.id }
+        for side in [TimePoint.Side.before, .after] where canEase(side, of: index) {
+            let straight = straightSpeed(side, of: index)
+            let ratio = speed.map { straight > 0 ? $0 / straight : 1 } ?? 1
+            setSide(side, of: index, to: KeyframeEase(influence: Self.standardInfluence, speed: ratio))
+        }
         return point.id
     }
 
@@ -220,6 +341,7 @@ struct ClipTimeMap: Equatable {
                 var copy = original
                 copy.points[index - 1].kind = .pace(old + (wanted - old) * fraction)
                 copy.followPaces()
+                copy.alignSmooth()
                 return copy
             }
             return
@@ -229,6 +351,7 @@ struct ClipTimeMap: Equatable {
             var copy = original
             copy.points[index].time = CMTime(seconds: start + (time.seconds - start) * fraction, preferredTimescale: Self.timescale)
             copy.followPaces()
+            copy.alignSmooth()
             return copy
         }
     }
@@ -249,7 +372,8 @@ struct ClipTimeMap: Equatable {
     /// Makes a point a hit, a marker or a pace marker. A pace marker before
     /// a hit would move it, and a hit right after a pace marker would end
     /// that pace: each is refused with what it would cost until
-    /// `confirmed`, then done.
+    /// `confirmed`, then done. A pace holds its stretch straight, so the
+    /// handles into it go.
     @discardableResult
     mutating func setKind(_ kind: TimePoint.Kind, of id: UUID, confirmed: Bool = false) -> Conflict? {
         guard let index = index(of: id) else { return nil }
@@ -271,6 +395,8 @@ struct ClipTimeMap: Equatable {
             copy.points[index].kind = .marker
         }
         copy.followPaces()
+        copy.dropUnusableEases()
+        copy.alignSmooth()
         guard copy.isPlayable else { return .noRoom }
         self = copy
         return nil
@@ -282,30 +408,73 @@ struct ClipTimeMap: Equatable {
         for index in points.indices { points[index].time = CMTimeAdd(points[index].time, delta) }
     }
 
-    /// Sets a point's ease by its preset, keeping how far the ramps it
-    /// keeps reach: Linear (or Hold) steps, Ease In ramps the speed into
-    /// the point, Ease Out out of it, Easy Ease both.
-    mutating func setEase(_ preset: KeyframeEase.Preset, of id: UUID) {
-        guard let index = index(of: id) else { return }
-        guard let ease = (points[index].ease ?? TimeEase()).setting(preset) else {
-            points[index].ease = nil
-            return
+    /// Whether a side of point `index` can ease: it has footage on that
+    /// side, and isn't a pace marker's stretch, which holds its pace
+    /// straight to the next point.
+    func canEase(_ side: TimePoint.Side, of index: Int) -> Bool {
+        guard points.indices.contains(index) else { return false }
+        switch side {
+        case .before:
+            if index == 0 { return points[0].source > trimStart }
+            return points[index - 1].pace == nil
+        case .after:
+            if points[index].pace != nil { return false }
+            return index + 1 < points.count || points[index].source < trimEnd
         }
-        setEase(ease, of: id)
     }
 
-    /// Shapes an eased point's ramps, each kept within the room the ramp of
-    /// the point beyond leaves in their stretch.
-    mutating func setEase(_ ease: TimeEase, of id: UUID) {
+    /// Whether either side of a point can ease.
+    func canEase(_ id: UUID) -> Bool {
+        guard let index = index(of: id) else { return false }
+        return canEase(.before, of: index) || canEase(.after, of: index)
+    }
+
+    /// Sets a point's ease by its preset, as a keyframe's menu does: Linear
+    /// (or Hold) puts both handles back on the straight line, Ease In and
+    /// Ease Out slow the footage into the point or out of it, and Easy Ease
+    /// both, each eased side stopping at the point (`KeyframeEase.easy`).
+    /// Only sides that can ease take one.
+    mutating func setEase(_ preset: KeyframeEase.Preset, of id: UUID) {
         guard let index = index(of: id) else { return }
-        var ease = ease
-        if index > 0, let before = ease.before, let other = points[index - 1].ease?.after {
-            ease.before = min(before, TimeEase.limit - other)
+        let wantsIn = preset == .easeIn || preset == .easyEase
+        let wantsOut = preset == .easeOut || preset == .easyEase
+        points[index].easeIn = wantsIn && canEase(.before, of: index) ? .easy : nil
+        points[index].easeOut = wantsOut && canEase(.after, of: index) ? .easy : nil
+        // Both stopping, the handles lie flat, in line.
+        points[index].smooth = points[index].easeIn != nil && points[index].easeOut != nil
+    }
+
+    /// Sets the handle on a side of a point, as dragging it does: nil puts
+    /// that side back on the straight line. Unless `alone`, the handle on
+    /// the other side swings to stay in line with it, so the speed carries
+    /// through the point, as a keyframe's handles do; alone, they part, and
+    /// the speed steps there.
+    mutating func setHandle(_ side: TimePoint.Side, of id: UUID, to ease: KeyframeEase?, alone: Bool = false) {
+        guard let index = index(of: id), canEase(side, of: index) else { return }
+        guard let ease else {
+            setSide(side, of: index, to: nil)
+            points[index].smooth = false
+            return
         }
-        if index + 1 < points.count, let after = ease.after, let other = points[index + 1].ease?.before {
-            ease.after = min(after, TimeEase.limit - other)
+        setSide(side, of: index, to: ease)
+        let other: TimePoint.Side = side == .before ? .after : .before
+        if alone {
+            points[index].smooth = false
+        } else if let theirs = points[index].ease(other), canEase(other, of: index) {
+            let speed = straightSpeed(side, of: index) * held(ease).speed
+            let straight = straightSpeed(other, of: index)
+            setSide(other, of: index, to: KeyframeEase(influence: theirs.influence, speed: straight > 0 ? speed / straight : theirs.speed))
+            points[index].smooth = true
         }
-        points[index].ease = TimeEase(before: ease.before, after: ease.after)
+    }
+
+    /// Keeps a point's handles in line, bringing them into line at the
+    /// speed they share, or lets them part, as Option-dragging one does.
+    /// Only a point eased on both sides has two handles to keep in line.
+    mutating func setSmooth(_ smooth: Bool, of id: UUID) {
+        guard let index = index(of: id) else { return }
+        points[index].smooth = smooth && points[index].easeIn != nil && points[index].easeOut != nil
+        alignSmooth()
     }
 
     /// Takes a point away. A pace marker left right before a hit becomes a
@@ -317,6 +486,47 @@ struct ClipTimeMap: Equatable {
             points[index - 1].kind = .marker
         }
         followPaces()
+        dropUnusableEases()
+        alignSmooth()
+    }
+
+    // MARK: Keeping it together
+
+    private mutating func setSide(_ side: TimePoint.Side, of index: Int, to ease: KeyframeEase?) {
+        let ease = ease.map { held($0) }
+        if side == .before { points[index].easeIn = ease } else { points[index].easeOut = ease }
+    }
+
+    /// An ease held to what the line can do: its handle inside the
+    /// stretch's unit square, so the footage never runs backwards.
+    private func held(_ ease: KeyframeEase) -> KeyframeEase {
+        KeyframeEase(influence: ease.influence, speed: ease.speed.clamped(between: 0, and: 1 / ease.influence))
+    }
+
+    /// Takes the eases off sides that can't ease any more, such as into a
+    /// stretch a pace now holds.
+    private mutating func dropUnusableEases() {
+        for index in points.indices {
+            if !canEase(.before, of: index) { points[index].easeIn = nil }
+            if !canEase(.after, of: index) { points[index].easeOut = nil }
+            if points[index].easeIn == nil || points[index].easeOut == nil { points[index].smooth = false }
+        }
+    }
+
+    /// Puts the handles of each point kept in line back in line, at the
+    /// speed they share between them by their reach, after the stretches
+    /// around it have changed speed.
+    private mutating func alignSmooth() {
+        for index in points.indices where points[index].smooth {
+            guard let into = points[index].easeIn, let out = points[index].easeOut,
+                  canEase(.before, of: index), canEase(.after, of: index)
+            else { continue }
+            let left = straightSpeed(.before, of: index), right = straightSpeed(.after, of: index)
+            guard left > 0, right > 0 else { continue }
+            let speed = (left * into.speed * into.influence + right * out.speed * out.influence) / (into.influence + out.influence)
+            setSide(.before, of: index, to: KeyframeEase(influence: into.influence, speed: speed / left))
+            setSide(.after, of: index, to: KeyframeEase(influence: out.influence, speed: speed / right))
+        }
     }
 
     /// Puts each point after a pace marker where that pace takes it, in
