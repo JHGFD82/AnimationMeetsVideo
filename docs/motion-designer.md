@@ -84,10 +84,11 @@ the music.
   and faintly across the graph, and snapped to, are those of the song
   leading at each moment (`EditingProject.musicBeats(in:tracks:)`), and
   a hit's pin ends on the lane of the song leading at its time.
-- Grabbing the line drops a marker on that frame and drags it; grabbing a
-  point drags it. Nothing is dragged until the pointer has moved 3
-  points, so a click on a point only selects it and changes nothing, and
-  a click on the line moves the playhead there. Each step of a drag
+- Clicking the line drops a marker on that frame, selected, and moves
+  the playhead there; grabbing the line drops one and drags it, and
+  grabbing a point drags it. Nothing is dragged until the pointer has
+  moved 3 points, so a click on a point only selects it and changes
+  nothing. Each step of a drag
   applies to the run as the drag found it
   (`MotionDesignSession.dragEdit`), so dragging back undoes what going
   further did. Drags snap, within 8 points, to the beats (while shown),

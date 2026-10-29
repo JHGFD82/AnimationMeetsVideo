@@ -5,8 +5,8 @@ import SwiftUI
 /// retimed filmstrip, the time graph and the music with its beats. The
 /// graph runs up through the run's footage, clip after clip, so the run
 /// reads as one line: steep where it plays fast, shallow where slow, and
-/// flat over a gap. Grabbing the line drops a marker on that frame and
-/// drags it; a hit's pin runs from its frame down to its beat. A selected
+/// flat over a gap. Clicking the line drops a marker on that frame, and
+/// grabbing it drops one and drags it; a hit's pin runs from its frame down to its beat. A selected
 /// eased point shows a handle where each of its ramps ends, which slides
 /// along the line to lengthen or shorten that ramp.
 struct MotionDesignLanes: View {
@@ -20,8 +20,8 @@ struct MotionDesignLanes: View {
 
     private enum GraphDrag {
         /// Pressed on something, which isn't dragged until the pointer
-        /// moves `dragDistance` from where it went down: a click only
-        /// selects, and changes nothing.
+        /// moves `dragDistance` from where it went down: a click on a
+        /// point only selects it, and changes nothing.
         case pressed(Grab)
         case point(UUID, from: Double, added: Bool)
         case handle(UUID, before: Bool)
@@ -31,7 +31,7 @@ struct MotionDesignLanes: View {
     private enum Grab {
         case point(UUID, from: Double)
         case handle(UUID, before: Bool)
-        /// The line, where a drag drops a marker.
+        /// The line, where a click or a drag drops a marker.
         case line(piece: UUID, time: Double)
     }
 
@@ -467,9 +467,11 @@ struct MotionDesignLanes: View {
                 switch drag {
                 case .point(_, _, let added): session.endDrag(added ? "Add Marker" : "Move Point")
                 case .handle: session.endDrag("Shape Ease")
-                // A click on the line moves the playhead there, as one
-                // beside it does.
-                case .pressed(.line(_, let time)): session.seek(to: time)
+                // A click on the line drops a marker on that frame, selected,
+                // and moves the playhead there to show it.
+                case .pressed(.line(let piece, let time)):
+                    session.addMarker(toPiece: piece, atTime: time)
+                    session.seek(to: time)
                 default: break
                 }
                 drag = nil
