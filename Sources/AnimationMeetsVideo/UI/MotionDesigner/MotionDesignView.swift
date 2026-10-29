@@ -126,10 +126,15 @@ struct MotionDesignView: View {
     /// Space plays, M adds a marker under the playhead, H makes the
     /// selected point a hit, P edits its pace, E eases it, Delete removes
     /// it, ← → move it (or else the playhead) a frame, ⇧ ten, N snaps,
-    /// Escape lets go, and ⌘= ⌘- ⌘0 zoom. Not while typing in a field.
+    /// Escape lets go, and ⌘= ⌘- ⌘0 zoom. ⌘Z and ⇧⌘Z are the Edit menu's,
+    /// held back during a drag. Not while typing in a field.
     private func handleKey(_ event: NSEvent) -> Bool {
         if NSApp.keyWindow?.firstResponder is NSTextView { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        // Undoing mid-drag would put the draft back under the drag's feet.
+        if session.isDragging, flags.subtracting(.shift) == .command, event.charactersIgnoringModifiers?.lowercased() == "z" {
+            return true
+        }
         if flags == .command {
             switch event.charactersIgnoringModifiers {
             case "=", "+": session.zoomIn(); return true
