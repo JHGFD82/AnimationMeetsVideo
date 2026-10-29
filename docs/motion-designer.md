@@ -129,7 +129,9 @@ time graph and the music.
   Ease Out reach,
   a frame earlier or later and Remove; or a clip's start and end and a
   frame earlier or later. With nothing selected it says what to do.
-  Warnings sit under that; Cancel and Done at the foot.
+  Warnings sit under that; Undo and Redo, Cancel and Done at the foot,
+  as in Beat Match. Undo and Redo name the change they undo or redo, and
+  wait while a drag is under way.
 - A pace marker before a hit, or a hit right after a pace marker, asks
   first, naming what it costs.
 - Keys: Space plays, M puts a marker under the playhead, H makes the
@@ -137,9 +139,9 @@ time graph and the music.
   Linear again), Delete removes it,
   ← → move it (or else the playhead, even with a clip selected) a frame
   and ⇧ ten, N turns snapping on and off as on the timeline, Escape lets
-  go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the
-  draft, ⌘Return is Done. Scrolling scrolls; ⌥ or ⌘ scrolling, or a
-  pinch, zooms.
+  go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the draft and
+  ⇧⌘Z redoes (not mid-drag), ⌘Return is Done. Scrolling scrolls; ⌥ or
+  ⌘ scrolling, or a pinch, zooms.
 - **The zoom's edge** is the editor's shared one (`RubberBandZoom`, see
   [timeline.md](timeline.md)): zooming out past the whole window
   squeezes all the lanes together about the pointer,

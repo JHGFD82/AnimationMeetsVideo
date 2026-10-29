@@ -2,7 +2,8 @@ import CoreMedia
 import SwiftUI
 
 /// The motion designer's sidebar: the frame under the playhead, what is
-/// selected and its settings, what to do next, and Cancel and Done.
+/// selected and its settings, what to do next, and Undo and Redo, Cancel
+/// and Done.
 struct MotionDesignSidebar: View {
     @Bindable var session: MotionDesignSession
     let onDone: () -> Void
@@ -36,10 +37,23 @@ struct MotionDesignSidebar: View {
             }
             .controlSize(.small)
             Groove()
-            HStack {
+            HStack(spacing: Design.Space.close) {
+                // As in Beat Match's footer, by the ways out.
+                HStack(spacing: 0) {
+                    Button(action: session.undo) { Image(systemName: Design.Symbol.undo) }
+                        .buttonStyle(.icon)
+                        .disabled(!session.canUndo)
+                        .help("\(session.undoTitle) (⌘Z)")
+                        .accessibilityLabel(session.undoTitle)
+                    Button(action: session.redo) { Image(systemName: Design.Symbol.redo) }
+                        .buttonStyle(.icon)
+                        .disabled(!session.canRedo)
+                        .help("\(session.redoTitle) (⇧⌘Z)")
+                        .accessibilityLabel(session.redoTitle)
+                }
+                Spacer(minLength: 0)
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Spacer()
                 Button("Done", action: onDone)
                     .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)

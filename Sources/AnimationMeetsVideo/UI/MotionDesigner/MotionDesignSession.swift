@@ -270,6 +270,46 @@ final class MotionDesignSession: SecondsViewport {
             }
         }
         undoManager.setActionName(name)
+        undoRevision += 1
+    }
+
+    /// Counts changes to the undo stack, which `UndoManager` doesn't
+    /// publish, so Undo and Redo follow it. Undoing and redoing register
+    /// the way back, so ⌘Z from the Edit menu counts too.
+    private var undoRevision = 0
+
+    /// Whether there is a change to undo; not during a drag, whose start
+    /// the undo would land under.
+    var canUndo: Bool {
+        _ = undoRevision
+        return undoManager.canUndo && !isDragging
+    }
+
+    var canRedo: Bool {
+        _ = undoRevision
+        return undoManager.canRedo && !isDragging
+    }
+
+    /// What Undo and Redo would do, as the Edit menu names them.
+    var undoTitle: String {
+        _ = undoRevision
+        return undoManager.undoMenuItemTitle
+    }
+
+    var redoTitle: String {
+        _ = undoRevision
+        return undoManager.redoMenuItemTitle
+    }
+
+    /// Undoes the last change to the draft, as ⌘Z does.
+    func undo() {
+        guard canUndo else { return }
+        undoManager.undo()
+    }
+
+    func redo() {
+        guard canRedo else { return }
+        undoManager.redo()
     }
 
     /// Sets a point's kind, asking first when it costs a hit or a pace.

@@ -200,4 +200,37 @@ import Testing
         #expect(session.selectedPoint?.easePreset == .easyEase)
         #expect(session.undoManager.undoActionName == "Easy Ease")
     }
+
+    @Test func undoAndRedoStepThroughTheDraft() throws {
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        #expect(!session.canUndo && !session.canRedo)
+
+        let opened = session.run
+        session.addMarker(toPiece: clip.id, atTime: 1)
+        let marked = session.run
+        #expect(session.canUndo && !session.canRedo)
+        #expect(session.undoTitle == "Undo Add Marker")
+
+        session.undo()
+        #expect(session.run == opened)
+        #expect(!session.canUndo && session.canRedo)
+        #expect(session.redoTitle == "Redo Add Marker")
+
+        session.redo()
+        #expect(session.run == marked)
+        #expect(session.canUndo && !session.canRedo)
+
+        // Not during a drag, whose start the undo would land under.
+        session.beginDrag()
+        #expect(!session.canUndo)
+        session.undo()
+        #expect(session.run == marked)
+        session.endDrag("Move Point")
+        #expect(session.canUndo)
+    }
 }
