@@ -12,6 +12,21 @@ enum TrimPreviewFrames: Equatable {
     var showsLast: Bool { self != .first }
 }
 
+/// Where a trim preview's frames are read from: a video file, or a nested
+/// timeline's composition.
+enum TrimPreviewSource: Equatable {
+    case file(URL)
+    case timeline(TimelinePreview)
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        switch (lhs, rhs) {
+        case (.file(let a), .file(let b)): a == b
+        case (.timeline(let a), .timeline(let b)): a === b
+        default: false
+        }
+    }
+}
+
 /// The first and last frames of a clip while its footage is being slipped,
 /// shown side by side over the viewer so the person sees exactly which
 /// part of the footage the clip will play; while an edge is trimmed, the
@@ -26,15 +41,18 @@ final class TrimPreviewModel {
     /// The frames' times in the clip's source, for their labels.
     private(set) var firstTime: CMTime = .zero
     private(set) var lastTime: CMTime = .zero
+    /// The rate the labels count frames at: a nested timeline's own, or
+    /// nil for the viewer's.
+    private(set) var labelFrameRate: Double?
 
     private struct Request: Equatable {
-        var url: URL
+        var source: TrimPreviewSource
         var first: CMTime
         var last: CMTime
         var frames: TrimPreviewFrames
     }
 
-    @ObservationIgnored private var url: URL?
+    @ObservationIgnored private var source: TrimPreviewSource?
     @ObservationIgnored private var request: Task<Void, Never>?
     /// What the frames shown, or being read, are of.
     @ObservationIgnored private var requested: Request?
@@ -43,27 +61,32 @@ final class TrimPreviewModel {
     /// Counts reads, so one let go by `clear` doesn't start the next.
     @ObservationIgnored private var generation = 0
 
-    /// Shows the frames of the file at `url` at the file times given.
-    /// `labelFirst` and `labelLast` are the same frames in the clip's
-    /// source time.
+    /// Shows the frames of `source` at the times given: file times, or the
+    /// nested timeline's own. `labelFirst` and `labelLast` are the same
+    /// frames in the clip's source time, counted at `labelFrameRate` when
+    /// it is given.
     ///
     /// A drag asks for a new frame at every step, faster than frames can be
     /// read. One read runs at a time and isn't cut short, and when it
     /// finishes the newest step's frame is read next, so the picture keeps
     /// following the pointer. Cancelling each read for the next showed
     /// nothing new until the drag paused.
-    func show(url: URL, first: CMTime, last: CMTime, labelFirst: CMTime, labelLast: CMTime, frames: TrimPreviewFrames = .both) {
+    func show(
+        _ source: TrimPreviewSource, first: CMTime, last: CMTime, labelFirst: CMTime, labelLast: CMTime,
+        labelFrameRate: Double? = nil, frames: TrimPreviewFrames = .both
+    ) {
         isActive = true
         self.frames = frames
         firstTime = labelFirst
         lastTime = labelLast
-        if url != self.url {
-            self.url = url
+        if self.labelFrameRate != labelFrameRate { self.labelFrameRate = labelFrameRate }
+        if source != self.source {
+            self.source = source
             firstFrame = nil
             lastFrame = nil
             requested = nil
         }
-        let wanted = Request(url: url, first: first, last: last, frames: frames)
+        let wanted = Request(source: source, first: first, last: last, frames: frames)
         guard wanted != requested else {
             waiting = nil
             return
@@ -80,7 +103,10 @@ final class TrimPreviewModel {
         requested = next
         let generation = generation
         request = Task {
-            let images = await Self.frames(of: next.url, at: next.first, and: next.last, frames: next.frames)
+            let images = switch next.source {
+            case .file(let url): await Self.frames(of: url, at: next.first, and: next.last, frames: next.frames)
+            case .timeline(let preview): await Self.frames(of: preview, at: next.first, and: next.last, frames: next.frames)
+            }
             guard generation == self.generation else { return }
             request = nil
             if let image = images.first { firstFrame = image }
@@ -103,6 +129,20 @@ final class TrimPreviewModel {
         return (firstImage, lastImage)
     }
 
+    /// A nested timeline's frames, made by its preview at the size a
+    /// file's are read at.
+    private static func frames(
+        of preview: TimelinePreview, at first: CMTime, and last: CMTime, frames: TrimPreviewFrames
+    ) async -> (first: CGImage?, last: CGImage?) {
+        func image(at time: CMTime) async -> CGImage? {
+            await preview.image(at: time, height: 270)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        }
+        let firstImage = frames.showsFirst ? await image(at: first) : nil
+        guard !Task.isCancelled else { return (nil, nil) }
+        let lastImage = frames.showsLast ? await image(at: last) : nil
+        return (firstImage, lastImage)
+    }
+
     func clear() {
         generation += 1
         request?.cancel()
@@ -112,7 +152,8 @@ final class TrimPreviewModel {
         isActive = false
         firstFrame = nil
         lastFrame = nil
-        url = nil
+        source = nil
+        labelFrameRate = nil
     }
 }
 
@@ -152,7 +193,7 @@ struct TrimPreviewOverlay: View {
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.textSecondary)
                 Spacer()
-                Text(time.timecode(frameRate: frameRate))
+                Text(time.timecode(frameRate: model.labelFrameRate ?? frameRate))
                     .font(Design.Typeface.numericSmall)
                     .foregroundStyle(Design.textPrimary)
             }

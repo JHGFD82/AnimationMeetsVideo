@@ -127,13 +127,16 @@ struct ClipBlockView: View {
         // clip zoomed wider than the window is drawn as a slice, and a
         // rounded slice would put a corner in the middle of the clip.
         let shape = blockShape(drawnX: drawnX, drawnWidth: drawnWidth, liveX: liveX, liveWidth: liveWidth)
-        // A video clip on a layer tall enough shows its footage under a band
-        // of its colour that holds its name, so the name keeps its contrast.
-        let pictures: MediaClip? = {
-            guard case .media(let media)? = model.info, media.kind.hasPictures,
-                  model.height - Self.labelBand >= ClipThumbnails.minimumHeight
-            else { return nil }
-            return media
+        // A video or nested clip on a layer tall enough shows its footage
+        // under a band of its colour that holds its name, so the name keeps
+        // its contrast.
+        let pictures: ClipThumbnails.Footage? = {
+            guard model.height - Self.labelBand >= ClipThumbnails.minimumHeight else { return nil }
+            switch model.info {
+            case .media(let media)? where media.kind.hasPictures: return .file(media)
+            case .timeline(let timeline)?: return .timeline(timeline.id)
+            default: return nil
+            }
         }()
         let showsDetail = drawnWidth >= Self.detailWidth
         // Turned off: still where it is, drawn faded and grey, since it
@@ -191,7 +194,7 @@ struct ClipBlockView: View {
                     .overlay(alignment: .bottomLeading) {
                         if showsDetail, let pictures {
                             ClipThumbnails(
-                                clip: shown, media: pictures, pixelsPerSecond: model.pixelsPerSecond,
+                                clip: shown, footage: pictures, pixelsPerSecond: model.pixelsPerSecond,
                                 liveX: liveX, drawnX: drawnX, width: drawnWidth, height: model.height - Self.labelBand,
                                 loads: !isLifted && !isTrimming
                             )

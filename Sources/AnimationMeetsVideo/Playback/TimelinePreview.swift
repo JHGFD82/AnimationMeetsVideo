@@ -159,6 +159,18 @@ final class TimelinePreviews {
         return found
     }
 
+    /// The preview of `timelineID`, made now if it isn't kept, leaving the
+    /// others alone: for callers that each ask for one, such as nested
+    /// clips. Nil when `project` has no such timeline.
+    func preview(of timelineID: UUID, in project: EditingProject) -> TimelinePreview? {
+        _ = revision
+        if let existing = previews[timelineID] { return existing }
+        guard project.timeline(id: timelineID) != nil else { return nil }
+        let made = TimelinePreview(timelineID: timelineID, project: project)
+        previews[timelineID] = made
+        return made
+    }
+
     /// The project as edited: each preview whose timeline draws something
     /// that changed is built again once edits settle, and every preview's
     /// sound follows the new volumes and pans at once.
@@ -215,5 +227,38 @@ final class TimelinePreviews {
     private func release(_ id: UUID) {
         pending.removeValue(forKey: id)?.wait.cancel()
         previews.removeValue(forKey: id)?.cancel()
+    }
+}
+
+/// The editor's previews of the timelines its nested clips play: the
+/// pictures along those clips and the viewer's slip and trim frames.
+/// Apart from the browser's (`TimelinePreviews.shared`), which lets every
+/// preview go when the Timelines tab closes. Each is made when first asked
+/// for, from the project last given to `projectChanged`, and built again
+/// as the browser's are once edits to what it draws settle.
+@MainActor @Observable
+final class NestedTimelinePreviews {
+    @ObservationIgnored private let previews: TimelinePreviews
+    @ObservationIgnored private var project: EditingProject?
+
+    init(settleDelay: Duration = .milliseconds(500)) {
+        previews = TimelinePreviews(settleDelay: settleDelay)
+    }
+
+    /// The preview of `timelineID`; nil before the first project or when
+    /// it has no such timeline.
+    func preview(of timelineID: UUID) -> TimelinePreview? {
+        guard let project else { return nil }
+        return previews.preview(of: timelineID, in: project)
+    }
+
+    func projectChanged(_ project: EditingProject) {
+        self.project = project
+        previews.projectChanged(project)
+    }
+
+    /// Waits for rebuilds waiting on edits, as `TimelinePreviews.settle`.
+    func settle() async {
+        await previews.settle()
     }
 }

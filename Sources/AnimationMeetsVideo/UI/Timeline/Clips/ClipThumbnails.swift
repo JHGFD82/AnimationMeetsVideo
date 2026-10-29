@@ -1,8 +1,8 @@
 import CoreMedia
 import SwiftUI
 
-/// Pictures of a video clip's footage along it on the timeline: one
-/// thumbnail per tile of the clip, each the frame played where the tile
+/// Pictures of a clip's footage along it on the timeline, a video file's
+/// or a nested timeline's own frames: one thumbnail per tile of the clip, each the frame played where the tile
 /// starts (so a retimed or reversed clip shows what it plays there). Only
 /// the drawn part of the clip is tiled, since a clip zoomed far in can be
 /// far wider than the window. Tiles are counted from where the footage's
@@ -10,9 +10,16 @@ import SwiftUI
 /// show and trimming either end cuts into them rather than moving them;
 /// a retimed or reversed clip counts from its start instead.
 struct ClipThumbnails: View {
+    /// Where the pictures come from.
+    enum Footage: Equatable {
+        case file(MediaClip)
+        /// A nested timeline, by ID, drawn from its `TimelinePreview`.
+        case timeline(UUID)
+    }
+
     /// The clip as drawn (a drag's preview included).
     let clip: TimelineClip
-    let media: MediaClip
+    let footage: Footage
     let pixelsPerSecond: CGFloat
     /// Where the clip starts, and the stretch of it that is drawn, in the
     /// row's points.
@@ -23,6 +30,8 @@ struct ClipThumbnails: View {
     /// Off while the clip is dragged: no picture is read until it is let
     /// go, and the tiles keep what they show (see `FilmstripThumbnail`).
     var loads = true
+
+    @Environment(NestedTimelinePreviews.self) private var nestedPreviews: NestedTimelinePreviews?
 
     /// The shortest band of pictures worth drawing.
     static let minimumHeight: CGFloat = 22
@@ -37,12 +46,26 @@ struct ClipThumbnails: View {
         let first = Int((into / tile).rounded(.down))
         let last = Int(((into + width) / tile).rounded(.up))
         ZStack(alignment: .topLeading) {
-            if let url = media.url, last > first {
-                ForEach(first..<last, id: \.self) { index in
-                    FilmstripThumbnail(url: url, time: time(atTile: index, width: tile), height: height, keepsPictureWhileLoading: true, loads: loads)
-                        .frame(width: tile, height: height)
-                        .clipped()
-                        .offset(x: CGFloat(index) * tile - into)
+            if last > first {
+                switch footage {
+                case .file(let media):
+                    if let url = media.url {
+                        ForEach(first..<last, id: \.self) { index in
+                            FilmstripThumbnail(url: url, time: time(atTile: index, width: tile), height: height, keepsPictureWhileLoading: true, loads: loads)
+                                .frame(width: tile, height: height)
+                                .clipped()
+                                .offset(x: CGFloat(index) * tile - into)
+                        }
+                    }
+                case .timeline(let timelineID):
+                    if let preview = nestedPreviews?.preview(of: timelineID) {
+                        ForEach(first..<last, id: \.self) { index in
+                            TimelineFrame(preview: preview, time: time(atTile: index, width: tile), height: height, loads: loads)
+                                .frame(width: tile, height: height)
+                                .clipped()
+                                .offset(x: CGFloat(index) * tile - into)
+                        }
+                    }
                 }
             }
         }
@@ -58,12 +81,17 @@ struct ClipThumbnails: View {
         return clip.timelineTime(forSourceTime: .zero).seconds * pixelsPerSecond
     }
 
-    /// The file time played where tile `index` starts.
+    /// The file time (or nested timeline time) played where tile `index`
+    /// starts.
     private func time(atTile index: Int, width tile: CGFloat) -> CMTime {
         let x = originX + CGFloat(index) * tile
         let along = CMTime(seconds: Double((x - liveX) / pixelsPerSecond), preferredTimescale: 600)
         let source = clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, along))
-        let seconds = (media.fileTime(forSourceTime: source).seconds * Self.grid).rounded() / Self.grid
+        let played = switch footage {
+        case .file(let media): media.fileTime(forSourceTime: source)
+        case .timeline: source
+        }
+        let seconds = (played.seconds * Self.grid).rounded() / Self.grid
         return CMTime(seconds: max(0, seconds), preferredTimescale: 600)
     }
 }

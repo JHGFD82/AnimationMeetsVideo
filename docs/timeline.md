@@ -387,7 +387,10 @@ is being edited.
   gets shorter from its end instead (never below a frame), and every later
   clip on its layer moves in by as much, so no gap opens. Those clips
   follow on screen during the drag, and the viewer shows the clip's first
-  and last frames side by side with their source timecodes. Clips can't be
+  and last frames side by side with their source timecodes (a nested
+  timeline's from the timeline itself, timed in its own frames). The
+  pictures along the clip slide with the footage as it is dragged, so
+  which part plays is seen on the clip too. Clips can't be
   moved or trimmed with it. In a transition's footage lane the cut line
   turns yellow and splits in two: its top half slips the outgoing clip,
   its bottom half the incoming one; the cut stays and the transition gets
@@ -423,9 +426,10 @@ transitions and keyframes don't snap.
 
 Dragging the middle of a clip moves it; dragging within a few points of
 either edge trims that edge without destroying anything. While an edge of
-a video clip is dragged, the viewer shows the frame at that edge (its
-first frame for the left edge, its last for the right) with its source
-timecode, read straight from the file, so footage a lengthened edge
+a video or nested timeline clip is dragged, the viewer shows the frame at
+that edge (its first frame for the left edge, its last for the right)
+with its source timecode, read straight from the file, or made from the
+nested timeline (`TrimPreviewSource`), so footage a lengthened edge
 reaches shows too (`TrimPreviewOverlay`). It follows the pointer as the
 drag goes: one frame is read at a time, and when it is done the frame
 where the edge is then is read next. Holding the
@@ -501,7 +505,11 @@ band of pictures at least 22 points tall: one thumbnail per tile, each the
 frame played where the tile starts (retimed and reversed clips included),
 under an 18-point band of the clip's colour that holds its name, so the
 name keeps its contrast. Only the drawn part of a clip is tiled, and the
-pictures come from the same in-memory store as the browser's. Tiles are
+pictures come from the same in-memory store as the browser's. A nested
+timeline's clip shows the timeline's own frames the same way, made from
+a composition of it that the editor keeps (`NestedTimelinePreviews`,
+apart from the browser's) and builds again once edits to what it draws
+settle; until then its tiles keep the pictures they have. Tiles are
 laid out from where the footage's first frame would play, not from the
 clip's start, so trimming either edge cuts into the pictures rather than
 shifting them, and the two halves of a split line up; a retimed or

@@ -211,6 +211,7 @@ struct BrowserPanel: View {
             project: project, activeTimelineID: activeTimelineID,
             onOpen: onOpenTimeline,
             onEmbed: embed,
+            onEmbedInto: embed(_:into:),
             onDuplicate: { id in project.duplicateTimeline(id) },
             onRename: { id, name in project.renameTimeline(id, to: name) },
             onOpenInNewWindow: onOpenTimelineInNewWindow,
@@ -254,8 +255,21 @@ struct BrowserPanel: View {
             let played = range.map { $0.intersection(whole) } ?? whole
             return played.duration > .zero ? .timeline(id, from: played.start, to: played.end) : nil
         }
-        guard let result = project.addPieces(pieces, intoTimeline: activeTimelineID), let clipID = result.clipIDs.first else { return }
-        selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: clipID)
+        embed(pieces, into: activeTimelineID)
+    }
+
+    /// Puts pieces (timelines dropped on another in the Timelines tab) on
+    /// one new layer at the top of `timelineID`, back to back from its
+    /// start, as `embed` does for the active one. The first new clip is
+    /// selected when that is the timeline being edited. False when any of
+    /// them can't go in.
+    @discardableResult
+    private func embed(_ pieces: [MediaPiece], into timelineID: UUID) -> Bool {
+        guard let result = project.addPieces(pieces, intoTimeline: timelineID), let clipID = result.clipIDs.first else { return false }
+        if timelineID == activeTimelineID {
+            selection = TimelineSelection(timelineID: timelineID, layerID: result.layerID, timelineClipID: clipID)
+        }
+        return true
     }
 
     /// Imported files go into the library only; they reach a timeline when

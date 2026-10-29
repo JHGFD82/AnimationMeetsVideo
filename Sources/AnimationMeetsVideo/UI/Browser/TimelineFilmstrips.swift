@@ -21,8 +21,12 @@ struct TimelineFilmstrips: View {
     let order: [UUID]
     @Binding var picked: BrowserSelection<UUID>
     @Binding var renamingID: UUID?
+    /// The parts of timelines a drag that they take is over.
+    @Binding var dropHovered: Set<TimelineDropPart>
     let onOpen: (UUID) -> Void
     let onRename: (UUID, String) -> Void
+    /// Puts timelines dropped on one into it (`TimelinesList.onEmbedInto`).
+    let onEmbedInto: ([MediaPiece], UUID) -> Bool
     /// VoiceOver's Embed, Duplicate, Delete and Find All, as on the list's
     /// rows.
     let onEmbed: (UUID) -> Void
@@ -75,10 +79,18 @@ struct TimelineFilmstrips: View {
                     switch line {
                     case .title(let timeline):
                         title(timeline)
+                            .overlay { dropLight(timeline) }
+                            .timelineDropTarget(
+                                TimelineDropPart(timelineID: timeline.id, part: 0), project: project, hovered: $dropHovered, onDrop: onEmbedInto
+                            )
                             .padding(.top, Design.Space.step)
                             .padding(.bottom, Design.Space.tight)
                     case .strip(let timeline, let layout, let row, let used):
                         strip(timeline, preview: previews[timeline.id], layout: layout, row: row, used: used)
+                            .overlay { dropLight(timeline) }
+                            .timelineDropTarget(
+                                TimelineDropPart(timelineID: timeline.id, part: row + 1), project: project, hovered: $dropHovered, onDrop: onEmbedInto
+                            )
                             .padding(.bottom, FilmstripLayout.rowSpacing)
                     }
                 }
@@ -111,6 +123,18 @@ struct TimelineFilmstrips: View {
         // Out of sight, no preview is kept or built.
         .onDisappear { TimelinePreviews.shared.releaseAll() }
         .sunken(.sunken)
+    }
+
+    /// The accent outline on every part of a timeline while a drag it takes
+    /// is over it, so the whole timeline reads as the target.
+    @ViewBuilder
+    private func dropLight(_ timeline: Timeline) -> some View {
+        if dropHovered.lights(timeline.id) {
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                .strokeBorder(Design.accent, lineWidth: 2)
+                .padding(-2)
+                .allowsHitTesting(false)
+        }
     }
 
     // MARK: - Layout
@@ -438,6 +462,9 @@ struct TimelineFrame: View {
     let preview: TimelinePreview?
     let time: CMTime
     let height: CGFloat
+    /// Off, no picture is made: the one shown stays, or one already kept
+    /// for this time is shown, as for a file's (`FilmstripThumbnail`).
+    var loads = true
     @State private var loaded: NSImage?
 
     private var key: String {
@@ -447,14 +474,14 @@ struct TimelineFrame: View {
     var body: some View {
         ZStack {
             Rectangle().fill(.black)
-            if let loaded {
-                Image(nsImage: loaded)
+            if let shown = loaded ?? (loads ? nil : preview?.cachedImage(at: time, height: height)) {
+                Image(nsImage: shown)
                     .resizable()
                     .scaledToFit()
             }
         }
-        .task(id: key) {
-            guard let preview else { return }
+        .task(id: loads ? key : nil) {
+            guard loads, let preview else { return }
             if let cached = preview.cachedImage(at: time, height: height) {
                 loaded = cached
                 return
