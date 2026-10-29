@@ -20,8 +20,11 @@ struct ToneGraphLayout {
 ///
 /// - **Curves** (an effect whose package lists curve controls, Curves):
 ///   the picked curve bold with its points, the others faint in their
-///   colors. Drag a point to move it; click or drag where there is none to
-///   add one there; double-click a point to delete it.
+///   colors. Drag a point to move it; click or drag between the edges
+///   where there is none to add one there; double-click a point to delete
+///   it. The edges, the first and last points, stay where they are up,
+///   drawn small and not dragged on the plot: only the slider under it
+///   (`ToneCurveEdgeSlider`) moves them, across.
 /// - **Handles** (Levels, Threshold, Highs & Lows, Solarize): what the
 ///   kernel does to each tone, measured by drawing it (`ToneResponse`),
 ///   with the package's handles on it; dragging one sets the controls it
@@ -29,7 +32,7 @@ struct ToneGraphLayout {
 ///
 /// With a point or handle picked (clicked, or reached with Tab), the arrow
 /// keys move it a hundredth of the way (a tenth with Shift), Delete removes
-/// a point and + adds one in the widest gap; the buttons beside the graph
+/// a point other than an edge and + adds one in the widest gap; the buttons beside the graph
 /// add and delete points too. VoiceOver reaches each point and handle as an
 /// element of its own with the same actions.
 ///
@@ -96,9 +99,12 @@ struct ToneGraph: View {
     var body: some View {
         HStack(alignment: .top, spacing: Design.Space.step) {
             GeometryReader { proxy in
-                // Inset so a point at a corner is drawn whole.
-                let side = min(proxy.size.width, proxy.size.height) - 16
-                let layout = ToneGraphLayout(plot: CGRect(x: 8, y: 8, width: max(side, 10), height: max(side, 10)))
+                // Inset so a point at a corner is drawn whole, and above a
+                // curve's edge slider.
+                let square = min(proxy.size.width, proxy.size.height)
+                let band = editedCurve == nil ? 0 : ToneCurveEdgeSlider.height + 4
+                let side = max(square - 16 - band, 10)
+                let layout = ToneGraphLayout(plot: CGRect(x: (square - side) / 2, y: 8, width: side, height: side))
                 ZStack(alignment: .topLeading) {
                     Canvas { context, _ in draw(in: &context, layout: layout) }
                         .contentShape(Rectangle())
@@ -111,6 +117,11 @@ struct ToneGraph: View {
                         .accessibilityHidden(true)
                     ForEach(Array(nodePlaces(layout).enumerated()), id: \.offset) { index, place in
                         accessibleNode(index, at: place)
+                    }
+                    if let kind = editedCurve {
+                        edgeSlider(kind, layout: layout)
+                            .frame(width: square, height: ToneCurveEdgeSlider.height)
+                            .offset(y: layout.plot.maxY + 4)
                     }
                 }
             }
@@ -150,13 +161,13 @@ struct ToneGraph: View {
                     Button("Add Point") { addPoint(to: kind) }
                         .help("Add a point to the \(kind.name) curve in its widest gap (+)")
                     Button("Delete Point") { picked.map(removePoint) }
-                        .disabled(picked == nil || curve(kind).points.count <= 2)
-                        .help("Delete the picked point (Delete)")
+                        .disabled(!(picked.map(curve(kind).canRemove) ?? false))
+                        .help("Delete the picked point (Delete); the edges stay, moved by the slider under the graph")
                 }
                 .controlSize(.small)
             }
             Spacer(minLength: 0)
-            Text(curves.isEmpty ? "Drag a handle; arrows nudge the picked one." : "Click to add a point, drag to move, double-click to delete.")
+            Text(curves.isEmpty ? "Drag a handle; arrows nudge the picked one." : "Click to add a point, drag to move, double-click to delete. The slider moves the edges.")
                 .font(Design.Typeface.micro)
                 .foregroundStyle(Design.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -178,10 +189,18 @@ struct ToneGraph: View {
         places().map { layout.point($0.x, $0.y) }
     }
 
-    /// The point or handle nearest `location`, within reach of a click.
+    /// Whether point `index` is an edge of the edited curve, which only
+    /// the edge slider moves.
+    private func isCurveEdge(_ index: Int) -> Bool {
+        editedCurve.map { curve($0).isEdge(index) } ?? false
+    }
+
+    /// The point or handle nearest `location`, within reach of a click; never
+    /// a curve's edge.
     private func index(near location: CGPoint, layout: ToneGraphLayout) -> Int? {
         let reach: CGFloat = 9
         return nodePlaces(layout).enumerated()
+            .filter { !isCurveEdge($0.offset) }
             .map { ($0.offset, hypot($0.element.x - location.x, $0.element.y - location.y)) }
             .filter { $0.1 <= reach }
             .min { $0.1 < $1.1 }?.0
@@ -196,7 +215,8 @@ struct ToneGraph: View {
             return handles.map(\.name).joined(separator: ", ")
         }
         let place = places[picked]
-        let name = editedCurve == nil ? handles[picked].name : "Point \(picked + 1)"
+        let name = editedCurve == nil ? handles[picked].name
+            : picked == 0 ? "Left edge" : picked == places.count - 1 ? "Right edge" : "Point \(picked + 1)"
         return "\(name): \(percent(place.x)) → \(percent(place.y))"
     }
 
@@ -247,31 +267,61 @@ struct ToneGraph: View {
         DragGesture(minimumDistance: 2, coordinateSpace: .local)
             .onChanged { value in
                 if drag == nil, !beginDrag(at: value.startLocation, layout: layout) { return }
-                guard let drag else { return }
                 let shift = NSEvent.modifierFlags.contains(.shift)
                 var dx = Double(value.translation.width / max(layout.plot.width, 1))
                 var dy = Double(-value.translation.height / max(layout.plot.height, 1))
                 // ⇧ keeps a drag to one axis.
                 if shift { if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 } }
-                if let projectState {
-                    stepEdits = []
-                    projectState.hold { move(drag, by: dx, dy) }
-                } else {
-                    move(drag, by: dx, dy)
+                dragStep(dx, dy)
+            }
+            .onEnded { _ in endDrag() }
+    }
+
+    /// The slider under the plot that moves the edited curve's edges.
+    private func edgeSlider(_ kind: ControlKind, layout: ToneGraphLayout) -> some View {
+        let points = curve(kind).points
+        let last = points.count - 1
+        func index(_ edge: ToneCurveEdgeSlider.Edge) -> Int { edge == .left ? 0 : last }
+        return ToneCurveEdgeSlider(
+            left: points[0].x, right: points[last].x, layout: layout,
+            tint: Self.color(kind.curveTint).opacity(effect.control(kind)?.enabled ?? false ? 1 : 0.5),
+            picked: picked == 0 ? .left : picked == last ? .right : nil,
+            isFocused: isFocused,
+            onDrag: { edge, dx in
+                if drag == nil {
+                    history?.beginGesture()
+                    guard beginDrag(of: index(edge)) else { return }
                 }
-            }
-            .onEnded { _ in
-                guard drag != nil else { return }
-                let edits = stepEdits
-                projectState?.endHold()
-                heldEffect = nil
-                stepEdits = []
-                drag = nil
-                // The drag's last step goes to the project once; a drag let
-                // go (see `ProjectState.letGo`) has written it already.
-                for edit in edits { onEdit(edit.kind, edit.change) }
-                Task { @MainActor in history?.endGesture() }
-            }
+                dragStep(dx, 0)
+            },
+            onDragEnded: endDrag,
+            onNudge: { edge, dx in nudge(index(edge), dx: dx) },
+            name: "\(kind.name) curve"
+        )
+    }
+
+    /// The drag moved by (`dx`, `dy`) tones since it began.
+    private func dragStep(_ dx: Double, _ dy: Double) {
+        guard let drag else { return }
+        if let projectState {
+            stepEdits = []
+            projectState.hold { move(drag, by: dx, dy) }
+        } else {
+            move(drag, by: dx, dy)
+        }
+    }
+
+    private func endDrag() {
+        guard drag != nil else { return }
+        let edits = stepEdits
+        projectState?.endHold()
+        heldEffect = nil
+        stepEdits = []
+        drag = nil
+        // The drag's last step goes to the project once; a drag let go
+        // (see `ProjectState.letGo`) has written it already.
+        for edit in edits { onEdit(edit.kind, edit.change) }
+        Task { @MainActor in history?.endGesture() }
     }
 
     /// Starts dragging the point or handle under `location`; on a curve
@@ -296,8 +346,12 @@ struct ToneGraph: View {
             history?.beginGesture()
         }
         guard let index else { return false }
-        // From the effect with any point just added, which the project may
-        // not show yet.
+        return beginDrag(of: index)
+    }
+
+    /// Starts dragging point or handle `index`, from the effect with any
+    /// point just added, which the project may not show yet.
+    private func beginDrag(of index: Int) -> Bool {
         let start = heldEffect ?? effect
         heldEffect = projectState == nil ? nil : start
         let places = placesIn(start)
@@ -324,12 +378,15 @@ struct ToneGraph: View {
         set(drag.index, in: drag.start, to: drag.from.x + dx, drag.from.y + dy)
     }
 
-    /// Point or handle `index` of `start` moved to tones (`x`, `y`).
+    /// Point or handle `index` of `start` moved to tones (`x`, `y`); a
+    /// curve's edge only across.
     private func set(_ index: Int, in start: Effect, to x: Double, _ y: Double) {
         let time = time
         let x = x.clamped(between: 0, and: 1), y = y.clamped(between: 0, and: 1)
         if let kind = editedCurve {
-            let moved = (start.control(kind).map { $0.curve(at: time) } ?? .identity).moving(index, toX: x, y: y)
+            let curve = start.control(kind).map { $0.curve(at: time) } ?? .identity
+            guard curve.points.indices.contains(index) else { return }
+            let moved = curve.moving(index, toX: x, y: curve.isEdge(index) ? curve.points[index].y : y)
             dragEdit(kind) { control in
                 control.enabled = true
                 control.setCurve(moved, at: time)
@@ -364,7 +421,7 @@ struct ToneGraph: View {
     }
 
     private func removePoint(_ index: Int) {
-        guard let kind = editedCurve, curve(kind).points.count > 2 else { return }
+        guard let kind = editedCurve, curve(kind).canRemove(index) else { return }
         onEdit(kind) { $0.removeCurvePoint(index) }
         picked = nil
     }
@@ -388,6 +445,7 @@ struct ToneGraph: View {
             switch key {
             case .leftArrow: nudge(picked, dx: -step)
             case .rightArrow: nudge(picked, dx: step)
+            case .upArrow where isCurveEdge(picked), .downArrow where isCurveEdge(picked): return false
             case .upArrow: nudge(picked, dy: step)
             case .downArrow: nudge(picked, dy: -step)
             default: return false
@@ -399,7 +457,8 @@ struct ToneGraph: View {
     // MARK: Accessibility
 
     /// An element over a point or handle, for VoiceOver: adjusting it moves
-    /// it up or down (a handle that only moves across, across), and actions
+    /// it up or down (a handle that only moves across, or a curve's edge,
+    /// across), and actions
     /// move it the other ways and delete a point.
     @ViewBuilder
     private func accessibleNode(_ index: Int, at place: CGPoint) -> some View {
@@ -407,8 +466,9 @@ struct ToneGraph: View {
         if places.indices.contains(index) {
             let isCurve = editedCurve != nil
             let handle = isCurve ? nil : handles[index]
-            let name = handle?.name ?? "\(editedCurve?.name ?? "") curve point \(index + 1) of \(places.count)"
-            let upAndDown = handle?.movesUp ?? true
+            let edge = index == 0 ? "left edge" : index == places.count - 1 ? "right edge" : "point \(index + 1) of \(places.count)"
+            let name = handle?.name ?? "\(editedCurve?.name ?? "") curve \(edge)"
+            let upAndDown = handle?.movesUp ?? !isCurveEdge(index)
             let across = handle?.movesAcross ?? true
             Color.clear
                 .frame(width: 14, height: 14)
@@ -426,7 +486,7 @@ struct ToneGraph: View {
                         Button("Move left") { nudge(index, dx: -Self.nudge) }
                         Button("Move right") { nudge(index, dx: Self.nudge) }
                     }
-                    if isCurve && places.count > 2 {
+                    if let kind = editedCurve, curve(kind).canRemove(index) {
                         Button("Delete point") { removePoint(index) }
                     }
                 }
@@ -495,6 +555,12 @@ struct ToneGraph: View {
 
         let tint = editedCurve.map { Self.color($0.curveTint) } ?? Design.accent
         for (index, center) in nodePlaces(layout).enumerated() {
+            // A curve's edges are moved by the slider, so they are only
+            // marked, not drawn as points to drag.
+            if isCurveEdge(index) {
+                context.fill(Path(ellipseIn: CGRect(x: center.x - 2, y: center.y - 2, width: 4, height: 4)), with: .color(tint))
+                continue
+            }
             let dot = Path(ellipseIn: CGRect(x: center.x - 4.5, y: center.y - 4.5, width: 9, height: 9))
             context.fill(dot, with: .color(tint))
             context.stroke(dot, with: .color(Color.black.opacity(0.6)), lineWidth: 1)

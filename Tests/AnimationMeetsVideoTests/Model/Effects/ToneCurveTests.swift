@@ -69,9 +69,17 @@ import Testing
         #expect(added.points.count == 4)
         #expect(abs(added.points[1].y - s.value(at: 0.25)) < 1e-12)
         #expect(s.inserting(atX: 0.505) == s)
-        // Two are always left.
+        // The edges stay: points go only between them, and they can be
+        // moved across but never deleted.
+        let inset = curve([(0.1, 0), (0.9, 1)])
+        #expect(inset.insertionIndex(atX: 0.05) == nil && inset.insertionIndex(atX: 0.95) == nil)
+        #expect(inset.insertionIndex(atX: 0.5) == 1)
         #expect(s.removing(1).points.count == 2)
+        #expect(!s.canRemove(0) && s.canRemove(1) && !s.canRemove(2))
+        #expect(s.removing(0) == s && s.removing(2) == s)
         #expect(ToneCurve.identity.removing(0) == .identity)
+        let widened = s.moving(2, toX: 0.8, y: 1).points[2]
+        #expect(widened.x == 0.8 && widened.y == 1)
         #expect(abs(s.widestGapMiddle - 0.25) < 1e-12)
     }
 
@@ -104,9 +112,11 @@ import Testing
         #expect(control.number.keyframes[0].value.values[3] == 0.4)
         #expect(control.number.keyframes[1].value.values[3] == 0.9)
 
-        control.removeCurvePoint(1)
-        #expect(control.number.keyframes.map { $0.value.values.count } == [4, 4])
+        // An edge isn't deleted, even with points to spare.
         control.removeCurvePoint(0)
+        control.removeCurvePoint(2)
+        #expect(control.number.keyframes.map { $0.value.values.count } == [6, 6])
+        control.removeCurvePoint(1)
         #expect(control.number.keyframes.map { $0.value.values.count } == [4, 4])
     }
 

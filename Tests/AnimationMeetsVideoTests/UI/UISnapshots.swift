@@ -899,7 +899,7 @@ struct UISnapshots {
         let size = CGSize(width: 440, height: ToneGraph.panelHeight)
         let cases: [(String, Effect)] = [
             ("tone-graph-curves", try setting("curves", [
-                "masterCurve": [0, 0, 0.25, 0.18, 0.75, 0.84, 1, 1], "redCurve": [0, 0.08, 1, 1],
+                "masterCurve": [0.06, 0, 0.25, 0.18, 0.75, 0.84, 0.92, 1], "redCurve": [0, 0.08, 1, 1],
             ])),
             ("tone-graph-levels", try setting("levels", [
                 "inputBlack": [12], "inputWhite": [88], "levelsGamma": [1.6], "outputBlack": [4],
