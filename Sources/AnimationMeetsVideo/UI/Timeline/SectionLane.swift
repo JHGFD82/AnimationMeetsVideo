@@ -48,6 +48,9 @@ struct SectionLane: View {
     @State private var editingID: UUID?
     @State private var draftName = ""
     @FocusState private var isNameFocused: Bool
+    /// The timecode over the pointer while a section or an edge of it is
+    /// dragged.
+    @Environment(DragTimecodeReadout.self) private var readout: DragTimecodeReadout?
 
     private let space = "sectionLane"
     private let handleWidth: CGFloat = 6
@@ -180,9 +183,12 @@ struct SectionLane: View {
                         let proposed = CMTimeAdd(original, delta(value.translation.width))
                         let target = snap(proposed, section.id)
                         onSnapIndicator(target)
-                        showDraft(resolveEdge(section.id, edge, target ?? proposed))
+                        let resized = resolveEdge(section.id, edge, target ?? proposed)
+                        showDraft(resized)
+                        if let resized { readout?.show(edge == .start ? resized.start : resized.end, from: original) }
                     }
                     .onEnded { _ in
+                        readout?.hide()
                         onSnapIndicator(nil)
                         if let draft, draft != section {
                             commitDrop { onSetEdge(section.id, edge, edge == .start ? draft.start : draft.end) }
@@ -238,15 +244,20 @@ struct SectionLane: View {
                 }
                 isMoving = true
                 // Option leaves the section where it is and shows its copy.
+                let landing: TimelineSection?
                 if CopyDragCursor.update() {
                     showDraft(nil)
-                    copyDraft = resolveCopy(section.id, start)
+                    landing = resolveCopy(section.id, start)
+                    copyDraft = landing
                 } else {
                     copyDraft = nil
-                    showDraft(resolveMove(section.id, start))
+                    landing = resolveMove(section.id, start)
+                    showDraft(landing)
                 }
+                if let landing { readout?.show(landing.start, from: section.start) }
             }
             .onEnded { _ in
+                readout?.hide()
                 onSnapIndicator(nil)
                 isMoving = false
                 CopyDragCursor.end()

@@ -37,6 +37,10 @@ struct KeyframeLane: View {
     let onMove: (CMTime, CMTime, Bool) -> Void
     let onDelete: (CMTime) -> Void
     let onEase: (CMTime, KeyframeEase.Preset) -> Void
+    /// The timeline's time at a time on the lane, for the timecode shown
+    /// while a keyframe is dragged; the same time when the lane spans the
+    /// timeline.
+    var timelineTime: (CMTime) -> CMTime = { $0 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -52,7 +56,8 @@ struct KeyframeLane: View {
                     onSeek: onSeek,
                     onMove: onMove,
                     onDelete: onDelete,
-                    onEase: onEase
+                    onEase: onEase,
+                    timelineTime: timelineTime
                 )
             }
         }
@@ -118,8 +123,12 @@ private struct KeyframeDiamond: View {
     let onMove: (CMTime, CMTime, Bool) -> Void
     let onDelete: (CMTime) -> Void
     let onEase: (CMTime, KeyframeEase.Preset) -> Void
+    let timelineTime: (CMTime) -> CMTime
 
     private var time: CMTime { mark.time }
+
+    /// The timecode over the pointer while the keyframe is dragged.
+    @Environment(DragTimecodeReadout.self) private var readout: DragTimecodeReadout?
 
     /// Where the diamond is dragged to, on its snapped frame. After a drop
     /// it stays there until the moved keyframe comes back from the project
@@ -153,9 +162,12 @@ private struct KeyframeDiamond: View {
                     .onChanged { value in
                         guard abs(value.translation.width) >= 3 else { return }
                         isCopying = CopyDragCursor.update()
-                        dragX = CGFloat(CMTimeSubtract(target(value.translation.width), time).seconds) * pixelsPerSecond
+                        let target = target(value.translation.width)
+                        dragX = CGFloat(CMTimeSubtract(target, time).seconds) * pixelsPerSecond
+                        readout?.show(timelineTime(target), from: timelineTime(time), pointer: value.location)
                     }
                     .onEnded { value in
+                        readout?.hide()
                         let target = target(value.translation.width)
                         let copying = isCopying
                         isCopying = false

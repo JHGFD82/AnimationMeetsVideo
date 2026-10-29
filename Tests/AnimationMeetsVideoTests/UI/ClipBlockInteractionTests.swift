@@ -31,16 +31,19 @@ struct ClipBlockInteractionTests {
     private struct Block: View {
         let tool: Tool
         let box: LiveClipHandlers
+        var readout: DragTimecodeReadout?
 
         var body: some View {
-            let clip = TimelineClip(id: Self.clipID, source: .media(UUID()), startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
-            ClipBlockView(model: .sample(clip, tool: tool.tool), handlers: box)
+            ClipBlockView(model: .sample(Self.clip, tool: tool.tool), handlers: box)
+                .environment(readout)
         }
+
+        static let clip = TimelineClip(id: clipID, source: .media(UUID()), startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
 
         static let clipID = UUID()
     }
 
-    private func harness(_ tool: Tool, _ calls: Calls) -> EventHarness {
+    private func harness(_ tool: Tool, _ calls: Calls, readout: DragTimecodeReadout? = nil) -> EventHarness {
         var handlers = ClipBlockHandlers.inert(
             onSelect: { calls.selects += 1 },
             onMove: { start, _ in
@@ -51,7 +54,12 @@ struct ClipBlockInteractionTests {
         handlers.onBlade = { calls.blades.append($0) }
         // Lands wherever it is asked to, on its own layer.
         handlers.resolveMove = { start, _ in ClipMovePreview(start: CMTimeMaximum(.zero, start), layerID: nil, offsetY: 0) }
-        return EventHarness(Block(tool: tool, box: LiveClipHandlers(handlers)), size: CGSize(width: 400, height: 40))
+        handlers.resolveTrimEnd = { end in
+            var trimmed = Block.clip
+            trimmed.trimEnd = end
+            return trimmed
+        }
+        return EventHarness(Block(tool: tool, box: LiveClipHandlers(handlers), readout: readout), size: CGSize(width: 400, height: 40))
     }
 
     private let middle = CGPoint(x: 100, y: 20)
@@ -81,6 +89,38 @@ struct ClipBlockInteractionTests {
         #expect(calls.moves.count == 1)
         #expect(abs((calls.moves.first?.seconds ?? 0) - 1) < 0.05)
         #expect(!DragEscape.isActive)
+    }
+
+    /// While moving, the box over the pointer shows where the clip will
+    /// start and how far that is; Escape takes it away.
+    @Test func aMoveShowsItsTimecodeOverThePointer() async throws {
+        let readout = DragTimecodeReadout()
+        let harness = harness(Tool(.arrow), Calls(), readout: readout)
+        try await harness.press(at: middle, dragTo: CGPoint(x: 150, y: 20))
+        let reading = try #require(readout.reading)
+        #expect(abs(reading.time.seconds - 1) < 0.05)
+        #expect(abs(reading.moved.seconds - 1) < 0.05)
+        #expect(abs(reading.pointer.x - 150) < 1)
+        harness.escape()
+        try await harness.settle()
+        #expect(readout.reading == nil)
+        harness.mouse(.leftMouseUp, at: CGPoint(x: 150, y: 20))
+        try await harness.settle(250)
+        #expect(readout.reading == nil)
+    }
+
+    /// Trimming the end shows where the end will be, and that it moved
+    /// back; letting go takes the box away.
+    @Test func aTrimShowsTheEdgesTimecode() async throws {
+        let readout = DragTimecodeReadout()
+        let harness = harness(Tool(.arrow), Calls(), readout: readout)
+        try await harness.press(at: CGPoint(x: 200, y: 20), dragTo: CGPoint(x: 150, y: 20))
+        let reading = try #require(readout.reading)
+        #expect(abs(reading.time.seconds - 3) < 0.05)
+        #expect(abs(reading.moved.seconds + 1) < 0.05)
+        harness.mouse(.leftMouseUp, at: CGPoint(x: 150, y: 20))
+        try await harness.settle(250)
+        #expect(readout.reading == nil)
     }
 
     /// Escape mid-move: nothing is edited, and the next drag works.

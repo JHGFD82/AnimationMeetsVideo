@@ -370,6 +370,9 @@ struct TimelineView: View {
                 TimelineTrackSurface(parent: self, geometry: geometry)
             }
         }
+        // Over the pointer while a clip, an edge, a keyframe or a section
+        // is dragged.
+        .dragTimecodeReadout(frameRate: timeline.frameRate)
         .rubberBandSettling(viewportModel, \.zoomBand)
         .rubberBandSettling(viewportModel, \.scrollBand)
         .rubberBandSettling(viewportModel, \.layerHeightBand)

@@ -1153,6 +1153,22 @@ struct UISnapshots {
         )
     }
 
+    /// The box over the pointer while something on the timeline is
+    /// dragged: moved later, earlier, and back where it started.
+    @Test func dragTimecodeLabel() throws {
+        try SnapshotSupport.render(
+            VStack(alignment: .leading, spacing: 12) {
+                DragTimecodeLabel(time: CMTime(value: 349, timescale: 24), moved: CMTime(value: 36, timescale: 24), frameRate: 24)
+                DragTimecodeLabel(time: CMTime(value: 7_225, timescale: 24), moved: CMTime(value: -1_441, timescale: 24), frameRate: 24)
+                DragTimecodeLabel(time: CMTime(value: 48, timescale: 24), moved: .zero, frameRate: 24)
+            }
+            .padding(20)
+            .background(Design.Surface.sunken.color)
+            .preferredColorScheme(.dark),
+            "drag-timecode-label", size: CGSize(width: 260, height: 140)
+        )
+    }
+
     /// Clip blocks on the timeline, a row each: a video clip with its
     /// pictures; the same selected, with its shadow outside it only; the
     /// same turned off, grey and faded, then also selected, its shadow's

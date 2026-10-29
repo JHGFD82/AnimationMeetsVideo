@@ -390,6 +390,15 @@ private struct Fixture {
         #expect(seconds(12 * 60 + 5).compactTimecode(frameRate: 24) == "12:05:00")
     }
 
+    @Test func signedCompactTimecodeShowsTheDirection() {
+        #expect(seconds(1.5).signedCompactTimecode(frameRate: 24) == "+1:12")
+        #expect(seconds(-(12 * 60 + 5)).signedCompactTimecode(frameRate: 24) == "−12:05:00")
+        #expect(seconds(-1.0 / 24).signedCompactTimecode(frameRate: 24) == "−0:01")
+        // Under half a frame either way is no move.
+        #expect(seconds(0.01).signedCompactTimecode(frameRate: 24) == "±0:00")
+        #expect(seconds(-0.01).signedCompactTimecode(frameRate: 24) == "±0:00")
+    }
+
     @Test func formattedRoundsTenthsWithoutOverflow() {
         #expect(seconds(59.96).formatted == "01:00.0")
         #expect(seconds(75.3).formatted == "01:15.3")

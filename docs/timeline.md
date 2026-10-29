@@ -533,6 +533,17 @@ Motion it goes there at once. A trim is still drawn where it will land. The func
 `resolvedTrimEnd(of:…)`) do not change the project, and the editing
 functions commit what they return.
 
+- **The timecode over the pointer.** While anything on the timeline is
+  dragged, a box just above the pointer shows the exact timecode it will
+  land at, and beside it how far that is from where it was picked up
+  ("+1:12", "−0:05", "±0:00" back where it began)
+  (`DragTimecodeReadout`). For a moved clip that is its start; for a
+  trim, the edge being dragged; for a keyframe (on a volume lane or in
+  the effects panel), a section or either of its edges, a transition's
+  inner side, or a clip's music point, that mark. It is always the
+  timeline's time, snapped and placed as the drop will be, and goes away
+  when the drag ends or Escape cancels it. Slipping shows none: the clip
+  stays where it is on the timeline.
 - **Shift** while moving keeps the clip on its own layer: it only moves
   in time, wherever the pointer goes up or down.
 - **Escape** while moving, trimming or slipping cancels: the clip springs

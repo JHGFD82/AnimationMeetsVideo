@@ -94,7 +94,8 @@ struct ParameterLane: View {
             onSeek: { lane in onSeek(geometry.timeline(fromLane: lane)) },
             onMove: { from, to, copy in onMove(geometry.source(fromLane: from), geometry.source(fromLane: to), copy) },
             onDelete: { onDelete(geometry.source(fromLane: $0)) },
-            onEase: { time, preset in onEase(geometry.source(fromLane: time), preset) }
+            onEase: { time, preset in onEase(geometry.source(fromLane: time), preset) },
+            timelineTime: { geometry.timeline(fromLane: $0) }
         )
         .overlay(alignment: .leading) { hiddenCount(before, systemImage: "chevron.left") }
         .overlay(alignment: .trailing) { hiddenCount(after, systemImage: "chevron.right") }

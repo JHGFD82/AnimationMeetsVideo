@@ -142,6 +142,8 @@ struct EffectsPanel: View {
             }
         }
         .panelSurface(.base)
+        // Over the lanes while a keyframe on them is dragged.
+        .dragTimecodeReadout(frameRate: timeline?.frameRate ?? 0)
         .background(KeyPressMonitor(handler: handleKey))
         .focusedSceneValue(\.effectsEditActions, editActions)
         .alert("Save as Preset", isPresented: $presetSave.isPresent) {
