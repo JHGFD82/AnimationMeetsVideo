@@ -125,7 +125,7 @@ struct MotionDesignView: View {
 
     /// Space plays, M adds a marker under the playhead, H makes the
     /// selected point a hit, P edits its pace, E eases it, Delete removes
-    /// it, ← → move it (or the selected clip) a frame, ⇧ ten, N snaps,
+    /// it, ← → move it (or else the playhead) a frame, ⇧ ten, N snaps,
     /// Escape lets go, and ⌘= ⌘- ⌘0 zoom. Not while typing in a field.
     private func handleKey(_ event: NSEvent) -> Bool {
         if NSApp.keyWindow?.firstResponder is NSTextView { return false }
@@ -143,10 +143,10 @@ struct MotionDesignView: View {
         switch event.keyCode {
         case 123, 124:
             let frames = event.keyCode == 123 ? -step : step
+            // A selected clip stays put: the playhead moves. Its own frame
+            // earlier and later are in the sidebar and its VoiceOver actions.
             if session.selectedPoint != nil {
                 session.nudgeSelected(byFrames: frames)
-            } else if session.selectedPieceID != nil {
-                session.nudgeSelectedPiece(byFrames: frames)
             } else {
                 session.seek(to: session.playhead + Double(frames) * session.timeline.frameDuration.seconds)
             }

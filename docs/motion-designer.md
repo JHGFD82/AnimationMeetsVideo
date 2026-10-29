@@ -110,7 +110,7 @@ time graph and the music.
   let go) springs back with a small bounce, and a notice under the
   footage says it is held down to the beat and that making all its hits
   markers frees it; any click anywhere puts the notice away, and
-  VoiceOver announces it. Moving a held clip from the keyboard shows the
+  VoiceOver announces it. Moving a held clip a frame at a time shows the
   same notice. Whichever of its edges comes nearer something to snap to
   lands on it, to the nearest frame.
 - **The monitor**, at the top of the sidebar, is the editor's own viewer
@@ -132,8 +132,8 @@ time graph and the music.
   first, naming what it costs.
 - Keys: Space plays, M puts a marker under the playhead, H makes the
   selected point a hit, P edits its pace, E eases it, Delete removes it,
-  ← → move it (or the selected clip, or the playhead) a frame and ⇧ ten,
-  N turns snapping on and off as on the timeline, Escape lets
+  ← → move it (or else the playhead, even with a clip selected) a frame
+  and ⇧ ten, N turns snapping on and off as on the timeline, Escape lets
   go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the
   draft, ⌘Return is Done. Scrolling scrolls; ⌥ or ⌘ scrolling, or a
   pinch, zooms.
@@ -242,10 +242,11 @@ where other clips are.
   its footage goes, never past its outermost point or to under a frame,
   and stopping against a neighbour (`MotionRun.trim`). The sidebar and
   the clip's VoiceOver actions trim a frame at a time.
-- Clips can be **moved** in the designer: dragged along time, or moved
-  from the keyboard, which lengthens or shortens the gaps around them.
-  Unselected clips on the layer are shown but never move, and bound how
-  far a selected clip can go.
+- Clips can be **moved** in the designer: dragged along time, or a frame
+  at a time with the sidebar's buttons or the clip's VoiceOver actions,
+  which lengthens or shortens the gaps around them. Unselected clips on
+  the layer are shown but never move, and bound how far a selected clip
+  can go.
 - The view fits the run when it opens, and scrolls across the window,
   which grows as the run is moved or grown, so retiming or moving the
   first or last clip never runs out of room to show it. The view doesn't

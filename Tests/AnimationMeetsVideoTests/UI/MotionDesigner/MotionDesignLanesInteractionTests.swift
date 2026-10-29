@@ -87,4 +87,18 @@ struct MotionDesignLanesInteractionTests {
         #expect(session.playback.skimTime == nil)
     }
 
+    @Test func arrowsMoveThePlayheadNotTheSelectedClip() async throws {
+        let session = try session()
+        defer { session.end() }
+        let piece = session.run.pieces[0]
+        session.selectedPieceID = piece.id
+        let harness = EventHarness(MotionDesignView(session: session, onDone: {}, onCancel: {}), size: CGSize(width: 1100, height: 600))
+        try await harness.settle()
+
+        harness.key(code: 124, characters: "\u{F703}")
+        try await harness.settle()
+        #expect(abs(session.playhead - (2 + session.timeline.frameDuration.seconds)) < 1e-6)
+        #expect(session.run.pieces[0].span == piece.span)
+        #expect(session.selectedPieceID == piece.id)
+    }
 }
