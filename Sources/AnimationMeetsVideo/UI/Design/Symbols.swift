@@ -14,6 +14,12 @@ extension Design {
         static let loop = "repeat"
         /// The beat tick.
         static let tick = "metronome"
+        /// Showing a song's beat markers.
+        static let beats = "lines.measurement.vertical"
+        /// Snapping dragged edges and points to what's near.
+        static let snap = "arrow.right.and.line.vertical.and.arrow.left"
+        /// Skimming: the frame under the pointer shown as it moves.
+        static let skim = "cursorarrow.motionlines"
 
         static let zoomIn = "plus.magnifyingglass"
         static let zoomOut = "minus.magnifyingglass"

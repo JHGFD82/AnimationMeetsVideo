@@ -201,10 +201,10 @@ struct MotionDesignSidebar: View {
             if session.run.canMove(piece.id) {
                 HStack(spacing: Design.Space.close) {
                     Button { session.nudgeSelectedPiece(byFrames: -1) } label: { Image(systemName: "chevron.left") }
-                        .help("Move the clip a frame earlier (←)")
+                        .help("Move the clip a frame earlier")
                         .accessibilityLabel("Move the clip a frame earlier")
                     Button { session.nudgeSelectedPiece(byFrames: 1) } label: { Image(systemName: "chevron.right") }
-                        .help("Move the clip a frame later (→)")
+                        .help("Move the clip a frame later")
                         .accessibilityLabel("Move the clip a frame later")
                 }
                 Text("Drag the clip in the strip to move it; it stops at the clips beside it.")

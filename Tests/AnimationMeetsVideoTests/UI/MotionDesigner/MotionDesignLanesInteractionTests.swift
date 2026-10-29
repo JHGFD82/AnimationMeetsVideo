@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreMedia
 import SwiftUI
 import Testing
@@ -57,5 +58,47 @@ struct MotionDesignLanesInteractionTests {
         let added = try #require(session.selectedPoint)
         #expect(abs(added.time.seconds - 4) <= session.secondsPerPoint)
         #expect(abs(session.playhead - 4) <= session.secondsPerPoint)
+    }
+
+    @Test func hoveringSkimsWhileSkimmingIsOn() async throws {
+        let defaults = UserDefaults.standard
+        let remembered = defaults.object(forKey: Preferences.motionDesignerSkimming)
+        defer { defaults.set(remembered, forKey: Preferences.motionDesignerSkimming) }
+        let session = try session()
+        defer { session.end() }
+        // Skimming shows a frame only once the player has something to show.
+        session.playback.player.replaceCurrentItem(with: AVPlayerItem(asset: AVMutableComposition()))
+        session.skims = true
+        let harness = EventHarness(MotionDesignLanes(session: session), size: Self.size)
+        try await harness.settle()
+
+        // Over the graph at 4 s: the monitor shows 4 s, the playhead stays.
+        harness.mouse(.mouseMoved, at: CGPoint(x: onLine(session, at: 4).x, y: 150))
+        try await harness.settle()
+        let skimmed = try #require(session.playback.skimTime)
+        #expect(abs(skimmed.seconds - 4) <= session.timeline.frameDuration.seconds)
+        #expect(abs(session.playhead - 2) < 1e-6)
+
+        // Turned off, the skim ends and hovering shows nothing.
+        session.skims = false
+        #expect(session.playback.skimTime == nil)
+        harness.mouse(.mouseMoved, at: CGPoint(x: onLine(session, at: 5).x, y: 150))
+        try await harness.settle()
+        #expect(session.playback.skimTime == nil)
+    }
+
+    @Test func arrowsMoveThePlayheadNotTheSelectedClip() async throws {
+        let session = try session()
+        defer { session.end() }
+        let piece = session.run.pieces[0]
+        session.selectedPieceID = piece.id
+        let harness = EventHarness(MotionDesignView(session: session, onDone: {}, onCancel: {}), size: CGSize(width: 1100, height: 600))
+        try await harness.settle()
+
+        harness.key(code: 124, characters: "\u{F703}")
+        try await harness.settle()
+        #expect(abs(session.playhead - (2 + session.timeline.frameDuration.seconds)) < 1e-6)
+        #expect(session.run.pieces[0].span == piece.span)
+        #expect(session.selectedPieceID == piece.id)
     }
 }

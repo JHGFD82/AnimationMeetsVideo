@@ -314,7 +314,7 @@ struct TimelineView: View {
                         RecordPopover(recorder: recorder, onRecord: startRecording, onStop: stopRecording, error: recordError)
                     }
                     Toggle(isOn: $snapping) {
-                        Image(systemName: "arrow.right.and.line.vertical.and.arrow.left")
+                        Image(systemName: Design.Symbol.snap)
                     }
                     .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
                     .accessibilityLabel("Snapping")
