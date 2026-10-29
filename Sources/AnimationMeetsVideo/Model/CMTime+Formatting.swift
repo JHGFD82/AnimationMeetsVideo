@@ -41,4 +41,16 @@ extension CMTime {
         }
         return kept.joined(separator: ":")
     }
+
+    /// A distance moved, as a compact timecode with its sign: "+1:12",
+    /// "−12:05:00", or "±0:00" when it rounds to no frames. The sign is
+    /// taken after rounding to frames, so less than half a frame doesn't
+    /// read as a direction.
+    func signedCompactTimecode(frameRate: Double) -> String {
+        guard isNumeric, frameRate > 0 else { return "±0:00" }
+        let frames = Int((seconds * frameRate).rounded())
+        let magnitude = CMTime(seconds: Double(abs(frames)) / frameRate, preferredTimescale: 600_000)
+        let sign = frames > 0 ? "+" : frames < 0 ? "−" : "±"
+        return sign + magnitude.compactTimecode(frameRate: frameRate)
+    }
 }

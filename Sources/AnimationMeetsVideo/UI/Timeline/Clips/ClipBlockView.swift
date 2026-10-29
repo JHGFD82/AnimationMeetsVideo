@@ -83,6 +83,9 @@ struct ClipBlockView: View {
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
     /// Scrolls the timeline while a move or trim holds the pointer at an edge.
     @Environment(TimelineAutoScroll.self) private var autoScroll: TimelineAutoScroll?
+    /// The timecode over the pointer while the block, one of its edges or
+    /// a mark on it is dragged.
+    @Environment(DragTimecodeReadout.self) var readout: DragTimecodeReadout?
 
     /// How wide the trim handles are. They are centered on the clip's
     /// edges, so half of each is outside the block, where the timeline must
@@ -612,6 +615,7 @@ struct ClipBlockView: View {
             handlers.onDragging(false)
         }
         if isTrimming { isTrimming = false }
+        readout?.hide()
         sendSnapIndicator(nil)
         sendTrimPreview(nil)
         sendSlipDraft(nil, committing: false)
@@ -632,7 +636,7 @@ struct ClipBlockView: View {
         let onOwnLayer = NSEvent.modifierFlags.contains(.shift)
         let pointer = onOwnLayer ? CGPoint(x: value.location.x, y: value.startLocation.y) : value.location
         let translation = onOwnLayer ? CGSize(width: value.translation.width, height: 0) : value.translation
-        let preview = { previewMove(translation: translation, pointer: pointer, onOwnLayer: onOwnLayer) }
+        let preview = { previewMove(translation: translation, pointer: pointer, onOwnLayer: onOwnLayer, shownAt: value.location) }
         preview()
         let copying = CopyDragCursor.update()
         if isCopying != copying { isCopying = copying }
@@ -659,6 +663,7 @@ struct ClipBlockView: View {
         }
         isLifted = false
         handlers.onDragging(false)
+        readout?.hide()
         sendSnapIndicator(nil)
         let targetLayer = previewTarget?.layerID
         let copying = isCopying
@@ -688,9 +693,12 @@ struct ClipBlockView: View {
         drag.slipDelta = delta
         showPreview(slipped)
         sendSlipDraft(slipped, committing: false)
+        // How far the footage moved, as the clip's in point shows it.
+        readout?.showSlip(CMTimeSubtract(slipped.trimStart, model.clip.trimStart), pointer: value.location)
     }
 
     private func slipEnded() {
+        readout?.hide()
         let changed = preview.map { $0 != model.clip } ?? false
         sendSlipDraft(nil, committing: changed)
         if changed, let slipDelta = drag.slipDelta {
@@ -705,8 +713,9 @@ struct ClipBlockView: View {
     /// `pointer` in window coordinates, would put the clip, and keeps the
     /// block under the pointer. Counts what the timeline has scrolled
     /// under the drag. `onOwnLayer`, it doesn't go onto another layer, or
-    /// a new one.
-    private func previewMove(translation: CGSize, pointer: CGPoint, onOwnLayer: Bool) {
+    /// a new one. The timecode it lands at shows over `shownAt`, where the
+    /// pointer really is.
+    private func previewMove(translation: CGSize, pointer: CGPoint, onOwnLayer: Bool, shownAt: CGPoint) {
         let across = translation.width + (autoScroll?.scrolled ?? 0)
         var proposed = CMTimeAdd(model.clip.startOffset, timeDelta(across))
         let snapped = handlers.snapSpan(proposed, model.clip.placedDuration)
@@ -717,6 +726,7 @@ struct ClipBlockView: View {
         var moved = model.clip
         moved.startOffset = target?.start ?? model.clip.startOffset
         showPreview(moved)
+        readout?.show(moved.startOffset, from: model.clip.startOffset, pointer: shownAt)
         let elsewhere = target?.layerID == nil && target?.newLayer == nil ? nil : target
         if previewTarget != elsewhere { previewTarget = elsewhere }
         sendMovePreview(target)
@@ -810,8 +820,9 @@ struct ClipBlockView: View {
 
     // MARK: Trimming
 
-    /// A trim drag of `edge` moved by `translation` points: previews it.
-    private func trimChanged(_ edge: Edge, translation: CGFloat) {
+    /// A trim drag of `edge` moved by `translation` points, the pointer at
+    /// `pointer`: previews it.
+    private func trimChanged(_ edge: Edge, translation: CGFloat, pointer: CGPoint) {
         if !isTrimming { isTrimming = true }
         var delta = timeDelta(translation + (autoScroll?.scrolled ?? 0))
         let edgeTime = edge == .leading ? model.clip.startOffset : model.clip.endOffset
@@ -825,10 +836,15 @@ struct ClipBlockView: View {
         }
         showPreview(trimmed)
         sendTrimPreview(trimmed, frames: edge == .leading ? .first : .last)
+        switch edge {
+        case .leading: readout?.show(trimmed.startOffset, from: model.clip.startOffset, pointer: pointer)
+        case .trailing: readout?.show(trimmed.endOffset, from: model.clip.endOffset, pointer: pointer)
+        }
     }
 
     /// A trim drag ended: commits it, or selects the clip when it was a click.
     private func trimEnded(_ edge: Edge) {
+        readout?.hide()
         sendSnapIndicator(nil)
         sendTrimPreview(nil)
         if let preview, preview != model.clip {
@@ -863,9 +879,9 @@ struct ClipBlockView: View {
                             autoScroll?.begin()
                         }
                         guard !drag.isCancelledDrag else { return }
-                        trimChanged(edge, translation: value.translation.width)
+                        trimChanged(edge, translation: value.translation.width, pointer: value.location)
                         autoScroll?.track(pointerX: value.location.x) {
-                            if !drag.isCancelledDrag { trimChanged(edge, translation: value.translation.width) }
+                            if !drag.isCancelledDrag { trimChanged(edge, translation: value.translation.width, pointer: value.location) }
                         }
                     }
                     .onEnded { _ in

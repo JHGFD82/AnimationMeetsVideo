@@ -24,6 +24,8 @@ struct JoinedTransitionBridge: View {
     @State private var isDropTarget = false
     /// The joint as a side drag in progress leaves it.
     @State private var draft: (widen: CMTime, joint: TransitionJoint)?
+    /// The transition's length over the pointer while a side is dragged.
+    @Environment(DragTimecodeReadout.self) private var readout: DragTimecodeReadout?
 
     /// As for transitions on one clip, how wide it must be drawn before its
     /// curve can be edited in place.
@@ -111,9 +113,13 @@ struct JoinedTransitionBridge: View {
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
                         let widen = CMTime(seconds: Double(value.translation.width * outward / pixelsPerSecond), preferredTimescale: 600)
-                        if let joint = previewWiden(widen) { draft = (widen, joint) }
+                        if let joint = previewWiden(widen) {
+                            draft = (widen, joint)
+                            readout?.showLength(joint.transition.duration, from: self.joint.transition.duration, pointer: value.location)
+                        }
                     }
                     .onEnded { _ in
+                        readout?.hide()
                         if let draft { onWiden(draft.widen) }
                         draft = nil
                     }
@@ -148,6 +154,9 @@ struct TransitionFootageLane: View {
     static let height: CGFloat = 68
 
     @State private var draft: (edit: JointEdit, joint: TransitionJoint)?
+    /// The timecode over the pointer while the transition, an edge or the
+    /// cut is dragged.
+    @Environment(DragTimecodeReadout.self) private var readout: DragTimecodeReadout?
 
     private let rowHeight: CGFloat = 24
     private let handleWidth: CGFloat = 8
@@ -267,6 +276,20 @@ struct TransitionFootageLane: View {
             .help("Drag to change the transition's length, about its center")
     }
 
+    /// What the box over the pointer shows for `change` leaving `joint`:
+    /// the transition's start when it moves, the cut when it rolls, the
+    /// length when it widens, and how far the footage went in a slip.
+    private func showReading(of change: JointEdit, _ joint: TransitionJoint, pointer: CGPoint) {
+        switch change {
+        case .place: readout?.show(joint.start, from: self.joint.start, pointer: pointer)
+        case .roll: readout?.show(joint.cut, from: self.joint.cut, pointer: pointer)
+        case .widen: readout?.showLength(joint.transition.duration, from: self.joint.transition.duration, pointer: pointer)
+        case .slipOut: readout?.showSlip(CMTimeSubtract(joint.outgoing.trimStart, self.joint.outgoing.trimStart), pointer: pointer)
+        case .slipIn: readout?.showSlip(CMTimeSubtract(joint.incoming.trimStart, self.joint.incoming.trimStart), pointer: pointer)
+        case .soundCrossfade: break
+        }
+    }
+
     /// A drag measured in time, previewed through the project's rules and
     /// committed when it ends.
     private func drag(_ edit: @escaping (CMTime) -> JointEdit) -> some Gesture {
@@ -281,8 +304,10 @@ struct TransitionFootageLane: View {
                 case .slipIn: onTrimPreview(joint.incoming, .both)
                 case .roll, .place, .widen, .soundCrossfade: break
                 }
+                showReading(of: change, joint, pointer: value.location)
             }
             .onEnded { _ in
+                readout?.hide()
                 onTrimPreview(nil, .both)
                 if let draft { onCommit(draft.edit) }
                 draft = nil

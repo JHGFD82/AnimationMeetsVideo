@@ -84,9 +84,13 @@ extension ClipBlockView {
                         // Inward is longer for a way in, shorter for a way out.
                         let delta = timeDelta(edge == .leading ? value.translation.width : -value.translation.width)
                         let duration = handlers.snap(CMTimeAdd(transition.duration, delta))
-                        if duration > .zero { transitionDraft = (edge, duration) }
+                        if duration > .zero {
+                            transitionDraft = (edge, duration)
+                            readout?.showLength(duration, from: transition.duration, pointer: value.location)
+                        }
                     }
                     .onEnded { _ in
+                        readout?.hide()
                         if let transitionDraft { handlers.onSetTransitionDuration(edge, transitionDraft.duration) }
                         transitionDraft = nil
                     }
