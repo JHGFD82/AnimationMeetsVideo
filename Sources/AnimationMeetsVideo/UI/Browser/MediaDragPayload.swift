@@ -74,6 +74,12 @@ struct MediaDragPayload: Transferable, Equatable {
         return Self.prefix + String(decoding: data, as: UTF8.self)
     }
 
+    /// The payload as `onDrag` hands it over, as text, read back by
+    /// `loadTransferable` and `dropDestination` like `draggable`'s.
+    func itemProvider() -> NSItemProvider {
+        NSItemProvider(object: text as NSString)
+    }
+
     static var transferRepresentation: some TransferRepresentation {
         ProxyRepresentation(exporting: { $0.text }, importing: { text in
             guard let payload = MediaDragPayload(text: text) else { throw CocoaError(.coderInvalidValue) }

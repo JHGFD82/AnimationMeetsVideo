@@ -25,6 +25,18 @@ import Testing
         #expect(payload.pieces.map(\.isTimeline) == [true, false])
     }
 
+    /// What `onDrag` hands over loads back as the timeline's drop targets
+    /// load it.
+    @Test func itemProviderLoadsBackAsThePayload() async throws {
+        let pieces = [MediaPiece.timeline(UUID(), from: .zero, to: CMTime(value: 4, timescale: 1))]
+        let provider = MediaDragPayload(pieces: pieces).itemProvider()
+        #expect(provider.hasItemConformingToTypeIdentifier("public.text"))
+        let loaded: MediaDragPayload? = await withCheckedContinuation { continuation in
+            _ = provider.loadTransferable(type: MediaDragPayload.self) { continuation.resume(returning: try? $0.get()) }
+        }
+        #expect(loaded?.pieces == pieces)
+    }
+
     @Test func ordinaryTextIsNotAPayload() {
         #expect(MediaDragPayload(text: "hello") == nil)
         #expect(MediaDragPayload(text: "amv-media:{}") == nil)
