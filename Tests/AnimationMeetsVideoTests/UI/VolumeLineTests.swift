@@ -42,15 +42,15 @@ struct VolumeLineTests {
     }
 
     /// A hold keyframe steps straight up at the next keyframe.
-    @Test func aHoldStepsAtTheNextKeyframe() {
+    @Test func aHoldStepsAtTheNextKeyframe() throws {
         var held = Keyframe(time: seconds(0.2), value: -20.0)
         held.hold = true
         let volume = AnimatedValue(0.0, keyframes: [held, Keyframe(time: seconds(1), value: 0)])
         let points = VolumeLineView.points(of: volume, firstSeconds: 0, pixelsPerSecond: 100, width: 200)
-        let before = try? #require(points.last { $0.x < 100 })
-        let at = try? #require(points.first { $0.x >= 100 })
-        #expect(before?.level == -20)
-        #expect(at?.level == 0)
-        #expect((at?.x ?? 0) - (before?.x ?? 0) < 0.1)
+        let before = try #require(points.last { $0.x < 100 })
+        let at = try #require(points.first { $0.x >= 100 })
+        #expect(before.level == -20)
+        #expect(at.level == 0)
+        #expect(at.x - before.x < 0.1)
     }
 }

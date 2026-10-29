@@ -262,15 +262,15 @@ private let frame = CMTime(value: 1, timescale: 24)
         #expect(options.motionBlurSamples(wanted: 8) == 8)
     }
 
-    @Test func onlyPlayingFramesCountTowardTheLoad() {
+    @Test func onlyPlayingFramesCountTowardTheLoad() throws {
         let meter = RenderMeter()
         meter.record(renderSeconds: 1)
         #expect(meter.load == nil)
         meter.record(renderSeconds: 1.0 / 48, frameSeconds: 1.0 / 24)
         meter.record(renderSeconds: 1.0 / 12, frameSeconds: 1.0 / 24)
-        let load = try? #require(meter.load)
-        #expect(load?.frames == 2)
-        #expect(abs((load?.share ?? 0) - (0.5 + (2 - 0.5) * RenderMeter.loadWeight)) < 1e-9)
+        let load = try #require(meter.load)
+        #expect(load.frames == 2)
+        #expect(abs(load.share - (0.5 + (2 - 0.5) * RenderMeter.loadWeight)) < 1e-9)
         #expect(meter.drain().frames == 3)
     }
 }

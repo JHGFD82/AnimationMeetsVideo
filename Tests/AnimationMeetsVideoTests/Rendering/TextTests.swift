@@ -359,7 +359,7 @@ extension DrawingFixture {
         }
     }
 
-    @Test func aGlyphsProfileFollowsItsShape() {
+    @Test func aGlyphsProfileFollowsItsShape() throws {
         let font = CTFontCreateWithName(TextContent.defaultFontName as CFString, 100, nil)
         func glyph(_ letter: String) -> CGGlyph {
             var characters = Array(letter.utf16)
@@ -370,8 +370,9 @@ extension DrawingFixture {
         // An A is wider at its foot than its peak; an H's sides are straight.
         let a = OpticalKerning.profile(glyph("A"), font)
         let inked = a.left.indices.filter { a.left[$0] != nil }
-        let top = try? #require(inked.first), foot = try? #require(inked.last)
-        if let top, let foot, let topLeft = a.left[top], let footLeft = a.left[foot] { #expect(topLeft > footLeft + 0.1) }
+        let top = try #require(inked.first), foot = try #require(inked.last)
+        let topLeft = try #require(a.left[top]), footLeft = try #require(a.left[foot])
+        #expect(topLeft > footLeft + 0.1)
         let h = OpticalKerning.profile(glyph("H"), font)
         let lefts = h.left.compactMap { $0 }
         #expect((lefts.max() ?? 0) - (lefts.min() ?? 1) < 0.03)

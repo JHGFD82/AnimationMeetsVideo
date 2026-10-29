@@ -50,7 +50,7 @@ import Testing
 
     @Test func aPackageIsntMadeOverAnother() throws {
         defer { try? FileManager.default.removeItem(at: folder) }
-        try EffectPackageStore.makePackage(named: "My Glow", in: folder)
+        _ = try EffectPackageStore.makePackage(named: "My Glow", in: folder)
         #expect(throws: (any Error).self) { try EffectPackageStore.makePackage(named: "My Glow", in: folder) }
         #expect(throws: (any Error).self) { try EffectPackageStore.makePackage(named: "  ", in: folder) }
     }

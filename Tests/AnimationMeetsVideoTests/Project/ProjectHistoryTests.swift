@@ -66,9 +66,12 @@ private final class Harness {
     @Test func aQuietGestureIsOneStepAndDoesNotHoldTheViewer() {
         let h = Harness()
         h.edit { $0.name = "Before" }
-        var told = 0
+        // The notifications are posted on this thread, as the gesture
+        // begins and ends.
+        final class Count: @unchecked Sendable { var value = 0 }
+        let told = Count()
         let observers = [Notification.Name.valueGestureDidBegin, .valueGestureDidEnd].map {
-            NotificationCenter.default.addObserver(forName: $0, object: h.history, queue: nil) { _ in told += 1 }
+            NotificationCenter.default.addObserver(forName: $0, object: h.history, queue: nil) { _ in told.value += 1 }
         }
         defer { observers.forEach(NotificationCenter.default.removeObserver) }
         h.history.beginGesture(quietly: true)
@@ -76,7 +79,7 @@ private final class Harness {
         h.edit(after: 5) { $0.name = "B" }
         h.history.endGesture(h.project)
         h.closeEventGroup()
-        #expect(told == 0)
+        #expect(told.value == 0)
         h.undo()
         #expect(h.project.name == "Before")
     }
