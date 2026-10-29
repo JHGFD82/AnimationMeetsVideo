@@ -19,8 +19,7 @@ struct MotionRun: Equatable {
         case reversed
     }
 
-    /// Which edge of a clip.
-    enum Edge { case start, end }
+    typealias Edge = ClipTimeMap.Edge
 
     /// One clip of the run.
     struct Piece: Identifiable, Equatable {
@@ -29,7 +28,10 @@ struct MotionRun: Equatable {
         /// Its points, and the footage it plays (`trimStart` to `trimEnd`).
         var map: ClipTimeMap
         /// Where the clip starts while it has no points to place it.
-        var start: CMTime
+        var start: CMTime {
+            get { map.origin }
+            set { map.origin = newValue }
+        }
         /// The footage its trim may reach, in source time: its scene (or the
         /// scenes it already spans), or the whole file.
         let footage: CMTimeRange
@@ -55,7 +57,7 @@ struct MotionRun: Equatable {
             drafted.trimEnd = map.trimEnd
             if let written = map.writtenSpeed() {
                 drafted.time.speed = written.speed
-                drafted.time.design = MotionDesign(map.points, speed: written.speed)
+                drafted.time.design = MotionDesign(map, speed: written.speed)
                 drafted.startOffset = written.start
             } else {
                 drafted.startOffset = start
@@ -104,7 +106,7 @@ struct MotionRun: Equatable {
                 let trim = CMTimeRange(start: clip.trimStart, end: clip.trimEnd)
                 let file = CMTimeRange(start: .zero, end: project.sourceDuration(for: clip.source) ?? clip.trimEnd)
                 return Piece(
-                    clip: clip, map: ClipTimeMap(reading: clip, frameDuration: frame), start: clip.startOffset,
+                    clip: clip, map: ClipTimeMap(reading: clip, frameDuration: frame),
                     footage: (footage(clip) ?? file).union(trim), given: trim
                 )
             },
@@ -271,6 +273,12 @@ struct MotionRun: Equatable {
         edit(p, keepingFootage: true) { $0.setHandle(side, of: id, to: ease, alone: alone) }
     }
 
+    /// Sets the handle of a piece's edge keyframe (`ClipTimeMap.setEdgeHandle`).
+    mutating func setEdgeHandle(_ edge: Edge, ofPiece id: UUID, to ease: KeyframeEase?) {
+        guard let p = index(of: id) else { return }
+        edit(p, keepingFootage: true) { $0.setEdgeHandle(edge, to: ease) }
+    }
+
     /// Keeps a point's handles in line or lets them part (`ClipTimeMap.setSmooth`).
     mutating func setSmooth(_ smooth: Bool, ofPoint id: UUID) {
         guard let (p, _) = piece(holdingPoint: id) else { return }
@@ -298,7 +306,6 @@ struct MotionRun: Equatable {
             var copy = original
             let shift = CMTimeMultiply(frameDuration, multiplier: Int32(frames < 0 ? -count : count))
             copy.pieces[p].map.shift(by: shift)
-            copy.pieces[p].start = CMTimeAdd(copy.pieces[p].start, shift)
             copy.pieces[p].isEdited = true
             return copy
         }

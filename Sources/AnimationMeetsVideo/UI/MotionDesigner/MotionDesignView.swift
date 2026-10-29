@@ -176,7 +176,12 @@ struct MotionDesignView: View {
         case "p": if session.selectedPoint != nil { session.focusesPace = true }
         case "e":
             // Easy Ease, or Linear again, as F9 eases a keyframe.
-            if let point = session.selectedPoint { session.setEase(point.eased ? .linear : .easyEase, ofPoint: point.id) }
+            if let point = session.selectedPoint {
+                session.setEase(point.eased ? .linear : .easyEase, ofPoint: point.id)
+            } else if let key = session.selectedEdge, session.selectedEdgeMap?.canEase(key.edge) == true {
+                // An edge keyframe's one handle, flat, or gone again.
+                session.setSelectedEdgeHandle(session.selectedEdgeEase == nil ? .easy : nil)
+            }
         default: return false
         }
         return true

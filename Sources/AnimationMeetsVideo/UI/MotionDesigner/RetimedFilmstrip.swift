@@ -44,7 +44,7 @@ struct RetimedFilmstrip: View {
         let x0 = session.x(of: drafted.startOffset.seconds), x1 = session.x(of: drafted.endOffset.seconds)
         let info = session.project.resolvedInfo(for: piece.clip.source)
         let tone = Design.ClipTone.of(info, streams: piece.clip.streams).color
-        let isSelected = session.selectedPieceID == piece.id && session.selectedPointID == nil
+        let isSelected = session.selectedPieceID == piece.id && session.selectedPointID == nil && session.selectedEdge == nil
         if x1 > 0, x0 < width {
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: Design.Radius.chip)
@@ -81,7 +81,7 @@ struct RetimedFilmstrip: View {
             .gesture(moveGesture(piece))
             .onTapGesture {
                 session.selectedPieceID = piece.id
-                session.selectedPointID = nil
+                session.select(point: nil)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(info?.name ?? "Clip"), clip")
@@ -161,7 +161,7 @@ struct RetimedFilmstrip: View {
             .highPriorityGesture(DragGesture(minimumDistance: 1)
                 .onChanged { drag in
                     session.selectedPieceID = piece.id
-                    session.selectedPointID = nil
+                    session.select(point: nil)
                     session.beginDragIfNeeded()
                     let from = (edge == .start ? piece.span.start : piece.span.end).seconds
                     let target = from + Double(drag.translation.width) * session.secondsPerPoint
@@ -175,9 +175,9 @@ struct RetimedFilmstrip: View {
     private func moveGesture(_ piece: MotionRun.Piece) -> some Gesture {
         DragGesture(minimumDistance: 3)
             .onChanged { drag in
-                if session.selectedPieceID != piece.id || session.selectedPointID != nil {
+                if session.selectedPieceID != piece.id || session.selectedPointID != nil || session.selectedEdge != nil {
                     session.selectedPieceID = piece.id
-                    session.selectedPointID = nil
+                    session.select(point: nil)
                 }
                 guard session.run.canMove(piece.id) else {
                     // Held by a hit: it gives a little, then springs back.

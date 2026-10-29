@@ -263,6 +263,31 @@ Out, a tenth of the stretch at a time, and Faster and Slower, a quarter
 at a time), do the same from the keyboard. Speeds are held to what Time
 allows (1% to 10000%) where they are written.
 
+### Edge keyframes
+
+Each clip shows a keyframe on its first and last frames from the moment
+the designer opens, points or not (`ClipTimeMap.hasEdgeKeyframe`); a
+point on the very frame stands in for it. They stay where they are:
+dragging one only says so. They start with no handle, and
+**Option-dragging** one pulls out its handle, which only ever reaches
+into the clip: the first frame has an Ease Out and never an Ease In, the
+last an Ease In and never an Ease Out, so no handle reaches past the
+clip's edge. The handle bends the open end it reaches into (on a clip
+with no points, the whole clip, at the speed it played at), and easing
+never moves the edge. Dragged back onto its keyframe, it goes.
+
+- The last frame after a last pace marker has no handle: the pace holds
+  its speed straight to the clip's end (`ClipTimeMap.canEase(_:)`).
+- Selected, the sidebar shows the handle's reach and speed, **Add Ease
+  Out/In Handle** and **Remove Handle**; E adds it flat and takes it away
+  again, and Delete takes it away. VoiceOver has each edge as an element
+  with the same actions as a point's handle.
+- The handles are kept on the clip with its points (`startEase`,
+  `endEase` in `time.design`). A clip with no points is only written
+  once one has a handle. Cancel puts back what the clip had when the
+  designer opened, so handles pulled out then go and ones it opened with
+  stay.
+
 ### Beat markers and snapping
 
 The song's beats are drawn on the graph and the music lane, thinned by

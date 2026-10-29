@@ -8,7 +8,8 @@ import Foundation
 extension ClipTimeMap {
     /// The points a forward clip plays. The designer's own points, kept on
     /// the clip (`ClipTime.design`) while its speed is what they wrote, come
-    /// back as they were, hits and eases included, where the clip now plays
+    /// back as they were, hits and eases included (the clip's edges' too),
+    /// where the clip now plays
     /// them. Otherwise its speed keyframes make them: a marker for each
     /// keyframe it plays, where it plays now. A keyframe after a hold is a
     /// step in speed, so a pace marker at its speed, as is the second of two
@@ -24,7 +25,10 @@ extension ClipTimeMap {
                     easeIn: point.easeIn, easeOut: point.easeOut, smooth: point.smooth
                 )
             }
-            self.init(trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points, restingSpeed: resting)
+            self.init(
+                trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points, restingSpeed: resting,
+                origin: clip.startOffset, startEase: design.startEase, endEase: design.endEase
+            )
             return
         }
         let keyframes = clip.time.speed.keyframes
@@ -44,7 +48,7 @@ extension ClipTimeMap {
             }
             points.append(TimePoint(source: keyframe.time, time: clip.timelineTime(forSourceTime: keyframe.time), kind: kind))
         }
-        self.init(trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points, restingSpeed: resting)
+        self.init(trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points, restingSpeed: resting, origin: clip.startOffset)
     }
 
     /// The speed keyframes that play the clip along the map, and where it
@@ -54,9 +58,10 @@ extension ClipTimeMap {
     /// plays over that time, so every step, and every point, lands on the
     /// line. Where the curve slows past what Time allows (1%) the steps
     /// beside it make up for it, so the stretch still keeps its length.
-    /// Keyframes go only where the speed changes.
+    /// Keyframes go only where the speed changes. A clip with no points
+    /// is written only once an edge keyframe has a handle.
     func writtenSpeed() -> (speed: AnimatedValue<Double>, start: CMTime)? {
-        guard let first = points.first else { return nil }
+        guard !points.isEmpty || startEase != nil || endEase != nil else { return nil }
         let stretches = stretches
         var keyframes: [Keyframe<Double>] = []
         // Rounded to the nearest tick: `CMTime(seconds:)` cuts a time a hair
@@ -73,10 +78,10 @@ extension ClipTimeMap {
         }
         if keyframes.isEmpty {
             // A lone point at the clip's only frame: it plays at its speed.
-            keyframes.append(Keyframe(time: first.source, value: Self.clamped(speedAfterLast)))
+            keyframes.append(Keyframe(time: points.first?.source ?? trimStart, value: Self.clamped(speedAfterLast)))
         }
         let curve = Self.simplified(keyframes)
-        let start = stretches.first?.start.time ?? first.time.seconds
+        let start = stretches.first?.start.time ?? points.first?.time.seconds ?? origin.seconds
         return (curve, at(start))
     }
 

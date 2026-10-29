@@ -18,6 +18,8 @@ struct MotionDesignSidebar: View {
                     MotionDesignMonitor(session: session)
                     if let point = session.selectedPoint {
                         pointControls(point)
+                    } else if let key = session.selectedEdge, let map = session.selectedEdgeMap {
+                        edgeControls(key, map: map)
                     } else if let id = session.selectedPieceID, let piece = session.run.pieces.first(id: id) {
                         pieceControls(piece)
                     } else {
@@ -75,6 +77,79 @@ struct MotionDesignSidebar: View {
         .font(Design.Typeface.label)
         .foregroundStyle(Design.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: An edge keyframe
+
+    /// The keyframe on a clip's first or last frame: it stays put, and has
+    /// only the handle that reaches into the clip, pulled out here or by
+    /// Option-dragging it.
+    private func edgeControls(_ key: MotionDesignSession.EdgeKey, map: ClipTimeMap) -> some View {
+        let name = MotionDesignSession.edgeHandleName(key.edge)
+        let frame = key.edge == .start ? map.trimStart : map.trimEnd
+        return VStack(alignment: .leading, spacing: Design.Space.step) {
+            heading(key.edge == .start ? "Clip's first frame" : "Clip's last frame")
+            reading("Frame", session.timecode(frame))
+            Text(key.edge == .start
+                 ? "Stays at the clip's start. Its handle eases the footage out into the clip."
+                 : "Stays at the clip's end. Its handle eases the footage in to it.")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            if !map.canEase(key.edge) {
+                Text(MotionDesignSession.edgeHeldByPace)
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let ease = map.edgeEase(key.edge) {
+                edgeHandleControls(name, ease: ease, speed: map.speed(at: key.edge))
+                Button("Remove Handle") { session.setSelectedEdgeHandle(nil) }
+                    .help("Make this edge linear again (Delete)")
+            } else {
+                Button("Add \(name) Handle") { session.setSelectedEdgeHandle(.easy) }
+                    .help("Pull out this edge's handle, slowing the footage at the clip's \(key.edge == .start ? "start" : "end") (E, or Option-drag the keyframe)")
+            }
+        }
+    }
+
+    /// An edge keyframe's handle, as `handleControls` shows a point's.
+    private func edgeHandleControls(_ label: String, ease: KeyframeEase, speed: Double) -> some View {
+        let percent = "\(Int((ease.influence * 100).rounded()))%"
+        return VStack(alignment: .leading, spacing: Design.Space.close) {
+            HStack(spacing: Design.Space.close) {
+                Text(label)
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                    .frame(width: 58, alignment: .leading)
+                Slider(
+                    value: Binding(get: { ease.influence }, set: { reach in
+                        session.setSelectedEdgeHandle(KeyframeEase(influence: reach, speed: ease.speed))
+                    }),
+                    in: 0.05...1
+                ) { editing in
+                    if editing { session.beginDragIfNeeded() } else { session.endDrag("Shape \(label)") }
+                }
+                .accessibilityLabel("\(label) reach")
+                .accessibilityValue("\(percent) of the stretch")
+                Text(percent)
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textPrimary)
+                    .frame(width: 34, alignment: .trailing)
+                    .accessibilityHidden(true)
+            }
+            .help("How far into the clip this edge's handle reaches")
+            HStack(spacing: Design.Space.close) {
+                Text("Speed")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                    .frame(width: 58, alignment: .leading)
+                NumericField(value: speed, unit: "%", fractionDigits: 1, accessibilityName: "\(label) speed at this edge in percent") { typed in
+                    session.setSelectedEdgeSpeed(to: typed)
+                }
+                .help("The speed the footage has at this edge, as tilting the handle sets it")
+                Spacer(minLength: 0)
+            }
+        }
     }
 
     // MARK: A point
