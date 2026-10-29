@@ -113,4 +113,21 @@ struct MotionDesignLanesInteractionTests {
         #expect(session.run.pieces[0].span == piece.span)
         #expect(session.selectedPieceID == piece.id)
     }
+
+    @Test func commandZUndoesAndShiftCommandZRedoes() async throws {
+        let session = try session()
+        defer { session.end() }
+        let opened = session.run
+        session.addMarker(toPiece: session.run.pieces[0].id, atTime: 4)
+        let marked = session.run
+        let harness = EventHarness(MotionDesignView(session: session, onDone: {}, onCancel: {}), size: CGSize(width: 1100, height: 600))
+        try await harness.settle()
+
+        harness.key(code: 6, characters: "z", flags: .command)
+        try await harness.settle()
+        #expect(session.run == opened)
+        harness.key(code: 6, characters: "z", flags: [.command, .shift])
+        try await harness.settle()
+        #expect(session.run == marked)
+    }
 }
