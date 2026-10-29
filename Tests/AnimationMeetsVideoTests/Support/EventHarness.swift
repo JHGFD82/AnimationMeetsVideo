@@ -38,9 +38,9 @@ final class EventHarness {
         NSApp.sendEvent(event)
     }
 
-    func key(code: UInt16, characters: String) {
+    func key(code: UInt16, characters: String, flags: NSEvent.ModifierFlags = []) {
         guard let event = NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters,
             isARepeat: false, keyCode: code
         ) else { return }
