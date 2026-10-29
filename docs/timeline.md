@@ -539,11 +539,15 @@ functions commit what they return.
   ("+1:12", "−0:05", "±0:00" back where it began)
   (`DragTimecodeReadout`). For a moved clip that is its start; for a
   trim, the edge being dragged; for a keyframe (on a volume lane or in
-  the effects panel), a section or either of its edges, a transition's
-  inner side, or a clip's music point, that mark. It is always the
-  timeline's time, snapped and placed as the drop will be, and goes away
-  when the drag ends or Escape cancels it. Slipping shows none: the clip
-  stays where it is on the timeline.
+  the effects panel), a section or either of its edges, or a clip's music
+  point, that mark; in an expanded transition, its start when it is moved
+  and the cut when it is rolled. It is always the timeline's time,
+  snapped and placed as the drop will be, and goes away when the drag
+  ends or Escape cancels it. Changing a transition's length (on a clip,
+  joining two, or expanded) shows its whole length instead, with how much
+  it grew or shrank. A slip, of a clip or in an expanded transition,
+  shows only how far the footage moved, as its in point changes: dragging
+  right brings earlier frames in, so it reads negative.
 - **Shift** while moving keeps the clip on its own layer: it only moves
   in time, wherever the pointer goes up or down.
 - **Escape** while moving, trimming or slipping cancels: the clip springs

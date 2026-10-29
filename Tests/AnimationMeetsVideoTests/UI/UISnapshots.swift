@@ -1154,18 +1154,21 @@ struct UISnapshots {
     }
 
     /// The box over the pointer while something on the timeline is
-    /// dragged: moved later, earlier, and back where it started.
+    /// dragged: moved later, earlier, and back where it started; a
+    /// transition lengthened; a slip.
     @Test func dragTimecodeLabel() throws {
         try SnapshotSupport.render(
             VStack(alignment: .leading, spacing: 12) {
-                DragTimecodeLabel(time: CMTime(value: 349, timescale: 24), moved: CMTime(value: 36, timescale: 24), frameRate: 24)
-                DragTimecodeLabel(time: CMTime(value: 7_225, timescale: 24), moved: CMTime(value: -1_441, timescale: 24), frameRate: 24)
-                DragTimecodeLabel(time: CMTime(value: 48, timescale: 24), moved: .zero, frameRate: 24)
+                DragTimecodeLabel(value: .time(CMTime(value: 349, timescale: 24)), moved: CMTime(value: 36, timescale: 24), frameRate: 24)
+                DragTimecodeLabel(value: .time(CMTime(value: 7_225, timescale: 24)), moved: CMTime(value: -1_441, timescale: 24), frameRate: 24)
+                DragTimecodeLabel(value: .time(CMTime(value: 48, timescale: 24)), moved: .zero, frameRate: 24)
+                DragTimecodeLabel(value: .length(CMTime(value: 30, timescale: 24)), moved: CMTime(value: 6, timescale: 24), frameRate: 24)
+                DragTimecodeLabel(value: nil, moved: CMTime(value: -17, timescale: 24), frameRate: 24)
             }
             .padding(20)
             .background(Design.Surface.sunken.color)
             .preferredColorScheme(.dark),
-            "drag-timecode-label", size: CGSize(width: 260, height: 140)
+            "drag-timecode-label", size: CGSize(width: 260, height: 210)
         )
     }
 

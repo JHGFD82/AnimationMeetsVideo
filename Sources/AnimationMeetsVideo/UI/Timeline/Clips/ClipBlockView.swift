@@ -693,9 +693,12 @@ struct ClipBlockView: View {
         drag.slipDelta = delta
         showPreview(slipped)
         sendSlipDraft(slipped, committing: false)
+        // How far the footage moved, as the clip's in point shows it.
+        readout?.showSlip(CMTimeSubtract(slipped.trimStart, model.clip.trimStart), pointer: value.location)
     }
 
     private func slipEnded() {
+        readout?.hide()
         let changed = preview.map { $0 != model.clip } ?? false
         sendSlipDraft(nil, committing: changed)
         if changed, let slipDelta = drag.slipDelta {

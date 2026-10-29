@@ -86,7 +86,7 @@ extension ClipBlockView {
                         let duration = handlers.snap(CMTimeAdd(transition.duration, delta))
                         if duration > .zero {
                             transitionDraft = (edge, duration)
-                            readout?.show(innerSide(edge, duration: duration), from: innerSide(edge, duration: transition.duration), pointer: value.location)
+                            readout?.showLength(duration, from: transition.duration, pointer: value.location)
                         }
                     }
                     .onEnded { _ in
@@ -97,15 +97,6 @@ extension ClipBlockView {
             )
             .pointerStyle(.columnResize)
             .help("Drag to change the transition's length")
-    }
-
-    /// Where the inner side of a transition `duration` long on `edge` is,
-    /// in the timeline's time.
-    private func innerSide(_ edge: TransitionEdge, duration: CMTime) -> CMTime {
-        switch edge {
-        case .leading: CMTimeAdd(model.clip.startOffset, duration)
-        case .trailing: CMTimeSubtract(model.clip.endOffset, duration)
-        }
     }
 }
 

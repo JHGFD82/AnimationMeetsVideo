@@ -59,10 +59,22 @@ struct ClipBlockInteractionTests {
             trimmed.trimEnd = end
             return trimmed
         }
+        handlers.resolveSlip = { delta in
+            var slipped = Block.clip
+            slipped.trimStart = CMTimeAdd(slipped.trimStart, delta)
+            slipped.trimEnd = CMTimeAdd(slipped.trimEnd, delta)
+            return slipped
+        }
         return EventHarness(Block(tool: tool, box: LiveClipHandlers(handlers), readout: readout), size: CGSize(width: 400, height: 40))
     }
 
     private let middle = CGPoint(x: 100, y: 20)
+
+    /// The time a reading shows, in seconds; NaN for anything else.
+    private static func seconds(_ value: DragTimecodeReadout.Value?) -> Double {
+        guard case .time(let time) = value else { return .nan }
+        return time.seconds
+    }
 
     @Test func aClickSelectsWithTheArrowAndCutsWithTheBlade() async throws {
         let calls = Calls()
@@ -98,7 +110,7 @@ struct ClipBlockInteractionTests {
         let harness = harness(Tool(.arrow), Calls(), readout: readout)
         try await harness.press(at: middle, dragTo: CGPoint(x: 150, y: 20))
         let reading = try #require(readout.reading)
-        #expect(abs(reading.time.seconds - 1) < 0.05)
+        #expect(abs(Self.seconds(reading.value) - 1) < 0.05)
         #expect(abs(reading.moved.seconds - 1) < 0.05)
         #expect(abs(reading.pointer.x - 150) < 1)
         harness.escape()
@@ -116,7 +128,21 @@ struct ClipBlockInteractionTests {
         let harness = harness(Tool(.arrow), Calls(), readout: readout)
         try await harness.press(at: CGPoint(x: 200, y: 20), dragTo: CGPoint(x: 150, y: 20))
         let reading = try #require(readout.reading)
-        #expect(abs(reading.time.seconds - 3) < 0.05)
+        #expect(abs(Self.seconds(reading.value) - 3) < 0.05)
+        #expect(abs(reading.moved.seconds + 1) < 0.05)
+        harness.mouse(.leftMouseUp, at: CGPoint(x: 150, y: 20))
+        try await harness.settle(250)
+        #expect(readout.reading == nil)
+    }
+
+    /// Slipping shows only how far the footage moved: dragging right
+    /// brings earlier frames in.
+    @Test func aSlipShowsOnlyItsChange() async throws {
+        let readout = DragTimecodeReadout()
+        let harness = harness(Tool(.slip), Calls(), readout: readout)
+        try await harness.press(at: middle, dragTo: CGPoint(x: 150, y: 20))
+        let reading = try #require(readout.reading)
+        #expect(reading.value == nil)
         #expect(abs(reading.moved.seconds + 1) < 0.05)
         harness.mouse(.leftMouseUp, at: CGPoint(x: 150, y: 20))
         try await harness.settle(250)
