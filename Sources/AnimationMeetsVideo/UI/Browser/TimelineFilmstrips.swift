@@ -194,7 +194,7 @@ struct TimelineFilmstrips: View {
         // Dragged by its name, as from the list: onto the timeline, or onto
         // an effect that takes an input. Inside the press below, whose drag
         // gesture would otherwise take the mouse first.
-        .draggable(TimelinesList.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
+        .onDrag { TimelinesList.dragItem(from: timeline.id, picked: picked, order: order, in: project) }
         .onMouseDown { clicks in
             focused = true
             cursor = timeline.id

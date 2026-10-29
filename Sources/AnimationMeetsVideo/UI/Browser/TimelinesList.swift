@@ -271,6 +271,13 @@ struct TimelinesList: View {
         return MediaDragPayload.beginDrag(pieces)
     }
 
+    /// `dragPayload` for `onDrag`, whose closure runs as the drag begins.
+    /// `draggable`'s payload can wait for the drop (in a List it does), and
+    /// until it is made the drag isn't noted, so the timeline refuses it.
+    static func dragItem(from id: UUID, picked: BrowserSelection<UUID>, order: [UUID], in project: EditingProject) -> NSItemProvider {
+        dragPayload(from: id, picked: picked, order: order, in: project).itemProvider()
+    }
+
     /// What a menu on `id` acts on: everything selected when it is, in
     /// browser order, otherwise just it.
     private func targets(of id: UUID, in order: [UUID]) -> [UUID] {
@@ -374,7 +381,7 @@ struct TimelinesList: View {
         // Inside the press below: on the outside, the press's drag gesture
         // takes the mouse first and the timeline never starts a drag.
         .contentShape(Rectangle())
-        .draggable(Self.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
+        .onDrag { Self.dragItem(from: timeline.id, picked: picked, order: order, in: project) }
         // Other timelines dropped on it go into it.
         .timelineDropTarget(TimelineDropPart(timelineID: timeline.id, part: 0), project: project, hovered: $dropHovered, onDrop: onEmbedInto)
         // On the press, with the system's click count and keys: a tap
