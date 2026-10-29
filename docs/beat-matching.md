@@ -395,7 +395,8 @@ Settled, with the reasons, so they aren't proposed again:
    line with tips under it, then the controls in labelled groups. Each
    command shows its key as a keycap rather than in its name. Start Over,
    Undo, Redo, Cancel and Confirm (Continue while drawing) sit in a footer
-   that doesn't scroll. Filling a section selects the next to mark without
+   that doesn't scroll. The Sections step, once done, goes back to
+   drawing when clicked. Filling a section selects the next to mark without
    scrolling the view. Resizing the
    panel keeps the same stretch of
    song in view. The waveform is drawn to the song's loudest sample and
@@ -429,6 +430,12 @@ Settled, with the reasons, so they aren't proposed again:
    and ⇧⌘Z undo and redo, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),
    ↑ ↓ select the previous and next beat, Delete, L loops, Return fills,
-   ⌘= ⌘- ⌘0 zoom, ⌘C and ⌘V copy and paste a consistent section's tempo. Not yet tried on screen: drag feel, the dimming, and
+   ⌘Return confirms (continues while drawing), ⌘= ⌘- ⌘0 zoom, ⌘C and ⌘V
+   copy and paste a consistent section's tempo. A key acts only when its
+   button would (F, [ and ] only while drawing; L with a beat selected),
+   and otherwise goes on to the window; M while marking with no section
+   to mark says why in the sidebar. A typed tempo outside the range
+   doubling and halving reach is explained there too. If the song can't
+   be read, the waveform's place offers Try Again. Not yet tried on screen: drag feel, the dimming, and
    focus moving between the panel and the editor.
 6. Timeline thinning by measures, and the Music-only picker. **Built.**

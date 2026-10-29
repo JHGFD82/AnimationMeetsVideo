@@ -115,6 +115,8 @@ final class BeatMatchSession: SecondsViewport {
     @ObservationIgnored private var songEnd: CMTime?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
     @ObservationIgnored private var loading: Task<Void, Never>?
+    /// The song's file, kept to read it again after a failure.
+    @ObservationIgnored private let url: URL
     /// The fill running off the main thread, which an edit to the draft
     /// cancels, since its result would replace the edit.
     @ObservationIgnored private var filling: Task<(map: BeatMap, report: BeatFitting.FillReport), Error>?
@@ -132,6 +134,7 @@ final class BeatMatchSession: SecondsViewport {
     init(asset: MediaClip, url: URL) {
         assetID = asset.id
         assetName = asset.name
+        self.url = url
         duration = asset.originalDuration ?? asset.duration
         alignment = asset.alignmentOffset
         map = asset.beatMap
@@ -156,7 +159,13 @@ final class BeatMatchSession: SecondsViewport {
             Task { @MainActor in self?.playingChanged(playing) }
         }
         refreshTicks()
-        loading = Task { [weak self] in
+        load()
+    }
+
+    /// Reads the song's tracks for the player, then its samples for the
+    /// waveform and fills.
+    private func load() {
+        loading = Task { [weak self, url, alignment] in
             do {
                 let (song, end) = try await Self.audioOnly(url: url)
                 // Reading tracks doesn't stop when the session ends.
@@ -165,7 +174,7 @@ final class BeatMatchSession: SecondsViewport {
                 self?.player.replaceCurrentItem(with: AVPlayerItem(asset: song))
                 // Put where it was put while the tracks were read.
                 if let self, playhead > 0 { seek(to: playhead) }
-                let audio = try await BeatMatchAudio.load(url: url, alignment: asset.alignmentOffset) { value in
+                let audio = try await BeatMatchAudio.load(url: url, alignment: alignment) { value in
                     Task { @MainActor in self?.loadProgress = value }
                 }
                 self?.audio = audio
@@ -174,6 +183,15 @@ final class BeatMatchSession: SecondsViewport {
                 self?.loadError = error.localizedDescription
             }
         }
+    }
+
+    /// Reads the song again, after reading it failed.
+    func reload() {
+        guard loadError != nil else { return }
+        loading?.cancel()
+        loadError = nil
+        loadProgress = 0
+        load()
     }
 
     /// Stops playing and reading; the session is done with.
@@ -447,6 +465,18 @@ final class BeatMatchSession: SecondsViewport {
         return 60 / gap
     }
 
+    /// Whether the selected section can be filled (or reanalyzed) now: a
+    /// consistent one once it has two anchors, or a ramp, with the song
+    /// read and no fill running.
+    var canFillSelected: Bool {
+        guard step == .mark, let section = selectedSection, audio != nil, !isFilling else { return false }
+        switch section.kind {
+        case .consistent: return section.pinnedBeats.count >= 2
+        case .ramp: return true
+        case .none: return false
+        }
+    }
+
     /// Fills (or reanalyzes) the selected section, at `tempo` if given.
     func fillSelected(tempo: Double? = nil) {
         guard let id = selectedSectionID else { return }
@@ -485,6 +515,12 @@ final class BeatMatchSession: SecondsViewport {
                 message = Self.describe(error)
             }
         }
+    }
+
+    /// Shows `text` as `message` until the next edit: why a key did
+    /// nothing, or what was wrong with a typed tempo.
+    func explain(_ text: String) {
+        message = text
     }
 
     /// A failure as the panel shows it: what went wrong, then what to do.
