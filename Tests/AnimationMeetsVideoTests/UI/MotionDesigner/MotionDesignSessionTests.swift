@@ -57,6 +57,46 @@ import Testing
         #expect(placed() == clip)
     }
 
+    @Test func edgeKeyframesAreThereOnOpeningAndGoWithTheDraft() throws {
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        var applied: [EditingProject] = []
+        session.onDraftChange = { applied.append($0) }
+        func placed() -> TimelineClip? { applied.last?.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip }
+
+        // A clip with no points opens with both, without handles, and
+        // changes nothing until one is pulled out.
+        let map = session.run.pieces[0].map
+        #expect(map.hasEdgeKeyframe(.start) && map.hasEdgeKeyframe(.end))
+        #expect(map.edgeEase(.start) == nil && map.edgeEase(.end) == nil)
+        #expect(!session.isChanged)
+
+        session.select(edge: .init(piece: clip.id, edge: .start))
+        session.setSelectedEdgeHandle(.easy)
+        let eased = try #require(placed())
+        #expect(eased.time.speed.isAnimated)
+        #expect(eased.time.design?.startEase == .easy && eased.time.design?.endEase == nil)
+        // Its edges stay where they were.
+        #expect(abs(eased.startOffset.seconds - 2) < 1e-4 && abs(eased.endOffset.seconds - 6) < 1e-4)
+
+        // Reopened on it, the handle is still there; what was there when it
+        // opened is what Cancel puts back.
+        var saved = project
+        saved.timelines[0].layers[0].clips[0] = eased
+        let again = try MotionRun.opening([clip.id], in: saved.rootTimelineID, of: saved).get()
+        #expect(again.pieces[0].map.edgeEase(.start) == .easy)
+        let reopened = MotionDesignSession(run: again, project: saved, playback: PlaybackModel())
+        defer { reopened.end() }
+        reopened.select(edge: .init(piece: clip.id, edge: .start))
+        reopened.deleteSelected()
+        #expect(reopened.run.pieces[0].map.edgeEase(.start) == nil)
+        #expect(reopened.project.clipAndLayer(clip.id, in: saved.rootTimelineID)?.clip.time.design?.startEase == .easy)
+    }
+
     @Test func aDragDraggedBackToWhereItBeganChangesNothing() throws {
         // A shot with a neighbour 1 s after it.
         var project = EditingProject.empty

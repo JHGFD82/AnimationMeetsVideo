@@ -103,6 +103,14 @@ struct UISnapshots {
         try SnapshotSupport.render(view, "motion-designer", size: size)
         try SnapshotSupport.render(MotionDesignView(session: easedSession, onDone: {}, onCancel: {}), "motion-designer-ease", size: size)
         try SnapshotSupport.render(MotionDesignView(session: twoSession, onDone: {}, onCancel: {}), "motion-designer-two-songs", size: size)
+        // The first shot's first frame selected, its one handle pulled out
+        // into the clip, and the sidebar's edge controls.
+        let edgeSession = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { edgeSession.end() }
+        edgeSession.select(edge: .init(piece: first.id, edge: .start))
+        edgeSession.setSelectedEdgeHandle(KeyframeEase(influence: 0.5, speed: 0.2))
+        edgeSession.seek(to: 2.25)
+        try SnapshotSupport.render(MotionDesignView(session: edgeSession, onDone: {}, onCancel: {}), "motion-designer-edge", size: size)
         // The first shot, held by its hit, dragged: the notice saying why.
         session.select(point: nil)
         session.selectedPieceID = first.id

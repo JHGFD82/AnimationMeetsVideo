@@ -36,6 +36,8 @@ final class MotionDesignSession: SecondsViewport {
     // MARK: Editing
 
     var selectedPointID: UUID?
+    /// A clip's edge keyframe, selected instead of a point.
+    var selectedEdge: EdgeKey?
     var selectedPieceID: UUID?
     /// Asks the sidebar to focus the pace field (P, and Set Pace…).
     var focusesPace = false
@@ -198,6 +200,17 @@ final class MotionDesignSession: SecondsViewport {
     }
 
     static let heldPieceNotice = "This clip is held down to the beat. Change all Hit markers to regular markers to change clip placement."
+
+    /// Says why a clip's edge keyframe didn't move, in the notice.
+    func explainEdgeKeyframe() {
+        let text = Self.edgeKeyframeNotice
+        notice = text
+        AccessibilityNotification.Announcement(text).post()
+    }
+
+    static let edgeKeyframeNotice = "A clip's first and last frames stay where they are. Option-drag one to pull out its handle into the clip."
+
+    static let edgeHeldByPace = "The pace marker before this frame holds its speed straight to the clip's end, so it has no handle."
 
 
     func endDrag(_ name: String) {
@@ -367,6 +380,7 @@ final class MotionDesignSession: SecondsViewport {
 
     func select(point id: UUID?) {
         selectedPointID = id
+        selectedEdge = nil
         if let id, let (piece, _) = run.piece(holdingPoint: id) { selectedPieceID = run.pieces[piece].id }
     }
 
@@ -426,9 +440,71 @@ final class MotionDesignSession: SecondsViewport {
     }
 
     func deleteSelected() {
+        if selectedEdge != nil {
+            // An edge keyframe stays: only its handle goes.
+            if selectedEdgeEase != nil { setSelectedEdgeHandle(nil) }
+            return
+        }
         guard let id = selectedPointID else { return }
         perform("Remove Point") { $0.removePoint(id) }
         selectedPointID = nil
+    }
+
+    // MARK: Edge keyframes
+
+    /// The keyframe on a clip's first or last frame.
+    struct EdgeKey: Hashable {
+        var piece: UUID
+        var edge: MotionRun.Edge
+    }
+
+    func select(edge: EdgeKey) {
+        selectedPointID = nil
+        selectedEdge = edge
+        selectedPieceID = edge.piece
+    }
+
+    /// The selected edge keyframe's piece's map, while it shows the keyframe.
+    var selectedEdgeMap: ClipTimeMap? {
+        guard let key = selectedEdge, let index = run.index(of: key.piece) else { return nil }
+        let map = run.pieces[index].map
+        return map.hasEdgeKeyframe(key.edge) ? map : nil
+    }
+
+    var selectedEdgeEase: KeyframeEase? {
+        guard let key = selectedEdge else { return nil }
+        return selectedEdgeMap?.edgeEase(key.edge)
+    }
+
+    /// The selected edge's handle's name: the clip's first frame only eases
+    /// out into the clip, its last only in.
+    static func edgeHandleName(_ edge: MotionRun.Edge) -> String {
+        edge == .start ? "Ease Out" : "Ease In"
+    }
+
+    /// Sets the selected edge keyframe's handle, nil taking it away.
+    func setSelectedEdgeHandle(_ ease: KeyframeEase?) {
+        guard let key = selectedEdge, selectedEdgeMap != nil else { return }
+        perform(ease == nil ? "Remove Handle" : "Shape \(Self.edgeHandleName(key.edge))") {
+            $0.setEdgeHandle(key.edge, ofPiece: key.piece, to: ease)
+        }
+    }
+
+    /// Lengthens or shortens the selected edge's handle by `step` of its
+    /// open end, pulling one out on the straight line if it has none.
+    func reshapeSelectedEdge(by step: Double) {
+        let ease = selectedEdgeEase ?? KeyframeEase(influence: KeyframeEase.linearInfluence, speed: 1)
+        setSelectedEdgeHandle(KeyframeEase(influence: ease.influence + step, speed: ease.speed))
+    }
+
+    /// Sets the speed the line has at the selected edge's frame, as a
+    /// percentage, as tilting its handle does.
+    func setSelectedEdgeSpeed(to percent: Double) {
+        guard let key = selectedEdge, let map = selectedEdgeMap else { return }
+        let straight = map.straightSpeed(of: key.edge)
+        guard straight > 0 else { return }
+        let ease = selectedEdgeEase ?? KeyframeEase(influence: KeyframeEase.linearInfluence, speed: 1)
+        setSelectedEdgeHandle(KeyframeEase(influence: ease.influence, speed: max(0, percent) / straight))
     }
 
     /// Moves the selected clip by whole frames, if it has no hit.

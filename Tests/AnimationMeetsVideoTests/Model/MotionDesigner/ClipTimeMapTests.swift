@@ -264,6 +264,72 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         #expect(!map.points[0].eased)
     }
 
+    // MARK: Edge keyframes
+
+    @Test func aClipWithNoPointsHasEdgeKeyframesWithoutHandles() throws {
+        let map = ClipTimeMap(reading: footage(), frameDuration: CMTime(value: 1, timescale: 24))
+        #expect(map.points.isEmpty)
+        #expect(map.hasEdgeKeyframe(.start) && map.hasEdgeKeyframe(.end))
+        #expect(map.edgeEase(.start) == nil && map.edgeEase(.end) == nil)
+        // Nothing to write until a handle is pulled out.
+        #expect(map.writtenSpeed() == nil)
+        let stretch = try #require(map.edgeStretch(.start))
+        #expect(stretch.start == (0, 0) && stretch.end == (10, 10))
+    }
+
+    @Test func anEdgeHandleOnlyReachesIntoTheClip() throws {
+        var (map, _) = map(markers: [4, 6])
+        map.setEdgeHandle(.start, to: .easy)
+        map.setEdgeHandle(.end, to: .easy)
+        let start = try #require(map.edgeStretch(.start))
+        let end = try #require(map.edgeStretch(.end))
+        // The first frame eases out into the clip, the last in to it: the
+        // open ends are the only stretches either handle reaches.
+        #expect(start.leaving == .easy && start.arriving == nil && start.start.source == 0)
+        #expect(end.arriving == .easy && end.leaving == nil && end.end.source == 10)
+        #expect(map.speed(at: .start) == 0 && map.speed(at: .end) == 0)
+        // Easing an edge never moves it.
+        let span = try #require(map.span)
+        #expect(near(span.start, 0, within: 1e-4) && near(span.end, 10, within: 1e-4), "\(span.start.seconds) \(span.end.seconds)")
+        let clip = try played(map)
+        #expect(playsEveryPoint(map, clip))
+        #expect(near(clip.timelineTime(forSourceTime: seconds(10)), 10, within: 1e-4))
+    }
+
+    @Test func aPointOnTheClipsFirstFrameStandsInForItsEdgeKeyframe() {
+        var (map, ids) = map(markers: [0, 5])
+        #expect(!map.hasEdgeKeyframe(.start) && map.hasEdgeKeyframe(.end))
+        map.setEdgeHandle(.start, to: .easy)
+        #expect(map.edgeEase(.start) == nil)
+        // Nor does that point have a handle before the clip.
+        map.setHandle(.before, of: ids[0], to: .easy, alone: true)
+        #expect(map.points[0].easeIn == nil)
+    }
+
+    @Test func aLastPaceMarkerHoldsTheLastFrameStraight() throws {
+        var (map, ids) = map(markers: [4, 6])
+        map.setEdgeHandle(.end, to: .easy)
+        map.setKind(.pace(150), of: ids[1])
+        // Still shown, but its handle can't bend the pace's stretch.
+        #expect(map.hasEdgeKeyframe(.end) && !map.canEase(.end))
+        #expect(map.edgeEase(.end) == nil && map.stretches.last?.arriving == nil)
+        map.setEdgeHandle(.end, to: .easy)
+        #expect(map.edgeEase(.end) == nil)
+    }
+
+    @Test func aClipWithNoPointsWritesItsEdgeHandles() throws {
+        var map = ClipTimeMap(reading: footage(), frameDuration: CMTime(value: 1, timescale: 24))
+        map.setEdgeHandle(.start, to: .easy)
+        let clip = try played(map)
+        #expect(clip.time.speed.isAnimated)
+        #expect(near(clip.startOffset, 0) && near(clip.timelineTime(forSourceTime: seconds(10)), 10, within: 1e-4))
+        // And it comes back on the clip's edge.
+        var saved = clip
+        saved.time.design = MotionDesign(map, speed: clip.time.speed)
+        let read = ClipTimeMap(reading: saved, frameDuration: CMTime(value: 1, timescale: 24))
+        #expect(read.points.isEmpty && read.edgeEase(.start) == .easy && read.edgeEase(.end) == nil)
+    }
+
     // MARK: Writing
 
     @Test func aGentleEaseWritesAFewSteps() throws {
@@ -347,7 +413,7 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         var clip = footage()
         clip.time.speed = written.speed
         clip.startOffset = written.start
-        clip.time.design = MotionDesign(map.points, speed: written.speed)
+        clip.time.design = MotionDesign(map, speed: written.speed)
         // Moved along the timeline since, by the music it follows.
         clip.startOffset = CMTimeAdd(clip.startOffset, seconds(3))
         let read = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
@@ -371,7 +437,7 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         var clip = footage()
         clip.time.speed = written.speed
         clip.startOffset = written.start
-        clip.time.design = MotionDesign(map.points, speed: written.speed)
+        clip.time.design = MotionDesign(map, speed: written.speed)
         clip.time.speed = AnimatedValue(80)
         clip.time.speed.setAnimated(true, at: seconds(3))
         clip.time.speed.set(160, at: seconds(6))

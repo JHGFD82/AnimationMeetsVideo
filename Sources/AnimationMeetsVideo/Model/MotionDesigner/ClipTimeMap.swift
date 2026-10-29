@@ -137,6 +137,9 @@ struct TimeStretch: Equatable {
 
 /// One clip's points, in source order, and the footage it plays.
 struct ClipTimeMap: Equatable {
+    /// Which edge of a clip.
+    enum Edge: Hashable { case start, end }
+
     /// Why an edit didn't happen until the person agrees to what it costs.
     enum Conflict: Equatable {
         /// A pace marker would have to move this hit, which becomes a marker.
@@ -153,6 +156,18 @@ struct ClipTimeMap: Equatable {
     private(set) var points: [TimePoint]
     /// The speed of the open ends while fewer than two points set one.
     var restingSpeed: Double
+    /// Where the clip's first frame plays while it has no points to place
+    /// it; the line then runs straight at its resting speed between its
+    /// edge keyframes.
+    var origin: CMTime
+    /// The eases of the keyframes on the clip's first and last frames: the
+    /// handle leaving its first frame, and the one arriving at its last.
+    /// Each has only the handle that reaches into the clip, and none until
+    /// the person pulls it out. They shape the open ends while those have
+    /// footage (`hasEdgeKeyframe`), which they always do on a clip with no
+    /// points.
+    var startEase: KeyframeEase?
+    var endEase: KeyframeEase?
 
     static let speedRange = 1.0...10_000.0
     /// What computed times are given in, as for ramped clips.
@@ -160,11 +175,17 @@ struct ClipTimeMap: Equatable {
     /// How far a new handle reaches, as Easy Ease's influence.
     static let standardInfluence = KeyframeEase.linearInfluence
 
-    init(trimStart: CMTime, trimEnd: CMTime, points: [TimePoint] = [], restingSpeed: Double = 100) {
+    init(
+        trimStart: CMTime, trimEnd: CMTime, points: [TimePoint] = [], restingSpeed: Double = 100,
+        origin: CMTime = .zero, startEase: KeyframeEase? = nil, endEase: KeyframeEase? = nil
+    ) {
         self.trimStart = trimStart
         self.trimEnd = trimEnd
         self.points = points.sorted { $0.source < $1.source }
         self.restingSpeed = restingSpeed
+        self.origin = origin
+        self.startEase = startEase
+        self.endEase = endEase
     }
 
     func index(of id: UUID) -> Int? { points.firstIndex(id: id) }
@@ -221,16 +242,26 @@ struct ClipTimeMap: Equatable {
     /// The stretches of the line, in order: the open start from the clip's
     /// first frame (where it has footage before the first point), each
     /// stretch between points, and the open end to its last frame. The open
-    /// ends run at their speed, bent only by the outermost points' eases.
+    /// ends run at their speed, bent only by the outermost points' eases
+    /// and the edge keyframes'. A clip with no points is one stretch, from
+    /// its `origin` at its resting speed, between its edge keyframes.
     var stretches: [TimeStretch] {
-        guard let first = points.first, let last = points.last else { return [] }
+        guard let first = points.first, let last = points.last else {
+            let footage = CMTimeSubtract(trimEnd, trimStart).seconds
+            guard footage > 0, restingSpeed > 0 else { return [] }
+            return [TimeStretch(
+                start: (origin.seconds, trimStart.seconds),
+                end: (origin.seconds + footage * 100 / restingSpeed, trimEnd.seconds),
+                leaving: startEase, arriving: endEase
+            )]
+        }
         var result: [TimeStretch] = []
         let lead = CMTimeSubtract(first.source, trimStart).seconds
         if lead > 0 {
             result.append(TimeStretch(
                 start: (first.time.seconds - lead * 100 / speedBeforeFirst, trimStart.seconds),
                 end: (first.time.seconds, first.source.seconds),
-                leaving: nil, arriving: effectiveEase(.before, of: 0)
+                leaving: edgeEase(.start), arriving: effectiveEase(.before, of: 0)
             ))
         }
         for i in points.indices.dropLast() {
@@ -245,7 +276,7 @@ struct ClipTimeMap: Equatable {
             result.append(TimeStretch(
                 start: (last.time.seconds, last.source.seconds),
                 end: (last.time.seconds + tail * 100 / speedAfterLast, trimEnd.seconds),
-                leaving: effectiveEase(.after, of: points.count - 1), arriving: nil
+                leaving: effectiveEase(.after, of: points.count - 1), arriving: edgeEase(.end)
             ))
         }
         return result
@@ -297,6 +328,54 @@ struct ClipTimeMap: Equatable {
     var isPlayable: Bool {
         guard points.indices.dropLast().allSatisfy({ Self.speedRange.contains(speed(after: $0)) }) else { return false }
         return Self.speedRange.contains(speedBeforeFirst) && Self.speedRange.contains(speedAfterLast)
+    }
+
+    // MARK: Edge keyframes
+
+    /// Whether the clip shows a keyframe on its edge's frame: it has
+    /// footage between that frame and the outermost point (a point on the
+    /// very frame stands in for it), or any footage while it has no points.
+    func hasEdgeKeyframe(_ edge: Edge) -> Bool {
+        guard let first = points.first, let last = points.last else { return trimEnd > trimStart }
+        return edge == .start ? first.source > trimStart : last.source < trimEnd
+    }
+
+    /// Whether an edge keyframe can have its handle: not the last frame
+    /// after a last pace marker, which holds its pace straight to it.
+    func canEase(_ edge: Edge) -> Bool {
+        hasEdgeKeyframe(edge) && (edge == .start || points.last?.pace == nil)
+    }
+
+    /// The handle of an edge keyframe, nil while it has none or can't have
+    /// one (`canEase`).
+    func edgeEase(_ edge: Edge) -> KeyframeEase? {
+        guard canEase(edge) else { return nil }
+        return edge == .start ? startEase : endEase
+    }
+
+    /// The open end an edge keyframe's handle reaches into.
+    func edgeStretch(_ edge: Edge) -> TimeStretch? {
+        guard hasEdgeKeyframe(edge) else { return nil }
+        return edge == .start ? stretches.first : stretches.last
+    }
+
+    /// The straight-line speed of the open end at an edge.
+    func straightSpeed(of edge: Edge) -> Double {
+        edge == .start ? speedBeforeFirst : speedAfterLast
+    }
+
+    /// The speed the line has at an edge's frame, from its handle.
+    func speed(at edge: Edge) -> Double {
+        straightSpeed(of: edge) * (edgeEase(edge)?.speed ?? 1)
+    }
+
+    /// Sets the handle of an edge keyframe, as dragging it does: nil takes
+    /// it away, leaving the edge linear. It only ever reaches into the
+    /// clip, so there is no other handle to keep in line.
+    mutating func setEdgeHandle(_ edge: Edge, to ease: KeyframeEase?) {
+        guard canEase(edge) else { return }
+        let ease = ease.map { held($0) }
+        if edge == .start { startEase = ease } else { endEase = ease }
     }
 
     // MARK: Editing
@@ -406,6 +485,7 @@ struct ClipTimeMap: Equatable {
     /// negative), as moving the whole clip does.
     mutating func shift(by delta: CMTime) {
         for index in points.indices { points[index].time = CMTimeAdd(points[index].time, delta) }
+        origin = CMTimeAdd(origin, delta)
     }
 
     /// Whether a side of point `index` can ease: it has footage on that

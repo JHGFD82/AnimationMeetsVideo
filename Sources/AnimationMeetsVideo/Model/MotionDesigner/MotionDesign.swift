@@ -18,16 +18,23 @@ struct MotionDesign: Equatable, Sendable {
     }
 
     var points: [Point]
+    /// The handles of the keyframes on the clip's first and last frames.
+    var startEase: KeyframeEase?
+    var endEase: KeyframeEase?
     /// The speed the points were written as.
     var speed: AnimatedValue<Double>
 
-    init(points: [Point], speed: AnimatedValue<Double>) {
+    init(points: [Point], startEase: KeyframeEase? = nil, endEase: KeyframeEase? = nil, speed: AnimatedValue<Double>) {
         self.points = points
+        self.startEase = startEase
+        self.endEase = endEase
         self.speed = speed
     }
 
-    init(_ points: [TimePoint], speed: AnimatedValue<Double>) {
-        self.points = points.map { Point(source: $0.source, kind: $0.kind, easeIn: $0.easeIn, easeOut: $0.easeOut, smooth: $0.smooth) }
+    init(_ map: ClipTimeMap, speed: AnimatedValue<Double>) {
+        points = map.points.map { Point(source: $0.source, kind: $0.kind, easeIn: $0.easeIn, easeOut: $0.easeOut, smooth: $0.smooth) }
+        startEase = map.edgeEase(.start)
+        endEase = map.edgeEase(.end)
         self.speed = speed
     }
 }

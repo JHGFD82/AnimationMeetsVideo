@@ -12,6 +12,9 @@ import SwiftUI
 /// graph editor shows a keyframe's: dragging one along shapes how far it
 /// reaches and tilting it sets the speed at the point, the other swinging
 /// to stay in line unless Option is held; dragged onto its point, it goes.
+/// Each clip's first and last frames show a keyframe too, which stays put:
+/// Option-dragging it pulls out its one handle, which only ever reaches
+/// into the clip.
 struct MotionDesignLanes: View {
     @Bindable var session: MotionDesignSession
 
@@ -28,12 +31,18 @@ struct MotionDesignLanes: View {
         case pressed(Grab)
         case point(UUID, from: Double, added: Bool)
         case handle(UUID, side: TimePoint.Side)
+        case edgeHandle(MotionDesignSession.EdgeKey)
         case seek
+        /// A drag that does nothing, such as one on an edge keyframe
+        /// without Option.
+        case inert
     }
 
     private enum Grab {
         case point(UUID, from: Double)
         case handle(UUID, side: TimePoint.Side)
+        case edge(MotionDesignSession.EdgeKey)
+        case edgeHandle(MotionDesignSession.EdgeKey)
         /// The line, where a click or a drag drops a marker.
         case line(piece: UUID, time: Double)
     }
@@ -199,7 +208,8 @@ struct MotionDesignLanes: View {
         .gesture(graphGesture(stack: stack))
         .onContinuousHover { phase in
             if case .active(let location) = phase {
-                (point(at: location, stack: stack) != nil || line(at: location, stack: stack) != nil ? NSCursor.pointingHand : NSCursor.arrow).set()
+                let over = point(at: location, stack: stack) != nil || edge(at: location, stack: stack) != nil || line(at: location, stack: stack) != nil
+                (over ? NSCursor.pointingHand : NSCursor.arrow).set()
             } else {
                 NSCursor.arrow.set()
             }
@@ -211,6 +221,9 @@ struct MotionDesignLanes: View {
         .accessibilityChildren {
             ForEach(allPoints, id: \.point.id) { entry in
                 pointElement(entry.point, piece: entry.piece)
+            }
+            ForEach(allEdges, id: \.key) { entry in
+                edgeElement(entry.key, piece: entry.piece)
             }
         }
         .accessibilityAction(named: "Add marker at playhead") { session.addMarkerAtPlayhead() }
@@ -260,6 +273,10 @@ struct MotionDesignLanes: View {
             context.fill(Path(ellipseIn: CGRect(x: handle.point.x - 3.5, y: handle.point.y - 3.5, width: 7, height: 7)), with: .color(.white))
         }
         for (index, piece) in session.run.pieces.enumerated() {
+            for edge in [MotionRun.Edge.start, .end] {
+                guard let at = location(of: edge, piece: index, stack: stack) else { continue }
+                drawEdge(MotionDesignSession.EdgeKey(piece: piece.id, edge: edge), map: piece.map, at: at, in: &context)
+            }
             for point in piece.map.points {
                 drawPoint(point, at: location(of: point, piece: index, stack: stack), in: &context)
             }
@@ -269,8 +286,8 @@ struct MotionDesignLanes: View {
     // MARK: Ease handles
 
     private struct EaseHandle {
-        var pointID: UUID
-        var side: TimePoint.Side
+        /// What pressing it takes hold of.
+        var grab: Grab
         /// The point, and the handle's end on its tangent.
         var anchor: CGPoint
         var point: CGPoint
@@ -294,6 +311,7 @@ struct MotionDesignLanes: View {
     /// keyframe's are: reaching their influence of the stretch along the
     /// timeline, tilted to the speed they set at the point.
     private func easeHandles(stack: Stack) -> [EaseHandle] {
+        if let key = session.selectedEdge { return edgeHandle(key, stack: stack).map { [$0] } ?? [] }
         guard let id = session.selectedPointID, let (p, i) = session.run.piece(holdingPoint: id) else { return [] }
         let map = session.run.pieces[p].map
         let point = map.points[i]
@@ -305,7 +323,7 @@ struct MotionDesignLanes: View {
             let time = stretch.start.time + stretch.duration * Double(unit.x)
             let source = stretch.start.source + stretch.footage * Double(unit.y)
             let at = CGPoint(x: session.x(of: time), y: stack.y(piece: p, source: source))
-            handles.append(EaseHandle(pointID: id, side: side, anchor: anchor, point: at))
+            handles.append(EaseHandle(grab: .handle(id, side: side), anchor: anchor, point: at))
         }
         return handles
     }
@@ -325,6 +343,73 @@ struct MotionDesignLanes: View {
             y: (stack.source(piece: p, y: pointer.y) - stretch.start.source) / stretch.footage
         )
         return .some(side == .before ? KeyframeEase.incoming(handleAt: unit) : KeyframeEase.outgoing(handleAt: unit))
+    }
+
+    // MARK: Edge keyframes
+
+    /// Where a piece's edge keyframe sits, at the open end's outer corner;
+    /// nil while it shows none.
+    private func location(of edge: MotionRun.Edge, piece index: Int, stack: Stack) -> CGPoint? {
+        guard let stretch = session.run.pieces[index].map.edgeStretch(edge) else { return nil }
+        let corner = edge == .start ? stretch.start : stretch.end
+        return CGPoint(x: session.x(of: corner.time), y: stack.y(piece: index, source: corner.source))
+    }
+
+    private func edge(at location: CGPoint, stack: Stack) -> MotionDesignSession.EdgeKey? {
+        var best: (key: MotionDesignSession.EdgeKey, distance: CGFloat)?
+        for (index, piece) in session.run.pieces.enumerated() {
+            for edge in [MotionRun.Edge.start, .end] {
+                guard let at = self.location(of: edge, piece: index, stack: stack) else { continue }
+                let distance = hypot(at.x - location.x, at.y - location.y)
+                if distance <= 9, distance < (best?.distance ?? .infinity) { best = (.init(piece: piece.id, edge: edge), distance) }
+            }
+        }
+        return best?.key
+    }
+
+    /// The selected edge keyframe's handle, reaching into its open end,
+    /// while it has one.
+    private func edgeHandle(_ key: MotionDesignSession.EdgeKey, stack: Stack) -> EaseHandle? {
+        guard let p = session.run.index(of: key.piece) else { return nil }
+        let map = session.run.pieces[p].map
+        guard let ease = map.edgeEase(key.edge), let stretch = map.edgeStretch(key.edge),
+              let anchor = location(of: key.edge, piece: p, stack: stack)
+        else { return nil }
+        let unit = key.edge == .start ? KeyframeEase.outgoingHandle(ease) : KeyframeEase.incomingHandle(ease)
+        let at = CGPoint(
+            x: session.x(of: stretch.start.time + stretch.duration * Double(unit.x)),
+            y: stack.y(piece: p, source: stretch.start.source + stretch.footage * Double(unit.y))
+        )
+        return EaseHandle(grab: .edgeHandle(key), anchor: anchor, point: at)
+    }
+
+    /// The ease an edge keyframe's handle dragged to `location` makes, in
+    /// its open end, so it never reaches past the clip's edge; nil when it
+    /// is on the keyframe, which takes the handle away.
+    private func ease(dragging key: MotionDesignSession.EdgeKey, to pointer: CGPoint, stack: Stack) -> KeyframeEase?? {
+        guard let p = session.run.index(of: key.piece), let stretch = session.run.pieces[p].map.edgeStretch(key.edge),
+              stretch.duration > 0, stretch.footage > 0, let anchor = location(of: key.edge, piece: p, stack: stack)
+        else { return .none }
+        if hypot(pointer.x - anchor.x, pointer.y - anchor.y) < 6 { return .some(nil) }
+        let unit = CGPoint(
+            x: (session.seconds(atX: pointer.x) - stretch.start.time) / stretch.duration,
+            y: (stack.source(piece: p, y: pointer.y) - stretch.start.source) / stretch.footage
+        )
+        return .some(key.edge == .start ? KeyframeEase.outgoing(handleAt: unit) : KeyframeEase.incoming(handleAt: unit))
+    }
+
+    /// An edge keyframe's mark: smaller and quieter than a point's, as the
+    /// clip puts it there, pinched on its inner side once it has a handle.
+    private func drawEdge(_ key: MotionDesignSession.EdgeKey, map: ClipTimeMap, at center: CGPoint, in context: inout GraphicsContext) {
+        let eased = map.edgeEase(key.edge) != nil
+        let size: CGFloat = 9
+        let rect = CGRect(x: center.x - size / 2, y: center.y - size / 2, width: size, height: size)
+        let shape = KeyframeMarkShape(easedIn: key.edge == .end && eased, easedOut: key.edge == .start && eased, holds: false).path(in: rect)
+        context.fill(shape, with: .color(Design.textTertiary))
+        context.stroke(shape, with: .color(.black.opacity(0.5)), lineWidth: 0.5)
+        if key == session.selectedEdge {
+            context.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(Design.accent), lineWidth: 1.5)
+        }
     }
 
     /// Each stretch's speed, over its middle, where it has room; stretches
@@ -435,11 +520,15 @@ struct MotionDesignLanes: View {
     /// handle, a point (selecting it), the line, or else the playhead.
     private func grab(at location: CGPoint, stack: Stack) -> GraphDrag {
         if let handle = easeHandles(stack: stack).first(where: { hypot($0.point.x - location.x, $0.point.y - location.y) <= 7 }) {
-            return .pressed(.handle(handle.pointID, side: handle.side))
+            return .pressed(handle.grab)
         }
         if let id = point(at: location, stack: stack), let found = session.run.piece(holdingPoint: id) {
             session.select(point: id)
             return .pressed(.point(id, from: session.run.pieces[found.piece].map.points[found.point].time.seconds))
+        }
+        if let key = edge(at: location, stack: stack) {
+            session.select(edge: key)
+            return .pressed(.edge(key))
         }
         if let hit = line(at: location, stack: stack) { return .pressed(.line(piece: hit.piece, time: hit.time)) }
         session.select(point: nil)
@@ -448,12 +537,25 @@ struct MotionDesignLanes: View {
 
     /// Starts dragging what was pressed, once the pointer has moved.
     private func startDragging(_ grab: Grab) -> GraphDrag {
+        if case .edge(let key) = grab {
+            // The edge stays put; Option pulls its handle out of it.
+            guard NSEvent.modifierFlags.contains(.option),
+                  let p = session.run.index(of: key.piece), session.run.pieces[p].map.canEase(key.edge)
+            else {
+                session.explainEdgeKeyframe()
+                return .inert
+            }
+            session.beginDrag()
+            return .edgeHandle(key)
+        }
         session.beginDrag()
         switch grab {
         case .point(let id, let from):
             return .point(id, from: from, added: false)
         case .handle(let id, let side):
             return .handle(id, side: side)
+        case .edge(let key), .edgeHandle(let key):
+            return .edgeHandle(key)
         case .line(let piece, let time):
             if let id = session.addMarker(toPiece: piece, atTime: time) { return .point(id, from: time, added: true) }
             session.endDrag("Add Marker")
@@ -483,9 +585,12 @@ struct MotionDesignLanes: View {
                     // Option moves the handle alone, as in the graph editor.
                     let alone = NSEvent.modifierFlags.contains(.option)
                     session.dragEdit { $0.setHandle(side, ofPoint: id, to: ease, alone: alone) }
+                case .edgeHandle(let key):
+                    guard let ease = ease(dragging: key, to: gesture.location, stack: stack) else { break }
+                    session.dragEdit { $0.setEdgeHandle(key.edge, ofPiece: key.piece, to: ease) }
                 case .seek:
                     session.seek(to: session.seconds(atX: gesture.location.x))
-                case .pressed, nil:
+                case .pressed, .inert, nil:
                     break
                 }
             }
@@ -493,6 +598,7 @@ struct MotionDesignLanes: View {
                 switch drag {
                 case .point(_, _, let added): session.endDrag(added ? "Add Marker" : "Move Point")
                 case .handle(_, let side): session.endDrag(side == .before ? "Shape Ease In" : "Shape Ease Out")
+                case .edgeHandle(let key): session.endDrag("Shape \(MotionDesignSession.edgeHandleName(key.edge))")
                 // A click on the line drops a marker on that frame, selected,
                 // and moves the playhead there to show it.
                 case .pressed(.line(let piece, let time)):
@@ -527,6 +633,15 @@ struct MotionDesignLanes: View {
             }
             Divider()
             Button("Remove Point", role: .destructive) { session.deleteSelected() }
+        } else if let key = session.selectedEdge, let map = session.selectedEdgeMap {
+            let name = MotionDesignSession.edgeHandleName(key.edge)
+            if !map.canEase(key.edge) {
+                Text("No Handle Past a Pace Marker")
+            } else if session.selectedEdgeEase == nil {
+                Button("Add \(name) Handle") { session.setSelectedEdgeHandle(.easy) }
+            } else {
+                Button("Remove Handle") { session.setSelectedEdgeHandle(nil) }
+            }
         } else {
             Button("Add Marker at Playhead") { session.addMarkerAtPlayhead() }
         }
@@ -546,6 +661,12 @@ struct MotionDesignLanes: View {
 
     private var allPoints: [(point: TimePoint, piece: Int)] {
         session.run.pieces.enumerated().flatMap { index, piece in piece.map.points.map { ($0, index) } }
+    }
+
+    private var allEdges: [(key: MotionDesignSession.EdgeKey, piece: Int)] {
+        session.run.pieces.enumerated().flatMap { index, piece in
+            [MotionRun.Edge.start, .end].filter { piece.map.hasEdgeKeyframe($0) }.map { (MotionDesignSession.EdgeKey(piece: piece.id, edge: $0), index) }
+        }
     }
 
     private var graphSummary: String {
@@ -581,6 +702,42 @@ struct MotionDesignLanes: View {
                 }
                 Button("Remove") { session.select(point: point.id); session.deleteSelected() }
             }
+    }
+
+    /// An edge keyframe for VoiceOver, with its one handle's actions, as
+    /// Option-dragging it and its handle do.
+    private func edgeElement(_ key: MotionDesignSession.EdgeKey, piece index: Int) -> some View {
+        let map = session.run.pieces[index].map
+        let name = MotionDesignSession.edgeHandleName(key.edge)
+        let frame = key.edge == .start ? map.trimStart : map.trimEnd
+        let ease = map.edgeEase(key.edge).map { "\(name) over \(Int(($0.influence * 100).rounded())) percent at \(Self.speedText(map.speed(at: key.edge)))" }
+        let select = { session.select(edge: key) }
+        return Rectangle()
+            .accessibilityLabel(key.edge == .start ? "Clip's first frame" : "Clip's last frame")
+            .accessibilityValue("Frame \(session.timecode(frame)), \(ease ?? "Linear")")
+            .accessibilityAddTraits(key == session.selectedEdge ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { select() }
+            .accessibilityActions {
+                if !map.canEase(key.edge) {
+                    // Held straight by the pace before it: nothing to do.
+                } else if map.edgeEase(key.edge) == nil {
+                    Button("Add \(name) handle") { select(); session.setSelectedEdgeHandle(.easy) }
+                } else {
+                    Button("Longer \(name)") { select(); session.reshapeSelectedEdge(by: 0.1) }
+                    Button("Shorter \(name)") { select(); session.reshapeSelectedEdge(by: -0.1) }
+                    Button("Faster \(name)") { changeSpeed(of: key, by: 1.25) }
+                    Button("Slower \(name)") { changeSpeed(of: key, by: 0.8) }
+                    Button("Remove handle") { select(); session.setSelectedEdgeHandle(nil) }
+                }
+            }
+    }
+
+    private func changeSpeed(of key: MotionDesignSession.EdgeKey, by factor: Double) {
+        session.select(edge: key)
+        guard let map = session.selectedEdgeMap else { return }
+        // From a stop, faster starts at a tenth of the straight speed.
+        let speed = map.speed(at: key.edge)
+        session.setSelectedEdgeSpeed(to: speed > 0 ? speed * factor : (factor > 1 ? map.straightSpeed(of: key.edge) / 10 : 0))
     }
 
     /// What dragging a handle does, as VoiceOver actions: a tenth of the

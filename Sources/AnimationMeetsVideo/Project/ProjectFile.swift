@@ -195,6 +195,9 @@ struct ProjectFile: Codable {
         }
 
         var points: [Point]
+        /// The handles of the keyframes on the clip's first and last frames.
+        var startEase: EaseEntry?
+        var endEase: EaseEntry?
         var speed: PropertyEntry<Double>
 
         init(_ design: MotionDesign) {
@@ -214,6 +217,8 @@ struct ProjectFile: Codable {
                     smooth: point.smooth ? true : nil
                 )
             }
+            startEase = design.startEase.map(EaseEntry.init)
+            endEase = design.endEase.map(EaseEntry.init)
             speed = PropertyEntry(design.speed) { $0 }
         }
 
@@ -230,6 +235,7 @@ struct ProjectFile: Codable {
                         smooth: point.smooth ?? false
                     )
                 },
+                startEase: startEase?.ease, endEase: endEase?.ease,
                 speed: speed.property(default: 100.0) { ClipTime.clampedSpeed($0) }
             )
         }
@@ -1338,6 +1344,7 @@ extension ProjectFile {
                         .required("source", .time), .required("kind", .choice(["hit", "marker", "pace"], noun: "point kind")),
                         .optional("pace", .number), .optional("easeIn", ShapeKit.ease), .optional("easeOut", ShapeKit.ease), .optional("smooth", .bool),
                     ])))),
+                    .optional("startEase", ShapeKit.ease), .optional("endEase", ShapeKit.ease),
                     .required("speed", property(.number)),
                 ]))),
             ]))),
