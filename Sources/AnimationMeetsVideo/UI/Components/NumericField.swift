@@ -26,7 +26,7 @@ private struct NumberWidthKey: PreferenceKey {
 
 /// A number shown as text that turns into a field when clicked, After
 /// Effects-style. Return or clicking away enters what was typed, which may
-/// be arithmetic ("100+25"); Escape cancels. Text that isn't a number beeps
+/// be arithmetic ("100+25") and may end in the unit; Escape cancels. Text that isn't a number beeps
 /// and leaves the value alone.
 ///
 /// With a `dragStep` the number can also be dragged: press on it and drag
@@ -51,6 +51,9 @@ struct NumericField: View {
     /// What the value is, for VoiceOver: "Position X", "Volume". Without
     /// one, VoiceOver reads only the value.
     var accessibilityName: String?
+    /// Set to open the field for typing, as a key elsewhere does; it is
+    /// set back once the field opens.
+    var editRequest: Binding<Bool>?
     let onCommit: (Double) -> Void
 
     @Environment(\.projectHistory) private var history
@@ -135,6 +138,11 @@ struct NumericField: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Type a value")
                 .accessibilityAction { beginEditing() }
+                .onChange(of: editRequest?.wrappedValue ?? false, initial: true) { _, requested in
+                    guard requested else { return }
+                    editRequest?.wrappedValue = false
+                    beginEditing()
+                }
         }
     }
 
@@ -183,7 +191,10 @@ struct NumericField: View {
     private func commit() {
         guard isEditing else { return }
         isEditing = false
-        guard let result = NumericExpression.evaluate(draft) else {
+        // The unit may be typed after the number, as it is shown.
+        var typed = draft.trimmingCharacters(in: .whitespaces)
+        if !unit.isEmpty, typed.hasSuffix(unit) { typed.removeLast(unit.count) }
+        guard let result = NumericExpression.evaluate(typed) else {
             if !draft.trimmingCharacters(in: .whitespaces).isEmpty { NSSound.beep() }
             return
         }

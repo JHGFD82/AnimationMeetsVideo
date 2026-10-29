@@ -9,9 +9,6 @@ struct MotionDesignSidebar: View {
     let onDone: () -> Void
     let onCancel: () -> Void
 
-    @State private var paceText = ""
-    @FocusState private var paceFocused: Bool
-
     private enum Kind: Hashable { case hit, marker, pace }
 
     var body: some View {
@@ -63,14 +60,6 @@ struct MotionDesignSidebar: View {
             .padding(Design.Space.rail)
         }
         .background(Design.Surface.base.color)
-        .onChange(of: session.selectedPoint?.pace, initial: true) { _, pace in
-            paceText = pace.map { MotionDesignLanes.speedText($0) } ?? ""
-        }
-        .onChange(of: session.focusesPace) { _, focus in
-            guard focus else { return }
-            paceFocused = true
-            session.focusesPace = false
-        }
     }
 
     // MARK: Nothing selected
@@ -107,14 +96,17 @@ struct MotionDesignSidebar: View {
                 Text("Pace")
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.textSecondary)
-                TextField("None", text: $paceText)
-                    .font(Design.Typeface.numericSmall)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                    .focused($paceFocused)
-                    .onSubmit { submitPace(for: point) }
-                    .accessibilityLabel("Pace, speed after this point in percent")
-                    .help("The speed after this point, in percent (P)")
+                // The speed after the point; typing one makes it a pace
+                // marker at that speed.
+                NumericField(
+                    value: speedAfter(point) ?? 100, unit: "%", fractionDigits: 1,
+                    accessibilityName: "Pace, speed after this point in percent",
+                    editRequest: $session.focusesPace
+                ) { speed in
+                    guard speed > 0 else { NSSound.beep(); return }
+                    session.setKind(.pace(speed), ofPoint: point.id)
+                }
+                .help("The speed after this point, in percent. Typing one makes it a pace marker (P)")
             }
             if let found = session.run.piece(holdingPoint: point.id) {
                 footageNote(session.run.pieces[found.piece])
@@ -222,20 +214,15 @@ struct MotionDesignSidebar: View {
         case .marker: session.setKind(.marker, ofPoint: point.id)
         case .pace:
             // Paced at the speed it already has after it.
-            guard let found = session.run.piece(holdingPoint: point.id) else { return }
-            let speed = session.run.pieces[found.piece].map.speed(after: found.point)
+            guard let speed = speedAfter(point) else { return }
             session.setKind(.pace(speed), ofPoint: point.id)
             session.focusesPace = true
         }
     }
 
-    private func submitPace(for point: TimePoint) {
-        let digits = paceText.filter { "0123456789.".contains($0) }
-        guard let speed = Double(digits), speed > 0 else {
-            paceText = point.pace.map { MotionDesignLanes.speedText($0) } ?? ""
-            return
-        }
-        session.setKind(.pace(speed), ofPoint: point.id)
+    private func speedAfter(_ point: TimePoint) -> Double? {
+        guard let found = session.run.piece(holdingPoint: point.id) else { return nil }
+        return session.run.pieces[found.piece].map.speed(after: found.point)
     }
 
     // MARK: A clip
