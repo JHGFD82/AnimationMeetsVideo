@@ -8,7 +8,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         // Nothing under a dialog hovers, skims or takes a click.
-        MainActor.assumeIsolated { WindowInputBlock.blockUnderSheets() }
+        MainActor.assumeIsolated {
+            WindowInputBlock.blockUnderSheets()
+            // A field starting to be edited has its whole value selected.
+            FieldTextSelection.install()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
