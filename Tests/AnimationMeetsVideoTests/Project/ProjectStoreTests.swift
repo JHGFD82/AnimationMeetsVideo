@@ -109,6 +109,14 @@ private struct Sandbox {
             $0.time.frameBlending = .blend
             $0.time.echo = Echo(count: 3, delay: CMTime(value: 1, timescale: 24), decay: 0.5)
             $0.time.sound = .mute
+            // The motion designer's points: a hit eased in alone, and a pace.
+            $0.time.design = MotionDesign(points: [
+                MotionDesign.Point(source: CMTime(value: 1, timescale: 1), kind: .hit, easeIn: KeyframeEase(influence: 0.5, speed: 0.2)),
+                MotionDesign.Point(
+                    source: CMTime(value: 2, timescale: 1), kind: .pace(250),
+                    easeIn: .easy, easeOut: KeyframeEase(influence: 0.25, speed: 1.5), smooth: true
+                ),
+            ], speed: $0.time.speed)
             $0.shutter.motionBlur = MotionBlur(angle: 90, samples: 4)
             $0.shutter.trails = Trails(count: 2, delay: CMTime(value: 2, timescale: 24), decay: 0.25)
         }

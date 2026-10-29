@@ -65,14 +65,16 @@ struct UISnapshots {
         let view = MotionDesignView(session: session, onDone: {}, onCancel: {})
         let size = CGSize(width: 1240, height: 600)
         // The same, with the first shot's slow marker eased into a quick
-        // stretch after it and selected: its two ramp handles, the ramp in
-        // reaching further than the ramp out, and the sidebar's sliders.
+        // stretch after it and selected: its two handles on its tangent,
+        // the one in reaching further than the one out, and the sidebar's
+        // reach sliders and speeds.
         let easedRun: MotionRun = {
             var copy = run
             let quick = copy.addMarker(toPiece: first.id, atSource: seconds(1.5))!
             copy.movePoint(quick, to: seconds(3.4))
             copy.setEase(.easyEase, ofPoint: slow)
-            copy.setEase(TimeEase(before: 0.6, after: 0.4), ofPoint: slow)
+            copy.setHandle(.before, ofPoint: slow, to: KeyframeEase(influence: 0.6, speed: 0.3), alone: true)
+            copy.setHandle(.after, ofPoint: slow, to: KeyframeEase(influence: 0.4, speed: 0.5), alone: true)
             return copy
         }()
         let easedSession = MotionDesignSession(run: easedRun, project: project, playback: PlaybackModel())

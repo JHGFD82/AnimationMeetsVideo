@@ -80,6 +80,9 @@ struct ClipTime: Equatable, Sendable {
     var frameBlending = FrameBlending.off
     var echo: Echo?
     var sound = SoundMode.keepPitch
+    /// The motion designer's points the speed was written from, while it
+    /// still is that speed (`MotionDesign`).
+    var design: MotionDesign?
 
     /// How fast a clip may play, in either direction.
     static let speedRange = 1.0...10_000.0

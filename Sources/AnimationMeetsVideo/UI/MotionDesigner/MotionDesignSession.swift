@@ -383,8 +383,8 @@ final class MotionDesignSession: SecondsViewport {
     }
 
     /// Sets a point's ease by its preset, as a keyframe's is set, named so
-    /// in the undo menu. Where the speed doesn't change at the point there
-    /// is nothing to ease, and the message says so instead.
+    /// in the undo menu. A point neither side of which can ease says so
+    /// instead.
     func setEase(_ preset: KeyframeEase.Preset, ofPoint id: UUID) {
         guard preset == .linear || run.canEase(point: id) else {
             message = Self.nothingToEase
@@ -393,20 +393,35 @@ final class MotionDesignSession: SecondsViewport {
         perform(preset.name) { $0.setEase(preset, ofPoint: id) }
     }
 
-    static let nothingToEase = "The speed doesn't change at this point, so there's nothing to ease. Easing smooths a change of speed, such as at a point between two others that play at different speeds."
+    static let nothingToEase = "This point can't ease: a pace marker holds its speed straight to the next point, and there's no footage on its other side."
 
-    /// Lengthens or shortens the selected point's Ease In (`before`) or
-    /// Ease Out by `step` of its stretch, adding that side if it hasn't one.
-    func reshapeSelectedEase(before: Bool, by step: Double) {
-        guard let point = selectedPoint, run.canEase(point: point.id) else { return }
-        var ease = point.ease ?? TimeEase(before: nil, after: nil)
-        if before {
-            ease.before = (ease.before ?? TimeEase.standardReach) + step
-        } else {
-            ease.after = (ease.after ?? TimeEase.standardReach) + step
+    /// The selected point's piece's map, and where the point is in it.
+    var selectedPlace: (map: ClipTimeMap, index: Int)? {
+        guard let id = selectedPointID, let (piece, point) = run.piece(holdingPoint: id) else { return nil }
+        return (run.pieces[piece].map, point)
+    }
+
+    /// Lengthens or shortens the handle on a side of the selected point by
+    /// `step` of its stretch, putting one out on the straight line on a
+    /// side that has none.
+    func reshapeSelectedEase(_ side: TimePoint.Side, by step: Double) {
+        guard let point = selectedPoint, let place = selectedPlace, place.map.canEase(side, of: place.index) else { return }
+        let ease = point.ease(side) ?? KeyframeEase(influence: KeyframeEase.linearInfluence, speed: 1)
+        perform(side == .before ? "Shape Ease In" : "Shape Ease Out") {
+            $0.setHandle(side, ofPoint: point.id, to: KeyframeEase(influence: ease.influence + step, speed: ease.speed))
         }
-        perform(before ? "Shape Ease In" : "Shape Ease Out") {
-            $0.setEase(TimeEase(before: ease.before, after: ease.after), ofPoint: point.id)
+    }
+
+    /// Sets the speed the line has at the selected point on a side, as a
+    /// percentage, as tilting its handle does: the other side's handle
+    /// follows while they are in line.
+    func setSelectedSpeed(_ side: TimePoint.Side, to percent: Double) {
+        guard let point = selectedPoint, let place = selectedPlace, place.map.canEase(side, of: place.index) else { return }
+        let straight = place.map.straightSpeed(side, of: place.index)
+        guard straight > 0 else { return }
+        let ease = point.ease(side) ?? KeyframeEase(influence: KeyframeEase.linearInfluence, speed: 1)
+        perform(side == .before ? "Shape Ease In" : "Shape Ease Out") {
+            $0.setHandle(side, ofPoint: point.id, to: KeyframeEase(influence: ease.influence, speed: max(0, percent) / straight), alone: !point.smooth)
         }
     }
 

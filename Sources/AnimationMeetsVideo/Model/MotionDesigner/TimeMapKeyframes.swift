@@ -1,236 +1,169 @@
 import CoreMedia
 import Foundation
 
-// A clip's time map read from its speed keyframes, and written back as
-// them (see docs/motion-designer.md, "Opening on keyframed clips" and
+// A clip's time map read from the clip, and written back as its speed
+// keyframes (see docs/motion-designer.md, "Opening on keyframed clips" and
 // "Writing keyframes").
 
 extension ClipTimeMap {
-    /// The points a forward clip's speed keyframes make: a marker for each
+    /// The points a forward clip plays. The designer's own points, kept on
+    /// the clip (`ClipTime.design`) while its speed is what they wrote, come
+    /// back as they were, hits and eases included, where the clip now plays
+    /// them. Otherwise its speed keyframes make them: a marker for each
     /// keyframe it plays, where it plays now. A keyframe after a hold is a
-    /// step in speed, so a pace marker at its speed, as is the second of
-    /// two keyframes a frame or less apart (the first then makes no point).
-    /// A hold at the very start of the trim only sets the speed before the
-    /// first point, and keyframes that only shape an eased corner (no eases
-    /// of their own, beside one eased toward them) make none either: both
-    /// are what writing adds. A keyframe's Ease In and Ease Out make the
-    /// point's, whose ramps reach as far as the ramp keyframes beside it, a
-    /// third of each stretch without them.
+    /// step in speed, so a pace marker at its speed, as is the second of two
+    /// keyframes a frame or less apart (the first then makes no point). A
+    /// hold at the very start of the trim only sets the speed before the
+    /// first point, so it makes none.
     init(reading clip: TimelineClip, frameDuration: CMTime) {
+        let resting = Self.clamped(clip.speed(atSource: clip.trimStart))
+        if let design = clip.time.design, design.speed == clip.time.speed {
+            let points = design.points.filter { $0.source >= clip.trimStart && $0.source <= clip.trimEnd }.map { point in
+                TimePoint(
+                    source: point.source, time: clip.timelineTime(forSourceTime: point.source), kind: point.kind,
+                    easeIn: point.easeIn, easeOut: point.easeOut, smooth: point.smooth
+                )
+            }
+            self.init(trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points, restingSpeed: resting)
+            return
+        }
         let keyframes = clip.time.speed.keyframes
         var points: [TimePoint] = []
-        var ramps: Set<Int> = []
-        var keyframeOf: [UUID: Int] = [:]
         for (index, keyframe) in keyframes.enumerated() where keyframe.time >= clip.trimStart && keyframe.time <= clip.trimEnd {
             let previous = index > 0 ? keyframes[index - 1] : nil
             let next = index + 1 < keyframes.count ? keyframes[index + 1] : nil
-            let isLinear = keyframe.easeIn == nil && keyframe.easeOut == nil
             var kind = TimePoint.Kind.marker
             if let previous, previous.hold {
-                kind = .pace(keyframe.value)
-            } else if let previous, isLinear, previous.easeOut == nil, previous.value != keyframe.value,
+                kind = .pace(Self.clamped(keyframe.value))
+            } else if let previous, keyframe.easeIn == nil, previous.easeOut == nil, previous.value != keyframe.value,
                       CMTimeSubtract(keyframe.time, previous.time) <= frameDuration {
-                kind = .pace(keyframe.value)
+                kind = .pace(Self.clamped(keyframe.value))
                 if points.last?.source == previous.time, points.last?.kind == .marker { points.removeLast() }
             } else if keyframe.hold, keyframe.time == clip.trimStart, next != nil {
                 continue
-            } else if isLinear, previous?.easeOut != nil || next?.easeIn != nil {
-                ramps.insert(index)
-                continue
             }
-            if case .pace(let speed) = kind { kind = .pace(Self.clamped(speed)) }
-            let point = TimePoint(
-                source: keyframe.time, time: clip.timelineTime(forSourceTime: keyframe.time), kind: kind,
-                ease: isLinear ? nil : TimeEase(
-                    before: keyframe.easeIn != nil ? TimeEase.standardReach : nil,
-                    after: keyframe.easeOut != nil ? TimeEase.standardReach : nil
-                )
-            )
-            keyframeOf[point.id] = index
-            points.append(point)
+            points.append(TimePoint(source: keyframe.time, time: clip.timelineTime(forSourceTime: keyframe.time), kind: kind))
         }
-        // The ramps' reach, from the ramp keyframes beside each eased point.
-        for (p, point) in points.enumerated() where point.eased {
-            guard let k = keyframeOf[point.id], var ease = point.ease else { continue }
-            let before = (p > 0 ? points[p - 1].source : clip.trimStart).seconds
-            let after = (p + 1 < points.count ? points[p + 1].source : clip.trimEnd).seconds
-            if ease.before != nil, ramps.contains(k - 1), point.source.seconds > before {
-                ease.before = (point.source.seconds - keyframes[k - 1].time.seconds) / (point.source.seconds - before)
-            }
-            if ease.after != nil, ramps.contains(k + 1), after > point.source.seconds {
-                ease.after = (keyframes[k + 1].time.seconds - point.source.seconds) / (after - point.source.seconds)
-            }
-            points[p].ease = TimeEase(before: ease.before, after: ease.after)
-        }
-        self.init(
-            trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points,
-            restingSpeed: Self.clamped(clip.speed(atSource: clip.trimStart))
-        )
+        self.init(trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points, restingSpeed: resting)
     }
 
     /// The speed keyframes that play the clip along the map, and where it
-    /// then starts on the timeline; nil with no points. Between two points
-    /// it plays steadily, stepping at a corner through a hold keyframe; an
-    /// eased corner instead ramps over the share of the stretch on each side
-    /// it eases that its `TimeEase` reaches (two ramps in one stretch shrunk
-    /// to share it), with the change in speed shared between its ramps by
-    /// their lengths: Ease In arrives at the speed after it, Ease Out leaves
-    /// at the speed before it. The rest of
-    /// each stretch plays at the speed that keeps its length, so every
-    /// point plays where it was put. The open ends carry on at the speed the
-    /// clip has at the outermost points (a last pace marker's past it).
+    /// then starts on the timeline; nil with no points. A straight stretch
+    /// plays at its speed; a curved one in held steps, short enough to
+    /// follow its curve (`steps`), each playing the footage the curve
+    /// plays over that time, so every step, and every point, lands on the
+    /// line. Where the curve slows past what Time allows (1%) the steps
+    /// beside it make up for it, so the stretch still keeps its length.
     /// Keyframes go only where the speed changes.
     func writtenSpeed() -> (speed: AnimatedValue<Double>, start: CMTime)? {
         guard let first = points.first else { return nil }
-        let count = points.count
-        let source = points.map(\.source.seconds)
-        let time = points.map(\.time.seconds)
-        let sides = Sides(self)
-        var before = sides.before
-        let (left, right) = (sides.left, sides.right)
-        let (leftLength, rightLength) = (sides.leftLength, sides.rightLength)
-        let eased = (0..<count).map { sides.changes(at: $0) && points[$0].eased }
-        let easesIn = (0..<count).map { eased[$0] && points[$0].ease?.before != nil }
-        let easesOut = (0..<count).map { eased[$0] && points[$0].ease?.after != nil }
-        // How far each eased corner's ramps reach, in source seconds, shrunk
-        // where two meet in a stretch so they don't cross.
-        var reachBefore = (0..<count).map { easesIn[$0] ? (points[$0].ease?.before ?? 0) * leftLength($0) : 0 }
-        var reachAfter = (0..<count).map { easesOut[$0] ? (points[$0].ease?.after ?? 0) * rightLength($0) : 0 }
-        for i in 0..<(count - 1) {
-            let room = TimeEase.limit * rightLength(i)
-            let used = reachAfter[i] + reachBefore[i + 1]
-            if used > room {
-                reachAfter[i] *= room / used
-                reachBefore[i + 1] *= room / used
-            }
-        }
-        // The speed an eased corner passes through: the change shared
-        // between its ramps by their lengths, so the speed turns at one
-        // rate across both and a short ramp doesn't take all of it. With
-        // one ramp it is the speed on the side that doesn't ramp.
-        let through = (0..<count).map { i in
-            let ramps = reachBefore[i] + reachAfter[i]
-            return ramps > 0 ? Self.clamped(left(i) + (right(i) - left(i)) * reachBefore[i] / ramps) : right(i)
-        }
-
-        // The keyframes of the stretch after point `i`, playing `steady`
-        // where it doesn't ramp; held into a sharp corner whose speed,
-        // `next`, is another.
-        func stretch(_ i: Int, steady: Double, next: Double? = nil) -> [Keyframe<Double>] {
-            let at = { (seconds: Double) in CMTime(seconds: seconds, preferredTimescale: Self.timescale) }
-            var result = [eased[i]
-                ? Keyframe(time: points[i].source, value: through[i], easeIn: easesIn[i] ? .easy : nil, easeOut: easesOut[i] ? .easy : nil)
-                : Keyframe(time: points[i].source, value: steady)]
-            if easesOut[i] { result.append(Keyframe(time: at(source[i] + reachAfter[i]), value: steady)) }
-            if i + 1 < count {
-                if easesIn[i + 1] {
-                    result.append(Keyframe(time: at(source[i + 1] - reachBefore[i + 1]), value: steady))
-                } else if !eased[i + 1], let next, next != steady {
-                    result[result.count - 1].hold = true
-                }
-            }
-            return result
-        }
-
-        // Each stretch's steady speed: its own where nothing ramps, else
-        // the one that keeps its length.
-        var steady = (0..<count).map { right($0) }
-        for i in 0..<(count - 1) where easesOut[i] || easesIn[i + 1] {
-            let target = time[i + 1] - time[i]
-            func length(_ speed: Double) -> Double {
-                var keyframes = stretch(i, steady: speed)
-                keyframes.append(Keyframe(time: points[i + 1].source, value: eased[i + 1] ? through[i + 1] : speed, easeIn: easesIn[i + 1] ? .easy : nil))
-                return SpeedIntegral(AnimatedValue(speed, keyframes: keyframes)).length(from: source[i], to: source[i + 1])
-            }
-            var low = log(Self.speedRange.lowerBound), high = log(Self.speedRange.upperBound)
-            for _ in 0..<60 {
-                let middle = (low + high) / 2
-                // Faster plays the stretch in less time.
-                if length(exp(middle)) > target { low = middle } else { high = middle }
-            }
-            steady[i] = exp((low + high) / 2)
-        }
-
-        // Open ends carry on at the speed the clip has at the outermost
-        // points, which a ramp nearby makes other than the stretch's
-        // average, rather than stepping there.
-        if count >= 2, points[count - 1].pace == nil, !eased[count - 1] { steady[count - 1] = steady[count - 2] }
-        // Where each point's own keyframe starts the stretch after it.
-        let starts = (0..<count).map { eased[$0] ? through[$0] : steady[$0] }
-        if !eased[0] { before = starts[0] }
+        let stretches = stretches
         var keyframes: [Keyframe<Double>] = []
-        if easesIn[0] {
-            keyframes.append(Keyframe(time: CMTime(seconds: source[0] - reachBefore[0], preferredTimescale: Self.timescale), value: before))
-        } else if leftLength(0) > 0, before != starts[0] {
-            keyframes.append(Keyframe(time: trimStart, value: before, hold: true))
-        }
-        for i in 0..<count {
-            keyframes += stretch(i, steady: steady[i], next: i + 1 < count ? starts[i + 1] : nil)
-        }
-        // A point beside an eased one keeps its keyframe even where the
-        // speed doesn't change, since reading skips the ramp keyframes and
-        // needs both ends of the stretches either side of a ramp.
-        let anchors = Set((0..<count).filter { i in (i > 0 && eased[i - 1]) || (i + 1 < count && eased[i + 1]) }.map { points[$0].source })
-        let curve = Self.simplified(keyframes, keeping: anchors)
-        let lead = curve.isAnimated
-            ? SpeedIntegral(curve).length(from: trimStart.seconds, to: first.source.seconds)
-            : (first.source.seconds - trimStart.seconds) * 100 / curve.value
-        return (curve, CMTime(seconds: first.time.seconds - lead, preferredTimescale: Self.timescale))
-    }
-
-    /// Whether easing a point changes anything: the speed changes at it,
-    /// with footage on both sides. The outermost points don't, since the
-    /// open ends carry on at the speed beside them, except a last pace
-    /// marker whose pace isn't the speed before it.
-    func canEase(_ id: UUID) -> Bool {
-        guard let index = index(of: id) else { return false }
-        return Sides(self).changes(at: index)
-    }
-
-    /// The speeds and lengths of footage either side of each point, as
-    /// writing plays them.
-    private struct Sides {
-        let before: Double
-        let after: Double
-        private let map: ClipTimeMap
-        private let source: [Double]
-
-        init(_ map: ClipTimeMap) {
-            self.map = map
-            source = map.points.map(\.source.seconds)
-            before = ClipTimeMap.clamped(map.speedBeforeFirst)
-            after = ClipTimeMap.clamped(map.speedAfterLast)
-        }
-
-        func left(_ i: Int) -> Double { i == 0 ? before : ClipTimeMap.clamped(map.speed(after: i - 1)) }
-        func right(_ i: Int) -> Double { i == source.count - 1 ? after : ClipTimeMap.clamped(map.speed(after: i)) }
-        func leftLength(_ i: Int) -> Double { i == 0 ? source[0] - map.trimStart.seconds : source[i] - source[i - 1] }
-        func rightLength(_ i: Int) -> Double { i == source.count - 1 ? map.trimEnd.seconds - source[i] : source[i + 1] - source[i] }
-
-        /// Whether the speed changes at point `i`, with footage both sides.
-        func changes(at i: Int) -> Bool {
-            abs(left(i) - right(i)) > 1e-9 && leftLength(i) > 0 && rightLength(i) > 0
-        }
-    }
-
-    /// `keyframes` without those that change nothing, except at the times
-    /// in `keeping`, and a single value if they all hold one.
-    private static func simplified(_ keyframes: [Keyframe<Double>], keeping: Set<CMTime>) -> AnimatedValue<Double> {
-        var kept: [Keyframe<Double>] = []
-        for (index, keyframe) in keyframes.enumerated() {
-            let next = index + 1 < keyframes.count ? keyframes[index + 1] : nil
-            if !keeping.contains(keyframe.time), let previous = kept.last, previous.easeOut == nil, previous.value == keyframe.value,
-               keyframe.easeIn == nil, keyframe.easeOut == nil,
-               next == nil || keyframe.hold || (next?.value == keyframe.value && next?.easeIn == nil) {
-                // The value is already this from the keyframe before.
-                kept[kept.count - 1].hold = previous.hold || keyframe.hold
-                continue
+        // Rounded to the nearest tick: `CMTime(seconds:)` cuts a time a hair
+        // short of a tick back to the one before.
+        let at = { (seconds: Double) in CMTime(value: Int64((seconds * Double(Self.timescale)).rounded()), timescale: Self.timescale) }
+        // Each stretch starts on a point's frame, or the clip's first, kept
+        // as it is rather than put on the keyframes' timescale.
+        let frames = [trimStart] + points.map(\.source)
+        for stretch in stretches {
+            for step in Self.steps(of: stretch) {
+                let time = step.source == stretch.start.source ? frames.first { $0.seconds == step.source } ?? at(step.source) : at(step.source)
+                keyframes.append(Keyframe(time: time, value: step.speed, hold: true))
             }
+        }
+        if keyframes.isEmpty {
+            // A lone point at the clip's only frame: it plays at its speed.
+            keyframes.append(Keyframe(time: first.source, value: Self.clamped(speedAfterLast)))
+        }
+        let curve = Self.simplified(keyframes)
+        let start = stretches.first?.start.time ?? first.time.seconds
+        return (curve, at(start))
+    }
+
+    /// Where a stretch's speed steps, and the speed after each: one step
+    /// for a straight stretch, else one for each part of its time, held to
+    /// what Time allows and solved so they keep the stretch's length.
+    static func steps(of stretch: TimeStretch) -> [(source: Double, speed: Double)] {
+        guard stretch.footage > 0, stretch.duration > 0 else { return [] }
+        if stretch.isStraight { return [(stretch.start.source, clamped(stretch.speed))] }
+        // About a step every 1/24 s, the curve's own shape in each.
+        let count = Int((stretch.duration * 24).rounded()).clamped(between: 8, and: 64)
+        // On the times keyframes are written at, so each step plays the
+        // footage its speed is worked out from.
+        let grid = Double(timescale)
+        var sources = (0...count).map { ((stretch.start.source + stretch.footage * stretch.progress(Double($0) / Double(count))) * grid).rounded() / grid }
+        sources[0] = stretch.start.source
+        sources[count] = stretch.end.source
+        let span = stretch.duration / Double(count)
+        var parts: [(source: Double, footage: Double, speed: Double)] = []
+        for index in 0..<count {
+            let footage = sources[index + 1] - sources[index]
+            guard footage > 0 else { continue }
+            parts.append((sources[index], footage, footage / span * 100))
+        }
+        guard !parts.isEmpty else { return [] }
+        // Held parts take the time Time's limits give them; the rest share
+        // what's left, scaled together so the stretch keeps its length.
+        var speeds = parts.map { clamped($0.speed) }
+        for _ in 0..<8 {
+            let held = parts.indices.filter { speeds[$0] <= speedRange.lowerBound || speeds[$0] >= speedRange.upperBound }
+            let free = parts.indices.filter { !held.contains($0) }
+            let heldTime = held.reduce(0.0) { $0 + parts[$1].footage * 100 / speeds[$1] }
+            let freeTime = free.reduce(0.0) { $0 + parts[$1].footage * 100 / speeds[$1] }
+            let left = stretch.duration - heldTime
+            guard !free.isEmpty, left > 0, freeTime > 0, abs(freeTime - left) > 1e-12 else { break }
+            let factor = freeTime / left
+            for index in free { speeds[index] = clamped(speeds[index] * factor) }
+        }
+        return merged(parts.indices.map { (parts[$0].source, parts[$0].footage, speeds[$0]) }, from: stretch.start.time)
+    }
+
+    /// How far a merged step may play a frame from where the curve plays
+    /// it, in seconds: about a quarter of a frame.
+    static let stepTolerance = 1.0 / 96
+
+    /// `steps` with neighbours joined wherever playing them as one step,
+    /// their footage over their time, keeps every frame within
+    /// `stepTolerance` of where the steps play it. Each joined step still
+    /// starts and ends where they did, so the stretch keeps its length.
+    private static func merged(_ steps: [(source: Double, footage: Double, speed: Double)], from start: Double) -> [(source: Double, speed: Double)] {
+        // Where each step starts playing, and where the last ends.
+        var times = [start]
+        for step in steps { times.append(times[times.count - 1] + step.footage * 100 / step.speed) }
+        var result: [(source: Double, speed: Double)] = []
+        var first = 0
+        while first < steps.count {
+            var last = first
+            while last + 1 < steps.count {
+                let end = last + 1
+                let footage = steps[first...end].reduce(0.0) { $0 + $1.footage }
+                let speed = footage / (times[end + 1] - times[first]) * 100
+                // Every boundary inside plays near where the steps play it.
+                let fits = (first + 1...end).allSatisfy { inside in
+                    let played = times[first] + (steps[inside].source - steps[first].source) * 100 / speed
+                    return abs(played - times[inside]) <= stepTolerance
+                }
+                guard fits, speedRange.contains(speed) else { break }
+                last = end
+            }
+            let footage = steps[first...last].reduce(0.0) { $0 + $1.footage }
+            result.append((steps[first].source, footage / (times[last + 1] - times[first]) * 100))
+            first = last + 1
+        }
+        return result
+    }
+
+    /// `keyframes` without those that only repeat the speed before them, and
+    /// a single value if they all hold one.
+    private static func simplified(_ keyframes: [Keyframe<Double>]) -> AnimatedValue<Double> {
+        var kept: [Keyframe<Double>] = []
+        for keyframe in keyframes {
+            if let previous = kept.last, previous.value == keyframe.value { continue }
             kept.append(keyframe)
         }
         if let first = kept.first, kept.allSatisfy({ $0.value == first.value }) { return AnimatedValue(first.value) }
         // The last keyframe's hold does nothing; leave it off.
-        if !kept.isEmpty { kept[kept.count - 1].hold = false }
+        kept[kept.count - 1].hold = false
         return AnimatedValue(kept[0].value, keyframes: kept)
     }
 

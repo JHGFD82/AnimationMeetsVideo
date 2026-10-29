@@ -21,8 +21,9 @@ else around it, by dragging frames along a time graph.
   so the timeline shows a moved clip where it now is and its markers as
   keyframes. The editor's history holds the changes back meanwhile
   (`ProjectHistory.beginGesture(quietly:)`). **Done** keeps them, as one
-  undo step, and closes; every marker is forgotten. Opening it again
-  rebuilds markers from those keyframes (see
+  undo step, and closes. Each changed clip keeps its points with the
+  keyframes (`ClipTime.design`), so opening it again brings back its
+  hits, markers and handles as they were (see
   [Opening on keyframed clips](#opening-on-keyframed-clips)). **Cancel**
   puts the project back as it was when the panel opened, asking first if
   anything changed, and leaves no undo step.
@@ -76,11 +77,12 @@ time graph and the music.
   the run reads as one line in each clip's own colour: steep where fast,
   shallow where slow, flat (dashed) over a gap. Each stretch's speed is
   read out over it, once for stretches either side of a point at one
-  speed. Points use the keyframes' marks: hits in the bright "placed"
-  tone, markers quieter, a pace marker squared off where the speed steps
-  with its pace beside it, an eased point pinched on the sides it eases,
-  as a keyframe's mark is; the selected one is
-  ringed in the accent.
+  speed. Between two points the line bends as a keyframe's segment does
+  in the graph editor, shaped by the handles either side. Points use the
+  keyframes' marks: hits in the bright "placed" tone, markers quieter, a
+  pace marker squared off where the speed steps with its pace beside it,
+  an eased point pinched on the sides it eases, as a keyframe's mark is;
+  the selected one is ringed in the accent, with its handles out.
 - **A hit's pin** runs from its frame in the strip, through the graph,
   to its beat in the music lane.
 - **The music lanes**: a lane for each Music layer with a song under
@@ -96,8 +98,10 @@ time graph and the music.
   leading at each moment (`EditingProject.musicBeats(in:tracks:)`), and
   a hit's pin ends on the lane of the song leading at its time.
 - Clicking the line drops a marker on that frame, selected, and moves
-  the playhead there; grabbing the line drops one and drags it, and
-  grabbing a point drags it. Nothing is dragged until the pointer has
+  the playhead there; grabbing the line drops one and drags it, which
+  sets the speed before and after it, and grabbing a point drags it. A
+  dropped marker is eased with its handles in line, so the line bends
+  smoothly through it, and its handles are there to shape at once. Nothing is dragged until the pointer has
   moved 3 points, so a click on a point only selects it and changes
   nothing. Each step of a drag
   applies to the run as the drag found it
@@ -124,11 +128,12 @@ time graph and the music.
   change, as for any edit, swapping it while playing once the changes
   pause; the playhead is the editor's too.
 - **The sidebar** shows the monitor, then what is
-  selected: a point's kind (Hit, Marker, Pace), its pace (typed), its
-  Ease (Linear, Ease In, Ease Out, Easy Ease) and how far its Ease In and
-  Ease Out reach,
-  a frame earlier or later and Remove; or a clip's start and end and a
-  frame earlier or later. With nothing selected it says what to do.
+  selected: a point's kind (Hit, Marker, Pace), the speed after it (a
+  `NumericField`: typing a speed, with or without "%", makes it a pace
+  marker at that speed), its Ease (Linear, Ease In, Ease Out, Easy Ease)
+  and, for each side it eases, how far that handle reaches and the speed
+  it sets at the point (typed), a frame earlier or later and Remove; or a
+  clip's start and end and a frame earlier or later. With nothing selected it says what to do.
   Warnings sit under that; Undo and Redo, Cancel and Done at the foot,
   as in Beat Match. Undo and Redo name the change they undo or redo, and
   wait while a drag is under way.
@@ -167,14 +172,17 @@ on Done each clip gets its own share of the keyframes.
 ## Points on the graph
 
 - **Hit.** A frame of the footage pinned to a beat of the music: it plays
-  on that beat whatever else changes. A fixed point on the graph.
+  on that beat whatever else changes. A fixed point on the graph, which
+  only the person moves. Hits are what the designer is for; every other
+  point and handle shapes how the footage gets from one hit to the next.
 - **Marker.** Grabbing any other frame drops a marker there. Dragging it
-  along time retimes the footage on both sides: the line bends at the
-  marker and still passes through every hit.
-- **Pace marker.** A marker that sets the speed *after* it to a typed
-  value (**Set Pace…**). With hit H and marker M dragged so H→M plays at
-  50%, a pace marker P past M at 200% makes the footage after P play at
-  200%.
+  along time retimes the footage on both sides: slower before and faster
+  after, or the other way, the line bending through it and still passing
+  through every hit.
+- **Pace marker.** A marker that holds the speed *after* it to a typed
+  value, straight to the next point. With hit H and marker M dragged so
+  H→M plays at 50%, a pace marker P past M at 200% makes the footage
+  after P play at 200%.
   - Another marker beyond P slides in time so P's pace holds, and a run
     of pace markers carries on, each placing the next.
   - A hit beyond P can't stay put and hold the pace too. The person is
@@ -183,63 +191,77 @@ on Done each clip gets its own share of the keyframes.
     right after a pace marker a hit asks the same way, and ends that pace.
   - Dragging the point right after P sets P's pace instead of bending the
     line at P. Taking away the point between P and a hit ends P's pace.
+  - The stretch a pace holds runs straight: P's handle out and the next
+    point's handle in go, and can't be put back while the pace holds.
+  - Before a pace marker that is the first point, the clip plays at the
+    speed it had before, since a pace is only the speed after it.
 - Any marker can be made a hit, and a hit a marker.
 - A drag stops where a stretch would play faster than 10000% or slower
   than 1%, or backwards; an edit that can't fit at all is refused.
-- A new marker lands where its frame plays now, so adding one changes
-  nothing until it is moved.
+- A new marker lands where its frame plays now, with its handles at the
+  speed the line has there, so adding one bends nothing until it is
+  moved (on a curved stretch the curve either side is near enough the
+  same, not exactly).
 
 ### Open ends
 
-Past the outermost point on a side, the speed carries on at the speed of
-the segment next to it, **to the end of that clip**. With H→M at 50%,
-the rest of that clip plays at 50% too. The next clip keeps whatever
-speed it already had. A lone point carries on at the speed the clip
-played at before (a lone pace marker at its pace after it). Where an
-eased corner nearby makes the stretch's steady part faster or slower
-than its average, the open end carries on at that steady speed, so it
-doesn't step at the outermost point.
+Past the outermost point on a side, the speed carries on at the
+straight-line speed of the stretch next to it, **to the end of that
+clip**. With H→M at 50%, the rest of that clip plays at 50% too. The next
+clip keeps whatever speed it already had. A lone point carries on at the
+speed the clip played at before (a lone pace marker at its pace after
+it). The outermost points' handles bend the open ends too, between the
+point and the clip's edge, which stays where it is: easing a point never
+moves a clip's edge.
 
 ### Easing
 
-A point is eased with the keyframe eases, by their names (the sidebar's
+A point's sides are eased as a keyframe's are, with the same
+`KeyframeEase` (influence and speed) and the same presets: the sidebar's
 **Ease** menu, the graph's menu, the point's VoiceOver actions, or E,
-which sets Easy Ease and back to Linear as F9 eases a keyframe):
+which sets Easy Ease and back to Linear as F9 eases a keyframe. On the
+time graph a side's handle reaches its influence of the stretch on that
+side along the timeline, at its speed times the stretch's straight-line
+speed, so the line between two points is the cubic the graph editor
+draws between two keyframes.
 
-- **Linear**: the speed steps at the point. Every point starts so.
-- **Ease In**: the speed ramps into the point, arriving at the speed
-  after it.
-- **Ease Out**: the speed ramps out of the point, leaving at the speed
-  before it.
-- **Easy Ease**: both, the change of speed shared between the two ramps
-  by their lengths, so the speed turns at one rate across both and a
-  short ramp doesn't take all of it.
+- **Linear**: the handle sits on the straight line, a third of the way
+  along. Where both sides are linear the speed steps at the point.
+- **Ease In**: the footage slows into the point (the handle in lies
+  flat: the speed there is 0).
+- **Ease Out**: the footage leaves the point slowly.
+- **Easy Ease**: both, so the footage all but stops on the point. On a
+  hit, that lands the beat on a near-freeze; the rest of each stretch
+  plays faster to keep the hits where they are.
 
-Hold isn't offered: a sharp corner is written as a hold already, so it
-would be Linear again. Easing smooths a change of speed, so it works only
-where the speed changes at the point (`ClipTimeMap.canEase`): a point
-with points on both sides where the stretches play at different speeds,
-or a last pace marker whose pace isn't the speed before it. Otherwise
-the outermost points can't, since the open ends carry on at the speed
-beside them, so neither point of a run with two can, nor a lone pace
-marker; the sidebar says so and offers only Linear, and E or the menu
-says why in the sidebar instead of easing.
+Hold isn't offered: a pace marker is how the speed steps. Any point can
+ease, a hit on a straight line and the first and last points included,
+on any side with footage that a pace doesn't hold straight
+(`ClipTimeMap.canEase`). A point that can't ease on either side (a lone
+pace marker on the clip's first frame) says so in the sidebar, and E or
+the menu says why instead of easing.
 
-Its ramps are shaped by **handles**: with an eased point selected, the
-graph shows a handle on the line where its Ease In and its Ease Out end,
-with a stem back to the point, as the graph editor's do. Dragging a
-handle along the line lengthens or shortens that side, from 5% to 90% of
-the stretch on its side (`TimeEase`, a third to begin with, as Easy
-Ease's influence), so a ramp can be short and sharp on one side and long
-on the other. Two ramps meeting in one stretch share 90% of it, each
-held to what the other leaves. The handles move only along the line,
-never up or down: bending it would move frames off their places. However
-the ramps are shaped, the rest of each stretch is solved to keep its
-length, so hits still land on their beats. The sidebar's **Ease In** and
-**Ease Out** sliders, and the point's VoiceOver actions (Longer and
-Shorter Ease In and Ease Out, a tenth of the stretch at a time), do the
-same from the keyboard. Speeds are held to what Time allows (1% to
-10000%, never through zero).
+With a point selected, the graph shows the **handles** of its eased
+sides on its tangent, with a stem back to the point, as the graph
+editor's do, and they work the same way:
+
+- Dragging a handle along shapes how far it reaches; tilting it sets the
+  speed at the point. The handle on the other side swings to stay in
+  line with it, so the speed carries through the point without a step.
+  With **Option** it moves alone, and the speed steps there; the
+  sidebar's **Handles in line** does the same from the keyboard, and
+  turned back on brings them into line again.
+- A handle dragged onto its point goes, leaving that side linear.
+- Handles are held inside their stretch, so the footage never stops
+  for longer than an instant or runs backwards.
+- Points dropped on the line keep their handles in line as the stretches
+  around them change speed, at the speed the two share by their reach.
+
+The sidebar's **Ease In** and **Ease Out** sliders and **Speed** fields,
+and the point's VoiceOver actions (Longer and Shorter Ease In and Ease
+Out, a tenth of the stretch at a time, and Faster and Slower, a quarter
+at a time), do the same from the keyboard. Speeds are held to what Time
+allows (1% to 10000%) where they are written.
 
 ### Beat markers and snapping
 
@@ -302,35 +324,35 @@ where other clips are.
 
 ## Opening on keyframed clips
 
-A clip's speed keyframes become points:
-
 **Built** (`ClipTimeMap(reading:frameDuration:)`).
 
-- Each speed keyframe the clip plays becomes a **marker**, where it plays
-  now; the person can turn any into a hit. Hits aren't kept on Done, so
-  they come back as markers.
-- A [hold keyframe](#hold-keyframes) followed by another keyframe is a
-  step in speed: the keyframe after the hold becomes a **pace marker** at
-  its speed.
-- Two keyframes a frame or less apart with different speeds do the job
-  of one pace marker, so they are read the same way: a pace marker at the
-  second, and no marker for the first.
-- What writing adds makes no point: a hold at the very start of the trim
-  (the speed before the first point), and the keyframes that only shape
-  an eased corner (linear, beside a keyframe eased toward them). A
-  hand-made linear keyframe beside an eased one is taken for one of those.
-- A keyframe with eases makes an eased point with the same ease (Ease
-  In, Ease Out or Easy Ease), whose ramps reach as far as the ramp
-  keyframes beside it (a third of each stretch without them).
+- A clip the designer wrote keeps its points with its keyframes
+  (`ClipTime.design`, saved as `time.design` in `project.json`: each
+  point's frame, kind, pace, eases and whether its handles are in line,
+  and the speed they wrote). While the clip's speed is still that speed
+  they come back as they were, hits and handles included, each where the
+  clip now plays its frame, so the clip may have been moved or trimmed
+  meanwhile (points trimmed off are left out).
+- Once the speed has been changed anywhere else, they are left behind,
+  and the speed keyframes make the points instead:
+  - Each speed keyframe the clip plays becomes a **marker**, where it
+    plays now; the person can turn any into a hit.
+  - A [hold keyframe](#hold-keyframes) followed by another keyframe is a
+    step in speed: the keyframe after the hold becomes a **pace marker**
+    at its speed.
+  - Two keyframes a frame or less apart with different speeds do the job
+    of one pace marker, so they are read the same way: a pace marker at
+    the second, and no marker for the first.
+  - A hold at the very start of the trim only sets the speed before the
+    first point, which the clip keeps; it makes no point.
+  - Keyframes' own eases aren't read: their points are linear, and if
+    the person changes that clip, the stretches between them are written
+    as the designer's line.
 - A clip at one speed has no points; it plays at that speed until some
   are added.
 
 Opening the designer and closing it without changing a clip leaves its
-keyframes as they were: only clips that were changed are written (the
-panel's part, step 5). A ramp
-read from keyframes becomes markers at its ends, and if the person
-changes that clip, the stretch between them is written steady (or eased,
-if they ease its corners) rather than as the ramp's own curve.
+keyframes as they were: only clips that were changed are written.
 
 ## Writing keyframes
 
@@ -338,34 +360,29 @@ if they ease its corners) rather than as the ramp's own curve.
 time map becomes speed keyframes, in source time, and where the clip then
 starts:
 
-- Keyframes go only where the speed changes; a steady stretch needs none,
-  and a clip at one speed throughout gets a single speed.
-- A sharp corner, every pace marker included, is the keyframe before it
-  set to **hold**, then a keyframe at the corner with the new speed: the
-  pattern read back as a pace marker.
-- An eased corner ramps over the share of the stretch on each side it
-  eases that its handles reach (a third by default), shrunk to share a
-  stretch where two ramps would cross. The corner's keyframe plays the
-  speed before it plus the change shared by the ramps' lengths (Ease In's
-  the speed after, Ease Out's the speed before), with the keyframe's own
-  Ease In, Ease Out or both on the sides that ramp, so the speed turns
-  smoothly and the point reads back with the same ease. A linear keyframe
-  ends each ramp; a side that doesn't ramp meets the stretch beside it at
-  its speed. A point beside an eased one keeps its
-  keyframe even where the speed doesn't change there, since reading
-  skips the ramp keyframes and needs both ends of each stretch; so a
-  shaped ramp reads back with the reach it was given. The rest of
-  each stretch plays steadily at the speed that keeps the stretch its
-  length (solved against `SpeedIntegral`), so every point, and so every
-  hit, lands where it was put, to within a placed time (1/240000 s). A
-  corner whose speed doesn't change has nothing to ease.
-- Each clip's start follows, in the same undo step.
+- A straight stretch is one keyframe at its speed; a clip at one speed
+  throughout gets a single speed.
+- A curved stretch is held steps (`ClipTimeMap.steps(of:)`): its time cut
+  into parts about 1/24 s long, each playing the footage the curve plays
+  over that time, on the keyframes' timescale (1/240000 s). Neighbouring
+  steps are then joined wherever playing them as one keeps every frame
+  within a quarter of a frame (`stepTolerance`) of where they played it,
+  so a gentle ease is a few keyframes and a near-stop more. Each step
+  starts and ends on the line, so every point, and so every hit, lands
+  where it was put, to within a tick.
+- Where the curve slows past 1% (a stop on a point), those steps are held
+  at 1% and the others in the stretch play a little faster, so it still
+  keeps its length.
+- Every keyframe holds; consecutive ones at one speed are one.
+- A pace marker steps: its stretch is straight at its pace.
+- Each clip's start follows, in the same undo step, and its points are
+  kept with the speed (`MotionDesign`) for the next opening.
 
 The time map is one clip's (`ClipTimeMap`: the points in source order,
-each with its frame, its time on the timeline, its kind and whether it is
-eased), since open ends stop at the clip's edges; the panel keeps one for
-each clip of the run. It and the rules above are pure functions, unit
-tested like `BeatFitting`.
+each with its frame, its time on the timeline, its kind and its handles;
+`TimeStretch` for the line between two of them), since open ends stop at
+the clip's edges; the panel keeps one for each clip of the run. It and
+the rules above are pure functions, unit tested like `BeatFitting`.
 
 ## Clips attached to the music
 
@@ -417,8 +434,9 @@ video depends on the music, so clips follow it.
   tied.
 - Not yet: footage following while the song is dragged (it follows on the
   drop).
-- The designer's hits are forgotten on Done; the attachment is what keeps
-  the hit frame on its beat afterwards.
+- The designer's hits are kept on the clip with its keyframes, so they
+  come back when it opens again; the attachment is what keeps the clip on
+  its beat when the song moves afterwards.
 
 ## Hold keyframes
 
@@ -451,8 +469,9 @@ Following [accessibility.md](accessibility.md). The graph is a group
 named with its clips and hits; each point is an element read as its kind
 and time, then its frame and the speed after it, adjustable a frame at a
 time, with Make hit, Make marker, Set pace, its other eases by name
-(Linear, Ease In, Ease Out, Easy Ease) where it can ease, and Remove
-as actions; the graph adds Add marker at playhead. Each clip in the strip
+(Linear, Ease In, Ease Out, Easy Ease) where it can ease, Longer,
+Shorter, Faster and Slower for each side it eases, and Remove as
+actions; the graph adds Add marker at playhead. Each clip in the strip
 reads its name and span, with a frame earlier or later as actions. The
 ruler is the playhead, adjustable a frame at a time. Everything a drag
 does has a key, a button or an action.
