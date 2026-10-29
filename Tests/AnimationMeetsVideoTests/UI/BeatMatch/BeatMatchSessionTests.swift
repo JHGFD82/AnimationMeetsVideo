@@ -259,4 +259,54 @@ import Testing
         fresh.startOver()
         #expect(!fresh.removesBeats)
     }
+
+    @Test func fillingIsOfferedOnceASectionHasWhatItNeeds() async throws {
+        let session = try session("beat-match-session-can-fill")
+        defer { session.end() }
+        for _ in 0..<200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        session.chooseSections()
+        session.drawSection(from: 0, to: 20, snap: 0)
+        session.drawKind = .ramp
+        session.drawSection(from: 20, to: 30, snap: 0)
+        #expect(session.map.sections.map(\.kind) == [.consistent, .ramp])
+        // Not while drawing.
+        #expect(!session.canFillSelected)
+        session.finishDrawing()
+        let sections = session.map.sections.map(\.id)
+        // A consistent section needs two anchors…
+        session.selectSection(sections[0])
+        #expect(!session.canFillSelected)
+        session.addBeat(at: 8.25, position: 1)
+        #expect(!session.canFillSelected)
+        session.addBeat(at: 16.25, position: 1)
+        #expect(session.canFillSelected)
+        // …and not again until the fill is done.
+        session.fillSelected()
+        #expect(!session.canFillSelected)
+        for _ in 0..<100 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(session.canFillSelected)
+        // A ramp needs none of its own.
+        session.selectSection(sections[1])
+        #expect(session.canFillSelected)
+    }
+
+    @Test func aNoteShowsUntilTheNextEdit() throws {
+        let session = try session("beat-match-session-explain")
+        defer { session.end() }
+        session.explain("Select a section first.")
+        #expect(session.message == "Select a section first.")
+        session.chooseOneTempo()
+        #expect(session.message == nil)
+    }
+
+    @Test func timeTextCountsWholeUnitsOfItsLastDecimal() {
+        #expect(BeatMatchWaveform.timeText(0) == "0:00.000")
+        #expect(BeatMatchWaveform.timeText(65.4321) == "1:05.432")
+        // Rounds up into the next minute rather than showing 60 seconds.
+        #expect(BeatMatchWaveform.timeText(59.9996) == "1:00.000")
+        #expect(BeatMatchWaveform.timeText(-1.5) == "-0:01.500")
+        #expect(BeatMatchWaveform.timeText(125, spacing: 5) == "2:05")
+        #expect(BeatMatchWaveform.timeText(3.25, spacing: 0.5) == "0:03.3")
+        #expect(BeatMatchWaveform.timeText(1.00005, spacing: 0.0001) == "0:01.0001")
+    }
 }

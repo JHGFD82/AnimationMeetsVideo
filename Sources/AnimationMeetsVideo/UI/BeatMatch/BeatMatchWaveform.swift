@@ -633,13 +633,31 @@ struct BeatMatchWaveform: View {
         return steps.first { $0 >= wanted } ?? 600
     }
 
-    /// Minutes, seconds and as many decimals as `spacing` needs.
+    /// Minutes, seconds and as many decimals as `spacing` needs. In whole
+    /// units of the last decimal, with no format string to build or parse,
+    /// since the playhead's timecode asks for one on every frame it plays.
     static func timeText(_ seconds: Double, spacing: Double = 0.001) -> String {
+        guard seconds.isFinite else { return "–:––" }
         let decimals = spacing >= 1 ? 0 : min(4, Int((-log10(spacing)).rounded(.up)))
-        let minutes = Int(seconds / 60)
-        let rest = seconds - Double(minutes) * 60
-        let secondsText = String(format: "%0\(decimals == 0 ? 2 : decimals + 3).\(decimals)f", rest)
-        return "\(minutes):\(secondsText)"
+        let scale = unitsPerSecond[decimals]
+        let units = Int((abs(seconds) * Double(scale)).rounded())
+        let whole = units / scale
+        var text = seconds < 0 && units > 0 ? "-" : ""
+        text += String(whole / 60)
+        text += ":"
+        text += zeroPadded(whole % 60, to: 2)
+        if decimals > 0 {
+            text += "."
+            text += zeroPadded(units % scale, to: decimals)
+        }
+        return text
+    }
+
+    private static let unitsPerSecond = [1, 10, 100, 1_000, 10_000]
+
+    private static func zeroPadded(_ value: Int, to width: Int) -> String {
+        let digits = String(value)
+        return digits.count < width ? String(repeating: "0", count: width - digits.count) + digits : digits
     }
 }
 
