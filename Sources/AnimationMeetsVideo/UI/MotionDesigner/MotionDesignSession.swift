@@ -342,14 +342,30 @@ final class MotionDesignSession: SecondsViewport {
         perform("Move Point") { $0.movePoint(point.id, to: CMTimeAdd(point.time, delta)) }
     }
 
-    /// Lengthens or shortens one of the selected point's ramps by `step` of
-    /// its stretch, easing it first if it wasn't.
+    /// Sets a point's ease by its preset, as a keyframe's is set, named so
+    /// in the undo menu. Where the speed doesn't change at the point there
+    /// is nothing to ease, and the message says so instead.
+    func setEase(_ preset: KeyframeEase.Preset, ofPoint id: UUID) {
+        guard preset == .linear || run.canEase(point: id) else {
+            message = Self.nothingToEase
+            return
+        }
+        perform(preset.name) { $0.setEase(preset, ofPoint: id) }
+    }
+
+    static let nothingToEase = "The speed doesn't change at this point, so there's nothing to ease. Easing smooths a change of speed, such as at a point between two others that play at different speeds."
+
+    /// Lengthens or shortens the selected point's Ease In (`before`) or
+    /// Ease Out by `step` of its stretch, adding that side if it hasn't one.
     func reshapeSelectedEase(before: Bool, by step: Double) {
-        guard let point = selectedPoint else { return }
-        var ease = point.ease ?? TimeEase()
-        if before { ease.before += step } else { ease.after += step }
-        perform("Shape Ease") {
-            $0.setEased(true, ofPoint: point.id)
+        guard let point = selectedPoint, run.canEase(point: point.id) else { return }
+        var ease = point.ease ?? TimeEase(before: nil, after: nil)
+        if before {
+            ease.before = (ease.before ?? TimeEase.standardReach) + step
+        } else {
+            ease.after = (ease.after ?? TimeEase.standardReach) + step
+        }
+        perform(before ? "Shape Ease In" : "Shape Ease Out") {
             $0.setEase(TimeEase(before: ease.before, after: ease.after), ofPoint: point.id)
         }
     }

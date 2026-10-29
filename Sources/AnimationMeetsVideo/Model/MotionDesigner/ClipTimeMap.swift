@@ -24,11 +24,15 @@ struct TimePoint: Identifiable, Equatable {
     /// Where it plays on the timeline.
     var time: CMTime
     var kind: Kind
-    /// How the speed ramps through it, when it does instead of stepping.
+    /// How the speed ramps into it, out of it or both, when it does
+    /// instead of stepping.
     var ease: TimeEase?
 
     /// Whether the speed ramps through it instead of stepping.
     var eased: Bool { ease != nil }
+
+    /// Its ease, named as keyframes' are: Linear when it steps.
+    var easePreset: KeyframeEase.Preset { ease?.preset ?? .linear }
 
     var isHit: Bool { kind == .hit }
 
@@ -38,23 +42,53 @@ struct TimePoint: Identifiable, Equatable {
     }
 }
 
-/// How far an eased point's ramp reaches into the stretch on either side,
-/// as a share of that stretch: the ramp's handles on the graph. The rest of
-/// each stretch plays steadily at the speed that keeps its length, so
-/// longer ramps never move a point.
+/// How far an eased point's ramps reach into the stretch on either side,
+/// as a share of that stretch: the ramps' handles on the graph. Nil on a
+/// side where the speed doesn't ramp, so a point eases in (`before`), out
+/// (`after`) or both, as a keyframe's Ease In, Ease Out and Easy Ease. The
+/// rest of each stretch plays steadily at the speed that keeps its length,
+/// so longer ramps never move a point.
 struct TimeEase: Equatable {
-    var before: Double
-    var after: Double
+    var before: Double?
+    var after: Double?
 
     /// A share of a stretch a ramp may reach; two ramps meeting in one
     /// stretch share `limit` of it.
     static let reach = 0.05...0.9
     static let limit = 0.9
+    /// How far a new ramp reaches, as Easy Ease's influence.
+    static let standardReach = 1.0 / 3
 
-    init(before: Double = 1.0 / 3, after: Double = 1.0 / 3) {
-        self.before = before.clamped(between: Self.reach.lowerBound, and: Self.reach.upperBound)
-        self.after = after.clamped(between: Self.reach.lowerBound, and: Self.reach.upperBound)
+    init(before: Double? = standardReach, after: Double? = standardReach) {
+        self.before = before?.clamped(between: Self.reach.lowerBound, and: Self.reach.upperBound)
+        self.after = after?.clamped(between: Self.reach.lowerBound, and: Self.reach.upperBound)
     }
+
+    /// The preset it is, as a keyframe's ease is named.
+    var preset: KeyframeEase.Preset {
+        switch (before, after) {
+        case (.some, .some): .easyEase
+        case (.some, nil): .easeIn
+        case (nil, .some): .easeOut
+        case (nil, nil): .linear
+        }
+    }
+
+    /// The ease `preset` makes, keeping how far this one's ramps reach.
+    /// Nil for Linear and Hold, which step.
+    func setting(_ preset: KeyframeEase.Preset) -> TimeEase? {
+        let into = before ?? Self.standardReach, out = after ?? Self.standardReach
+        switch preset {
+        case .easeIn: return TimeEase(before: into, after: nil)
+        case .easeOut: return TimeEase(before: nil, after: out)
+        case .easyEase: return TimeEase(before: into, after: out)
+        case .linear, .hold: return nil
+        }
+    }
+
+    /// The presets a point in the motion designer can take: Hold is how a
+    /// sharp corner is written, so it is Linear here.
+    static let presets: [KeyframeEase.Preset] = [.linear, .easeIn, .easeOut, .easyEase]
 }
 
 /// One clip's points, in source order, and the footage it plays.
@@ -248,13 +282,16 @@ struct ClipTimeMap: Equatable {
         for index in points.indices { points[index].time = CMTimeAdd(points[index].time, delta) }
     }
 
-    mutating func setEased(_ eased: Bool, of id: UUID) {
+    /// Sets a point's ease by its preset, keeping how far the ramps it
+    /// keeps reach: Linear (or Hold) steps, Ease In ramps the speed into
+    /// the point, Ease Out out of it, Easy Ease both.
+    mutating func setEase(_ preset: KeyframeEase.Preset, of id: UUID) {
         guard let index = index(of: id) else { return }
-        guard eased else {
+        guard let ease = (points[index].ease ?? TimeEase()).setting(preset) else {
             points[index].ease = nil
             return
         }
-        if points[index].ease == nil { setEase(TimeEase(), of: id) }
+        setEase(ease, of: id)
     }
 
     /// Shapes an eased point's ramps, each kept within the room the ramp of
@@ -262,11 +299,11 @@ struct ClipTimeMap: Equatable {
     mutating func setEase(_ ease: TimeEase, of id: UUID) {
         guard let index = index(of: id) else { return }
         var ease = ease
-        if index > 0, let other = points[index - 1].ease {
-            ease.before = min(ease.before, TimeEase.limit - other.after)
+        if index > 0, let before = ease.before, let other = points[index - 1].ease?.after {
+            ease.before = min(before, TimeEase.limit - other)
         }
-        if index + 1 < points.count, let other = points[index + 1].ease {
-            ease.after = min(ease.after, TimeEase.limit - other.before)
+        if index + 1 < points.count, let after = ease.after, let other = points[index + 1].ease?.before {
+            ease.after = min(after, TimeEase.limit - other)
         }
         points[index].ease = TimeEase(before: ease.before, after: ease.after)
     }

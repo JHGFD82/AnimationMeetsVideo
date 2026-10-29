@@ -66,18 +66,30 @@ struct MotionDesignLanesInteractionTests {
         defer { defaults.set(remembered, forKey: Preferences.motionDesignerSkimming) }
         let session = try session()
         defer { session.end() }
-        // Skimming shows a frame only once the player has something to show.
-        session.playback.player.replaceCurrentItem(with: AVPlayerItem(asset: AVMutableComposition()))
+        // Skimming shows a frame only once the player has an item: here ten
+        // seconds of nothing.
+        let composition = AVMutableComposition()
+        let track = try #require(composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid))
+        track.insertEmptyTimeRange(CMTimeRange(start: .zero, duration: CMTime(value: 10, timescale: 1)))
+        let player = session.playback.player
+        player.replaceCurrentItem(with: AVPlayerItem(asset: composition))
+        // Its time jumps to zero as it becomes ready, and the playhead
+        // follows the player's jumps; the editor's player is ready long
+        // before anyone skims, so the playhead is placed only after that.
+        for _ in 0..<200 where player.currentItem?.status != .readyToPlay { try await Task.sleep(for: .milliseconds(10)) }
+        session.seek(to: 2)
         session.skims = true
         let harness = EventHarness(MotionDesignLanes(session: session), size: Self.size)
         try await harness.settle()
+        let playhead = session.playhead
 
         // Over the graph at 4 s: the monitor shows 4 s, the playhead stays.
         harness.mouse(.mouseMoved, at: CGPoint(x: onLine(session, at: 4).x, y: 150))
         try await harness.settle()
         let skimmed = try #require(session.playback.skimTime)
         #expect(abs(skimmed.seconds - 4) <= session.timeline.frameDuration.seconds)
-        #expect(abs(session.playhead - 2) < 1e-6)
+        #expect(abs(session.playhead - playhead) < 1e-6)
+        #expect(abs(playhead - 2) < 1e-6)
 
         // Turned off, the skim ends and hovering shows nothing.
         session.skims = false

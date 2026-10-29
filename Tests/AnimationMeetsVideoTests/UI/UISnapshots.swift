@@ -71,7 +71,7 @@ struct UISnapshots {
             var copy = run
             let quick = copy.addMarker(toPiece: first.id, atSource: seconds(1.5))!
             copy.movePoint(quick, to: seconds(3.4))
-            copy.setEased(true, ofPoint: slow)
+            copy.setEase(.easyEase, ofPoint: slow)
             copy.setEase(TimeEase(before: 0.6, after: 0.4), ofPoint: slow)
             return copy
         }()
