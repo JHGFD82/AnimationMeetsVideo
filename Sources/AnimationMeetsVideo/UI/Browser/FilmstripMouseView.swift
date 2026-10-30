@@ -3,9 +3,10 @@ import SwiftUI
 
 /// What a press on a filmstrip turned out to be.
 enum FilmstripPress {
-    /// Released without moving: a click, with the keys held at the press,
-    /// whether or not the press would have tracked a range.
-    case click(CGPoint, NSEvent.ModifierFlags)
+    /// Released without moving: a click, with the keys held at the press
+    /// and its click count (2 for a double-click's second), whether or not
+    /// the press would have tracked a range.
+    case click(CGPoint, NSEvent.ModifierFlags, clickCount: Int = 1)
     /// Moved while tracking a range (a drag across the clip, or a range's
     /// handle).
     case track(CGPoint)
@@ -49,6 +50,7 @@ struct FilmstripMouseView: NSViewRepresentable {
         var configuration: FilmstripMouseView?
         private var downPoint: CGPoint?
         private var downFlags: NSEvent.ModifierFlags = []
+        private var downClickCount = 1
         private var tracking = false
         /// Whether a tracked press has moved far enough to be a drag.
         private var tracked = false
@@ -101,6 +103,7 @@ struct FilmstripMouseView: NSViewRepresentable {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             downPoint = point
             downFlags = flags
+            downClickCount = event.clickCount
             dragging = false
             tracked = false
             tracking = configuration?.onDown(point, flags) ?? false
@@ -139,7 +142,7 @@ struct FilmstripMouseView: NSViewRepresentable {
                 configuration?.onPress(.endTrack(point))
                 showCursor(over: point)
             } else if !dragging, let downPoint {
-                configuration?.onPress(.click(downPoint, downFlags))
+                configuration?.onPress(.click(downPoint, downFlags, clickCount: downClickCount))
             }
             downPoint = nil
             tracking = false

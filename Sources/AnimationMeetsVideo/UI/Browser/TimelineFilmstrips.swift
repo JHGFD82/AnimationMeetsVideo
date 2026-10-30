@@ -46,6 +46,10 @@ struct TimelineFilmstrips: View {
     @State private var rangeDrag: (timelineID: UUID, anchor: Double)?
     /// The timeline the keyboard last moved to or clicked.
     @State private var cursor: UUID?
+    /// The timeline just opened by double-clicking its strip, which isn't
+    /// skimmed again until the pointer leaves the strip: the viewer shows
+    /// it at its playhead.
+    @State private var openedFromStrip: UUID?
 
     private static let padding: CGFloat = 10
 
@@ -282,7 +286,13 @@ struct TimelineFilmstrips: View {
                 dragText: { point in dragText(timeline, preview: preview, layout: layout, at: point) },
                 isOnHandle: { point in picked.handle(of: timeline.id, at: point, in: layout) != nil },
                 onHover: { point in
-                    if skimming, let point, let preview { skim(timeline, preview: preview, at: layout.seconds(at: point)) }
+                    guard let point else {
+                        if openedFromStrip == timeline.id { openedFromStrip = nil }
+                        return
+                    }
+                    if skimming, openedFromStrip != timeline.id, let preview {
+                        skim(timeline, preview: preview, at: layout.seconds(at: point))
+                    }
                 }
             )
         }
@@ -335,7 +345,7 @@ struct TimelineFilmstrips: View {
 
     private func pressed(_ press: FilmstripPress, timeline: Timeline, preview: TimelinePreview?, layout: FilmstripLayout) {
         switch press {
-        case .click(let point, let flags):
+        case .click(let point, let flags, let clickCount):
             rangeDrag = nil
             cursor = timeline.id
             if flags.contains(.command) {
@@ -344,7 +354,8 @@ struct TimelineFilmstrips: View {
                 picked.shiftClick(timeline.id, in: order)
             } else if picked.handle(of: timeline.id, at: point, in: layout) == nil {
                 picked.click(timeline.id, at: layout.seconds(at: point))
-                if (NSApp.currentEvent?.clickCount ?? 1) >= 2 {
+                if clickCount >= 2 {
+                    openedFromStrip = timeline.id
                     onOpen(timeline.id)
                 } else if !skimming, let preview {
                     skim(timeline, preview: preview, at: layout.seconds(at: point))
