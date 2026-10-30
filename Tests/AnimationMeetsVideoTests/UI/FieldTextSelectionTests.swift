@@ -51,6 +51,26 @@ struct FieldTextSelectionTests {
         }
     }
 
+    /// A music layer's header, never renamed, from (10, 10), 28 high.
+    private struct LayerHeader: View {
+        let renaming: Renaming
+
+        var body: some View {
+            LayerHeaderRow(
+                number: 1, layer: TimelineLayer(customName: nil, kind: .music, clips: []), displayName: "Music 1",
+                height: 28, canMoveUp: false, canMoveDown: false,
+                isExpanded: nil, onToggleExpanded: {},
+                isAudioExpanded: nil, onToggleAudio: {}, onDetachAudio: {},
+                isChannelsExpanded: nil, onToggleChannels: {},
+                onRename: { renaming.committed.append($0 ?? "") }, onMove: { _ in },
+                onDragChanged: { _ in }, onDragEnded: { _ in },
+                isSelected: false, onSelect: {}, onDelete: {}
+            )
+            .frame(width: 260)
+            .padding(10)
+        }
+    }
+
     private struct Name: View {
         let renaming: Renaming
 
@@ -208,6 +228,37 @@ struct FieldTextSelectionTests {
         let editor = try #require(editor(harness))
         #expect(editor.string == "Chorus")
         #expect(editor.selectedRange() == NSRange(location: 0, length: 6))
+    }
+
+    /// The first click and the second of a double-click at `point`.
+    private func doubleClick(at point: CGPoint, in harness: EventHarness) async throws {
+        let location = CGPoint(x: point.x, y: harness.window.frame.height - point.y)
+        for clickCount in 1...2 {
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard let event = NSEvent.mouseEvent(
+                    with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: harness.window.windowNumber, context: nil, eventNumber: 0, clickCount: clickCount,
+                    pressure: type == .leftMouseUp ? 0 : 1
+                ) else { continue }
+                NSApp.sendEvent(event)
+                try await harness.settle(20)
+            }
+        }
+        try await harness.settle(250)
+    }
+
+    @Test func renamingALayerWithItsDefaultNameSelectsThatName() async throws {
+        let renaming = Renaming()
+        let harness = harness(LayerHeader(renaming: renaming))
+        defer { FieldTextSelection.unwatch(harness.window) }
+        try await doubleClick(at: CGPoint(x: 75, y: 24), in: harness)
+        let editor = try #require(editor(harness))
+        #expect(editor.string == "Music 1")
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 7))
+        // Left as it was, the default name isn't made the layer's own.
+        harness.window.makeFirstResponder(nil)
+        try await harness.settle(250)
+        #expect(renaming.committed.isEmpty)
     }
 
     @Test func escapeAfterTypingOverTheNamePutsItBack() async throws {

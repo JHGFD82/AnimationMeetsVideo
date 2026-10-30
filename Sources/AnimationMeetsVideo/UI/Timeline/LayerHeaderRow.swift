@@ -88,8 +88,7 @@ struct LayerHeaderRow: View {
                     .foregroundStyle(Design.textPrimary)
                     .lineLimit(1)
                     .onTapGesture(count: 2) {
-                        draftName = layer.customName ?? ""
-                        isEditingName = true
+                        beginRename()
                     }
             }
             Spacer(minLength: 0)
@@ -159,17 +158,26 @@ struct LayerHeaderRow: View {
             if canMoveUp { Button("Move layer up") { onMove(-1) } }
             if canMoveDown { Button("Move layer down") { onMove(1) } }
             Button("Rename layer") {
-                draftName = layer.customName ?? ""
-                isEditingName = true
+                beginRename()
             }
             Button("Delete layer", action: onDelete)
         }
     }
 
+    /// The field starts with the name shown, default or not, for its
+    /// whole value to be selected and typed over.
+    private func beginRename() {
+        draftName = displayName
+        isEditingName = true
+    }
+
+    /// The name as it was changes nothing, so a default name keeps
+    /// following the footage; an empty one goes back to the default.
     private func commitRename() {
         guard isEditingName else { return }
-        onRename(draftName.isEmpty ? nil : draftName)
         isEditingName = false
+        guard draftName != displayName else { return }
+        onRename(draftName.isEmpty ? nil : draftName)
     }
 }
 
