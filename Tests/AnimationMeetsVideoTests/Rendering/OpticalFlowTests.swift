@@ -73,6 +73,32 @@ import Testing
         #expect(difference(atEnd, second) < 2)
     }
 
+    /// `image` within `rect`, row by row from the top.
+    private func bytes(of image: CIImage, in rect: CGRect) -> [UInt8] {
+        var pixels = [UInt8](repeating: 0, count: Int(rect.width) * Int(rect.height) * 4)
+        context.render(image, toBitmap: &pixels, rowBytes: Int(rect.width) * 4, bounds: rect, format: .RGBA8, colorSpace: nil)
+        return pixels
+    }
+
+    /// Core Image asks for whatever part of the frame it needs: one strip
+    /// of it is that strip, and around the frame, which a picture moved by
+    /// part of a pixel reaches into, is transparent.
+    @Test func anyPartOfTheFrameIsDrawnInPlace() throws {
+        let first = scene(panned: 0, 0), second = scene(panned: 10, 6)
+        let still = OpticalFlow.Field(width: 4, height: 4, vectors: [Float](repeating: 0, count: 32))
+        let drawn = try #require(OpticalFlow.interpolated(from: first, to: second, fraction: 0, field: still))
+
+        let strip = CGRect(x: 0, y: 120, width: size.width, height: 40)
+        let (got, want) = (bytes(of: drawn, in: strip), bytes(of: first, in: strip))
+        #expect(zip(got, want).allSatisfy { abs(Int($0) - Int($1)) <= 1 })
+
+        let around = CGRect(x: 0, y: -8, width: size.width, height: size.height + 16)
+        let moved = bytes(of: drawn.transformed(by: CGAffineTransform(translationX: 0, y: 0.5)), in: around)
+        let width = Int(size.width)
+        let outside = Array(0..<7) + Array((Int(around.height) - 8)..<Int(around.height))
+        #expect(outside.allSatisfy { row in (0..<width).allSatisfy { moved[(row * width + $0) * 4 + 3] == 0 } })
+    }
+
     @Test func framesOfDifferentSizesHaveNoFlow() {
         let small = CIImage(color: .gray).cropped(to: CGRect(x: 0, y: 0, width: 64, height: 36))
         #expect(OpticalFlow.field(from: scene(panned: 0, 0), to: small) == nil)
