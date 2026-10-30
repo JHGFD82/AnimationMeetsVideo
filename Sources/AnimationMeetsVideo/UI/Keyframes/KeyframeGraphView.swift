@@ -296,6 +296,8 @@ struct KeyframeGraphView: View {
             switch phase {
             case .active(let location):
                 pointer.location = location
+                // The viewer shows the frame under the pointer, over the plot.
+                hud.skim(to: layout.plot.contains(location) && drag == nil ? skimTime(atX: location.x, c, layout: layout) : nil)
                 let target = hit(at: location, c, layout: layout).target
                 if pointer.keyframe != target.keyframeTime { pointer.keyframe = target.keyframeTime }
                 if target != .scrub {
@@ -599,6 +601,8 @@ struct KeyframeGraphView: View {
                         .foregroundStyle(Design.textPrimary)
                 }
             }
+            // Linked, the panel's top row has it, for every graph.
+            if shared == nil { GraphSkimToggle(hud: hud) }
             if names.count > 1 {
                 Toggle(isOn: $viewport.separateScales) { Image(systemName: "arrow.up.and.down.text.horizontal") }
                     .toggleStyle(.icon)
@@ -822,6 +826,8 @@ struct KeyframeGraphView: View {
                     isFocused = true
                     pointer.location = nil
                     NSCursor.arrow.set()
+                    // A drag shows what it does at the playhead, not a skim.
+                    hud.skim(to: nil)
                     let target = target(at: gesture.startLocation, c, layout: layout)
                     let click = SelectClick.current
                     drag = Drag(target: target, layout: layout, original: c.value, segments: c.segments, selectedBefore: picked, click: click)
@@ -1046,6 +1052,13 @@ struct KeyframeGraphView: View {
         pointer.location = nil
         pointer.keyframe = nil
         NSCursor.arrow.set()
+        hud.skim(to: nil)
+    }
+
+    /// The timeline time a skim at `x` on the plot shows, on a frame.
+    private func skimTime(atX x: CGFloat, _ c: Context, layout: KeyframeGraphLayout) -> CMTime {
+        let time = c.axis.timelineTime(atKey: c.axis.snapped(layout.seconds(atX: x)))
+        return c.timeline.snappedToFrame(CMTimeMaximum(.zero, time))
     }
 
     // MARK: - Editing
@@ -1288,6 +1301,20 @@ extension KeyframeGraphView {
 private final class GraphPointer {
     var location: CGPoint?
     var keyframe: CMTime?
+}
+
+/// Turns the graph editors' skimming on or off (`KeyframeGraphHUDs.skims`):
+/// on, the viewer shows the frame under the pointer as it moves over a
+/// graph, as on the timeline.
+struct GraphSkimToggle: View {
+    @Bindable var hud: KeyframeGraphHUDs
+
+    var body: some View {
+        Toggle(isOn: $hud.skims) { Image(systemName: Design.Symbol.skim) }
+            .toggleStyle(.icon)
+            .help(hud.skims ? "Skimming on: the viewer shows the frame under the pointer" : "Skimming off: the viewer shows the playhead")
+            .accessibilityLabel("Skimming")
+    }
 }
 
 /// Which keyframe the ease presets act on, and the presets: on a graph's

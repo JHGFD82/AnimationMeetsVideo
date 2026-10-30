@@ -36,6 +36,7 @@ struct KeyframeGraphStack: View {
     private var presetBar: some View {
         HStack(spacing: Design.Space.step) {
             ToolGlyph(tone: .graphEditor)
+            GraphSkimToggle(hud: hud)
             Spacer(minLength: Design.Space.step)
             if let key = link.activeKey, let timeline = hud.project.timeline(id: key.timelineID),
                let value = hud.project.components(of: key), let axis = hud.project.timeAxis(of: key) {

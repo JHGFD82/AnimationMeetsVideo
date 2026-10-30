@@ -123,6 +123,15 @@ the moment of the parameter's time it plays, and follows the player while
 it plays. **Space** plays and pauses in a graph's panel, as in the main
 window.
 
+**Skimming** is on unless turned off: as the pointer moves over the plot,
+the viewer shows the frame under it (on a frame of the timeline), without
+moving the playhead, as the timeline's skimming does, grains of sound
+included; it goes back to the playhead when the pointer leaves the plot or
+a drag begins. The skim button (the timeline's glyph) in the graph's top
+row turns it on and off for every graph editor, and the choice is kept
+between launches (`KeyframeGraphHUDs.skims`); a linked panel has it once,
+in its top row.
+
 - **Click a keyframe** to select it. The handles of its eased sides
   appear, drawn against the component that changes most over that
   segment. A linear side has no handle.
