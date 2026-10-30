@@ -872,6 +872,40 @@ struct UISnapshots {
         )
     }
 
+    /// The effects panel for a video clip: Time at 50% with Echo on and
+    /// Shutter with Motion Blur on, each headed as an effect is, with their
+    /// rows lined up with a Curves effect's controls between them.
+    @Test func videoEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let video = MediaClip(
+            name: "Walk", kind: .video, url: nil, duration: CMTime(value: 10, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let imported = project.importClip(video, intoTimeline: timelineID)
+        let placed = try #require(imported)
+        let kind = try #require(EffectKind(rawValue: "curves"))
+        let added = project.addEffect(kind, toClip: placed.clipID, in: timelineID)
+        let curves = try #require(added)
+        project.editEffect(curves, ofClip: placed.clipID, in: timelineID) { effect in
+            guard let index = effect.controls.firstIndex(where: { $0.kind.savedName == "masterCurve" }) else { return }
+            effect.controls[index].number = AnimatedValue(ComponentValue(values: [0.06, 0, 0.25, 0.18, 0.75, 0.84, 0.92, 1]))
+        }
+        project.editClip(placed.clipID, in: timelineID) { clip in
+            clip.time.speed = AnimatedValue(50)
+            clip.time.echo = Echo(count: 4, delay: CMTime(value: 2, timescale: 24), decay: 0.6)
+            clip.shutter.motionBlur = MotionBlur()
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: placed.layerID, timelineClipID: placed.clipID),
+                playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "video-effects-panel", size: CGSize(width: 560, height: 960)
+        )
+    }
+
     /// The EQ's graph: a 24 dB low cut, a low shelf down, a narrow bell up
     /// and a high shelf, over the frequency and gain grid.
     @Test func equalizerGraph() throws {

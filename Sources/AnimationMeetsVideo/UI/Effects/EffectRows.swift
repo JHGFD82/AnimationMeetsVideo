@@ -460,6 +460,132 @@ struct EffectHeaderRow<MenuContent: View>: View {
     }
 }
 
+/// The header of a section of the clip's own rows, Time or Shutter, drawn
+/// as an effect's is: a disclosure arrow, its symbol, its name and a ⋯
+/// menu. Like a graphic clip's drawing, it isn't in the stack, so it has
+/// no handle to move it by or checkbox to turn it off; its symbol sits in
+/// their place.
+struct ClipSectionHeaderRow<MenuContent: View>: View {
+    let name: String
+    let systemImage: String
+    let isCollapsed: Bool
+    let onToggleCollapsed: () -> Void
+    @ViewBuilder let menu: () -> MenuContent
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: onToggleCollapsed) {
+                Image(systemName: "chevron.right")
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .frame(width: 12, height: 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Design.textSecondary)
+            .help(isCollapsed ? "Show the \(name) settings" : "Hide the \(name) settings")
+            .accessibilityLabel(isCollapsed ? "Show the \(name) settings" : "Hide the \(name) settings")
+            Image(systemName: systemImage)
+                .font(Design.Typeface.glyphSmall)
+                .foregroundStyle(Design.textSecondary)
+                .frame(width: 16)
+                .accessibilityHidden(true)
+            Text(name)
+                .font(Design.Typeface.bodyEmphasis)
+                .foregroundStyle(Design.textPrimary)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 2)
+            RowMenu(name: name, content: menu)
+        }
+        .font(Design.Typeface.label)
+        .padding(.horizontal, 4)
+        .frame(height: EffectsPanelMetrics.rowHeight)
+        .background(Design.Surface.raised.color.opacity(0.6))
+        .contextMenu { menu() }
+    }
+}
+
+/// A setting of the clip's own that is either off or has a few numbers
+/// (Reverse, Echo, Motion Blur, Trails), laid out as a control's row is: a
+/// checkbox where a control's stopwatch is, its name, a field for each
+/// number while it is on, the reset button while it is on, and a ⋯ menu.
+struct ToggleFieldsRow: View {
+    let title: String
+    let isOn: Bool
+    var help = ""
+    let onToggle: @MainActor (Bool) -> Void
+    let fields: [ToggleField]
+
+    var body: some View {
+        content
+            // The width the fields need, for the control column to grow
+            // to, as a control's row does.
+            .background(alignment: .leading) {
+                content
+                    .fixedSize(horizontal: true, vertical: false)
+                    .hidden()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: ControlColumnWidthKey.self, value: proxy.size.width)
+                    })
+            }
+            .contextMenu { menu }
+            .help(help)
+    }
+
+    private var content: some View {
+        HStack(spacing: 4) {
+            Color.clear.frame(width: 12)
+            Toggle("", isOn: Binding(get: { isOn }, set: { onToggle($0) }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(width: 14)
+                .accessibilityLabel(title)
+            Text(title)
+                .foregroundStyle(isOn ? Design.textSecondary : Design.textTertiary)
+                .lineLimit(1)
+                .frame(width: 74, alignment: .leading)
+            if isOn {
+                ForEach(fields) { field in
+                    Text(field.label)
+                        .font(Design.Typeface.micro)
+                        .foregroundStyle(Design.textTertiary)
+                    NumericField(
+                        value: field.value, unit: field.unit, fractionDigits: field.fractionDigits,
+                        dragStep: field.step, dragRange: field.range, onCommit: field.onCommit
+                    )
+                }
+            }
+            Spacer(minLength: 2)
+            if isOn { RowResetButton(name: title) { onToggle(false) } }
+            RowMenu(name: title) { menu }
+        }
+        .font(Design.Typeface.label)
+        .padding(.leading, EffectsPanelMetrics.controlIndent - 12)
+        .padding(.horizontal, 4)
+        .frame(height: EffectsPanelMetrics.rowHeight)
+    }
+
+    @ViewBuilder
+    private var menu: some View {
+        Button("Reset") { onToggle(false) }
+            .disabled(!isOn)
+    }
+}
+
+/// A numeric value in a `ToggleFieldsRow`.
+struct ToggleField: Identifiable {
+    var id: String { label }
+    let label: String
+    let value: Double
+    var unit = ""
+    var step = 1.0
+    var range: ClosedRange<Double>?
+    var fractionDigits = 0
+    let onCommit: (Double) -> Void
+}
+
 /// The title of a group of an effect's controls (`ControlSection`):
 /// Character, Paragraph, Fill & Stroke.
 struct ControlSectionHeader: View {

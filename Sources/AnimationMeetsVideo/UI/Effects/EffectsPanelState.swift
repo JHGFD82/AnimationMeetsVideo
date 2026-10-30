@@ -16,6 +16,14 @@ final class EffectsPanelState {
     let keyframes = LaneKeyframePicks()
     /// Effects folded up in the stack; the rest show their controls.
     var collapsed: Set<UUID> = []
+    /// The clip's own sections folded up, the same for every clip.
+    var collapsedSections: Set<ClipSection> = []
+
+    /// A section of rows of the clip's own, outside its stack (see
+    /// docs/effects.md, "Time and Shutter").
+    enum ClipSection: Hashable {
+        case time, shutter
+    }
 
     /// Show Up to Here: the clip and effect the viewer shows the clip
     /// after, with later effects and its transitions skipped.
@@ -63,5 +71,11 @@ final class EffectsPanelState {
 
     func toggleCollapsed(_ id: UUID) {
         if collapsed.contains(id) { collapsed.remove(id) } else { collapsed.insert(id) }
+    }
+
+    func isCollapsed(_ section: ClipSection) -> Bool { collapsedSections.contains(section) }
+
+    func toggleCollapsed(_ section: ClipSection) {
+        if collapsedSections.contains(section) { collapsedSections.remove(section) } else { collapsedSections.insert(section) }
     }
 }
