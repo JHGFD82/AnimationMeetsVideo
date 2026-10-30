@@ -188,7 +188,11 @@ own autosaves are left out. Each file is copied from the previous backup
 when it is the same file (size and modification date), which on APFS is
 a clone taking no space, so only the first backup on a disk copies the
 media for real. A backup on the project's own disk costs nothing but
-doesn't survive that disk failing. A backup is written half-way under a
+doesn't survive that disk failing. A backup's `Media/` is excluded from Time
+Machine and other backup tools, which don't keep clones shared and so
+would store the footage again with every backup; they already back up
+the same files in the project's package. Restoring a backup clears the
+mark, so the new project's media is backed up as usual. A backup is written half-way under a
 hidden name and renamed when whole, off the main thread through the
 `PackageCoordinator`. One that fails shows **Not backed up** in the
 toolbar and is tried again at the next interval.

@@ -58,6 +58,24 @@ private struct BackupSandbox {
         #expect(info.originalProject == sandbox.packageURL.path)
     }
 
+    @Test func onlyABackupsMediaIsLeftOutOfOtherBackups() async throws {
+        let sandbox = try await BackupSandbox()
+        defer { sandbox.cleanUp() }
+        func isExcluded(_ package: URL) throws -> Bool {
+            let media = package.appending(path: ProjectStore.mediaFolderName, directoryHint: .isDirectory)
+            return try #require(media.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup)
+        }
+        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL, to: sandbox.location)
+        #expect(try isExcluded(backup))
+        #expect(try !isExcluded(sandbox.packageURL))
+        // The rest of the backup is still backed up.
+        let reference = backup.appending(path: ProjectStore.referenceFolderName, directoryHint: .isDirectory)
+        #expect(try reference.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == false)
+
+        let restored = try ProjectBackups.restore(backup, into: sandbox.root)
+        #expect(try !isExcluded(restored))
+    }
+
     @Test func browsingStartsInTheProjectsFolderOnceItHasOne() async throws {
         let sandbox = try await BackupSandbox()
         defer { sandbox.cleanUp() }
