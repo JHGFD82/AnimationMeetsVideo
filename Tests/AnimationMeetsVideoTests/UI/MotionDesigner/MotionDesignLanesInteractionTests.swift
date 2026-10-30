@@ -60,6 +60,41 @@ struct MotionDesignLanesInteractionTests {
         #expect(abs(session.playhead - 4) <= session.secondsPerPoint)
     }
 
+    /// Where the line climbs steeply, as it does zoomed out, a click a few
+    /// points beside it is on it: its height there is far from the
+    /// pointer's, but the line itself is near.
+    @Test func aClickBesideASteepLineAddsAMarkerOnIt() async throws {
+        // A second of footage over 100 s, then 100 s of it in one second.
+        var project = EditingProject.empty
+        var clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 101, timescale: 1))
+        clip.time.speed = AnimatedValue(100, keyframes: [
+            Keyframe(time: .zero, value: 1, hold: true),
+            Keyframe(time: CMTime(value: 1, timescale: 1), value: 10_000),
+        ])
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        let harness = EventHarness(MotionDesignLanes(session: session), size: Self.size)
+        try await harness.settle()
+        // Zoomed out to the whole clip, which is most of the width.
+        session.fit()
+        try await harness.settle()
+        let before = points(session)
+
+        let top = MotionDesignLanes.rulerHeight + MotionDesignLanes.filmHeight + 14
+        let bottom = Self.size.height - MotionDesignLanes.musicHeight - 14
+        // Halfway up the last second, where the line all but stands up.
+        let steep = 102.5
+        let drafted = session.drafted(session.run.pieces[0])
+        let up = drafted.sourceTime(atTimelineTime: CMTime(seconds: steep, preferredTimescale: ClipTimeMap.timescale)).seconds / 101
+        try await harness.click(at: CGPoint(x: session.x(of: steep) - 3, y: bottom - CGFloat(up) * (bottom - top)))
+
+        #expect(points(session) == before + 1)
+        let added = try #require(session.selectedPoint)
+        #expect(abs(added.time.seconds - steep) <= 3 * session.secondsPerPoint)
+    }
+
     @Test func hoveringSkimsWhileSkimmingIsOn() async throws {
         let defaults = UserDefaults.standard
         let remembered = defaults.object(forKey: Preferences.motionDesignerSkimming)
