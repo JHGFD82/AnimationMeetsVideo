@@ -336,6 +336,23 @@ struct UISnapshots {
         try SnapshotSupport.render(UsesFinderView(finder: finder), "uses-finder", size: CGSize(width: 620, height: 260))
     }
 
+    /// The Export window: ready, with pasted changes still blocking it,
+    /// and after a WAV Mix export with what mastering did.
+    @Test func exportWindow() throws {
+        let blocked = ExportWindow()
+        blocked.timelineName = "Main"
+        blocked.pasteChangeCount = 2
+        try SnapshotSupport.render(ExportView(export: blocked), "export-window-blocked", size: CGSize(width: 460, height: 380))
+        let finished = ExportWindow()
+        finished.timelineName = "Main"
+        finished.format = .wavMix
+        finished.showOutcomeWithoutRunning(.finished(
+            url: URL(filePath: "/tmp/Trailer.wav"),
+            report: "The mix measured −19.2 LUFS and was raised 5.2 dB to −14 LUFS."
+        ))
+        try SnapshotSupport.render(ExportView(export: finished), "export-window-finished", size: CGSize(width: 460, height: 420))
+    }
+
     /// The Clips tab: a video under its name as five scenes (the fourth
     /// set by hand), the second and third underlined where Main uses them,
     /// then a song as one clip, a thumbnail each.

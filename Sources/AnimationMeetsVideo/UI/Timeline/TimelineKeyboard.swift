@@ -157,8 +157,8 @@ extension TimelineView {
 
     /// ← and → step a frame (ten with Shift), ↑ and ↓ go to the previous or
     /// next edit, Home and End to the start and end. Nil for other keys.
-    /// False, leaving the key alone, while a list or other control has the
-    /// keyboard, since it uses these keys itself.
+    /// False, leaving the key alone, while a list or other control that
+    /// uses these keys itself has the keyboard.
     func handleNavigationKey(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool? {
         let left: UInt16 = 123, right: UInt16 = 124, down: UInt16 = 125, up: UInt16 = 126
         let home: UInt16 = 115, end: UInt16 = 119
@@ -167,7 +167,7 @@ extension TimelineView {
         else {
             return nil
         }
-        guard !(event.window?.firstResponder is NSControl) else { return false }
+        guard !Self.keepsArrowKeys(event.window?.firstResponder) else { return false }
         let frames = flags.contains(.shift) ? 10 : 1
         switch event.keyCode {
         case left: stepPlayhead(byFrames: -frames)
@@ -178,6 +178,16 @@ extension TimelineView {
         default: parkPlayhead(at: timeline.duration)
         }
         return true
+    }
+
+    /// Whether `responder`, having the keyboard, uses the arrow, Home and
+    /// End keys itself: a control does (a list, a slider, a menu, which
+    /// opens on ↑ and ↓), except a button or checkbox, which only takes
+    /// Space, so one left with the keyboard on the toolbar or a rail
+    /// doesn't keep them from the playhead.
+    static func keepsArrowKeys(_ responder: NSResponder?) -> Bool {
+        guard responder is NSControl else { return false }
+        return !(responder is NSButton) || responder is NSPopUpButton
     }
 
     /// Pauses and puts the playhead at `time`, on a frame within the

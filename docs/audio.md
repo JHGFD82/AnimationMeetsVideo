@@ -291,13 +291,18 @@ loudest sample.
 
 ## Loudness on export
 
-The **Loudness** menu beside the export format (remembered in the app's
+The **Loudness** menu in the Export window (`ExportView`, opened by the
+toolbar's Export… or File > Export…, ⌘E; remembered in the app's
 defaults) sets how loud the export's sound is (`LoudnessTarget`):
 
 - **As Mixed** (the default): the mix as it is, mixed by the export
   session through the taps as in playback.
 - **−14 LUFS** for streaming services, **−16 LUFS** for podcasts and
   Apple's spec, **−23 LUFS** for EBU R128 broadcast.
+
+Stopping an export, or closing its project's window or quitting while it
+runs, asks first, since what was exported so far is deleted
+(`ExportWindow.confirmStopping`).
 
 With a target, the sound is mastered before the pictures are exported
 (`LoudnessMastering`), taking the first tenth of the progress bar.
@@ -318,8 +323,9 @@ twice, in stereo float at 48 kHz, off the cooperative pool
 
 The file's sound then replaces the composition's audio tracks and the
 export runs without an audio mix. The render measures what it writes, and
-the Export Finished note (shown after every export, with Show in
-Finder) also says what mastering did: what the mix
+the note the Export window shows when an export finishes (with Show in
+Finder; the window comes back for it if it was closed, as closing it
+leaves the export running) also says what mastering did: what the mix
 measured, how far it was raised or lowered and to what, how far the
 limiter held peaks down (with a warning past 6 dB, where it can be
 heard), and the loudest peak (`LoudnessMastering.Report`). WAV Mix
@@ -441,9 +447,9 @@ Beside the ProRes formats, the export format menu offers the sound alone
   sound of timelines nested on it. Stems aren't mastered, whatever the
   Loudness menu says, so together they add up to the mix as mixed.
 
-A movie's sound can be split the same way. The toolbar's sound menu
-(beside the format, holding the loudness target too) picks **Movie sound
-tracks**: **Mix** (the default) or **Mix and Stems**, which gives the
+A movie's sound can be split the same way. The Export window's **Movie
+tracks** menu (under the loudness target) picks the movie's sound
+tracks: **Mix** (the default) or **Mix and Stems**, which gives the
 movie a stereo track of the mix first and then one per layer with sound,
 in layer order, for a mixer to rework (`CompositionExporter.addStems`).
 The mix track is mastered when a target is set; the stems never are. The

@@ -773,9 +773,9 @@ it stands meanwhile, so the result can be checked while fixing it. A clip
 with unresolved changes shows a mark on its block in the timeline.
 
 **Unresolved changes block export.** The editor's toolbar shows how many
-there are, across every timeline the export draws (nested ones too).
-Clicking that count, or trying to export, opens the **Paste Changes**
-list: each change with its timeline, clip and effect, a button to go to
+there are, across every timeline the export draws (nested ones too), and
+so does the Export window, with a Review… button. Clicking either, or
+trying to export, opens the **Paste Changes** list over the editor: each change with its timeline, clip and effect, a button to go to
 it (selecting the clip and opening the effects panel at that effect), and
 Mark Resolved. **Accept All** resolves every change in the list and lets
 the export go ahead. Marking and accepting can be undone.

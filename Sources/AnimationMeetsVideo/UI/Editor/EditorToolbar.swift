@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct EditorToolbar: View {
     @Binding var project: EditingProject
@@ -12,15 +11,9 @@ struct EditorToolbar: View {
     let analysis: AssetAnalysis
     /// Pauses for an export, whose ProRes 422 output reuses its renders.
     let renderer: RenderScheduler
+    /// Where the format and sound are picked and the export runs.
+    let exportWindow: ExportWindow
     @Environment(ProjectState.self) private var projectState: ProjectState?
-    @State private var selectedFormat = ExportFormat.proRes422
-    @AppStorage(Preferences.exportLoudness) private var loudness = LoudnessTarget.asMixed
-    @AppStorage(Preferences.exportAudioTracks) private var audioTracks = ExportAudioTracks.mix
-    @State private var exportTask: Task<Void, Never>?
-    @State private var exportProgress: Double = 0
-    @State private var exportError: String?
-    /// The export just finished, shown until the person dismisses it.
-    @State private var finishedExport: FinishedExport?
     @State private var showsPasteChanges = false
     /// Whether the Paste Changes list was opened by trying to export.
     @State private var exportAfterAccepting = false
@@ -29,8 +22,6 @@ struct EditorToolbar: View {
 
     /// What an export of the active timeline would be blocked by.
     private var pasteChanges: [PasteChangeEntry] { project.unresolvedPasteChanges(drawnBy: activeTimelineID) }
-
-    private var isExporting: Bool { exportTask != nil }
 
     private var externalScreens: [NSScreen] {
         // Exclude the screen the editor window is on; covering it with the
@@ -101,53 +92,18 @@ struct EditorToolbar: View {
             Groove(axis: .vertical)
                 .frame(height: 18)
 
-            // The preset and the button are one thing — what you are about
-            // to export, and exporting it — so they sit together with no
-            // gap, away from everything else on the rail.
+            // The format and sound are picked in the Export window, so
+            // no menu here keeps the arrow keys from the playhead; an
+            // export under way shows its progress beside the button.
             HStack(spacing: Design.Space.close) {
-                ExportFormatPicker(current: selectedFormat, selection: $selectedFormat, isExporting: isExporting)
-                    .equatable()
-
-                // The sound of the export: its loudness, and for a movie
-                // whether the stems come along on tracks of their own.
-                Menu {
-                    Picker("Loudness", selection: $loudness) {
-                        ForEach(LoudnessTarget.allCases) { target in
-                            Text("\(target.name), \(target.detail)").tag(target)
-                        }
-                    }
-                    .pickerStyle(.inline)
-                    Picker("Movie sound tracks", selection: $audioTracks) {
-                        ForEach(ExportAudioTracks.allCases) { tracks in
-                            Text(tracks.name).tag(tracks)
-                        }
-                    }
-                    .pickerStyle(.inline)
-                } label: {
-                    Text(audioTracks == .mixAndStems ? "\(loudness.name) + Stems" : loudness.name)
+                ExportProgress(export: exportWindow)
+                Button("Export\u{2026}") {
+                    showExport()
                 }
-                .frame(width: 140)
-                .help("The export's sound: how loud (\(loudness.name), \(loudness.detail)), holding peaks under −1 dBFS when a target is set, and whether a movie also carries a track for each layer with sound after the mix.")
-                .accessibilityLabel("Export sound")
-                .accessibilityValue(audioTracks == .mixAndStems ? "\(loudness.name), with stems" : loudness.name)
-                .disabled(isExporting)
-
-                if isExporting {
-                    ProgressView(value: exportProgress)
-                        .controlSize(.small)
-                        .frame(width: 90)
-                    Button("Cancel") {
-                        exportTask?.cancel()
-                    }
-                } else {
-                    Button("Export") {
-                        exportProject()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Design.accentFill)
-                }
+                .buttonStyle(.borderedProminent)
+                .tint(Design.accentFill)
+                .help("Pick the format and sound, and export the timeline")
             }
-            .editorAnimation(Design.Motion.panel, value: isExporting)
         }
         .padding(.horizontal, Design.Space.rail)
         .padding(.vertical, Design.Space.step + 2)
@@ -165,16 +121,25 @@ struct EditorToolbar: View {
         .onChange(of: pasteChanges.isEmpty) { _, empty in
             if empty { showsPasteChanges = false }
         }
-        .focusedSceneValue(\.exportTimeline, isExporting ? nil : FileMenuAction { exportProject() })
-        .messageAlert("Export Failed", message: $exportError)
-        .alert("Export Finished", isPresented: $finishedExport.isPresent, presenting: finishedExport) { done in
-            Button("Show in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([done.url])
-            }
-            Button("OK", role: .cancel) {}
-        } message: { done in
-            Text(done.message)
+        .focusedSceneValue(\.exportTimeline, FileMenuAction { showExport() })
+        .onChange(of: pasteChanges.count, initial: true) { _, count in
+            exportWindow.pasteChangeCount = count
         }
+        .onChange(of: project.timeline(id: activeTimelineID)?.name ?? "", initial: true) { _, name in
+            exportWindow.timelineName = name
+        }
+        .onAppear {
+            exportWindow.onExport = { exportProject() }
+            exportWindow.onReviewPasteChanges = {
+                exportWindow.showEditor()
+                exportAfterAccepting = false
+                showsPasteChanges = true
+            }
+        }
+    }
+
+    private func showExport() {
+        exportWindow.show()
     }
 
     /// Selects the clip an entry is on, with the effects panel open at it.
@@ -208,87 +173,27 @@ struct EditorToolbar: View {
     private func exportProject(checkingPasteChanges: Bool = true) {
         // Pasted effects with changes nobody has looked at block the export.
         guard !checkingPasteChanges || pasteChanges.isEmpty else {
+            exportWindow.showEditor()
             exportAfterAccepting = true
             showsPasteChanges = true
             return
         }
-        let format = selectedFormat
-        let panel = NSSavePanel()
-        switch format {
-        case .proRes422, .proRes4444: panel.allowedContentTypes = [.quickTimeMovie]
-        case .wavMix: panel.allowedContentTypes = [.wav]
-        case .wavStems:
-            // The name is a new folder's, with a file per layer in it.
-            panel.message = "Stems are saved in a new folder with this name, one file for each layer with sound."
-        }
-        panel.nameFieldStringValue = format == .wavStems ? "\(project.name) Stems" : project.name
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        let snapshot = project
-        let timelineID = activeTimelineID
-        let target = loudness
-        let tracks = audioTracks
-        let cache = renderer.cache
-        exportProgress = 0
-        renderer.setExporting(true)
-        exportTask = Task {
-            defer {
-                exportTask = nil
-                renderer.setExporting(false)
-            }
-            let progress: @Sendable (Double) -> Void = { fraction in
-                Task { @MainActor in exportProgress = fraction }
-            }
-            // Only shown once the export is done.
-            let report = ReportBox()
-            do {
-                switch format {
-                case .proRes422, .proRes4444:
-                    try await CompositionExporter.export(
-                        project: snapshot, timelineID: timelineID, preset: format.movie ?? .proRes422,
-                        loudness: target, audioTracks: tracks, to: url, cache: cache, progress: progress,
-                        onMastered: { report.value = $0 }
-                    )
-                case .wavMix:
-                    report.value = try await AudioExport.exportMix(
-                        project: snapshot, timelineID: timelineID, loudness: target, to: url, progress: progress
-                    )
-                case .wavStems:
-                    try await AudioExport.exportStems(
-                        project: snapshot, timelineID: timelineID, named: snapshot.name, in: url, progress: progress
-                    )
-                }
-                finishedExport = FinishedExport(url: url, report: report.value?.summary)
-                // A long export may finish with the app behind another.
-                NSApp.requestUserAttention(.informationalRequest)
-            } catch is CancellationError {
-                // The user cancelled; nothing to report.
-            } catch {
-                exportError = ErrorAdvice.sentence(for: error)
-            }
-        }
+        exportWindow.run(project: project, timelineID: activeTimelineID, renderer: renderer)
     }
 }
 
-/// An export that has finished: where it went, and what mastering did to
-/// its sound, when it did anything.
-private struct FinishedExport {
-    let url: URL
-    let report: String?
+/// The running export's progress on the toolbar, which reads it itself so
+/// its updates redraw it alone. Shown only while one runs.
+private struct ExportProgress: View {
+    let export: ExportWindow
 
-    var message: String {
-        let saved = "\u{201C}\(url.lastPathComponent)\u{201D} was saved."
-        guard let report else { return saved }
-        return "\(saved)\n\n\(report)"
-    }
-}
-
-/// Hands the mastering report out of the export's callback.
-private final class ReportBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: LoudnessMastering.Report?
-    var value: LoudnessMastering.Report? {
-        get { lock.withLock { stored } }
-        set { lock.withLock { stored = newValue } }
+    var body: some View {
+        if export.isRunning {
+            ProgressView(value: export.progress)
+                .controlSize(.small)
+                .frame(width: 90)
+                .accessibilityLabel("Export progress")
+                .help("Exporting")
+        }
     }
 }

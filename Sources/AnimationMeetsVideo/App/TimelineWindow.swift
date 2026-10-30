@@ -33,6 +33,9 @@ struct TimelineWindow: View {
             .frame(minWidth: 1_100, minHeight: 700)
             .focusedSceneValue(\.projectSession, session)
             .background(SharedUndoWindow(source: { session.editorWindow }))
+            .background(WindowCloseGuard { window in
+                ExportWindow.confirmStopping(ExportWindow.running(in: window), because: "Closing the window")
+            })
             .navigationTitle(title(in: session, ref: ref))
             .onChange(of: session.isClosed) { _, closed in
                 if closed { dismiss() }

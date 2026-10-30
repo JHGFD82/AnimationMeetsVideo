@@ -34,6 +34,7 @@ struct EditorView: View {
     /// browser.
     @State private var sceneSplitter = SceneSplitter()
     @State private var usesFinder = UsesFinder()
+    @State private var exportWindow = ExportWindow()
     /// The clip last picked in Find All, for the timeline to show.
     @State private var clipFocus: TimelineClipFocus?
     /// A clip skimmed in the browser, which the viewer shows.
@@ -96,7 +97,8 @@ struct EditorView: View {
                 annotations: annotations,
                 externalDisplay: externalDisplay,
                 analysis: analysis,
-                renderer: renderer
+                renderer: renderer,
+                exportWindow: exportWindow
             )
             TimelineEditorSurface(
                 project: $project, timelineID: activeTimeline.wrappedValue,
@@ -173,6 +175,10 @@ struct EditorView: View {
             tapeScrubber.close()
             sceneSplitter.close()
             usesFinder.close()
+            // An export of a project whose window is gone stops with it,
+            // which closing it asked about (`ExportWindow.confirmStopping`).
+            exportWindow.cancel()
+            exportWindow.close()
         }
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
@@ -180,6 +186,7 @@ struct EditorView: View {
             skim.end()
             sceneSplitter.close()
             usesFinder.close()
+            exportWindow.close()
             beatMatch.discardAndClose()
             motionDesign.discardAndClose()
         }
@@ -189,7 +196,12 @@ struct EditorView: View {
             if DetectedBeats.shared.update(beats, owner: ObjectIdentifier(analysis)) { analysisArrived() }
         }
         .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.update(with: project) }
-        .onChange(of: packageURL, initial: true) { _, url in renderer.packageURL = url }
+        .onChange(of: packageURL, initial: true) { _, url in
+            renderer.packageURL = url
+            exportWindow.packageURL = url
+        }
+        // Closing it, or its project, asks before stopping an export.
+        .background(WindowReader { [exportWindow] in exportWindow.editorWindow = $0 })
         .onAppear {
             beatMatch.onEdit = { change in change(&project) }
             beatMatch.onOpen = { [playback] in playback.player.pause() }
