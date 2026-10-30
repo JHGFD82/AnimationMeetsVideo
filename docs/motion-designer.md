@@ -108,8 +108,22 @@ time graph and the music.
   (`MotionDesignSession.dragEdit`), so dragging back undoes what going
   further did. Drags snap, within 8 points, to the beats (while shown),
   the playhead and the edges of the layer's other clips (the run's other
-  clips included); the snap line shows where. A click elsewhere moves the playhead, as a drag on the
-  ruler or the music scrubs.
+  clips included); the snap line shows where. A click elsewhere moves the
+  playhead and picks nothing, as a drag on the ruler or the music scrubs.
+- **Several points** are picked as on the timeline and in the graph
+  editor (see [timeline.md](timeline.md#selecting-several-clips)):
+  **Command-click** adds a point or takes it out, **Shift-click** picks
+  the points from the one last clicked, in time across the run's clips,
+  **dragging in empty graph** draws a lasso round points (with Shift or
+  Command, adding to what is picked), and **⌘A** picks them all. A plain
+  press on a point not picked picks it alone; one already picked keeps the
+  rest, and dragging it moves them all by as much
+  (`MotionDesignSession.movePoints`), each stopping as it would alone.
+  The arrow keys, Delete, H, E and the right-click menu (Make Hits, Make
+  Markers, the eases, Remove) act on every point picked; a point that
+  can't become a hit or marker without asking stays as it was, and the
+  sidebar says how many did. Handles and the pace field are for a point
+  picked alone.
 - Dragging a clip in the strip moves it by whole frames, unless a hit
   holds it. A held clip follows the pointer up to 6 points, then (or when
   let go) springs back with a small bounce, and a notice under the
@@ -132,7 +146,9 @@ time graph and the music.
   `NumericField`: typing a speed, with or without "%", makes it a pace
   marker at that speed), its Ease (Linear, Ease In, Ease Out, Easy Ease)
   and, for each side it eases, how far that handle reaches and the speed
-  it sets at the point (typed), a frame earlier or later and Remove; or a
+  it sets at the point (typed), a frame earlier or later and Remove; for
+  several points, how many, Make Hits, Make Markers, an Ease menu, a frame
+  earlier or later and Remove; or a
   clip's start and end and a frame earlier or later. With nothing selected it says what to do.
   Warnings sit under that; Undo and Redo, Cancel and Done at the foot,
   as in Beat Match. Undo and Redo name the change they undo or redo, and

@@ -16,7 +16,9 @@ struct MotionDesignSidebar: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Design.Space.group) {
                     MotionDesignMonitor(session: session)
-                    if let point = session.selectedPoint {
+                    if session.pickedPointIDs.count > 1 {
+                        pickedPointsControls(session.pickedPointIDs.count)
+                    } else if let point = session.selectedPoint {
                         pointControls(point)
                     } else if let key = session.selectedEdge, let map = session.selectedEdgeMap {
                         edgeControls(key, map: map)
@@ -153,6 +155,37 @@ struct MotionDesignSidebar: View {
     }
 
     // MARK: A point
+
+    /// Several points picked: what can be done to them all at once.
+    private func pickedPointsControls(_ count: Int) -> some View {
+        VStack(alignment: .leading, spacing: Design.Space.step) {
+            heading("\(count) points")
+            HStack(spacing: Design.Space.close) {
+                Button("Make Hits") { session.setKindOfPicked(.hit) }
+                    .help("Make every picked point a hit (H)")
+                Button("Make Markers") { session.setKindOfPicked(.marker) }
+                    .help("Make every picked point a marker")
+            }
+            Menu("Ease") {
+                ForEach(TimePoint.presets) { preset in
+                    Button(preset.name) { session.setEaseOfPicked(preset) }
+                        .help(Self.easeDetail(preset))
+                }
+            }
+            .fixedSize()
+            HStack(spacing: Design.Space.close) {
+                Button { session.nudgeSelected(byFrames: -1) } label: { Image(systemName: "chevron.left") }
+                    .help("A frame earlier (←)")
+                    .accessibilityLabel("Move the points a frame earlier")
+                Button { session.nudgeSelected(byFrames: 1) } label: { Image(systemName: "chevron.right") }
+                    .help("A frame later (→)")
+                    .accessibilityLabel("Move the points a frame later")
+                Spacer()
+                Button("Remove", role: .destructive) { session.deleteSelected() }
+                    .help("Remove the picked points (Delete)")
+            }
+        }
+    }
 
     private func pointControls(_ point: TimePoint) -> some View {
         VStack(alignment: .leading, spacing: Design.Space.step) {

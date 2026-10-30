@@ -14,7 +14,10 @@ import SwiftUI
 /// to stay in line unless Option is held; dragged onto its point, it goes.
 /// Each clip's first and last frames show a keyframe too, which stays put:
 /// Option-dragging it pulls out its one handle, which only ever reaches
-/// into the clip.
+/// into the clip. Points are picked as keyframes are in the graph editor:
+/// Command-click adds one or takes it out, Shift-click picks the points
+/// from the last clicked, and dragging in empty space draws a lasso; a
+/// drag of one picked point moves them all.
 struct MotionDesignLanes: View {
     @Bindable var session: MotionDesignSession
 
@@ -29,7 +32,11 @@ struct MotionDesignLanes: View {
         /// moves `dragDistance` from where it went down: a click on a
         /// point only selects it, and changes nothing.
         case pressed(Grab)
-        case point(UUID, from: Double, added: Bool)
+        /// Points moving together as `dragged` is dragged, from where each
+        /// was, in seconds.
+        case points(dragged: UUID, from: [UUID: Double], added: Bool)
+        /// A lasso from a point in the graph, adding to `kept`.
+        case lasso(from: CGPoint, kept: Set<UUID>, click: SelectClick)
         case handle(UUID, side: TimePoint.Side)
         case edgeHandle(MotionDesignSession.EdgeKey)
         case seek
@@ -39,7 +46,7 @@ struct MotionDesignLanes: View {
     }
 
     private enum Grab {
-        case point(UUID, from: Double)
+        case point(UUID, from: Double, click: SelectClick)
         case handle(UUID, side: TimePoint.Side)
         case edge(MotionDesignSession.EdgeKey)
         case edgeHandle(MotionDesignSession.EdgeKey)
@@ -50,6 +57,8 @@ struct MotionDesignLanes: View {
     private static let dragDistance: CGFloat = 3
 
     @State private var drag: GraphDrag?
+    /// The lasso being dragged across the graph.
+    @State private var lassoRect: CGRect?
     /// Where the drag snapped, to draw.
     @State private var snapTime: Double?
 
@@ -206,6 +215,7 @@ struct MotionDesignLanes: View {
         .background(Design.Surface.sunken.color)
         .contentShape(Rectangle())
         .gesture(graphGesture(stack: stack))
+        .overlay(alignment: .topLeading) { lassoOverlay }
         .onContinuousHover { phase in
             if case .active(let location) = phase {
                 let over = point(at: location, stack: stack) != nil || edge(at: location, stack: stack) != nil || line(at: location, stack: stack) != nil
@@ -451,7 +461,7 @@ struct MotionDesignLanes: View {
     /// marker, where the speed steps; pinched where it is eased. Hits are
     /// the bright "placed" tone, markers quieter.
     private func drawPoint(_ point: TimePoint, at center: CGPoint, in context: inout GraphicsContext) {
-        let isSelected = point.id == session.selectedPointID
+        let isSelected = session.pickedPoints.contains(point.id)
         let size: CGFloat = point.isHit ? 13 : 11
         let rect = CGRect(x: center.x - size / 2, y: center.y - size / 2, width: size, height: size)
         let shape = KeyframeMarkShape(easedIn: point.easeIn != nil, easedOut: point.easeOut != nil, holds: point.pace != nil).path(in: rect)
@@ -517,22 +527,55 @@ struct MotionDesignLanes: View {
     }
 
     /// What a press at `location` takes hold of: a selected point's ease
-    /// handle, a point (selecting it), the line, or else the playhead.
+    /// handle, a point (a plain press on one not picked picks it alone; one
+    /// picked keeps the rest, for a drag to move them all), the line, or
+    /// else empty space, where a drag draws a lasso.
     private func grab(at location: CGPoint, stack: Stack) -> GraphDrag {
         if let handle = easeHandles(stack: stack).first(where: { hypot($0.point.x - location.x, $0.point.y - location.y) <= 7 }) {
             return .pressed(handle.grab)
         }
+        let click = SelectClick.current
         if let id = point(at: location, stack: stack), let found = session.run.piece(holdingPoint: id) {
-            session.select(point: id)
-            return .pressed(.point(id, from: session.run.pieces[found.piece].map.points[found.point].time.seconds))
+            if click == .only, !session.pickedPoints.contains(id) { session.select(point: id) }
+            return .pressed(.point(id, from: session.run.pieces[found.piece].map.points[found.point].time.seconds, click: click))
         }
         if let key = edge(at: location, stack: stack) {
             session.select(edge: key)
             return .pressed(.edge(key))
         }
         if let hit = line(at: location, stack: stack) { return .pressed(.line(piece: hit.piece, time: hit.time)) }
-        session.select(point: nil)
-        return .seek
+        return .lasso(from: location, kept: SelectClick.lassoAdds(NSEvent.modifierFlags) ? session.pickedPoints.items : [], click: click)
+    }
+
+    /// The points inside `rect`.
+    private func points(in rect: CGRect, stack: Stack) -> Set<UUID> {
+        var ids: Set<UUID> = []
+        for (index, piece) in session.run.pieces.enumerated() {
+            for point in piece.map.points where rect.contains(location(of: point, piece: index, stack: stack)) { ids.insert(point.id) }
+        }
+        return ids
+    }
+
+    /// Where each picked point is, in seconds.
+    private var pickedTimes: [UUID: Double] {
+        var from: [UUID: Double] = [:]
+        for id in session.pickedPointIDs {
+            if let (p, i) = session.run.piece(holdingPoint: id) { from[id] = session.run.pieces[p].map.points[i].time.seconds }
+        }
+        return from
+    }
+
+    @ViewBuilder
+    private var lassoOverlay: some View {
+        if let lassoRect {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(Design.accent.opacity(0.12))
+                .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Design.accent.opacity(0.9), lineWidth: 1) }
+                .frame(width: lassoRect.width, height: lassoRect.height)
+                .offset(x: lassoRect.minX, y: lassoRect.minY)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     /// Starts dragging what was pressed, once the pointer has moved.
@@ -550,14 +593,18 @@ struct MotionDesignLanes: View {
         }
         session.beginDrag()
         switch grab {
-        case .point(let id, let from):
-            return .point(id, from: from, added: false)
+        case .point(let id, let from, let click):
+            // A point Command- or Shift-dragged joins those picked.
+            if !session.pickedPoints.contains(id) { session.pickedPoints.press(id, click) }
+            var times = pickedTimes
+            times[id] = from
+            return .points(dragged: id, from: times, added: false)
         case .handle(let id, let side):
             return .handle(id, side: side)
         case .edge(let key), .edgeHandle(let key):
             return .edgeHandle(key)
         case .line(let piece, let time):
-            if let id = session.addMarker(toPiece: piece, atTime: time) { return .point(id, from: time, added: true) }
+            if let id = session.addMarker(toPiece: piece, atTime: time) { return .points(dragged: id, from: [id: time], added: true) }
             session.endDrag("Add Marker")
             return .seek
         }
@@ -572,14 +619,21 @@ struct MotionDesignLanes: View {
                     drag = startDragging(grab)
                 }
                 switch drag {
-                case .point(let id, let from, _):
-                    let target = from + Double(gesture.translation.width) * session.secondsPerPoint
+                case .points(let id, let from, _):
+                    guard let start = from[id] else { break }
+                    let target = start + Double(gesture.translation.width) * session.secondsPerPoint
                     let piece = session.run.piece(holdingPoint: id).map { session.run.pieces[$0.piece].id }
                     let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint, excluding: piece)
                     snapTime = snapped
-                    session.dragEdit {
-                        $0.movePoint(id, to: CMTime(seconds: snapped ?? target, preferredTimescale: ClipTimeMap.timescale))
-                    }
+                    session.dragEdit { MotionDesignSession.movePoints(from, by: (snapped ?? target) - start, in: &$0) }
+                case .lasso(let from, let kept, _):
+                    guard hypot(gesture.translation.width, gesture.translation.height) >= Self.dragDistance else { break }
+                    let rect = CGRect(
+                        x: min(from.x, gesture.location.x), y: min(from.y, gesture.location.y),
+                        width: abs(gesture.translation.width), height: abs(gesture.translation.height)
+                    )
+                    lassoRect = rect
+                    session.lasso(points: points(in: rect, stack: stack), keeping: kept)
                 case .handle(let id, let side):
                     guard let ease = ease(dragging: side, of: id, to: gesture.location, stack: stack) else { break }
                     // Option moves the handle alone, as in the graph editor.
@@ -594,9 +648,20 @@ struct MotionDesignLanes: View {
                     break
                 }
             }
-            .onEnded { _ in
+            .onEnded { gesture in
                 switch drag {
-                case .point(_, _, let added): session.endDrag(added ? "Add Marker" : "Move Point")
+                case .points(_, let from, let added): session.endDrag(added ? "Add Marker" : from.count > 1 ? "Move Points" : "Move Point")
+                // A click on a point picks it as the keys held say.
+                case .pressed(.point(let id, _, let click)):
+                    session.click(point: id, click)
+                // A click in empty space moves the playhead there and,
+                // without Shift or Command, picks nothing.
+                case .lasso(_, _, let click) where lassoRect == nil:
+                    session.seek(to: session.seconds(atX: gesture.location.x))
+                    if click == .only {
+                        session.select(point: nil)
+                        session.selectedEdge = nil
+                    }
                 case .handle(_, let side): session.endDrag(side == .before ? "Shape Ease In" : "Shape Ease Out")
                 case .edgeHandle(let key): session.endDrag("Shape \(MotionDesignSession.edgeHandleName(key.edge))")
                 // A click on the line drops a marker on that frame, selected,
@@ -608,6 +673,7 @@ struct MotionDesignLanes: View {
                 }
                 drag = nil
                 snapTime = nil
+                lassoRect = nil
             }
     }
 
@@ -615,7 +681,18 @@ struct MotionDesignLanes: View {
 
     @ViewBuilder
     private var pointMenu: some View {
-        if let point = session.selectedPoint {
+        let picked = session.pickedPointIDs
+        if picked.count > 1 {
+            Button("Make Hits") { session.setKindOfPicked(.hit) }
+            Button("Make Markers") { session.setKindOfPicked(.marker) }
+            Divider()
+            ForEach(TimePoint.presets) { preset in
+                Button(preset.name) { session.setEaseOfPicked(preset) }
+                    .help(MotionDesignSidebar.easeDetail(preset))
+            }
+            Divider()
+            Button("Remove \(picked.count) Points", role: .destructive) { session.deleteSelected() }
+        } else if let point = session.selectedPoint {
             Button("Make Hit") { session.setKind(.hit, ofPoint: point.id) }
                 .disabled(point.isHit)
             Button("Make Marker") { session.setKind(.marker, ofPoint: point.id) }
@@ -681,13 +758,16 @@ struct MotionDesignLanes: View {
         return Rectangle()
             .accessibilityLabel("\(kind) at \(session.timecode(point.time))")
             .accessibilityValue("Frame \(session.timecode(point.source))\(speed.map { ", then \(Self.speedText($0))" } ?? ""), \(easeText(point, piece: index))")
-            .accessibilityAddTraits(point.id == session.selectedPointID ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAddTraits(session.pickedPoints.contains(point.id) ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { session.select(point: point.id) }
             .accessibilityAdjustableAction { direction in
                 session.select(point: point.id)
                 session.nudgeSelected(byFrames: direction == .increment ? 1 : -1)
             }
             .accessibilityActions {
+                Button(session.pickedPoints.contains(point.id) ? "Remove from selection" : "Add to selection") {
+                    session.click(point: point.id, .toggle)
+                }
                 Button("Make hit") { session.setKind(.hit, ofPoint: point.id) }
                 Button("Make marker") { session.setKind(.marker, ofPoint: point.id) }
                 Button("Set pace") { session.select(point: point.id); session.focusesPace = true }

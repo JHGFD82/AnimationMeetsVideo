@@ -143,6 +143,10 @@ struct MotionDesignView: View {
             case "=", "+": session.zoomIn(); return true
             case "-": session.zoomOut(); return true
             case "0": session.fit(); return true
+            case "a":
+                // Every point of the run.
+                session.lasso(points: Set(session.pointOrder), keeping: [])
+                return true
             default: return false
             }
         }
@@ -153,7 +157,7 @@ struct MotionDesignView: View {
             let frames = event.keyCode == 123 ? -step : step
             // A selected clip stays put: the playhead moves. Its own frame
             // earlier and later are in the sidebar and its VoiceOver actions.
-            if session.selectedPoint != nil {
+            if !session.pickedPointIDs.isEmpty {
                 session.nudgeSelected(byFrames: frames)
             } else {
                 session.seek(to: session.playhead + Double(frames) * session.timeline.frameDuration.seconds)
@@ -172,11 +176,14 @@ struct MotionDesignView: View {
         case " ": session.togglePlayback()
         case "m": session.addMarkerAtPlayhead()
         case "n": session.snaps.toggle()
-        case "h": if let point = session.selectedPoint { session.setKind(.hit, ofPoint: point.id) }
+        case "h": session.setKindOfPicked(.hit)
         case "p": if session.selectedPoint != nil { session.focusesPace = true }
         case "e":
             // Easy Ease, or Linear again, as F9 eases a keyframe.
-            if let point = session.selectedPoint {
+            if session.pickedPointIDs.count > 1 {
+                let eased = session.run.pieces.flatMap(\.map.points).filter { session.pickedPointIDs.contains($0.id) }.allSatisfy(\.eased)
+                session.setEaseOfPicked(eased ? .linear : .easyEase)
+            } else if let point = session.selectedPoint {
                 session.setEase(point.eased ? .linear : .easyEase, ofPoint: point.id)
             } else if let key = session.selectedEdge, session.selectedEdgeMap?.canEase(key.edge) == true {
                 // An edge keyframe's one handle, flat, or gone again.

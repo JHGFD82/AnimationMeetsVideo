@@ -278,4 +278,40 @@ import Testing
         session.endDrag("Move Point")
         #expect(session.canUndo)
     }
+
+    @Test func severalPointsArePickedMovedAndRemovedTogether() throws {
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 8, timescale: 1))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        let a = try #require(session.addMarker(toPiece: clip.id, atTime: 2))
+        let b = try #require(session.addMarker(toPiece: clip.id, atTime: 4))
+        let c = try #require(session.addMarker(toPiece: clip.id, atTime: 6))
+        func time(_ id: UUID) -> Double? {
+            session.run.piece(holdingPoint: id).map { session.run.pieces[$0.piece].map.points[$0.point].time.seconds }
+        }
+
+        // Shift-click picks the run from the last clicked; Command-click
+        // takes one out.
+        session.click(point: a, .only)
+        session.click(point: c, .extend)
+        #expect(session.pickedPointIDs == [a, b, c])
+        #expect(session.selectedPointID == nil)
+        session.click(point: b, .toggle)
+        #expect(session.pickedPointIDs == [a, c])
+
+        // A nudge moves them all, in one step.
+        let frame = session.run.frameDuration.seconds
+        session.nudgeSelected(byFrames: 1)
+        #expect(time(a).map { abs($0 - (2 + frame)) < 1e-4 } == true)
+        #expect(time(c).map { abs($0 - (6 + frame)) < 1e-4 } == true)
+        #expect(time(b) == 4)
+
+        session.deleteSelected()
+        #expect(time(a) == nil && time(c) == nil)
+        #expect(time(b) == 4)
+        #expect(session.pickedPoints.isEmpty)
+    }
 }
