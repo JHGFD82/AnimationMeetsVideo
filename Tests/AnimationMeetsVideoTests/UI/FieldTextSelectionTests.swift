@@ -1,3 +1,4 @@
+import CoreMedia
 import AppKit
 import SwiftUI
 import Testing
@@ -33,6 +34,23 @@ struct FieldTextSelectionTests {
         }
     }
 
+    @MainActor @Observable
+    final class Playhead {
+        var time = CMTime.zero
+    }
+
+    /// A music track's volume to click, from (10, 10). It is drawn again
+    /// as the playhead moves, as skimming the timeline moves it.
+    private struct Volume: View {
+        let playhead: Playhead
+
+        var body: some View {
+            AudioPropertyRow(value: AnimatedValue(-6.0), time: playhead.time, onEdit: { _ in }, onSeek: { _ in })
+                .frame(width: 280, alignment: .leading)
+                .padding(10)
+        }
+    }
+
     private struct Name: View {
         let renaming: Renaming
 
@@ -62,6 +80,20 @@ struct FieldTextSelectionTests {
     private func clickIntoField(_ harness: EventHarness) throws {
         let field = try #require(Self.field(in: harness.window.contentView))
         harness.window.makeFirstResponder(field)
+        editor(harness)?.setSelectedRange(NSRange(location: 4, length: 0))
+    }
+
+    /// What a click at `point` (from the top left) on a field already being
+    /// edited does: `FieldTextSelection` sees it before the window, then
+    /// the click's tracking puts the caret where it landed. Its local
+    /// monitor isn't sent events that skip the event queue, so it's told.
+    private func click(at point: CGPoint, inEdited harness: EventHarness) {
+        let location = CGPoint(x: point.x, y: harness.window.frame.height - point.y)
+        guard let event = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: harness.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        ) else { return }
+        FieldTextSelection.mouseDown(event)
         editor(harness)?.setSelectedRange(NSRange(location: 4, length: 0))
     }
 
@@ -107,6 +139,44 @@ struct FieldTextSelectionTests {
         #expect(editor.selectedRange() == NSRange(location: 4, length: 0))
     }
 
+    @Test func firstClickOnAFieldAlreadyBeingEditedSelectsItsWholeValue() async throws {
+        let harness = harness(Fields())
+        defer { FieldTextSelection.unwatch(harness.window) }
+        // As when its sheet opened, or Tab moved to it.
+        let field = try #require(Self.field(in: harness.window.contentView))
+        harness.window.makeFirstResponder(field)
+        try await harness.settle()
+        let editor = try #require(editor(harness))
+        editor.setSelectedRange(NSRange(location: 14, length: 0))
+        click(at: CGPoint(x: 100, y: 12), inEdited: harness)
+        try await harness.settle()
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 14))
+        // The next click places the caret.
+        click(at: CGPoint(x: 100, y: 12), inEdited: harness)
+        try await harness.settle()
+        #expect(editor.selectedRange() == NSRange(location: 4, length: 0))
+    }
+
+    @Test func clickingBackIntoAFieldAfterClickingAwaySelectsItsWholeValue() async throws {
+        let harness = harness(Fields())
+        defer { FieldTextSelection.unwatch(harness.window) }
+        let field = try #require(Self.field(in: harness.window.contentView))
+        harness.window.makeFirstResponder(field)
+        try await harness.settle()
+        let editor = try #require(editor(harness))
+        click(at: CGPoint(x: 100, y: 12), inEdited: harness)
+        try await harness.settle()
+        click(at: CGPoint(x: 100, y: 12), inEdited: harness)
+        try await harness.settle()
+        // A click below the field, on nothing that takes focus.
+        click(at: CGPoint(x: 100, y: 90), inEdited: harness)
+        try await harness.settle()
+        #expect(harness.window.firstResponder === editor)
+        click(at: CGPoint(x: 100, y: 12), inEdited: harness)
+        try await harness.settle()
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 14))
+    }
+
     @Test func clickingAValueToTypeSelectsIt() async throws {
         let harness = harness(Value())
         defer { FieldTextSelection.unwatch(harness.window) }
@@ -114,6 +184,19 @@ struct FieldTextSelectionTests {
         let editor = try #require(editor(harness))
         #expect(editor.string == "125")
         #expect(editor.selectedRange() == NSRange(location: 0, length: 3))
+    }
+
+    @Test func aVolumeOpenedToTypeStaysSelectedAsThePlayheadMoves() async throws {
+        let playhead = Playhead()
+        let harness = harness(Volume(playhead: playhead))
+        defer { FieldTextSelection.unwatch(harness.window) }
+        try await harness.click(at: CGPoint(x: 100, y: 18))
+        let editor = try #require(editor(harness))
+        #expect(editor.string == "-6")
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 2))
+        playhead.time = CMTime(value: 1, timescale: 2)
+        try await harness.settle()
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 2))
     }
 
     @Test func renamingSelectsTheWholeName() async throws {

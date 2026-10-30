@@ -37,8 +37,10 @@ keyboard (the browser's Clips list uses the arrows).
 A one-line field that starts being edited has its whole value selected,
 however editing starts (a click on the field, a click on a value or
 name that opens one, Tab, Rename), so typing replaces the value as
-renaming a file in the Finder does. Clicks in a field already being
-edited place the caret. One observer installed at launch does this for
+renaming a file in the Finder does. The first click on a field still
+being edited (focused when its sheet or panel opened, by Tab, or left
+so by a click elsewhere) selects its whole value too; later clicks in
+it place the caret. One observer installed at launch does this for
 every field (`FieldTextSelection`); text views of several lines are left
 alone.
 
