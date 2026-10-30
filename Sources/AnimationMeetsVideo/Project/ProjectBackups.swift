@@ -20,6 +20,11 @@ import UniformTypeIdentifiers
 /// cost what changed. A backup on the project's own volume costs nothing,
 /// but doesn't survive that disk failing.
 ///
+/// A backup's `Media/` is excluded from Time Machine and other backup
+/// tools: they don't keep clones shared, so each backup's footage would
+/// be stored again in full, and they already back up the same files in
+/// the project's own package.
+///
 /// Opening a backup never touches the project it came from: it becomes a
 /// new project beside it, "Name from backup 2026-10-24 14.30".
 enum ProjectBackups {
@@ -100,6 +105,7 @@ enum ProjectBackups {
             for subfolder in [ProjectStore.mediaFolderName, ProjectStore.referenceFolderName] {
                 try copyTree(subfolder, of: packageURL, into: partial, reusing: previous)
             }
+            setMediaExcludedFromBackup(true, in: partial)
             let info = Info(originalProject: packageURL.path, projectName: project.name, createdAt: now)
             try JSONFile.encode(info).write(to: partial.appending(path: infoFileName), options: .atomic)
             try fileManager.moveItem(at: partial, to: destination)
@@ -149,6 +155,16 @@ enum ProjectBackups {
         }
     }
 
+    /// Marks or unmarks the package's `Media/` as excluded from backup,
+    /// when it has one.
+    static func setMediaExcludedFromBackup(_ excluded: Bool, in packageURL: URL) {
+        var media = packageURL.appending(path: ProjectStore.mediaFolderName, directoryHint: .isDirectory)
+        guard FileManager.default.fileExists(atPath: media.path) else { return }
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = excluded
+        try? media.setResourceValues(values)
+    }
+
     /// `candidate`, when it is the same file as one with `values`.
     private static func sameFile(_ candidate: URL, as values: URLResourceValues) -> URL? {
         guard let other = try? candidate.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
@@ -187,6 +203,9 @@ enum ProjectBackups {
         do {
             try fileManager.removeItem(at: destination.appending(path: infoFileName))
             try makeNewProject(in: destination, named: destination.deletingPathExtension().lastPathComponent)
+            // The copy carries the backup's exclusion, but a project's
+            // media is the person's work and should be backed up.
+            setMediaExcludedFromBackup(false, in: destination)
             try ProjectStore.preparePackage(at: destination)
             ProjectStore.markAsPackage(destination)
         } catch {
