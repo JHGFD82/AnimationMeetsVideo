@@ -98,7 +98,7 @@ struct ClipsTabInteraction {
         _ press: FilmstripPress, entry: BrowserEntry, layout: FilmstripLayout, order: [BrowserItemID], skimming: Bool
     ) -> PressEffect {
         switch press {
-        case .click(let point, let flags):
+        case .click(let point, let flags, _):
             rangeDrag = nil
             if !flags.isDisjoint(with: [.command, .shift]) {
                 click(entry.id, flags: flags, order: order)

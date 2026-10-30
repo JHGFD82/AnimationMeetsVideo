@@ -143,6 +143,9 @@ extension EffectsPanel {
                         )
                     }
                 }
+                if effect.kind == .audioKeys {
+                    audioKeysPreview(effect, c, dimmed: dimmed)
+                }
                 if effect.kind.isKeyframing {
                     keyframingRows(effect, c, effectDimmed: dimmed)
                 }
@@ -335,6 +338,7 @@ extension EffectsPanel {
         var playsVideo: Bool
         var playsAudio: Bool
         var speedBlocked: Bool
+        var collapsedSections: Set<EffectsPanelState.ClipSection>
     }
 
     func clipRows<Content: View>(_ c: RowContext, @ViewBuilder content: @escaping () -> Content) -> some View {
@@ -342,7 +346,7 @@ extension EffectsPanel {
             timelineID: timelineID, clip: c.clip, layerID: c.layer.id, showsLanes: showsKeyframeLanes,
             lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize,
             playsVideo: project.playsVideo(c.clip), playsAudio: project.playsAudio(c.clip),
-            speedBlocked: speedBlockedClipID == c.clip.id
+            speedBlocked: speedBlockedClipID == c.clip.id, collapsedSections: state.collapsedSections
         )
         return StackRow(key: key, content: content).equatable()
     }

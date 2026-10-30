@@ -41,6 +41,9 @@ struct TimelineEditorSurface<Library: View>: View {
     /// tell it from one chosen another way (the browser, the menu), whose
     /// trail is the timelines it is inside.
     @State private var trailTarget: UUID?
+    /// Where the playhead was in each timeline shown before, for the
+    /// viewer to come back to it there.
+    @State private var parkedTimes: [UUID: CMTime] = [:]
 
     private var playheadTime: CMTime {
         get { playhead.time }
@@ -393,15 +396,18 @@ struct TimelineEditorSurface<Library: View>: View {
             graphs.onSeek = { _ in }
             graphs.onTogglePlayback = {}
         }
-        .onChange(of: timelineID) { _, newValue in
+        .onChange(of: timelineID) { oldValue, newValue in
             if newValue != trailTarget { trail = project.containingTimelines(of: newValue) }
             trailTarget = nil
             if selection?.timelineID != newValue {
                 selection = nil
             }
-            playback.player.pause()
-            playheadTime = .zero
-            send(.timelineChanged(source(of: project), at: .zero))
+            // Where playing had reached, if it was.
+            parkedTimes[oldValue] = playhead.actionTime
+            let time = parkedTime(in: newValue)
+            playback.showTimeline(from: time)
+            playheadTime = time
+            send(.timelineChanged(source(of: project), at: time))
         }
         .onChange(of: ViewerInputs(showUpTo: partialView, offlineMedia: offlineMedia)) { _, _ in
             showProject()
@@ -632,6 +638,14 @@ struct TimelineEditorSurface<Library: View>: View {
         renderer?.noteActivity()
         playheadTime = time
         playback.seek(to: time)
+    }
+
+    /// Where the playhead was left in `timelineID`, within the timeline as
+    /// it is now (an edit since may have shortened it); its start the first
+    /// time it is shown.
+    private func parkedTime(in timelineID: UUID) -> CMTime {
+        guard let time = parkedTimes[timelineID], let duration = project.timeline(id: timelineID)?.duration else { return .zero }
+        return CMTimeMinimum(time, duration)
     }
 
     /// Goes into a nested timeline, from its clip, keeping where it came

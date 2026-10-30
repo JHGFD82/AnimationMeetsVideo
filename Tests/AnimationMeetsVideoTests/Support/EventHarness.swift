@@ -28,12 +28,13 @@ final class EventHarness {
         MainActor.assumeIsolated { window.orderOut(nil) }
     }
 
-    /// Sends a mouse event at `point`, in the view's top-left coordinates.
-    func mouse(_ type: NSEvent.EventType, at point: CGPoint, flags: NSEvent.ModifierFlags = []) {
+    /// Sends a mouse event at `point`, in the view's top-left coordinates;
+    /// `clickCount` 2 for a double-click's second press and release.
+    func mouse(_ type: NSEvent.EventType, at point: CGPoint, flags: NSEvent.ModifierFlags = [], clickCount: Int = 1) {
         let location = CGPoint(x: point.x, y: window.frame.height - point.y)
         guard let event = NSEvent.mouseEvent(
             with: type, location: location, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: clickCount, pressure: type == .leftMouseUp ? 0 : 1
         ) else { return }
         NSApp.sendEvent(event)
     }
@@ -58,6 +59,16 @@ final class EventHarness {
         mouse(.leftMouseDown, at: point)
         try await settle()
         mouse(.leftMouseUp, at: point)
+        try await settle(250)
+    }
+
+    func doubleClick(at point: CGPoint) async throws {
+        mouse(.leftMouseDown, at: point)
+        mouse(.leftMouseUp, at: point)
+        try await settle()
+        mouse(.leftMouseDown, at: point, clickCount: 2)
+        try await settle()
+        mouse(.leftMouseUp, at: point, clickCount: 2)
         try await settle(250)
     }
 

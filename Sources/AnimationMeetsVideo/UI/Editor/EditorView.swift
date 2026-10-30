@@ -166,6 +166,9 @@ struct EditorView: View {
         .onChange(of: activeTimeline.wrappedValue == project.rootTimelineID, initial: true) { _, isMain in
             tapeScrubber.isMainTimeline = isMain
         }
+        // A timeline opened is shown at its playhead, not under a skim of
+        // the browser.
+        .onChange(of: activeTimeline.wrappedValue) { _, _ in skim.end() }
         .onDisappear {
             tapeScrubber.close()
             sceneSplitter.close()

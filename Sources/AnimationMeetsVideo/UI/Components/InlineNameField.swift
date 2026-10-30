@@ -3,8 +3,9 @@ import SwiftUI
 
 /// A name edited in place, as in the Finder: shown as text, and while
 /// `isEditing` as a bordered field over it, so it is plain that typing
-/// renames, which commits on Return or when it loses focus and puts the
-/// name back on Escape. An empty name, or the same one, changes nothing.
+/// renames, which commits on Return, on a click elsewhere or when it loses
+/// focus, and puts the name back on Escape. An empty name, or the same
+/// one, changes nothing.
 ///
 /// The field is laid over the name rather than in its place, so nothing
 /// beside it (an icon, a badge) moves when editing starts; it reaches
@@ -64,6 +65,8 @@ struct InlineNameField: View {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .strokeBorder(Design.accent, lineWidth: 1.5)
             }
+            // A click on a view that doesn't take focus ends the edit too.
+            .background(OutsideClickMonitor(onOutsideClick: commit))
             .padding(.horizontal, -3)
             .padding(.vertical, -1)
             .frame(minWidth: 140, alignment: .leading)

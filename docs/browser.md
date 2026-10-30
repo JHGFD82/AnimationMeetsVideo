@@ -216,6 +216,10 @@ loses the keyboard.
 - Dragging out a range shows its moving end in the viewer, as skimming
   does. Dragging clips out of the browser returns the viewer to the
   timeline they're dropped on.
+- Opening a timeline, however it is opened, ends the skim, so the viewer
+  shows the timeline opened at its playhead. A timeline opened by
+  double-clicking its strip isn't skimmed again until the pointer leaves
+  that strip, though it is still under the pointer.
 - Stills aren't skimmed: they have no time to move through.
 
 ## Selecting

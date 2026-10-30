@@ -1,60 +1,10 @@
 import CoreMedia
 import SwiftUI
 
-/// A numeric value in a `ToggleFieldsRow`.
-struct ToggleField: Identifiable {
-    var id: String { label }
-    let label: String
-    let value: Double
-    var unit = ""
-    var step = 1.0
-    var range: ClosedRange<Double>?
-    var fractionDigits = 0
-    let onCommit: (Double) -> Void
-}
-
-/// A setting that is either off or has a few numbers: a checkbox, its name,
-/// and a field for each number while it is on.
-struct ToggleFieldsRow: View {
-    let title: String
-    let isOn: Bool
-    var help = ""
-    let onToggle: @MainActor (Bool) -> Void
-    let fields: [ToggleField]
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Color.clear.frame(width: 12)
-            Toggle("", isOn: Binding(get: { isOn }, set: { onToggle($0) }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .controlSize(.small)
-            Text(title)
-                .foregroundStyle(isOn ? Design.textSecondary : Design.textTertiary)
-                .lineLimit(1)
-                .frame(width: 66, alignment: .leading)
-            if isOn {
-                ForEach(fields) { field in
-                    Text(field.label)
-                        .font(Design.Typeface.micro)
-                        .foregroundStyle(Design.textTertiary)
-                    NumericField(
-                        value: field.value, unit: field.unit, fractionDigits: field.fractionDigits,
-                        dragStep: field.step, dragRange: field.range, onCommit: field.onCommit
-                    )
-                }
-            }
-            Spacer(minLength: 2)
-        }
-        .font(Design.Typeface.label)
-        .padding(.horizontal, 4)
-        .frame(height: EffectsPanelMetrics.rowHeight)
-        .help(help)
-    }
-}
-
 /// The pinned Time rows above the anchor point, and the Shutter rows below
-/// the transitions (see docs/effects.md, "Time and Shutter").
+/// the transitions (see docs/effects.md, "Time and Shutter"): each a
+/// section with a header as an effect's, which folds it up, and rows laid
+/// out as its controls are.
 extension EffectsPanel {
     private func hasMedia(_ clip: TimelineClip) -> Bool {
         if case .media = clip.source { return true }
@@ -79,27 +29,39 @@ extension EffectsPanel {
         let clip = c.clip
         if hasMedia(clip) {
             labelled(
-                PinnedRow(title: "Time", systemImage: "clock") { EmptyView() },
+                ClipSectionHeaderRow(
+                    name: "Time", systemImage: "clock", isCollapsed: state.isCollapsed(.time),
+                    onToggleCollapsed: { state.toggleCollapsed(.time) }
+                ) {
+                    Button("Reset") { editTime(c) { $0 = ClipTime() } }
+                        .disabled(clip.time.isDefault)
+                },
                 lane: emptyLane(c)
             )
-            speedRow(c)
-            reverseRow(c)
-            if speedBlockedClipID == clip.id {
-                besideLane(EffectNoteRow(note: EffectNote(
-                    text: "Speed can't cross zero. To change direction, cut the clip with the Blade tool and set each segment's speed.",
-                    dims: true
-                )))
+            if !state.isCollapsed(.time) { timeSettings(c) }
+        }
+    }
+
+    @ViewBuilder
+    private func timeSettings(_ c: RowContext) -> some View {
+        let clip = c.clip
+        speedRow(c)
+        reverseRow(c)
+        if speedBlockedClipID == clip.id {
+            besideLane(EffectNoteRow(note: EffectNote(
+                text: "Speed can't cross zero. To change direction, cut the clip with the Blade tool and set each segment's speed.",
+                dims: true
+            )))
+        }
+        if project.playsVideo(clip) {
+            frameBlendingRow(c)
+            if clip.time.frameBlending == .opticalFlow {
+                besideLane(EffectNoteRow(note: EffectNote(text: "Shown as Blend until the stretch is rendered.", dims: false)))
             }
-            if project.playsVideo(clip) {
-                frameBlendingRow(c)
-                if clip.time.frameBlending == .opticalFlow {
-                    besideLane(EffectNoteRow(note: EffectNote(text: "Shown as Blend until the stretch is rendered.", dims: false)))
-                }
-                echoRow(c)
-            }
-            if project.playsAudio(clip) {
-                soundRow(c)
-            }
+            echoRow(c)
+        }
+        if project.playsAudio(clip) {
+            soundRow(c)
         }
     }
 
@@ -108,11 +70,19 @@ extension EffectsPanel {
         let clip = c.clip
         if project.playsVideo(clip), clip.source != .adjustment {
             labelled(
-                PinnedRow(title: "Shutter", systemImage: "camera.aperture") { EmptyView() },
+                ClipSectionHeaderRow(
+                    name: "Shutter", systemImage: "camera.aperture", isCollapsed: state.isCollapsed(.shutter),
+                    onToggleCollapsed: { state.toggleCollapsed(.shutter) }
+                ) {
+                    Button("Reset") { editClip(clip.id) { $0.shutter = ClipShutter() } }
+                        .disabled(clip.shutter.isOff)
+                },
                 lane: emptyLane(c)
             )
-            motionBlurRow(c)
-            if hasMedia(clip) { trailsRow(c) }
+            if !state.isCollapsed(.shutter) {
+                motionBlurRow(c)
+                if hasMedia(clip) { trailsRow(c) }
+            }
         }
     }
 
@@ -123,7 +93,7 @@ extension EffectsPanel {
         return labelled(
             ParameterRow(
                 name: "Speed",
-                indent: 14,
+                indent: EffectsPanelMetrics.controlIndent - 12,
                 components: [clip.speed(atSource: c.sourceNow(animated: speed.isAnimated))],
                 unit: "%",
                 dragRange: { _ in
@@ -133,6 +103,7 @@ extension EffectsPanel {
                 isSelected: false,
                 keyframeTimes: speed.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
                 playhead: c.frameTime(animated: speed.isAnimated),
+                onReset: clip.isRetimed ? { editTime(c) { $0.speed = AnimatedValue(100) } } : nil,
                 onSelect: {},
                 onSetComponent: { _, value in
                     // Crossing zero would take forever to play: hold at the
@@ -177,20 +148,24 @@ extension EffectsPanel {
 
     private func frameBlendingRow(_ c: RowContext) -> some View {
         let clip = c.clip
+        let reset = { editTime(c) { $0.frameBlending = .off } }
         return labelled(
             ChoiceRow(
                 name: "Frames",
-                indent: 14,
+                indent: EffectsPanelMetrics.controlIndent - 12,
                 options: FrameBlending.allCases.map { ($0.rawValue, $0.name) },
                 selected: clip.time.frameBlending.rawValue,
                 isSelected: false,
                 dragHandle: nil,
-                showsMenu: false,
+                onReset: clip.time.frameBlending == .off ? nil : reset,
                 onSelect: {},
                 onChoose: { choice in
                     editTime(c) { $0.frameBlending = FrameBlending(rawValue: choice) ?? .off }
                 },
-                menu: { EmptyView() }
+                menu: {
+                    Button("Reset", action: reset)
+                        .disabled(clip.time.frameBlending == .off)
+                }
             ),
             lane: emptyLane(c)
         )
@@ -226,19 +201,23 @@ extension EffectsPanel {
 
     private func soundRow(_ c: RowContext) -> some View {
         let clip = c.clip
+        let reset = { editTime(c) { $0.sound = .keepPitch } }
         return labelled(
             ChoiceRow(
                 name: "Sound",
-                indent: 14,
+                indent: EffectsPanelMetrics.controlIndent - 12,
                 options: SoundMode.allCases.map { ($0.rawValue, $0.name) },
                 selected: clip.time.sound.rawValue,
                 isSelected: false,
                 dragHandle: nil,
-                showsMenu: false,
                 isDimmed: !clip.isRetimed,
+                onReset: clip.time.sound == .keepPitch ? nil : reset,
                 onSelect: {},
                 onChoose: { choice in editTime(c) { $0.sound = SoundMode(rawValue: choice) ?? .keepPitch } },
-                menu: { EmptyView() }
+                menu: {
+                    Button("Reset", action: reset)
+                        .disabled(clip.time.sound == .keepPitch)
+                }
             ),
             lane: emptyLane(c)
         )

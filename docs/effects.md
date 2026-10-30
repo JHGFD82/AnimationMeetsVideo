@@ -346,8 +346,15 @@ resolved steps on every frame, after folding, plus the nesting.
 
 Effects that change time aren't in the stack. They sit above it and below
 it, set on the clip in the timeline (its ⋯ menu, with a small mark on the
-clip block) and shown in the effects panel as pinned rows: Time above the
-anchor point, Shutter below the transitions.
+clip block) and shown in the effects panel as pinned sections: Time above
+the anchor point, Shutter below the transitions. Each is headed as an
+effect is, with a disclosure arrow that folds it up (for every clip at
+once), its symbol where an effect's handle and checkbox would be, and a
+⋯ menu whose Reset puts the whole section back to its defaults. Its rows
+are laid out as controls are: Speed is a control's row; Frames and Sound
+are choices; Reverse, Echo, Motion Blur and Trails have a checkbox where
+a control's stopwatch is and their numbers while on. Each has the reset
+button while it is off its default, and a ⋯ menu with Reset.
 
 **Time** decides which source frames the clip receives, so everything else
 works on frames already chosen:

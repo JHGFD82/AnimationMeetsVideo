@@ -51,6 +51,26 @@ struct FieldTextSelectionTests {
         }
     }
 
+    /// A music layer's header, never renamed, from (10, 10), 28 high.
+    private struct LayerHeader: View {
+        let renaming: Renaming
+
+        var body: some View {
+            LayerHeaderRow(
+                number: 1, layer: TimelineLayer(customName: nil, kind: .music, clips: []), displayName: "Music 1",
+                height: 28, canMoveUp: false, canMoveDown: false,
+                isExpanded: nil, onToggleExpanded: {},
+                isAudioExpanded: nil, onToggleAudio: {}, onDetachAudio: {},
+                isChannelsExpanded: nil, onToggleChannels: {},
+                onRename: { renaming.committed.append($0 ?? "") }, onMove: { _ in },
+                onDragChanged: { _ in }, onDragEnded: { _ in },
+                isSelected: false, onSelect: {}, onDelete: {}
+            )
+            .frame(width: 260)
+            .padding(10)
+        }
+    }
+
     private struct Name: View {
         let renaming: Renaming
 
@@ -208,6 +228,110 @@ struct FieldTextSelectionTests {
         let editor = try #require(editor(harness))
         #expect(editor.string == "Chorus")
         #expect(editor.selectedRange() == NSRange(location: 0, length: 6))
+    }
+
+    /// The first click and the second of a double-click at `point`.
+    private func doubleClick(at point: CGPoint, in harness: EventHarness) async throws {
+        let location = CGPoint(x: point.x, y: harness.window.frame.height - point.y)
+        for clickCount in 1...2 {
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard let event = NSEvent.mouseEvent(
+                    with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: harness.window.windowNumber, context: nil, eventNumber: 0, clickCount: clickCount,
+                    pressure: type == .leftMouseUp ? 0 : 1
+                ) else { continue }
+                NSApp.sendEvent(event)
+                try await harness.settle(20)
+            }
+        }
+        try await harness.settle(250)
+    }
+
+    @Test func renamingALayerWithItsDefaultNameSelectsThatName() async throws {
+        let renaming = Renaming()
+        let harness = harness(LayerHeader(renaming: renaming))
+        defer { FieldTextSelection.unwatch(harness.window) }
+        try await doubleClick(at: CGPoint(x: 75, y: 24), in: harness)
+        let editor = try #require(editor(harness))
+        #expect(editor.string == "Music 1")
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 7))
+        // Left as it was, the default name isn't made the layer's own.
+        harness.window.makeFirstResponder(nil)
+        try await harness.settle(250)
+        #expect(renaming.committed.isEmpty)
+    }
+
+    @Test func returnRenamesALayer() async throws {
+        let renaming = Renaming()
+        let harness = harness(LayerHeader(renaming: renaming))
+        defer { FieldTextSelection.unwatch(harness.window) }
+        try await doubleClick(at: CGPoint(x: 75, y: 24), in: harness)
+        let editor = try #require(editor(harness))
+        type(code: 7, characters: "x", into: editor, of: harness)
+        type(code: 36, characters: "\r", into: editor, of: harness)
+        try await harness.settle(250)
+        #expect(renaming.committed == ["x"])
+        #expect(self.editor(harness) == nil)
+    }
+
+    /// A click at `point` (from the top left) on something that doesn't
+    /// take focus. Local monitors aren't sent events that skip the event
+    /// queue (and taking one from it ends the test process), so the
+    /// window's `OutsideClickMonitor`s are told of it first.
+    private func clickAway(at point: CGPoint, in harness: EventHarness) async throws {
+        let location = CGPoint(x: point.x, y: harness.window.frame.height - point.y)
+        guard let event = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: harness.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        ) else { return }
+        for monitor in Self.views(of: OutsideClickMonitor.MonitorView.self, in: harness.window.contentView) {
+            monitor.pressed(event)
+        }
+        try await harness.click(at: point)
+    }
+
+    private static func views<V: NSView>(of type: V.Type, in view: NSView?) -> [V] {
+        guard let view else { return [] }
+        return (view as? V).map { [$0] } ?? [] + view.subviews.flatMap { views(of: type, in: $0) }
+    }
+
+    @Test func clickingAwayRenamesALayer() async throws {
+        let renaming = Renaming()
+        let harness = harness(LayerHeader(renaming: renaming))
+        defer { FieldTextSelection.unwatch(harness.window) }
+        try await doubleClick(at: CGPoint(x: 75, y: 24), in: harness)
+        let editor = try #require(editor(harness))
+        type(code: 7, characters: "x", into: editor, of: harness)
+        // Below the header, on nothing that takes focus.
+        try await clickAway(at: CGPoint(x: 150, y: 100), in: harness)
+        #expect(renaming.committed == ["x"])
+        #expect(self.editor(harness) == nil)
+    }
+
+    @Test func escapeLeavesALayerNamedAsItWas() async throws {
+        let renaming = Renaming()
+        let harness = harness(LayerHeader(renaming: renaming))
+        defer { FieldTextSelection.unwatch(harness.window) }
+        try await doubleClick(at: CGPoint(x: 75, y: 24), in: harness)
+        let editor = try #require(editor(harness))
+        type(code: 7, characters: "x", into: editor, of: harness)
+        type(code: 53, characters: "\u{1b}", into: editor, of: harness)
+        try await harness.settle(250)
+        #expect(renaming.committed.isEmpty)
+        #expect(self.editor(harness) == nil)
+    }
+
+    @Test func clickingAwayRenames() async throws {
+        let renaming = Renaming()
+        let harness = harness(Name(renaming: renaming))
+        defer { FieldTextSelection.unwatch(harness.window) }
+        renaming.isEditing = true
+        try await harness.settle(250)
+        let editor = try #require(editor(harness))
+        type(code: 7, characters: "x", into: editor, of: harness)
+        try await clickAway(at: CGPoint(x: 150, y: 100), in: harness)
+        #expect(!renaming.isEditing)
+        #expect(renaming.committed == ["x"])
     }
 
     @Test func escapeAfterTypingOverTheNamePutsItBack() async throws {
