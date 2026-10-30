@@ -146,14 +146,21 @@ enum OpticalFlowKernels {
     #include <metal_stdlib>
     using namespace metal;
 
+    // Origins are where each texture's first pixel lies in the frame's
+    // pixels, which `size` measures.
     struct FlowParameters {
         float fraction;
         float2 flowScale;
+        float2 size;
+        float2 outOrigin;
+        float2 firstOrigin;
+        float2 secondOrigin;
     };
 
     // Each output pixel takes the first frame from where the motion says it
     // was `fraction` of the way back, and the second from where it will be
-    // the rest of the way on, and mixes the two toward the second.
+    // the rest of the way on, and mixes the two toward the second. Outside
+    // the frame it is transparent.
     kernel void interpolate_flow(texture2d<float, access::sample> firstTexture [[texture(0)]],
                                  texture2d<float, access::sample> secondTexture [[texture(1)]],
                                  texture2d<float, access::sample> flowTexture [[texture(2)]],
@@ -163,11 +170,14 @@ enum OpticalFlowKernels {
         if (gid.x >= outTexture.get_width() || gid.y >= outTexture.get_height()) return;
         constexpr sampler flowSampler(coord::normalized, address::clamp_to_edge, filter::linear);
         constexpr sampler pixelSampler(coord::pixel, address::clamp_to_edge, filter::linear);
-        float2 p = float2(gid) + 0.5;
-        float2 uv = p / float2(outTexture.get_width(), outTexture.get_height());
-        float2 motion = flowTexture.sample(flowSampler, uv).xy * params.flowScale;
-        float4 a = firstTexture.sample(pixelSampler, p - params.fraction * motion);
-        float4 b = secondTexture.sample(pixelSampler, p + (1.0 - params.fraction) * motion);
+        float2 p = float2(gid) + 0.5 + params.outOrigin;
+        if (any(p < 0.0) || any(p > params.size)) {
+            outTexture.write(float4(0.0), gid);
+            return;
+        }
+        float2 motion = flowTexture.sample(flowSampler, p / params.size).xy * params.flowScale;
+        float4 a = firstTexture.sample(pixelSampler, p - params.fraction * motion - params.firstOrigin);
+        float4 b = secondTexture.sample(pixelSampler, p + (1.0 - params.fraction) * motion - params.secondOrigin);
         outTexture.write(mix(a, b, params.fraction), gid);
     }
     """
@@ -217,6 +227,7 @@ final class InterpolationProcessor: CIImageProcessorKernel {
               let fraction = arguments?["fraction"] as? Double,
               let flow = arguments?["flow"] as? Data,
               let flowWidth = arguments?["flowWidth"] as? Int, let flowHeight = arguments?["flowHeight"] as? Int,
+              let extent = (arguments?["extent"] as? NSValue)?.rectValue,
               flow.count == flowWidth * flowHeight * 2 * MemoryLayout<Float>.size,
               let pipeline = OpticalFlowKernels.pipeline(on: commandBuffer.device)
         else {
@@ -235,14 +246,28 @@ final class InterpolationProcessor: CIImageProcessorKernel {
                 withBytes: bytes.baseAddress!, bytesPerRow: flowWidth * 2 * MemoryLayout<Float>.size
             )
         }
-        // The estimate was made at a smaller size, so its motion is too.
-        var parameters = (Float(fraction), SIMD2<Float>(Float(first.width) / Float(flowWidth), Float(first.height) / Float(flowHeight)))
+        // Core Image may ask for more or less than the frame (a pixel more
+        // around it to sample a moved picture smoothly, or one tile), and
+        // gives each input as much of it as it has, so every texture is
+        // placed by its region. The estimate was made at a smaller size, so
+        // its motion is too. A texture's first row is its region's top.
+        func origin(_ region: CGRect) -> SIMD2<Float> {
+            SIMD2(Float(region.minX - extent.minX), Float(extent.maxY - region.maxY))
+        }
+        var parameters = FlowParameters(
+            fraction: Float(fraction),
+            flowScale: SIMD2(Float(extent.width) / Float(flowWidth), Float(extent.height) / Float(flowHeight)),
+            size: SIMD2(Float(extent.width), Float(extent.height)),
+            outOrigin: origin(output.region),
+            firstOrigin: origin(inputs[0].region),
+            secondOrigin: origin(inputs[1].region)
+        )
         encoder.setComputePipelineState(pipeline)
         encoder.setTexture(first, index: 0)
         encoder.setTexture(second, index: 1)
         encoder.setTexture(flowTexture, index: 2)
         encoder.setTexture(target, index: 3)
-        encoder.setBytes(&parameters, length: 16, index: 0)
+        encoder.setBytes(&parameters, length: MemoryLayout<FlowParameters>.size, index: 0)
         let width = pipeline.threadExecutionWidth
         let height = max(1, pipeline.maxTotalThreadsPerThreadgroup / width)
         encoder.dispatchThreads(
@@ -250,5 +275,15 @@ final class InterpolationProcessor: CIImageProcessorKernel {
             threadsPerThreadgroup: MTLSize(width: width, height: height, depth: 1)
         )
         encoder.endEncoding()
+    }
+
+    /// The kernel's `FlowParameters`, laid out as Metal lays it out.
+    private struct FlowParameters {
+        var fraction: Float
+        var flowScale: SIMD2<Float>
+        var size: SIMD2<Float>
+        var outOrigin: SIMD2<Float>
+        var firstOrigin: SIMD2<Float>
+        var secondOrigin: SIMD2<Float>
     }
 }
