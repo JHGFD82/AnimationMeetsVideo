@@ -15,6 +15,9 @@ struct ClipBlockInteractionTests {
         var selects = 0
         var blades: [CMTime] = []
         var moves: [CMTime] = []
+        var toggles = 0
+        var ranges = 0
+        var groupMoves: [CMTime] = []
         /// What the next move's edit answers: made, or refused.
         var movesAreMade = true
     }
@@ -32,9 +35,13 @@ struct ClipBlockInteractionTests {
         let tool: Tool
         let box: LiveClipHandlers
         var readout: DragTimecodeReadout?
+        /// Whether the clip is picked with others.
+        var inGroup = false
 
         var body: some View {
-            ClipBlockView(model: .sample(Self.clip, tool: tool.tool), handlers: box)
+            var model = ClipBlockModel.sample(Self.clip, selected: inGroup, tool: tool.tool)
+            model.isInGroup = inGroup
+            return ClipBlockView(model: model, handlers: box)
                 .environment(readout)
         }
 
@@ -43,12 +50,18 @@ struct ClipBlockInteractionTests {
         static let clipID = UUID()
     }
 
-    private func harness(_ tool: Tool, _ calls: Calls, readout: DragTimecodeReadout? = nil) -> EventHarness {
+    private func harness(_ tool: Tool, _ calls: Calls, readout: DragTimecodeReadout? = nil, inGroup: Bool = false) -> EventHarness {
         var handlers = ClipBlockHandlers.inert(
             onSelect: { calls.selects += 1 },
+            onToggleInGroup: { calls.toggles += 1 },
+            onSelectRange: { calls.ranges += 1 },
             onMove: { start, _ in
                 calls.moves.append(start)
                 return calls.movesAreMade
+            },
+            onMoveGroup: { delta in
+                calls.groupMoves.append(delta)
+                return true
             }
         )
         handlers.onBlade = { calls.blades.append($0) }
@@ -65,7 +78,9 @@ struct ClipBlockInteractionTests {
             slipped.trimEnd = CMTimeAdd(slipped.trimEnd, delta)
             return slipped
         }
-        return EventHarness(Block(tool: tool, box: LiveClipHandlers(handlers), readout: readout), size: CGSize(width: 400, height: 40))
+        return EventHarness(
+            Block(tool: tool, box: LiveClipHandlers(handlers), readout: readout, inGroup: inGroup), size: CGSize(width: 400, height: 40)
+        )
     }
 
     private let middle = CGPoint(x: 100, y: 20)
@@ -90,6 +105,18 @@ struct ClipBlockInteractionTests {
         try await harness.click(at: middle)
         #expect(calls.blades.count == 1)
         #expect(calls.selects == 1)
+    }
+
+    /// A clip picked with others moves them all by as much, not alone.
+    @Test func draggingAPickedClipMovesTheGroup() async throws {
+        let calls = Calls()
+        let harness = harness(Tool(.arrow), calls, inGroup: true)
+        try await harness.press(at: middle, dragTo: CGPoint(x: 150, y: 20))
+        harness.mouse(.leftMouseUp, at: CGPoint(x: 150, y: 20))
+        try await harness.settle(250)
+        #expect(calls.moves.isEmpty)
+        #expect(calls.groupMoves.count == 1)
+        #expect(abs((calls.groupMoves.first?.seconds ?? 0) - 1) < 0.05)
     }
 
     @Test func aDragMovesTheClip() async throws {

@@ -120,6 +120,12 @@ struct TimelineView: View {
     /// Clips picked together with a lasso, two or more (one is selected as
     /// a clip). Selecting anything else lets go of them.
     @State var groupSelection: Set<UUID> = []
+    /// The clip last clicked or Command-clicked, where a Shift-click's
+    /// range of clips begins.
+    @State var selectionAnchor: UUID?
+    /// How far the clips picked together are being dragged, for the rows
+    /// to draw them there; nil when no group is being dragged.
+    @State var groupMove: CMTime?
     /// The lasso being dragged across the tracks.
     @State var lasso: LassoDrag?
     /// A press in the tracks, in window coordinates, which moves the
@@ -403,7 +409,8 @@ struct TimelineView: View {
             snapPlayhead.source = { [playhead] in playhead.time }
         }
         .onChange(of: selection) { _, newValue in
-            if newValue != nil {
+            if let newValue {
+                if newValue.timelineID == timelineID { selectionAnchor = newValue.timelineClipID }
                 selectedLayerID = nil
                 selectedSectionID = nil
                 groupSelection = []

@@ -143,4 +143,61 @@ extension EditingProject {
         }
         return true
     }
+
+    /// How far the clips with these IDs can move together toward `delta`:
+    /// whole frames of the timeline, and no further back than the earliest
+    /// of them starting at zero.
+    func groupMoveDelta(_ ids: Set<UUID>, in timelineID: UUID, toward delta: CMTime) -> CMTime {
+        guard let timeline = timeline(id: timelineID) else { return .zero }
+        let starts = timeline.layers.flatMap(\.clips).filter { ids.contains($0.id) }.map(\.startOffset)
+        guard let earliest = starts.min() else { return .zero }
+        let frame = timeline.frameDuration
+        let whole = CMTimeMultiplyByFloat64(frame, multiplier: (delta.seconds / frame.seconds).rounded())
+        return CMTimeMaximum(whole, CMTimeSubtract(.zero, earliest))
+    }
+
+    /// Moves the clips with these IDs by `delta` together, each on its own
+    /// layer (see `groupMoveDelta`). Clips not among them that would be
+    /// covered are pushed later on their layer. Songs among them carry the
+    /// footage attached to them, picked or not, as `followMusic(from:)`
+    /// runs after the edit. False when nothing moved.
+    @discardableResult
+    mutating func moveClips(_ ids: Set<UUID>, in timelineID: UUID, by delta: CMTime) -> Bool {
+        let delta = groupMoveDelta(ids, in: timelineID, toward: delta)
+        guard delta != .zero, let tIndex = timelines.firstIndex(id: timelineID) else { return false }
+        var moved = false
+        for l in timelines[tIndex].layers.indices {
+            var clips = timelines[tIndex].layers[l].clips
+            guard clips.contains(where: { ids.contains($0.id) }) else { continue }
+            for c in clips.indices where ids.contains(clips[c].id) {
+                let start = CMTimeMaximum(.zero, CMTimeAdd(clips[c].startOffset, delta))
+                clips[c].startOffset = timelines[tIndex].placementTime(start, .nearest, frameLocked: isFrameLocked(clips[c]))
+            }
+            timelines[tIndex].layers[l].clips = makingRoom(for: ids, among: clips, in: timelines[tIndex])
+            moved = true
+        }
+        return moved
+    }
+}
+
+extension Timeline {
+    /// The clips from one clip to another, as Shift-click picks them: on
+    /// the layers from the first's to the second's, every clip that
+    /// overlaps the time from the earlier start to the later end.
+    func clipRange(from anchorID: UUID, to clipID: UUID) -> Set<UUID> {
+        guard let a = layers.firstIndex(where: { $0.clips.contains { $0.id == anchorID } }),
+              let b = layers.firstIndex(where: { $0.clips.contains { $0.id == clipID } }),
+              let anchor = layers[a].clips.first(where: { $0.id == anchorID }),
+              let clip = layers[b].clips.first(where: { $0.id == clipID })
+        else { return [clipID] }
+        let start = CMTimeMinimum(anchor.startOffset, clip.startOffset)
+        let end = CMTimeMaximum(anchor.endOffset, clip.endOffset)
+        var ids: Set<UUID> = [anchorID, clipID]
+        for layer in layers[min(a, b)...max(a, b)] {
+            for candidate in layer.clips where candidate.startOffset < end && start < candidate.endOffset {
+                ids.insert(candidate.id)
+            }
+        }
+        return ids
+    }
 }

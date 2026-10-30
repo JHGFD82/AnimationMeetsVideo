@@ -466,6 +466,7 @@ extension TimelineView {
         let frameRate = timeline.frameRate
         let layersHeight = blocks.last?.bottom ?? 0
         let groupSelected = groupSelected(in: blocks)
+        let groupSpansLayers = Set(timeline.layers.filter { $0.clips.contains { groupSelection.contains($0.id) } }.map(\.id)).count > 1
         // Rows compare these, so a row is handed only what is on its own
         // layer: selecting or pushing on another layer leaves it as it was.
         let pushed = pushedClips
@@ -488,6 +489,12 @@ extension TimelineView {
                         selection: selection?.layerID == layer.id ? selection : nil,
                         groupSelected: groupSelected[layer.id] ?? [],
                         onToggleGroup: { toggleInGroup($0) },
+                        onSelectRange: { selectRange(to: $0) },
+                        groupSpansLayers: groupSpansLayers,
+                        groupMove: groupSelected[layer.id] == nil ? nil : groupMove,
+                        resolveGroupMove: { resolveGroupMove($0) },
+                        onGroupMovePreview: { groupMove = $0 },
+                        onMoveGroup: { moveGroup(by: $0) },
                         onOpenTimeline: openTimeline,
                         pixelsPerSecond: pixelsPerSecond,
                         width: contentWidth,
@@ -527,7 +534,7 @@ extension TimelineView {
                         onRemoveTransition: { clipID, edge in host.dispatch(TimelineAction.removeTransition(layer: layer.id, clip: clipID, edge)) },
                         onSelectTransition: { clip, edge in host.dispatch(TimelineAction.selectTransition(layer: layer.id, clip: clip, edge)) },
                         onSetTransitionCurve: { clipID, edge, curve in host.dispatch(TimelineAction.setTransitionCurve(layer: layer.id, clip: clipID, edge, curve)) },
-                        onDetachAudio: { clipID in host.dispatch(TimelineAction.detachAudio(layer: layer.id, clips: [clipID])) },
+                        onDetachAudio: { clipID in detachAudio(of: clipsActedOn(clipID)) },
                         tool: tool,
                         snap: { timeline.snappedToFrame($0) },
                         onBlade: { clipID, time in host.dispatch(TimelineAction.bladeClip(layer: layer.id, clip: clipID, at: time)) },
@@ -549,11 +556,17 @@ extension TimelineView {
                         },
                         onPasteEffects: { clipID in
                             let clipboard = EditorClipboard.shared
+                            let ids = clipsActedOn(clipID)
                             host.dispatch(TimelineAction.editProject { project in
-                                // Effects are added to what the clip has; its
+                                // Effects are added to what each clip has; its
                                 // time and shutter are replaced if different.
-                                if let bundle = clipboard.effects { project.paste(bundle, ontoClip: clipID, in: timelineID) }
-                                if let source = clipboard.clip?.clip { project.pasteTimeAndShutter(of: source, ontoClip: clipID, in: timelineID) }
+                                for id in ids {
+                                    guard let clip = project.clipAndLayer(id, in: timelineID)?.clip,
+                                          project.hasEffectStack(clip) || project.playsAudio(clip)
+                                    else { continue }
+                                    if let bundle = clipboard.effects { project.paste(bundle, ontoClip: id, in: timelineID) }
+                                    if let source = clipboard.clip?.clip { project.pasteTimeAndShutter(of: source, ontoClip: id, in: timelineID) }
+                                }
                             })
                         },
                         onClipboard: { clipID, command in clipboard(command, layerID: layer.id, clipID: clipID) },
@@ -561,19 +574,36 @@ extension TimelineView {
                         onDropFiles: { urls, time in host.dropFiles(urls, onLayer: layer.id, at: time, kind: layer.kind) },
                         onDropGenerator: { kind, time in addGenerator(kind, above: layer.id, at: time) },
                         onSetPassThrough: { clipID, value in
-                            host.dispatch(TimelineAction.editProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } })
+                            let ids = clipsActedOn(clipID)
+                            host.dispatch(TimelineAction.editProject { project in
+                                for id in ids {
+                                    guard case .timeline = project.clipAndLayer(id, in: timelineID)?.clip.source else { continue }
+                                    project.editClip(id, in: timelineID) { $0.passThrough = value }
+                                }
+                            })
                         },
                         showsVolumeLines: block.showsVolumeLines,
                         // The host applies an edit before `dispatch`
                         // returns, so it needn't keep `change`.
+                        // A clip picked with others passes the change on to
+                        // them all, as one edit.
                         onEditTime: { clipID, change in
+                            let ids = clipsActedOn(clipID)
                             withoutActuallyEscaping(change) { change in
-                                host.dispatch(TimelineAction.editProject { $0.editTime(ofClip: clipID, in: timelineID, layer: layer.id, change) })
+                                host.dispatch(TimelineAction.editProject { project in
+                                    for id in ids {
+                                        guard let layerID = project.clipAndLayer(id, in: timelineID)?.layer.id else { continue }
+                                        project.editTime(ofClip: id, in: timelineID, layer: layerID, change)
+                                    }
+                                })
                             }
                         },
                         onEditClip: { clipID, change in
+                            let ids = clipsActedOn(clipID)
                             withoutActuallyEscaping(change) { change in
-                                host.dispatch(TimelineAction.editProject { $0.editClip(clipID, in: timelineID, change) })
+                                host.dispatch(TimelineAction.editProject { project in
+                                    for id in ids { project.editClip(id, in: timelineID, change) }
+                                })
                             }
                         },
                         onSetReach: { clipID, bottom in

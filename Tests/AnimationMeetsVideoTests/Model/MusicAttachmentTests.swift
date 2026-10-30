@@ -137,6 +137,19 @@ private struct Edit {
         #expect(edit.clip(shot).music?.songTime == seconds(18))
     }
 
+    @Test func aSongMovedWithSomeOfItsFootageCarriesTheRest() {
+        var edit = Edit()
+        let t = edit.timelineID
+        let song = edit.addSong(at: 0)
+        let picked = edit.addShot(at: 5)
+        let left = edit.addShot(at: 12)
+        edit.apply { $0.moveClips([song.clipID, picked], in: t, by: seconds(3)) }
+        #expect(edit.start(song.clipID) == 3)
+        #expect(edit.start(picked) == 8)
+        // Not picked, but tied to the song, so it moves too.
+        #expect(edit.start(left) == 15)
+    }
+
     @Test func footageSetNotToFollowStaysPut() {
         var edit = Edit()
         let t = edit.timelineID

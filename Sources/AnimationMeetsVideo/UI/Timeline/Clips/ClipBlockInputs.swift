@@ -29,6 +29,9 @@ struct ClipBlockModel: Equatable {
     /// Whether the clip is one of several picked together with a lasso, which
     /// draw as selected and are copied, deleted and nested as one.
     var isInGroup = false
+    /// Whether the clips picked together are on more than one layer, which
+    /// the motion designer can't open on.
+    var groupSpansLayers = false
     /// The transition selected on this clip, which shows its curve's points
     /// when there is room.
     var selectedTransition: TransitionEdge?
@@ -73,6 +76,16 @@ struct ClipBlockHandlers {
     /// Adds the clip to the clips picked together, or takes it out: the way to
     /// pick several without a lasso.
     var onToggleInGroup: () -> Void
+    /// Shift-click: picks the clips from the one last clicked to this one.
+    var onSelectRange: () -> Void
+    /// How far the clips picked with this one can go dragged by a time:
+    /// whole frames, none before zero.
+    var resolveGroupMove: (CMTime) -> CMTime
+    /// Hears how far the clips picked together are being dragged, and nil
+    /// when the drag ends.
+    var onGroupMovePreview: (CMTime?) -> Void
+    /// Moves the clips picked together by a time, each on its own layer.
+    var onMoveGroup: (CMTime) -> Bool
     /// For a nested timeline's clip: goes into the timeline it plays (a
     /// double-click, the menu's Open Timeline).
     var onOpenNested: (() -> Void)?

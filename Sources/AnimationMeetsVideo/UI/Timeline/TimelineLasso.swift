@@ -216,7 +216,7 @@ extension TimelineView {
                 let placesPlayhead = tool != .blade && flags.isDisjoint(with: [.command, .control, .shift])
                 if isEmptyTrackSpace(point, pixelsPerSecond: pixelsPerSecond) {
                     lassoFading = false
-                    lasso = LassoDrag(start: point, current: point, kept: flags.contains(.shift) ? groupSelectionIncludingClip : [])
+                    lasso = LassoDrag(start: point, current: point, kept: SelectClick.lassoAdds(flags) ? groupSelectionIncludingClip : [])
                     playheadClick = placesPlayhead ? point : nil
                     return true
                 }
@@ -303,12 +303,55 @@ extension TimelineView {
     }
 
     /// Adds a clip to the clips picked together, or takes it out; a clip
-    /// selected on its own joins them. The way to pick several clips
-    /// without a lasso (VoiceOver's "Add to selection").
+    /// selected on its own joins them. Command-click, and VoiceOver's "Add
+    /// to selection". One left is selected as a clip is.
     func toggleInGroup(_ id: UUID) {
         var ids = groupSelectionIncludingClip
         if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
-        if ids.isEmpty { clearSelection() } else { pickTogether(ids) }
+        selectionAnchor = id
+        pick(ids)
+    }
+
+    /// Shift-click: the clips from the one last clicked to this one (see
+    /// `Timeline.clipRange`), in place of what was picked, as in the
+    /// browser. The one last clicked stays where the next Shift-click
+    /// extends from. With nothing clicked before, the clip alone.
+    func selectRange(to id: UUID) {
+        guard let anchor = selectionAnchor, timeline.layers.contains(where: { $0.clips.contains { $0.id == anchor } }) else {
+            return pick([id])
+        }
+        pick(timeline.clipRange(from: anchor, to: id))
+        selectionAnchor = anchor
+    }
+
+    /// Selects `ids`: none is nothing, one is selected as a clip, more are
+    /// picked together.
+    private func pick(_ ids: Set<UUID>) {
+        if ids.count == 1, let id = ids.first, let found = project.clipAndLayer(id, in: timelineID) {
+            groupSelection = []
+            selectedLayerID = nil
+            selectedSectionID = nil
+            host.dispatch(.selectClip(layer: found.layer.id, clip: found.clip))
+        } else if ids.isEmpty {
+            clearSelection()
+        } else {
+            pickTogether(ids)
+        }
+    }
+
+    /// Where the clips picked together would land dragged `delta`: whole
+    /// frames, none before zero.
+    func resolveGroupMove(_ delta: CMTime) -> CMTime {
+        host.readProject().groupMoveDelta(groupSelection, in: timelineID, toward: delta)
+    }
+
+    /// Moves the clips picked together by `delta`, each on its own layer.
+    /// False when nothing moved.
+    func moveGroup(by delta: CMTime) -> Bool {
+        let ids = groupSelection
+        var moved = false
+        host.dispatch(.editProject { moved = $0.moveClips(ids, in: timelineID, by: delta) })
+        return moved
     }
 
     /// Selects every clip of the timeline together (⌘A).
@@ -335,6 +378,23 @@ extension TimelineView {
     }
 
     // MARK: Several clips at once
+
+    /// What an action on a clip acts on: the clips picked with it, or the
+    /// clip alone.
+    func clipsActedOn(_ clipID: UUID) -> Set<UUID> {
+        groupSelection.contains(clipID) ? groupSelection : [clipID]
+    }
+
+    /// Detaches the sound of those of the clips that have it, layer by
+    /// layer, as one edit.
+    func detachAudio(of ids: Set<UUID>) {
+        host.dispatch(.editProject { project in
+            for layer in project.timeline(id: timelineID)?.layers ?? [] {
+                let picked = Set(layer.clips.filter { ids.contains($0.id) && project.canDetachAudio($0) }.map(\.id))
+                if !picked.isEmpty { project.detachAudio(of: picked, in: timelineID, layer: layer.id) }
+            }
+        })
+    }
 
     /// Cut, copy, duplicate and the rest, for the clips picked together.
     func groupClipboard(_ command: ClipboardCommand) {
