@@ -104,4 +104,39 @@ import Testing
         #expect(outer.clips[0].placedDuration == inner.duration)
         #expect(f.project.timelines[0].layers.first?.id == nested.layerID)
     }
+
+    @Test func movingAGroupMovesEachClipOnItsOwnLayer() throws {
+        var f = try fixture()
+        let moved = f.project.moveClips([f.topClips[1], f.bottomClip], in: f.timeline, by: t(6))
+        #expect(moved)
+        #expect(starts(f.project, f.topLayer) == [t(0), t(30)])
+        #expect(starts(f.project, f.bottomLayer) == [t(18)])
+    }
+
+    @Test func aGroupStopsAtZeroAndMovesByWholeFrames() throws {
+        var f = try fixture()
+        let ids: Set<UUID> = [f.topClips[1], f.bottomClip]
+        #expect(f.project.groupMoveDelta(ids, in: f.timeline, toward: t(-100)) == t(-12))
+        #expect(f.project.groupMoveDelta(ids, in: f.timeline, toward: CMTime(value: 1, timescale: 100)) == .zero)
+        let moved = f.project.moveClips(ids, in: f.timeline, by: CMTime(value: 1, timescale: 100))
+        #expect(!moved)
+    }
+
+    @Test func clipsInAMovedGroupsWayArePushedLater() throws {
+        var f = try fixture()
+        // The first top clip moves onto the second, which isn't picked.
+        f.project.moveClips([f.topClips[0], f.bottomClip], in: f.timeline, by: t(12))
+        #expect(f.project.timelines[0].layer(id: f.topLayer)?.clips.map(\.id) == f.topClips)
+        #expect(starts(f.project, f.topLayer) == [t(12), t(36)])
+    }
+
+    @Test func shiftClickPicksTheClipsBetweenAcrossLayers() throws {
+        let f = try fixture()
+        let timeline = f.project.timelines[0]
+        // From the second top clip down to the bottom clip: frames 12-48 on
+        // both layers, which takes in every clip.
+        #expect(timeline.clipRange(from: f.topClips[1], to: f.bottomClip) == Set(f.topClips + [f.bottomClip]))
+        // Along one layer, only that layer.
+        #expect(timeline.clipRange(from: f.topClips[0], to: f.topClips[1]) == Set(f.topClips))
+    }
 }

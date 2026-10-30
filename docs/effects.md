@@ -608,6 +608,14 @@ row selects it, as clicking it on the timeline does.
   take drags meant for its neighbours; the panel notes what is being
   dragged as it starts (`EffectsDragSession`).
 - The Delete key deletes the selected effect or control.
+- **Several rows** are picked as clips are on the timeline (see
+  [timeline.md](timeline.md#selecting-several-clips)): **Command-click**
+  an effect's or a control's row to add it or take it out, **Shift-click**
+  to pick the rows from the one last clicked, top to bottom
+  (`EffectsPanelState.pickedRows`). Delete removes every picked effect
+  and control (a drawing stays, its picked controls going), and Cut, Copy
+  and Duplicate (keys, Edit menu) act on every picked effect, in stack
+  order. A row's ⋯ menu still acts on its own row.
 - The panel opens with **Shift-E** or its button in the timeline's header.
 
 ### Changing values by dragging
@@ -646,6 +654,27 @@ and interactions as the timeline's lanes today: click to go to it, drag to
 retime, right-click for ease presets (Hold among them, see
 [hold keyframes](motion-designer.md#hold-keyframes)) and Delete Keyframe. The panel's
 playhead is the timeline's: scrubbing either moves both.
+
+Keyframes are **picked across the lanes** (`LaneKeyframePicks`), as clips
+are on the timeline: a click picks a keyframe (and goes to it),
+**Command-click** adds one or takes it out, **Shift-click** picks, on the
+lanes from the one last clicked to this one, every keyframe between the
+two in time, and **dragging in empty lane space** draws a lasso round
+the diamonds to pick (with Shift or Command, adding to what is picked);
+a click in empty lane space picks none. Picked diamonds are ringed in the
+accent. Dragging one of several picked moves them all by as much, on
+frames, none passing a keyframe of its lane that isn't picked; **Delete**
+deletes them and **Escape** lets go of them; a right-click on one of them
+eases or deletes them all. Each kind of lane (a control, a font axis, a
+run's setting, speed, volume, pan) hands the picks its time-only edits
+(`LaneKeyframeEdits`), so a pick acts the same whatever lane it is in.
+Without the pointer: **⌘A** picks every keyframe in the lanes shown, **←
+→** move the picked ones a frame (ten with Shift), and each keyframe has
+VoiceOver actions Add to selection (or Remove from selection) and Move a
+frame earlier or later, which move the others picked with it. Its value
+says whether it is picked and whether it is at the playhead. Effect and
+control rows read as selected when picked and have Add to selection (or
+Remove from selection) too.
 
 The control column is as wide as its widest row needs, and no narrower than
 it starts, so a large value never runs into the lanes; the lanes take the
@@ -1022,7 +1051,8 @@ In order, each step usable on its own:
     were automatic, and recording a `PasteChange` on the effect for each
     thing that didn't come along (`inputLeftBehind`, `againstReset`,
     `keyframesOutside` with its count, on the start or end side). Copy and
-    paste work on the one effect selected in the panel (⋯ menu or
+    paste work on the effect selected in the panel, or every effect picked
+    (⋯ menu, for its own effect, or
     Command-C and Command-V, which paste below it, or at the end of the
     stack with none selected); a clip's menu on the timeline has Paste
     Effects, which adds the copied clip's effects and replaces time and
@@ -1043,6 +1073,5 @@ In order, each step usable on its own:
     and opens the Paste Changes list, which Export opens too, instead of
     exporting, until nothing is left; Accept All resolves them all and
     carries on with the export. Go To selects the clip on its timeline and
-    opens the effects panel at the effect. Not yet: selecting several
-    effects at once, so copying several means copying the stack and
-    deleting what isn't wanted
+    opens the effects panel at the effect. Several effects can be
+    picked in the panel (Command- or Shift-click) and copied together

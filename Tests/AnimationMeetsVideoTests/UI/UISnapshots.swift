@@ -1321,6 +1321,53 @@ struct UISnapshots {
         )
     }
 
+    /// A rectangle's Transform with Position keyframed at 0, 2 and 4 s and
+    /// Rotation at 1 and 3 s: two of Position's and one of Rotation's
+    /// keyframes picked (ringed in the accent), and the Position and
+    /// Rotation rows picked together (both outlined).
+    @Test func pickedKeyframesEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+        let transformID = try #require(transform)
+        var controls: [EffectControl] = []
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            let e = clip.effects.index(of: transformID)!
+            let s = { (seconds: Int64) in CMTime(value: seconds, timescale: 1) }
+            clip.effects[e].controls[0].number = AnimatedValue(ComponentValue(values: [0, 0]), keyframes: [0, 2, 4].map {
+                Keyframe(time: s($0), value: ComponentValue(values: [Double($0) * 50, 0]))
+            })
+            if let r = clip.effects[e].controls.firstIndex(where: { $0.kind == .rotation }) {
+                clip.effects[e].controls[r].number = AnimatedValue(ComponentValue(values: [0]), keyframes: [1, 3].map {
+                    Keyframe(time: s($0), value: ComponentValue(values: [Double($0) * 30]))
+                })
+            }
+            controls = clip.effects[e].controls
+        }
+        let position = try #require(controls.first { $0.kind == .position })
+        let rotation = try #require(controls.first { $0.kind == .rotation })
+        let key = { (control: EffectControl) in
+            ParameterKey(timelineID: timelineID, parameter: .control(control.kind, clipID: shape.clipID, effectID: transformID, controlID: control.id))
+        }
+        let state = EffectsPanelState()
+        let order = [transformID, position.id, rotation.id]
+        state.click(effect: transformID, control: position.id, in: order, as: .only)
+        state.click(effect: transformID, control: rotation.id, in: order, as: .toggle)
+        state.keyframes.click(LaneKeyframePicks.Key(lane: key(position), time: CMTime(value: 2, timescale: 1)), .only)
+        state.keyframes.click(LaneKeyframePicks.Key(lane: key(position), time: CMTime(value: 4, timescale: 1)), .toggle)
+        state.keyframes.click(LaneKeyframePicks.Key(lane: key(rotation), time: CMTime(value: 3, timescale: 1)), .toggle)
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                playheadTime: .zero, state: state, onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "picked-keyframes-effects-panel", size: CGSize(width: 640, height: 520)
+        )
+    }
+
     /// A selected Wiggler writing to the second and third seconds of its
     /// clip: its range as a band over the ruler, with a handle at each end.
     @Test func keyframingRangeBar() throws {

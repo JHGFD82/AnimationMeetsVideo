@@ -151,11 +151,9 @@ extension EffectsPanel {
                     .disabled(!clip.isRetimed)
             },
             lane: ParameterLane(
-                marks: speed.marks, geometry: c.geometry, playhead: c.frameTime(animated: speed.isAnimated), height: EffectsPanelMetrics.rowHeight,
-                onSeek: onSeek,
-                onMove: { from, to, copy in editTime(c) { $0.speed.moveKeyframe(at: from, to: to, copying: copy) } },
-                onDelete: { time in editTime(c) { $0.speed.removeKeyframe(at: time) } },
-                onEase: { time, preset in editTime(c) { $0.speed.applyEase(preset, at: time) } }
+                id: key, marks: speed.marks, geometry: c.geometry, playhead: c.frameTime(animated: speed.isAnimated),
+                height: EffectsPanelMetrics.rowHeight, onSeek: onSeek,
+                edits: LaneKeyframeEdits { (change: @escaping (inout AnimatedValue<Double>) -> Void) in editTime(c) { change(&$0.speed) } }
             )
         )
         .help("How fast the clip plays, as a percentage of its source's own speed. The clip lasts as long as its source does at that speed; keyframes (in the source's time) make a speed ramp.")

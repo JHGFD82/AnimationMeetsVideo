@@ -210,9 +210,13 @@ extension TimelineView {
     }
 
     /// Moves the selected clip `frames` frames, later when positive, by the
-    /// same rules as dragging it. False with no clip selected.
+    /// same rules as dragging it, or the clips picked together, each on its
+    /// own layer. False with no clip selected.
     @discardableResult
     func nudgeSelection(byFrames frames: Int) -> Bool {
+        if !groupSelection.isEmpty {
+            return moveGroup(by: CMTimeMultiply(timeline.frameDuration, multiplier: Int32(clamping: frames)))
+        }
         guard let selection, selection.timelineID == timelineID,
               let clip = timeline.layer(id: selection.layerID)?.clips.first(id: selection.timelineClipID)
         else {

@@ -72,8 +72,13 @@ struct EffectsPanel: View {
     @State var stackLayout = EffectStackLayout()
     @State private var stackScroller = EdgeAutoScroll()
     /// The control column's width and the lanes' zoom and scroll.
-    @State private var lanes = LaneViewport()
+    @State var lanes = LaneViewport()
     @State private var dropLine: CGFloat?
+    /// A lasso being dragged across the lanes, in window coordinates.
+    @State var keyframeLasso: KeyframeLasso?
+    /// Where the stack's scroll view is, in window coordinates, for telling
+    /// where a press in the lanes lands.
+    @State var stackFrame: CGRect = .zero
     /// The editor's active panel, which has the keys. Read as a key comes
     /// in, not while drawing, so becoming active doesn't redraw the stack.
     @Environment(ActivePanel.self) private var activePanel: ActivePanel?
@@ -274,14 +279,21 @@ struct EffectsPanel: View {
                         ))
                 }
                 .sunken(.sunken)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { stackFrame = $0 }
+                .background { if showsKeyframeLanes { keyframeLassoMonitor } }
+                .overlay { keyframeLassoOverlay }
             }
             .environment(lanes)
+            .environment(state.keyframes)
             .onPreferenceChange(ControlColumnWidthKey.self) { width in
                 lanes.labelWidth = max(lanes.labelWidth, width.rounded(.up))
             }
             .onChange(of: laneWidth, initial: true) { _, width in lanes.fit(width: width, maxZoom: maxZoom) }
             .onChange(of: maxZoom) { _, zoom in lanes.fit(width: laneWidth, maxZoom: zoom) }
-            .onChange(of: clip.id) { _, _ in lanes.reset() }
+            .onChange(of: clip.id) { _, _ in
+                lanes.reset()
+                state.keyframes.clear()
+            }
             .background(alignment: .topLeading) { laneInput(width: laneWidth) }
             .rubberBandSettling(Bindable(lanes).zoomBand)
             .rubberBandSettling(Bindable(lanes).scrollBand)
@@ -493,7 +505,11 @@ struct EffectsPanel: View {
     }
 
     func copy(_ effect: Effect, from clip: TimelineClip) {
-        EditorClipboard.shared.copy(effects: project.bundle(ofEffects: [effect.id], fromClip: clip.id, in: timelineID))
+        copy([effect], from: clip)
+    }
+
+    func copy(_ effects: [Effect], from clip: TimelineClip) {
+        EditorClipboard.shared.copy(effects: project.bundle(ofEffects: Set(effects.map(\.id)), fromClip: clip.id, in: timelineID))
     }
 
     /// Pastes the copied effects below `effect`, or at the end of the stack.
@@ -599,9 +615,40 @@ struct EffectsPanel: View {
         if state.selectedEffectID == effect.id { state.clear() }
     }
 
+    /// The panel's effects and their listed controls, top to bottom, which
+    /// Shift-click picks a run of.
+    func rowOrder(_ clip: TimelineClip) -> [UUID] {
+        (clip.effects + clip.audioEffects).flatMap { effect in
+            [effect.id] + effect.panelSections().flatMap(\.controls).map(\.id)
+        }
+    }
+
+    /// The picked effects that can be copied, in stack order: not a shape
+    /// or text clip's drawing.
+    private func pickedEffects(of clip: TimelineClip) -> [Effect] {
+        (clip.effects + clip.audioEffects).filter { state.isPicked($0.id) && !clip.isDrawing($0.id) }
+    }
+
+    /// Removes every picked effect and control, as one edit; a drawing
+    /// stays, its picked controls going.
+    private func deletePickedRows(in clip: TimelineClip) {
+        for effect in clip.effects + clip.audioEffects {
+            if state.isPicked(effect.id), !clip.isDrawing(effect.id) {
+                project.removeEffect(effect.id, fromClip: clip.id, in: timelineID)
+                continue
+            }
+            let controls = effect.controls.map(\.id).filter(state.isPicked)
+            if !controls.isEmpty {
+                editEffect(effect.id, in: clip) { effect in for id in controls { effect.removeControl(id) } }
+            }
+        }
+        state.clear()
+    }
+
     /// Removes the selected control, or else the selected effect; a shape
-    /// or text clip's drawing stays.
+    /// or text clip's drawing stays. Several rows picked, all of them.
     private func deleteSelection(_ effect: Effect, in clip: TimelineClip) {
+        if state.picksSeveralRows { return deletePickedRows(in: clip) }
         if let controlID = state.selectedControlID {
             editEffect(effect.id, in: clip) { $0.removeControl(controlID) }
             state.select(effect: effect.id)
@@ -622,19 +669,25 @@ struct EffectsPanel: View {
         let effect = selected.flatMap { clip.isDrawing($0.id) ? nil : $0 }
         let clipboard = EditorClipboard.shared
         let canPaste = clipboard.hasEffects && clipboard.clip == nil && (project.hasEffectStack(clip) || project.playsAudio(clip))
-        let onEffect = { (action: @escaping (Effect) -> Void) -> (() -> Void)? in
-            effect.map { effect in { action(effect) } }
+        // Several effects picked are cut, copied and duplicated together.
+        let several = state.picksSeveralRows ? pickedEffects(of: clip) : []
+        let onEffect = { (action: @escaping ([Effect]) -> Void) -> (() -> Void)? in
+            if !several.isEmpty { return { action(several) } }
+            return effect.map { effect in { action([effect]) } }
         }
+        let keyframes = state.keyframes
+        var delete: (() -> Void)? = (state.selectedControlID == nil ? effect : selected).map { effect in { deleteSelection(effect, in: clip) } }
+        if !keyframes.isEmpty { delete = { _ = keyframes.deletePicked() } }
         return EditMenuActions(
-            cut: onEffect { effect in
-                copy(effect, from: clip)
-                delete(effect, from: clip)
+            cut: onEffect { effects in
+                copy(effects, from: clip)
+                for effect in effects { self.delete(effect, from: clip) }
             },
             copy: onEffect { copy($0, from: clip) },
             paste: canPaste ? { paste(in: clip, below: effect) } : nil,
-            duplicate: onEffect { duplicate($0, in: clip) },
-            delete: (state.selectedControlID == nil ? effect : selected).map { effect in { deleteSelection(effect, in: clip) } },
-            state: [clip.id, effect?.id, state.selectedControlID, canPaste] as [AnyHashable?]
+            duplicate: onEffect { effects in for effect in effects { duplicate(effect, in: clip) } },
+            delete: delete,
+            state: [clip.id, effect?.id, state.selectedControlID, canPaste, state.pickedRows, keyframes.picked] as [AnyHashable?]
         )
     }
 
@@ -652,6 +705,36 @@ struct EffectsPanel: View {
            EditorClipboard.shared.hasEffects, EditorClipboard.shared.clip == nil {
             paste(in: clip, below: state.selectedEffectID.flatMap { clip.effect(id: $0) })
             return true
+        }
+        // Keyframes picked in the lanes take Delete, ← and → (ten frames
+        // with Shift), and Escape lets go of them; ⌘A picks every one.
+        if [51, 117].contains(event.keyCode), flags.isEmpty, state.keyframes.deletePicked() { return true }
+        if [123, 124].contains(event.keyCode), flags.isDisjoint(with: [.command, .control, .option]), !state.keyframes.isEmpty,
+           !(event.window?.firstResponder is NSText) {
+            let frames = (event.keyCode == 123 ? -1 : 1) * (flags.contains(.shift) ? 10 : 1)
+            return state.keyframes.nudge(frames: frames)
+        }
+        if flags == .command, key == "a", showsKeyframeLanes, !(event.window?.firstResponder is NSText), state.keyframes.selectAll() {
+            return true
+        }
+        if event.keyCode == 53, flags.isEmpty, !state.keyframes.isEmpty, !ValueDragSession.isActive {
+            state.keyframes.clear()
+            return true
+        }
+        if let clip = selectedClip, state.picksSeveralRows {
+            let effects = pickedEffects(of: clip)
+            if flags == .command, key == "c", !effects.isEmpty {
+                copy(effects, from: clip)
+                return true
+            }
+            if [51, 117].contains(event.keyCode), flags.isEmpty {
+                deletePickedRows(in: clip)
+                return true
+            }
+            if flags == .command, key == "d", !effects.isEmpty {
+                for effect in effects { duplicate(effect, in: clip) }
+                return true
+            }
         }
         guard let clip = selectedClip, let effectID = state.selectedEffectID,
               let effect = clip.effect(id: effectID)

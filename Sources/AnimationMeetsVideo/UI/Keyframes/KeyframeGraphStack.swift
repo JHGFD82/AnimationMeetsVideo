@@ -36,13 +36,14 @@ struct KeyframeGraphStack: View {
     private var presetBar: some View {
         HStack(spacing: Design.Space.step) {
             ToolGlyph(tone: .graphEditor)
+            GraphSkimToggle(hud: hud)
             Spacer(minLength: Design.Space.step)
             if let key = link.activeKey, let timeline = hud.project.timeline(id: key.timelineID),
                let value = hud.project.components(of: key), let axis = hud.project.timeAxis(of: key) {
-                let target = KeyframeGraphView.presetTarget(
-                    selected: link.selected[key], value: value, axis: axis, timeline: timeline, playhead: hud.playhead
+                let targets = KeyframeGraphView.presetTargets(
+                    selected: link.selected[key] ?? SelectionSet(), value: value, axis: axis, timeline: timeline, playhead: hud.playhead
                 )
-                KeyframeEasePresets(hud: hud, key: key, target: target, axis: axis, timeline: timeline, named: true)
+                KeyframeEasePresets(hud: hud, key: key, targets: targets, axis: axis, timeline: timeline, named: true)
             }
             KeyframeGraphLinkMenu(hud: hud, link: link)
         }

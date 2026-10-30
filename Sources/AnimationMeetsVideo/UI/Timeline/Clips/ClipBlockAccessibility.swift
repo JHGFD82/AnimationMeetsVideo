@@ -44,19 +44,24 @@ extension ClipBlockView {
     @ViewBuilder
     var accessibilityEditActions: some View {
         let frame = Timeline.frameDuration(for: model.frameRate)
-        Button("Move one frame earlier") {
-            _ = handlers.onMove(CMTimeMaximum(.zero, CMTimeSubtract(model.clip.startOffset, frame)), nil)
+        if model.isInGroup {
+            Button("Move selection one frame earlier") { _ = handlers.onMoveGroup(CMTimeSubtract(.zero, frame)) }
+            Button("Move selection one frame later") { _ = handlers.onMoveGroup(frame) }
+        } else {
+            Button("Move one frame earlier") {
+                _ = handlers.onMove(CMTimeMaximum(.zero, CMTimeSubtract(model.clip.startOffset, frame)), nil)
+            }
+            Button("Move one frame later") { _ = handlers.onMove(CMTimeAdd(model.clip.startOffset, frame), nil) }
         }
-        Button("Move one frame later") { _ = handlers.onMove(CMTimeAdd(model.clip.startOffset, frame), nil) }
         if let onOpenNested = handlers.onOpenNested { Button("Open timeline", action: onOpenNested) }
         if let piece = model.clip.footagePiece {
             Button("Show in clips browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
         }
         if let onConformTimeline = handlers.onConformTimeline { Button("Conform timeline to clip", action: onConformTimeline) }
         Button(model.isInGroup ? "Remove from selection" : "Add to selection", action: handlers.onToggleInGroup)
-        Button(model.clip.enabled ? "Turn off" : "Turn on") { handlers.onEditClip { $0.enabled.toggle() } }
+        Button(model.clip.enabled ? "Turn off" : "Turn on") { handlers.onEditClip { [enabled = !model.clip.enabled] in $0.enabled = enabled } }
         if model.playsSound {
-            Button(model.clip.soundMuted ? "Unmute sound" : "Mute sound") { handlers.onEditClip { $0.soundMuted.toggle() } }
+            Button(model.clip.soundMuted ? "Unmute sound" : "Mute sound") { handlers.onEditClip { [muted = !model.clip.soundMuted] in $0.soundMuted = muted } }
         }
         Button(model.isInGroup ? "Cut selection" : "Cut") { handlers.onClipboard(.cut) }
         Button(model.isInGroup ? "Copy selection" : "Copy") { handlers.onClipboard(.copy) }
@@ -82,7 +87,7 @@ extension ClipBlockView {
             Button("Remove beats", action: onRemoveBeats)
         }
         if let onAttachToMusic = handlers.onAttachToMusic {
-            Button(model.clip.followsMusic ? "Stop following music" : "Follow music") { handlers.onEditClip { $0.followsMusic.toggle() } }
+            Button(model.clip.followsMusic ? "Stop following music" : "Follow music") { handlers.onEditClip { [follows = !model.clip.followsMusic] in $0.followsMusic = follows } }
             Button("Attach to music at playhead", action: onAttachToMusic)
         }
         if let onSetMusicPoint = handlers.onSetMusicPoint, let time = musicPointTime(of: model.clip) {

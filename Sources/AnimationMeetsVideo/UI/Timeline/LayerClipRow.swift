@@ -34,6 +34,19 @@ struct LayerClipRow: View {
     let groupSelected: Set<UUID>
     /// Adds a clip to the clips picked together, or takes it out.
     let onToggleGroup: (UUID) -> Void
+    /// Shift-click on a clip: picks the clips from the one last clicked.
+    let onSelectRange: (UUID) -> Void
+    /// Whether the clips picked together are on more than one layer.
+    var groupSpansLayers = false
+    /// How far the clips picked together are being dragged, given only to
+    /// rows that hold some of them.
+    var groupMove: CMTime? = nil
+    /// Where the clips picked together would land dragged by a time.
+    let resolveGroupMove: (CMTime) -> CMTime
+    /// Hears how far the clips picked together are being dragged.
+    let onGroupMovePreview: (CMTime?) -> Void
+    /// Moves the clips picked together by a time.
+    let onMoveGroup: (CMTime) -> Bool
     /// Goes into a nested timeline.
     let onOpenTimeline: (UUID) -> Void
     let pixelsPerSecond: CGFloat
@@ -164,6 +177,11 @@ struct LayerClipRow: View {
         if let push = pushed[clip.id] ?? browserPushed[clip.id], clip.startOffset == push.from {
             return CMTimeSubtract(push.to, push.from).seconds * pixelsPerSecond
         }
+        // The clips picked with a clip being dragged go along with it; the
+        // dragged one draws its own place.
+        if let groupMove, groupSelected.contains(clip.id), clip.id != liftedClipID {
+            return groupMove.seconds * pixelsPerSecond
+        }
         guard let followerShift, clip.id != followerShift.clipID, clip.startOffset >= followerShift.after else { return 0 }
         return followerShift.shift.seconds * pixelsPerSecond
     }
@@ -205,6 +223,7 @@ struct LayerClipRow: View {
         return layer.clips.filter { clip in
             Self.isVisible(clip, pixelsPerSecond: pixelsPerSecond, in: visibleX) || clip.id == liftedClipID || clip.id == expandedJoint || clip.id == selected
                 || pushed[clip.id] != nil || browser[clip.id] != nil
+                || (groupMove != nil && groupSelected.contains(clip.id))
                 || followerShift.map { clip.startOffset >= $0.after } == true
         }
     }
@@ -267,6 +286,7 @@ struct LayerClipRow: View {
             joinedLead: project.joinedLead(of: clip, among: layer.clips),
             isSelected: isSelected || isInGroup,
             isInGroup: isInGroup,
+            groupSpansLayers: isInGroup && groupSpansLayers,
             selectedTransition: isSelected ? selection?.transitionEdge : nil,
             pixelsPerSecond: pixelsPerSecond,
             height: height,
@@ -291,6 +311,10 @@ struct LayerClipRow: View {
     private func blockHandlers(for clip: TimelineClip) -> ClipBlockHandlers {
         ClipBlockHandlers(
             onToggleInGroup: { onToggleGroup(clip.id) },
+            onSelectRange: { onSelectRange(clip.id) },
+            resolveGroupMove: resolveGroupMove,
+            onGroupMovePreview: onGroupMovePreview,
+            onMoveGroup: onMoveGroup,
             onOpenNested: nestedOpener(for: clip),
             resolveMove: { start, pointer in resolveMove(clip, pointer, start) },
             resolveTrimStart: {
@@ -435,7 +459,8 @@ extension LayerClipRow: Equatable {
         MainActor.assumeIsolated {
             lhs.layer == rhs.layer && lhs.name == rhs.name && lhs.frameRate == rhs.frameRate
                 && lhs.timelineID == rhs.timelineID && lhs.selection == rhs.selection
-                && lhs.groupSelected == rhs.groupSelected
+                && lhs.groupSelected == rhs.groupSelected && lhs.groupSpansLayers == rhs.groupSpansLayers
+                && lhs.groupMove == rhs.groupMove
                 && lhs.pixelsPerSecond == rhs.pixelsPerSecond && lhs.width == rhs.width && lhs.height == rhs.height
                 && lhs.showsChannels == rhs.showsChannels && lhs.visibleX == rhs.visibleX
                 && lhs.expandedJoint == rhs.expandedJoint

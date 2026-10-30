@@ -275,6 +275,29 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         keyframes = Self.normalized(keyframes)
     }
 
+    /// Moves several keyframes at once, each from a time to another, with
+    /// their eases: a selection dragged or nudged together. Any other
+    /// keyframe where one lands is replaced.
+    mutating func moveKeyframes(_ moves: [CMTime: CMTime]) {
+        guard moves.contains(where: { $0.key != $0.value }) else { return }
+        let landing = Set(moves.values)
+        keyframes = Self.normalized(keyframes.compactMap { keyframe in
+            if let to = moves[keyframe.time] {
+                var moved = keyframe
+                moved.time = to
+                return moved
+            }
+            return landing.contains(keyframe.time) ? nil : keyframe
+        })
+    }
+
+    /// How far the keyframes at `times` can move together, as a range of
+    /// shifts that keeps each at least `gap` from the keyframes not among
+    /// them, so they never pass or land on one.
+    func shiftRange(of times: Set<CMTime>, gap: CMTime) -> (lower: CMTime, upper: CMTime) {
+        KeyframeTimes.shiftRange(of: times, among: keyframes.map(\.time), gap: gap)
+    }
+
     /// Moves every keyframe to `move(time)`, with its eases. Keyframes that
     /// land on the same time merge, keeping the later one.
     mutating func moveKeyframeTimes(_ move: (CMTime) -> CMTime) {
@@ -329,5 +352,25 @@ extension Timeline {
     /// sit on frames so two edits at the same playhead hit the same keyframe.
     func snappedToFrame(_ time: CMTime) -> CMTime {
         CMTimeMaximum(.zero, frameAligned(time, .nearest))
+    }
+}
+
+/// Working out where keyframes picked together can go, by their times
+/// alone, for a value or for a lane of the effects panel.
+enum KeyframeTimes {
+    /// How far the `picked` among `times` (in order) can move together, as
+    /// a range of shifts that keeps each at least `gap` from the times not
+    /// picked, so they never pass or land on one.
+    static func shiftRange(of picked: Set<CMTime>, among times: [CMTime], gap: CMTime) -> (lower: CMTime, upper: CMTime) {
+        var lower = CMTime.negativeInfinity, upper = CMTime.positiveInfinity
+        for (index, time) in times.enumerated() where picked.contains(time) {
+            if let before = times[..<index].last(where: { !picked.contains($0) }) {
+                lower = CMTimeMaximum(lower, CMTimeSubtract(CMTimeAdd(before, gap), time))
+            }
+            if let after = times[(index + 1)...].first(where: { !picked.contains($0) }) {
+                upper = CMTimeMinimum(upper, CMTimeSubtract(CMTimeSubtract(after, gap), time))
+            }
+        }
+        return (lower, upper)
     }
 }

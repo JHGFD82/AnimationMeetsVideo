@@ -357,10 +357,11 @@ struct ClipBlockView: View {
                 if model.tool == .blade {
                     let time = bladeTime(atX: value.location.x)
                     if time > model.clip.startOffset && time < model.clip.endOffset { handlers.onBlade(time) }
-                } else if let edge = transitionEdge(atX: value.location.x, liveX: liveX) {
+                } else if SelectClick.current == .only,
+                          let edge = transitionEdge(atX: value.location.x, liveX: liveX) {
                     handlers.onSelectTransition(edge)
                 } else {
-                    handlers.onSelect()
+                    clicked()
                 }
             })
 
@@ -574,10 +575,22 @@ struct ClipBlockView: View {
         if bladeX != x { bladeX = x }
     }
 
+    /// A click on the clip: selects it; with Command adds it to the clips
+    /// picked together or takes it out, with Shift picks the clips from the
+    /// one last clicked to it.
+    private func clicked() {
+        switch SelectClick.current {
+        case .toggle: handlers.onToggleInGroup()
+        case .extend: handlers.onSelectRange()
+        case .only: handlers.onSelect()
+        }
+    }
+
     // MARK: Dragging
 
     /// The block's drag moved: begins a move or slip, by the tool, on its
-    /// first move, then follows it.
+    /// first move, then follows it. A move of a clip picked with others
+    /// moves them all.
     private func dragChanged(_ value: DragGesture.Value) {
         if drag.kind == nil {
             guard let kind = ClipDragBook.Kind(tool: model.tool) else { return }
@@ -585,6 +598,7 @@ struct ClipBlockView: View {
         }
         guard !drag.isCancelledDrag else { return }
         switch drag.kind {
+        case .move where model.isInGroup: groupMoveChanged(value)
         case .move: moveChanged(value)
         case .slip: slipChanged(value)
         case .trim, nil: break
@@ -595,6 +609,7 @@ struct ClipBlockView: View {
         defer { drag.finish() }
         guard !drag.isCancelledDrag else { return }
         switch drag.kind {
+        case .move where model.isInGroup: groupMoveEnded()
         case .move: moveEnded(liveX: liveX)
         case .slip: slipEnded()
         case .trim, nil: break
@@ -622,6 +637,7 @@ struct ClipBlockView: View {
         withAnimation(Design.Motion.respecting(Design.Motion.springBack)) {
             if carry != .zero { carry = .zero }
             endDrop()
+            sendGroupMove(nil)
         }
     }
 
@@ -685,6 +701,50 @@ struct ClipBlockView: View {
         } else {
             endDrop()
         }
+    }
+
+    /// A move of a clip picked with others: they all go by as much, each
+    /// staying on its own layer, as the dragged one snaps.
+    private func groupMoveChanged(_ value: DragGesture.Value) {
+        if !isLifted {
+            isLifted = true
+            handlers.onDragging(true)
+            autoScroll?.begin()
+        }
+        let preview = { previewGroupMove(translation: value.translation.width, shownAt: value.location) }
+        preview()
+        autoScroll?.track(pointerX: value.location.x) {
+            if !drag.isCancelledDrag { preview() }
+        }
+    }
+
+    private func previewGroupMove(translation: CGFloat, shownAt: CGPoint) {
+        let across = translation + (autoScroll?.scrolled ?? 0)
+        var proposed = CMTimeAdd(model.clip.startOffset, timeDelta(across))
+        let snapped = handlers.snapSpan(proposed, model.clip.placedDuration)
+        if let snapped { proposed = snapped.start }
+        sendSnapIndicator(snapped?.target)
+        let delta = handlers.resolveGroupMove(CMTimeSubtract(proposed, model.clip.startOffset))
+        var moved = model.clip
+        moved.startOffset = CMTimeAdd(model.clip.startOffset, delta)
+        showPreview(moved)
+        readout?.show(moved.startOffset, from: model.clip.startOffset, pointer: shownAt)
+        sendGroupMove(delta)
+    }
+
+    private func groupMoveEnded() {
+        autoScroll?.end()
+        isLifted = false
+        handlers.onDragging(false)
+        readout?.hide()
+        sendSnapIndicator(nil)
+        if let preview, preview.startOffset != model.clip.startOffset {
+            let delta = CMTimeSubtract(preview.startOffset, model.clip.startOffset)
+            commitDrop { handlers.onMoveGroup(delta) }
+        } else {
+            endDrop()
+        }
+        sendGroupMove(nil)
     }
 
     private func slipChanged(_ value: DragGesture.Value) {
@@ -798,6 +858,10 @@ struct ClipBlockView: View {
         if drag.snap.changes(to: time) { handlers.onSnapIndicator(time) }
     }
 
+    private func sendGroupMove(_ delta: CMTime?) {
+        if drag.groupMove.changes(to: delta) { handlers.onGroupMovePreview(delta) }
+    }
+
     private func sendMovePreview(_ target: ClipMovePreview?) {
         if drag.movePreview.changes(to: target) { handlers.onMovePreview(target) }
     }
@@ -855,7 +919,7 @@ struct ClipBlockView: View {
                 }
             }
         } else {
-            if !isTrimming { handlers.onSelect() }
+            if !isTrimming { clicked() }
             endDrop()
         }
         if isTrimming { isTrimming = false }

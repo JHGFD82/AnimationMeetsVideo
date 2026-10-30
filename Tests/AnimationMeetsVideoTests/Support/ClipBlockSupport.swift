@@ -6,11 +6,16 @@ extension ClipBlockHandlers {
     /// Handlers that do nothing, but for those given.
     static func inert(
         onSelect: @escaping () -> Void = {},
+        onToggleInGroup: @escaping () -> Void = {},
+        onSelectRange: @escaping () -> Void = {},
         onMove: @escaping (CMTime, UUID?) -> Bool = { _, _ in true },
+        onMoveGroup: @escaping (CMTime) -> Bool = { _ in true },
         onBeatMatch: (() -> Void)? = nil
     ) -> ClipBlockHandlers {
         ClipBlockHandlers(
-            onToggleInGroup: {}, onOpenNested: nil, resolveMove: { _, _ in nil },
+            onToggleInGroup: onToggleInGroup, onSelectRange: onSelectRange,
+            resolveGroupMove: { $0 }, onGroupMovePreview: { _ in }, onMoveGroup: onMoveGroup,
+            onOpenNested: nil, resolveMove: { _, _ in nil },
             resolveTrimStart: { _ in nil }, resolveTrimEnd: { _ in nil }, onSelect: onSelect,
             onMove: onMove, onMoveToNewLayer: { _, _ in true }, onDragging: { _ in },
             onMovePreview: { _ in }, onTrimStart: { _ in true }, onTrimEnd: { _ in true }, onTrimPreview: { _, _ in },

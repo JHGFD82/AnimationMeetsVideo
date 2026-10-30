@@ -152,10 +152,11 @@ extension EditingProject {
         return result
     }
 
-    /// The clips of a layer with those that followed their songs kept where
-    /// they are, and the rest pushed later, in order, past any they would
-    /// overlap. Pushed clips are attached again where they land.
-    private func makingRoom(for followers: Set<UUID>, among clips: [TimelineClip], in timeline: Timeline) -> [TimelineClip] {
+    /// The clips of a layer with `followers` (those that followed their
+    /// songs, or were moved together) kept where they are, and the rest
+    /// pushed later, in order, past any they would overlap. Pushed clips
+    /// are attached again where they land.
+    func makingRoom(for followers: Set<UUID>, among clips: [TimelineClip], in timeline: Timeline) -> [TimelineClip] {
         var placed = clips.filter { followers.contains($0.id) }
         for var clip in clips.filter({ !followers.contains($0.id) }).sorted(by: { $0.startOffset < $1.startOffset }) {
             let start = clip.startOffset

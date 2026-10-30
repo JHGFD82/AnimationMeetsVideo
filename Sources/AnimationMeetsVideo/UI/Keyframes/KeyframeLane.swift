@@ -21,10 +21,34 @@ extension AnimatedValue {
     }
 }
 
+/// How a lane's keyframes are picked with others' and moved together, in
+/// the lane's own times (see `LaneKeyframePicks`); nil where they aren't
+/// picked, as on the timeline's volume rows.
+struct KeyframePicking {
+    var isPicked: (CMTime) -> Bool
+    var click: (CMTime, SelectClick) -> Void
+    /// A drag begins on a keyframe: picks it as the keys say, and says
+    /// whether others move with it.
+    var pressForDrag: (CMTime, SelectClick) -> Bool
+    /// A step of a drag of the picked keyframes by a shift; what it is
+    /// held to.
+    var drag: (CMTime) -> CMTime
+    /// The drag ends: made, or dropped.
+    var endDrag: (Bool) -> Void
+    /// How far the picked keyframes are drawn shifted while one of them is
+    /// dragged.
+    var shift: () -> CMTime?
+    /// Moves the keyframe, with the others picked if it is one of them, a
+    /// number of frames: VoiceOver's way to drag it.
+    var nudge: (CMTime, Int) -> Void
+}
+
 /// A property's keyframes as diamonds under the layer's clips, each side
 /// pinched like an hourglass where it is eased. Clicking a diamond moves
 /// the playhead to it; dragging retimes it, snapping to frames, and
-/// Option-dragging copies it there; its menu sets its ease.
+/// Option-dragging copies it there; its menu sets its ease. With
+/// `picking`, a click also picks it (Command and Shift as everywhere), a
+/// picked one is ringed, and dragging one of several picked moves them all.
 struct KeyframeLane: View {
     let marks: [KeyframeMark]
     let currentTime: CMTime
@@ -41,6 +65,7 @@ struct KeyframeLane: View {
     /// while a keyframe is dragged; the same time when the lane spans the
     /// timeline.
     var timelineTime: (CMTime) -> CMTime = { $0 }
+    var picking: KeyframePicking?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -57,7 +82,8 @@ struct KeyframeLane: View {
                     onMove: onMove,
                     onDelete: onDelete,
                     onEase: onEase,
-                    timelineTime: timelineTime
+                    timelineTime: timelineTime,
+                    picking: picking
                 )
             }
         }
@@ -124,6 +150,7 @@ private struct KeyframeDiamond: View {
     let onDelete: (CMTime) -> Void
     let onEase: (CMTime, KeyframeEase.Preset) -> Void
     let timelineTime: (CMTime) -> CMTime
+    let picking: KeyframePicking?
 
     private var time: CMTime { mark.time }
 
@@ -136,15 +163,22 @@ private struct KeyframeDiamond: View {
     @State private var dragX: CGFloat = 0
     /// Whether Option is held during the drag, which copies the keyframe.
     @State private var isCopying = false
+    /// Whether the drag moves the other picked keyframes too: decided as
+    /// it begins, nil before.
+    @State private var movesGroup: Bool?
 
     private let size: CGFloat = 12
 
     var body: some View {
-        let x = CGFloat(time.seconds) * pixelsPerSecond + dragX
+        let isPicked = picking?.isPicked(time) ?? false
+        // Picked with one being dragged, it goes along.
+        let shift = isPicked && movesGroup == nil ? picking?.shift().map { CGFloat($0.seconds) * pixelsPerSecond } ?? 0 : 0
+        let x = CGFloat(time.seconds) * pixelsPerSecond + dragX + shift
         let shape = KeyframeMarkShape(easedIn: mark.easedIn, easedOut: mark.easedOut, holds: mark.holds)
         shape
             .fill(isAtPlayhead ? Design.keyframe : mark.isGenerated ? Design.generatedKeyframe : Design.textSecondary)
             .overlay { shape.stroke(Color.black.opacity(0.45), lineWidth: 0.5) }
+            .overlay { if isPicked { shape.stroke(Design.accent, lineWidth: 1.5).padding(-2.5) } }
             .frame(width: size, height: size)
             .frame(width: size + 6, height: height)
             // Option-dragged, the keyframe stays: a faint one where it is.
@@ -161,8 +195,13 @@ private struct KeyframeDiamond: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard abs(value.translation.width) >= 3 else { return }
-                        isCopying = CopyDragCursor.update()
-                        let target = target(value.translation.width)
+                        if movesGroup == nil { movesGroup = picking?.pressForDrag(time, SelectClick.current) ?? false }
+                        var target = target(value.translation.width)
+                        if movesGroup == true, let picking {
+                            target = CMTimeAdd(time, picking.drag(CMTimeSubtract(target, time)))
+                        } else {
+                            isCopying = CopyDragCursor.update()
+                        }
                         dragX = CGFloat(CMTimeSubtract(target, time).seconds) * pixelsPerSecond
                         readout?.show(timelineTime(target), from: timelineTime(time), pointer: value.location)
                     }
@@ -172,9 +211,25 @@ private struct KeyframeDiamond: View {
                         let copying = isCopying
                         isCopying = false
                         CopyDragCursor.end()
-                        if abs(value.translation.width) < 3 || target == time {
+                        let group = movesGroup == true
+                        movesGroup = nil
+                        if group {
+                            picking?.endDrag(true)
+                            Task { @MainActor in
+                                // The moved diamonds arrive as diamonds of
+                                // their own; in case the move was refused.
+                                try? await Task.sleep(for: .milliseconds(500))
+                                dragX = 0
+                            }
+                        } else if abs(value.translation.width) < 3 || target == time {
                             dragX = 0
-                            if abs(value.translation.width) < 3 { onSeek(time) }
+                            if abs(value.translation.width) < 3 {
+                                // A click picks it, as the keys say; a plain
+                                // one also goes to it.
+                                let click = SelectClick.current
+                                picking?.click(time, click)
+                                if click == .only { onSeek(time) }
+                            }
                         } else if copying {
                             // The copy arrives as a diamond of its own.
                             onMove(time, target, true)
@@ -198,11 +253,21 @@ private struct KeyframeDiamond: View {
             .help(time.formatted)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(mark.isGenerated ? "Generated keyframe" : "Keyframe") at \(time.formatted)")
-            .accessibilityValue(easeDescription)
-            .accessibilityAddTraits(isAtPlayhead ? [.isButton, .isSelected] : .isButton)
-            .accessibilityHint("Moves the playhead to it")
-            .accessibilityAction { onSeek(time) }
+            .accessibilityValue(
+                [easeDescription, isPicked ? "selected" : nil, isAtPlayhead ? "at the playhead" : nil].compactMap { $0 }.joined(separator: ", ")
+            )
+            .accessibilityAddTraits(isPicked ? [.isButton, .isSelected] : .isButton)
+            .accessibilityHint(picking == nil ? "Moves the playhead to it" : "Selects it and moves the playhead to it")
+            .accessibilityAction {
+                picking?.click(time, .only)
+                onSeek(time)
+            }
             .accessibilityActions {
+                if let picking {
+                    Button(isPicked ? "Remove from selection" : "Add to selection") { picking.click(time, .toggle) }
+                    Button("Move a frame earlier") { picking.nudge(time, -1) }
+                    Button("Move a frame later") { picking.nudge(time, 1) }
+                }
                 ForEach(KeyframeEase.Preset.allCases) { preset in
                     Button(preset.name) { onEase(time, preset) }
                 }

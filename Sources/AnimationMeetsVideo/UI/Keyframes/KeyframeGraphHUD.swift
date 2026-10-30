@@ -20,6 +20,27 @@ final class KeyframeGraphHUDs {
     @ObservationIgnored var onEdit: ((inout EditingProject) -> Void) -> Void = { _ in }
     @ObservationIgnored var onSeek: (CMTime) -> Void = { _ in }
     @ObservationIgnored var onTogglePlayback: () -> Void = {}
+    /// Whether moving the pointer over a graph shows the frame under it in
+    /// the viewer, without moving the playhead, as the timeline's skimming
+    /// does. Shared by every graph, kept between launches; on unless
+    /// turned off.
+    var skims = UserDefaults.standard.object(forKey: Preferences.graphEditorSkimming) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(skims, forKey: Preferences.graphEditorSkimming)
+            if !skims { playback?.endSkim() }
+        }
+    }
+
+    /// Shows the frame at `time` (a timeline time, on a frame) in the
+    /// viewer while skimming is on; nil (the pointer gone from the plot)
+    /// goes back to the playhead.
+    func skim(to time: CMTime?) {
+        guard skims, let time else {
+            playback?.endSkim()
+            return
+        }
+        playback?.skim(to: time)
+    }
     /// Space in a graph's panel plays or pauses, as it does in the main
     /// window: the viewer's shortcut for it only reaches the key window.
     @ObservationIgnored private var spaceMonitor: Any?

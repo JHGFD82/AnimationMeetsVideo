@@ -35,7 +35,13 @@ final class MotionDesignSession: SecondsViewport {
 
     // MARK: Editing
 
-    var selectedPointID: UUID?
+    /// The points picked, one or several (see `SelectClick`).
+    var pickedPoints = SelectionSet<UUID>()
+    /// The point picked alone, whose settings and handles show.
+    var selectedPointID: UUID? {
+        get { pickedPoints.single }
+        set { pickedPoints.set(newValue.map { [$0] } ?? [], anchor: newValue) }
+    }
     /// A clip's edge keyframe, selected instead of a point.
     var selectedEdge: EdgeKey?
     var selectedPieceID: UUID?
@@ -384,16 +390,82 @@ final class MotionDesignSession: SecondsViewport {
         if let id, let (piece, _) = run.piece(holdingPoint: id) { selectedPieceID = run.pieces[piece].id }
     }
 
+    /// Every point of the run, in time order: what Shift-click picks along.
+    var pointOrder: [UUID] {
+        run.pieces.flatMap(\.map.points).sorted { $0.time < $1.time }.map(\.id)
+    }
+
+    /// A click on a point, as `click` says: alone, added or taken out, or
+    /// the run from the point last clicked.
+    func click(point id: UUID, _ click: SelectClick) {
+        pickedPoints.click(id, click, in: pointOrder)
+        selectedEdge = nil
+        if let only = pickedPoints.single, let (piece, _) = run.piece(holdingPoint: only) { selectedPieceID = run.pieces[piece].id }
+    }
+
+    /// The points a lasso covers, with those picked when it began.
+    func lasso(points ids: Set<UUID>, keeping kept: Set<UUID>) {
+        pickedPoints.lasso(ids, keeping: kept)
+        selectedEdge = nil
+    }
+
+    /// The picked points that are still in the run.
+    var pickedPointIDs: Set<UUID> {
+        pickedPoints.items.filter { run.piece(holdingPoint: $0) != nil }
+    }
+
+    /// Moves points from where they were (`from`, in seconds) by `delta`
+    /// seconds together, the leading ones first so none is stopped by
+    /// another of them; each stops as a point dragged alone does.
+    static func movePoints(_ from: [UUID: Double], by delta: Double, in run: inout MotionRun) {
+        let ordered = from.sorted { delta > 0 ? $0.value > $1.value : $0.value < $1.value }
+        for (id, seconds) in ordered {
+            run.movePoint(id, to: CMTime(seconds: seconds + delta, preferredTimescale: ClipTimeMap.timescale))
+        }
+    }
+
     var selectedPoint: TimePoint? {
         guard let id = selectedPointID, let (piece, point) = run.piece(holdingPoint: id) else { return nil }
         return run.pieces[piece].map.points[point]
     }
 
-    /// Nudges the selected point by whole frames of the timeline.
+    /// Nudges the picked points by whole frames of the timeline.
     func nudgeSelected(byFrames frames: Int) {
-        guard let point = selectedPoint else { return }
-        let delta = CMTimeMultiply(run.frameDuration, multiplier: Int32(frames))
-        perform("Move Point") { $0.movePoint(point.id, to: CMTimeAdd(point.time, delta)) }
+        var from: [UUID: Double] = [:]
+        for id in pickedPointIDs {
+            if let (p, i) = run.piece(holdingPoint: id) { from[id] = run.pieces[p].map.points[i].time.seconds }
+        }
+        guard !from.isEmpty else { return }
+        let delta = CMTimeMultiply(run.frameDuration, multiplier: Int32(frames)).seconds
+        perform(from.count == 1 ? "Move Point" : "Move Points") { Self.movePoints(from, by: delta, in: &$0) }
+    }
+
+    /// Makes every picked point a hit or a marker. Those that can't be (a
+    /// hit that would move, a pace that would end, no room) stay as they
+    /// are, and the sidebar says how many.
+    func setKindOfPicked(_ kind: TimePoint.Kind) {
+        let ids = pickedPointIDs
+        guard ids.count > 1 else {
+            if let id = ids.first { setKind(kind, ofPoint: id) }
+            return
+        }
+        var refused = 0
+        perform(Self.kindName(kind)) { run in
+            for id in ids where run.setKind(kind, ofPoint: id) != nil { refused += 1 }
+        }
+        if refused > 0 { message = "\(refused) of the points couldn't change: making them so would move a hit, end a pace or need room there isn't." }
+    }
+
+    /// Sets the ease of every picked point that can take it.
+    func setEaseOfPicked(_ preset: KeyframeEase.Preset) {
+        let ids = pickedPointIDs
+        guard ids.count > 1 else {
+            if let id = ids.first { setEase(preset, ofPoint: id) }
+            return
+        }
+        perform(preset.name) { run in
+            for id in ids where preset == .linear || run.canEase(point: id) { run.setEase(preset, ofPoint: id) }
+        }
     }
 
     /// Sets a point's ease by its preset, as a keyframe's is set, named so
@@ -445,9 +517,12 @@ final class MotionDesignSession: SecondsViewport {
             if selectedEdgeEase != nil { setSelectedEdgeHandle(nil) }
             return
         }
-        guard let id = selectedPointID else { return }
-        perform("Remove Point") { $0.removePoint(id) }
-        selectedPointID = nil
+        let ids = pickedPointIDs
+        guard !ids.isEmpty else { return }
+        perform(ids.count == 1 ? "Remove Point" : "Remove Points") { run in
+            for id in ids { run.removePoint(id) }
+        }
+        pickedPoints.clear()
     }
 
     // MARK: Edge keyframes

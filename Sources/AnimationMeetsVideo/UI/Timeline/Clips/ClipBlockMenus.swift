@@ -42,6 +42,7 @@ struct ClipMenuHost: View, Equatable {
         var canPasteClip: Bool
         /// Whether the clip is one of several selected together.
         var inGroup: Bool
+        var groupSpansLayers: Bool
         var canPasteEffects: Bool
     }
 
@@ -60,12 +61,18 @@ extension ClipBlockView {
             canMotionDesign: handlers.onMotionDesign != nil, canConformTimeline: handlers.onConformTimeline != nil, passesThrough: model.passesThrough,
             acceptsEffects: model.acceptsEffects, acceptsSoundEffects: model.acceptsSoundEffects, playsSound: model.playsSound,
             reach: model.reach,
-            canPasteClip: EditorClipboard.shared.hasClips, inGroup: model.isInGroup, canPasteEffects: EditorClipboard.shared.canPasteEffects
+            canPasteClip: EditorClipboard.shared.hasClips, inGroup: model.isInGroup, groupSpansLayers: model.groupSpansLayers,
+            canPasteEffects: EditorClipboard.shared.canPasteEffects
         )
     }
 
+    /// Items for a clip picked with others act on them all (the timeline
+    /// hands them out to each, see `TimelineAreas`); items that only make
+    /// sense for one clip are greyed out. Toggles set every clip to the
+    /// opposite of this one rather than flipping each.
     @ViewBuilder
     var clipMenu: some View {
+        let group = model.isInGroup
         Button("Cut") { handlers.onClipboard(.cut) }
             .keyboardShortcut("x", modifiers: .command)
         Button("Copy") { handlers.onClipboard(.copy) }
@@ -77,21 +84,24 @@ extension ClipBlockView {
             .keyboardShortcut("d", modifiers: .command)
         Button(model.isInGroup ? "Put Selection in New Timeline" : "Put in New Timeline") { handlers.onClipboard(.nest) }
         Divider()
-        Button(model.clip.enabled ? "Turn Off" : "Turn On") { handlers.onEditClip { $0.enabled.toggle() } }
+        Button(model.clip.enabled ? "Turn Off" : "Turn On") { handlers.onEditClip { [enabled = !model.clip.enabled] in $0.enabled = enabled } }
             .keyboardShortcut("v", modifiers: [])
         if model.playsSound {
-            Button(model.clip.soundMuted ? "Unmute Sound" : "Mute Sound") { handlers.onEditClip { $0.soundMuted.toggle() } }
+            Button(model.clip.soundMuted ? "Unmute Sound" : "Mute Sound") { handlers.onEditClip { [muted = !model.clip.soundMuted] in $0.soundMuted = muted } }
         }
         Divider()
         if let reach = model.reach {
             reachMenu(reach)
+                .disabled(group)
             Divider()
         }
         if let transition = model.clip.transitionIn {
             Button("Remove \(transition.kind.name) at Start") { handlers.onRemoveTransition(.leading) }
+                .disabled(group)
         }
         if let transition = model.clip.transitionOut {
             Button("Remove \(transition.kind.name) at End") { handlers.onRemoveTransition(.trailing) }
+                .disabled(group)
         }
         if model.hasLinkedAudio {
             if model.clip.transitionIn != nil || model.clip.transitionOut != nil { Divider() }
@@ -99,21 +109,26 @@ extension ClipBlockView {
         }
         if let onBeatMatch = handlers.onBeatMatch {
             Button("Beat Match…", action: onBeatMatch)
+                .disabled(group)
         }
         if let onRemoveBeats = handlers.onRemoveBeats {
             Button("Remove Beats", action: onRemoveBeats)
+                .disabled(group)
         }
         if case .timeline = model.clip.source {
-            if let onOpenNested = handlers.onOpenNested { Button("Open Timeline", action: onOpenNested) }
+            if let onOpenNested = handlers.onOpenNested { Button("Open Timeline", action: onOpenNested).disabled(group) }
             Toggle("Pass Through", isOn: Binding(get: { model.passesThrough }, set: { handlers.onSetPassThrough($0) }))
         }
         if let onAttachToMusic = handlers.onAttachToMusic {
             Divider()
             Toggle("Follow Music", isOn: Binding(get: { model.clip.followsMusic }, set: { follows in handlers.onEditClip { $0.followsMusic = follows } }))
             Button("Attach to Music at Playhead", action: onAttachToMusic)
+                .disabled(group)
         }
         if let onMotionDesign = handlers.onMotionDesign {
             Button(model.isInGroup ? "Motion Designer for Selection…" : "Motion Designer…", action: onMotionDesign)
+                .disabled(group && model.groupSpansLayers)
+                .help(group && model.groupSpansLayers ? "The motion designer opens on clips on one layer" : "")
         }
         if model.acceptsEffects || model.acceptsSoundEffects {
             Divider()
@@ -124,8 +139,10 @@ extension ClipBlockView {
             Divider()
             Button("Show in Clips Browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
                 .keyboardShortcut("f", modifiers: .shift)
+                .disabled(group)
             if let onConformTimeline = handlers.onConformTimeline {
                 Button("Conform Timeline to Clip", action: onConformTimeline)
+                    .disabled(group)
                     .help("Give the timeline this clip's frame size, frame rate and SDR or HDR colour space")
             }
             Divider()

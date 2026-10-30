@@ -18,9 +18,9 @@ final class KeyframeGraphLink: Identifiable {
     /// Time's edges, shared as the time is.
     var timeBand = RubberBandZoom()
     var timeScrollBand = RubberBandScroll()
-    /// Each linked graph's selected keyframe, kept here so the panel's one
-    /// row of ease presets can act on it.
-    var selected: [ParameterKey: CMTime] = [:]
+    /// Each linked graph's selected keyframes, kept here so the panel's one
+    /// row of ease presets can act on them.
+    var selected: [ParameterKey: SelectionSet<CMTime>] = [:]
     /// The graph last clicked, which the presets act on; the top one until
     /// another is.
     var active: ParameterKey?

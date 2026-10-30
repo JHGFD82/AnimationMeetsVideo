@@ -53,6 +53,8 @@ final class ClipDragBook {
     var movePreview = LastSent<ClipMovePreview?>(nil)
     var trimPreview = LastSent<TrimDraft?>(nil)
     var slipDraft = LastSent<SlipDraft?>(nil)
+    /// How far the clips picked together are being moved.
+    var groupMove = LastSent<CMTime?>(nil)
 
     /// A trim draft as sent: the clip, and which of its frames to show.
     struct TrimDraft: Equatable {

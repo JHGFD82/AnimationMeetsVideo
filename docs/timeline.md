@@ -314,7 +314,8 @@ skimming off takes the viewer back to the playhead.
   clicking where to cut and pressing the key cuts there wherever the
   pointer has gone (`Timeline.clipsToSplit`).
 - **, / .** nudge the selected clip a frame earlier or later; with Shift,
-  ten. A nudge follows the same rules as dragging.
+  ten. A nudge follows the same rules as dragging. Clips picked together
+  are nudged together, each on its own layer.
 
 These keys are left to a list or other control that has the keyboard (the
 browser's Clips list uses the arrows), and to text being typed. All of them, and
@@ -867,10 +868,21 @@ clip.
 
 ## Selecting several clips
 
+Picking several things works the same in every editor that has them: the
+timeline, the graph editor, the motion designer and the effects panel
+(`SelectClick`, `SelectionSet`).
+
 Drag in empty space in the tracks (between a layer's clips, or under the
 last layer) to draw a **lasso**: every clip it touches is picked, and they
-draw as selected. Hold Shift to add to what is picked. A lasso that touches
+draw as selected. Hold Shift or Command to add to what is picked. A lasso that touches
 one clip selects it as a click does; one that touches none selects nothing.
+
+- **Command-click** a clip to add it to what is picked, or take it out.
+  One left is selected as a clip is.
+- **Shift-click** a clip to pick the run from the clip last clicked (or
+  Command-clicked) to it, in place of what was picked: on the layers from
+  the one to the other, every clip that overlaps the time from the earlier
+  start to the later end (`Timeline.clipRange`).
 Only the Arrow tool lassos. A clip's trim handles reach a few points past
 its edges, and a press there trims rather than starting a lasso.
 
@@ -884,9 +896,18 @@ The lasso's rectangle fades out when the button comes up.
   selected clip stayed selected.) **⌘A** picks every clip of the timeline
   together, which is also how to do it without a pointer.
 - Clips picked together have no one clip for the Inspector and the effects
-  panel to show; they are for **Cut, Copy, Duplicate, Delete** and
-  **Put Selection in New Timeline**, in the Edit menu, the right-click menu
-  of any of them, and Delete.
+  panel to show. What is done to one of them is done to them all: **Cut,
+  Copy, Duplicate, Delete**, **Put Selection in New Timeline**, moving and
+  nudging, **V**, ⌘B, and from the right-click menu of any of them **Turn
+  Off**, **Mute Sound**, **Detach Audio**, **Pass Through**, **Follow
+  Music**, **Paste Effects**, **Speed**, **Frame Blending**, **Echo**,
+  **Sound at Other Speeds** and **Shutter** (each to those of them it
+  applies to; a toggle sets them all to the opposite of the clip clicked).
+  Items about one clip are greyed out: the reach of an adjustment, removing
+  a transition, **Beat Match**, **Remove Beats**, **Open Timeline**,
+  **Attach to Music at Playhead**, **Show in Clips Browser** and
+  **Conform Timeline to Clip**. **Motion Designer for Selection** opens on
+  them when they are all on one layer, and is greyed out when they aren't.
 - **Copy** keeps where they sit relative to each other, in time and across
   layers (`ClipGroupBundle`); the clipboard holds that group until
   something else is copied. **Paste** puts the earliest at the playhead
@@ -903,8 +924,15 @@ The lasso's rectangle fades out when the button comes up.
   earliest did. It is a nested timeline like any other (see
   [effects.md](effects.md)), so it can be opened from the browser, given
   effects, or retimed as one.
-- Moving, trimming and the keyboard nudge still act on the one clip
-  clicked or selected, not on a group.
+- **Dragging** one of them moves them all by as much, each staying on its
+  own layer, in whole frames and no earlier than the earliest can go
+  (`EditingProject.moveClips`). The dragged clip snaps as one moved alone
+  does; clips not picked that are in the way are pushed later. A song
+  among them carries every clip attached to it, picked or not, since the
+  music ties them (see "Following the music"); copying, deleting and the
+  rest still act only on what is picked. Option-dragging a group copies
+  nothing; a group isn't moved to other layers.
+- Trimming and slipping still act on the one clip dragged.
 
 ## Going into a nested timeline
 

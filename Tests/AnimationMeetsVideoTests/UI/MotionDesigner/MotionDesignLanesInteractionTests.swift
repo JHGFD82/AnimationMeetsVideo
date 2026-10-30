@@ -130,4 +130,37 @@ struct MotionDesignLanesInteractionTests {
         try await harness.settle()
         #expect(session.run == marked)
     }
+
+    /// Dragging in empty space picks the points it reaches round, and moves
+    /// nothing; dragging one of them then moves both.
+    @Test func aLassoPicksPointsAndTheyMoveTogether() async throws {
+        let session = try session()
+        defer { session.end() }
+        let piece = session.run.pieces[0].id
+        let a = try #require(session.addMarker(toPiece: piece, atTime: 3))
+        let b = try #require(session.addMarker(toPiece: piece, atTime: 5))
+        let before = session.run
+        let harness = EventHarness(MotionDesignLanes(session: session), size: Self.size)
+        try await harness.settle()
+
+        let from = CGPoint(x: onLine(session, at: 2.5).x, y: onLine(session, at: 6).y - 4)
+        let to = CGPoint(x: onLine(session, at: 5.5).x, y: onLine(session, at: 2).y + 4)
+        try await harness.press(at: from, dragTo: to)
+        harness.mouse(.leftMouseUp, at: to)
+        try await harness.settle(250)
+        #expect(session.pickedPointIDs == [a, b])
+        #expect(session.run == before)
+
+        let grab = onLine(session, at: 3)
+        try await harness.press(at: grab, dragTo: CGPoint(x: grab.x + 20, y: grab.y))
+        harness.mouse(.leftMouseUp, at: CGPoint(x: grab.x + 20, y: grab.y))
+        try await harness.settle(250)
+        func time(_ id: UUID) -> Double {
+            session.run.piece(holdingPoint: id).map { session.run.pieces[$0.piece].map.points[$0.point].time.seconds } ?? .nan
+        }
+        let moved = 20 * session.secondsPerPoint
+        #expect(abs(time(a) - (3 + moved)) <= 2 * session.secondsPerPoint)
+        #expect(abs(time(b) - (5 + moved)) <= 2 * session.secondsPerPoint)
+        #expect(session.pickedPointIDs == [a, b])
+    }
 }

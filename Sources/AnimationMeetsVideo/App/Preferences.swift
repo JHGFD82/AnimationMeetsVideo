@@ -28,6 +28,10 @@ enum Preferences {
     /// pointer as it moves over the lanes. On unless turned off, as on the
     /// timeline.
     static let motionDesignerSkimming = "motionDesignerSkimming"
+    /// Whether the viewer shows the frame under the pointer as it moves
+    /// over a graph editor's plot. On unless turned off, as on the
+    /// timeline.
+    static let graphEditorSkimming = "graphEditorSkimming"
 
     // MARK: Library
 

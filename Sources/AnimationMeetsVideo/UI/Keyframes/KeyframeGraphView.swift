@@ -8,17 +8,22 @@ import SwiftUI
 /// timeline's), each keyframe a point on it. Drag a point to move the
 /// keyframe in time (on frames) and value; Shift keeps it to one
 /// direction. Click a point to select it and show the bezier handles of
-/// its eased sides. Dragging a handle shapes that side's ease and swings
+/// its eased sides; Command-click adds a point or takes it out, Shift-click
+/// picks the points from the last clicked, and dragging in empty space
+/// draws a lasso (with Shift or Command, adding to what is picked). A
+/// drag, the arrow keys, Delete and the presets act on every point picked.
+/// Dragging a handle shapes that side's ease and swings
 /// the other side's handle to stay in line with it, at its own length;
 /// with Option it moves alone. A handle dragged onto its keyframe goes,
 /// leaving that side linear. Option-click a point to switch it between
 /// linear and bezier (Easy Ease); Option-drag one pulls a handle out of a
 /// linear side, the side the drag heads to. Escape cancels a drag. Click
-/// elsewhere to move the playhead there; double-click to add a keyframe,
-/// or select the one there. The arrow keys move the selected keyframe a
-/// frame or a point at a time (ten with Shift), and Delete deletes it.
-/// The buttons act on the selected keyframe, or the one at the playhead;
-/// the right-click menu on the keyframe under the pointer, or else the
+/// elsewhere to move the playhead there and select nothing; double-click
+/// to add a keyframe, or select the one there. The arrow keys move the
+/// selected keyframes a frame or a point at a time (ten with Shift), and
+/// Delete deletes them. The buttons act on the selected keyframes, or the
+/// one at the playhead; the right-click menu on the keyframe under the
+/// pointer (with the others picked when it is one of them), or else the
 /// same.
 ///
 /// The sliders under the graph zoom values and time, each step by the same
@@ -49,7 +54,9 @@ struct KeyframeGraphView: View {
     @State private var drag: Drag?
     /// Escape cancelled the drag in progress: the rest of it does nothing.
     @State private var dragCancelled = false
-    @State private var ownSelected: CMTime?
+    @State private var ownSelected = SelectionSet<CMTime>()
+    /// The lasso being dragged across the plot.
+    @State private var lassoRect: CGRect?
     @State private var viewport = KeyframeGraphViewport()
     /// The pinch's magnification when it last changed the zoom.
     @State private var lastMagnification: CGFloat?
@@ -75,6 +82,8 @@ struct KeyframeGraphView: View {
         /// Option on a keyframe: a click switches it between linear and
         /// bezier; a drag pulls a handle out of the side it heads to.
         case pull(CMTime)
+        /// Empty space: a click moves the playhead there, a drag draws a
+        /// lasso.
         case scrub
 
         /// The keyframe it is, if it is one.
@@ -97,13 +106,16 @@ struct KeyframeGraphView: View {
         var layout: KeyframeGraphLayout
         var original: AnimatedValue<ComponentValue>
         var segments: [KeyframeGraphLayout.Segment]
-        /// Where a dragged keyframe is now, selected when the drag ends.
-        var movedTo: CMTime?
+        /// Where the dragged keyframes are now, by where they were;
+        /// selected there when the drag ends.
+        var moved: [CMTime: CMTime]?
         /// The way Shift keeps the drag to, chosen once it has gone far
         /// enough to tell.
         var lockedAxis: Axis?
         /// The selection before the drag, which Escape puts back.
-        var selectedBefore: CMTime?
+        var selectedBefore: SelectionSet<CMTime>
+        /// What the press meant with the keys held as it began.
+        var click: SelectClick
     }
 
     private static let palette: [Color] = [Design.statusDanger, Design.statusDone, Design.accent, Design.keyframe]
@@ -128,13 +140,16 @@ struct KeyframeGraphView: View {
         link?.isLinked == true ? link : nil
     }
 
-    /// The selected keyframe, kept in the link for the panel's presets.
-    private var selected: CMTime? {
-        get { link.map { $0.selected[key] } ?? ownSelected }
+    /// The selected keyframes, kept in the link for the panel's presets.
+    private var picked: SelectionSet<CMTime> {
+        get { link.map { $0.selected[key] ?? SelectionSet() } ?? ownSelected }
         nonmutating set {
             if let link { link.selected[key] = newValue } else { ownSelected = newValue }
         }
     }
+
+    /// The keyframe selected on its own, whose handles show.
+    private var selected: CMTime? { picked.single }
 
     var body: some View {
         if let timeline = hud.project.timeline(id: key.timelineID), let stored = hud.project.components(of: key),
@@ -176,9 +191,9 @@ struct KeyframeGraphView: View {
             .background(Color.black.opacity(0.2))
             .onChange(of: stored) { _, stored in
                 committed = nil
-                // An undo, or an edit elsewhere, can take the selected
-                // keyframe away.
-                if drag == nil, let time = selected, stored.keyframe(at: time) == nil { selected = nil }
+                // An undo, or an edit elsewhere, can take selected
+                // keyframes away.
+                if drag == nil { picked.keep(only: Set(stored.keyframes.map(\.time))) }
             }
             .onChange(of: link?.fits) { _, _ in fitValues() }
         } else {
@@ -227,8 +242,10 @@ struct KeyframeGraphView: View {
     /// the marks alone, and the playhead (its own line) neither.
     private func graph(_ c: Context, layout: KeyframeGraphLayout) -> some View {
         let shown = visible(c.value.value.values.count)
-        // A dragged keyframe is marked, with its handles, where it is now.
-        let marked = drag?.movedTo ?? selected
+        // Dragged keyframes are marked, with a lone one's handles, where
+        // they are now.
+        let markedSet = drag?.moved.map { Set($0.values) } ?? picked.items
+        let marked = markedSet.count == 1 ? markedSet.first : nil
         let timecodes = [layout.times.lowerBound, layout.times.upperBound].map { seconds in
             let time = c.axis.timelineTime(atKey: CMTime(seconds: seconds, preferredTimescale: ParameterTimeAxis.timescale))
             return CMTimeMaximum(time, .zero).timecode(frameRate: c.timeline.frameRate)
@@ -240,12 +257,13 @@ struct KeyframeGraphView: View {
         .equatable()
         .overlay {
             Marks(
-                value: c.value, offset: c.offset, layout: layout, shown: shown, selected: marked,
+                value: c.value, offset: c.offset, layout: layout, shown: shown, selected: markedSet,
                 handles: handles(c, layout: layout, selected: marked, shown: shown)
             )
             .equatable()
         }
         .overlay { HoverRing(pointer: pointer) { drag == nil ? hit(at: $0, c, layout: layout).point : nil } }
+        .overlay(alignment: .topLeading) { lassoOverlay }
         .overlay { GraphPlayheadLine(playback: hud.playback, parked: hud.playhead, axis: c.axis, layout: layout) }
         .contentShape(Rectangle())
         .gesture(dragGesture(c, layout: layout))
@@ -253,7 +271,7 @@ struct KeyframeGraphView: View {
             // Only ever adds, so a stray double-click can't delete.
             let time = c.axis.snapped(layout.seconds(atX: tap.location.x))
             if c.value.keyframe(at: time) == nil { addKeyframe(at: time) }
-            selected = time
+            picked.set([time], anchor: time)
         })
         .simultaneousGesture(MagnifyGesture()
             .onChanged { pinch in
@@ -278,12 +296,14 @@ struct KeyframeGraphView: View {
             switch phase {
             case .active(let location):
                 pointer.location = location
+                // The viewer shows the frame under the pointer, over the plot.
+                hud.skim(to: layout.plot.contains(location) && drag == nil ? skimTime(atX: location.x, c, layout: layout) : nil)
                 let target = hit(at: location, c, layout: layout).target
                 if pointer.keyframe != target.keyframeTime { pointer.keyframe = target.keyframeTime }
                 if target != .scrub {
                     NSCursor.pointingHand.set()
                 } else {
-                    (layout.plot.contains(location) ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
+                    (layout.plot.contains(location) ? NSCursor.crosshair : NSCursor.arrow).set()
                 }
             case .ended:
                 leaveHover()
@@ -293,36 +313,48 @@ struct KeyframeGraphView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in leaveHover() }
         .contextMenu {
             GraphMenu(
-                pointer: pointer, fallback: { presetTarget(c) },
-                onEase: { preset, time in
-                    selected = time
-                    edit { $0.applyEase(preset, at: time) }
+                pointer: pointer, targets: { menuTargets(under: $0, c) },
+                onEase: { preset, times in
+                    if times.count == 1, let time = times.first, !picked.contains(time) { picked.set([time], anchor: time) }
+                    edit { value in for time in times { value.applyEase(preset, at: time) } }
                 },
-                onDelete: deleteKeyframe(at:),
+                onDelete: deleteKeyframes(at:),
                 onAdd: { addKeyframeAtPlayhead(c) }
             )
         }
         .focusable()
         .focused($isFocused)
         .focusEffectDisabled()
-        .onDeleteCommand { if let time = presetTarget(c) { deleteKeyframe(at: time) } }
+        .onDeleteCommand { deleteKeyframes(at: presetTargets(c)) }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
-            guard drag == nil, let time = selected, c.value.keyframe(at: time) != nil else { return .ignored }
+            let times = picked.items.filter { c.value.keyframe(at: $0) != nil }
+            guard drag == nil, !times.isEmpty else { return .ignored }
             let steps = press.modifiers.contains(.shift) ? 10 : 1
             switch press.key {
-            case .leftArrow: nudge(time, frames: -steps, points: 0, c, layout: layout)
-            case .rightArrow: nudge(time, frames: steps, points: 0, c, layout: layout)
-            case .upArrow: nudge(time, frames: 0, points: CGFloat(steps), c, layout: layout)
-            default: nudge(time, frames: 0, points: -CGFloat(steps), c, layout: layout)
+            case .leftArrow: nudge(times, frames: -steps, points: 0, c, layout: layout)
+            case .rightArrow: nudge(times, frames: steps, points: 0, c, layout: layout)
+            case .upArrow: nudge(times, frames: 0, points: CGFloat(steps), c, layout: layout)
+            default: nudge(times, frames: 0, points: -CGFloat(steps), c, layout: layout)
             }
             return .handled
         }
+        // Command-A picks every keyframe.
+        .onKeyPress(characters: ["a"]) { press in
+            guard press.modifiers == .command, drag == nil, !c.value.keyframes.isEmpty else { return .ignored }
+            picked.selectAll(c.value.keyframes.map(\.time))
+            return .handled
+        }
         .onKeyPress(.escape) {
-            guard let current = drag else { return .ignored }
+            guard let current = drag else {
+                guard !picked.isEmpty else { return .ignored }
+                picked.clear()
+                return .handled
+            }
             draft = nil
             drag = nil
+            lassoRect = nil
             dragCancelled = true
-            selected = current.selectedBefore
+            picked = current.selectedBefore
             return .handled
         }
         .accessibilityElement(children: .contain)
@@ -357,20 +389,23 @@ struct KeyframeGraphView: View {
             .frame(width: 10, height: 10)
             .position(point)
             .accessibilityLabel("Keyframe at \(timecode), \(values.joined(separator: ", "))")
-            .accessibilityAddTraits(keyframe.time == selected ? [.isButton, .isSelected] : .isButton)
-            .accessibilityAction { selected = keyframe.time }
+            .accessibilityAddTraits(picked.contains(keyframe.time) ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { picked.click(keyframe.time, .only, in: c.value.keyframes.map(\.time)) }
             .accessibilityAdjustableAction { direction in
-                nudge(keyframe.time, frames: direction == .increment ? 1 : -1, points: 0, c, layout: layout)
+                nudge([keyframe.time], frames: direction == .increment ? 1 : -1, points: 0, c, layout: layout)
             }
             .accessibilityActions {
+                Button(picked.contains(keyframe.time) ? "Remove from selection" : "Add to selection") {
+                    picked.click(keyframe.time, .toggle, in: c.value.keyframes.map(\.time))
+                }
                 ForEach(KeyframeEase.Preset.allCases) { preset in
                     Button(preset.name) { edit { $0.applyEase(preset, at: keyframe.time) } }
                 }
-                Button("Move a frame earlier") { nudge(keyframe.time, frames: -1, points: 0, c, layout: layout) }
-                Button("Move a frame later") { nudge(keyframe.time, frames: 1, points: 0, c, layout: layout) }
-                Button("Raise value") { nudge(keyframe.time, frames: 0, points: 1, c, layout: layout) }
-                Button("Lower value") { nudge(keyframe.time, frames: 0, points: -1, c, layout: layout) }
-                Button("Delete") { deleteKeyframe(at: keyframe.time) }
+                Button("Move a frame earlier") { nudge([keyframe.time], frames: -1, points: 0, c, layout: layout) }
+                Button("Move a frame later") { nudge([keyframe.time], frames: 1, points: 0, c, layout: layout) }
+                Button("Raise value") { nudge([keyframe.time], frames: 0, points: 1, c, layout: layout) }
+                Button("Lower value") { nudge([keyframe.time], frames: 0, points: -1, c, layout: layout) }
+                Button("Delete") { deleteKeyframes(at: [keyframe.time]) }
             }
     }
 
@@ -526,17 +561,26 @@ struct KeyframeGraphView: View {
 
     // MARK: - Toolbar
 
-    private func presetTarget(_ c: Context) -> CMTime? {
-        Self.presetTarget(selected: selected, value: c.value, axis: c.axis, timeline: c.timeline, playhead: hud.playhead)
+    private func presetTargets(_ c: Context) -> [CMTime] {
+        Self.presetTargets(selected: picked, value: c.value, axis: c.axis, timeline: c.timeline, playhead: hud.playhead)
     }
 
-    /// The selected keyframe if it still exists, else the one at the playhead.
-    static func presetTarget(
-        selected: CMTime?, value: AnimatedValue<ComponentValue>, axis: ParameterTimeAxis, timeline: Timeline, playhead: CMTime
-    ) -> CMTime? {
-        if let selected, value.keyframe(at: selected) != nil { return selected }
+    /// What the right-click menu acts on: the keyframe under the pointer,
+    /// with the others picked when it is one of them; else as the presets.
+    private func menuTargets(under time: CMTime?, _ c: Context) -> [CMTime] {
+        guard let time else { return presetTargets(c) }
+        return picked.contains(time) ? presetTargets(c) : [time]
+    }
+
+    /// The selected keyframes that still exist, in time order, else the
+    /// one at the playhead.
+    static func presetTargets(
+        selected: SelectionSet<CMTime>, value: AnimatedValue<ComponentValue>, axis: ParameterTimeAxis, timeline: Timeline, playhead: CMTime
+    ) -> [CMTime] {
+        let existing = value.keyframes.map(\.time).filter(selected.contains)
+        if !existing.isEmpty { return existing }
         let now = axis.keyTime(atTimeline: timeline.snappedToFrame(playhead))
-        return value.keyframes.first { abs($0.time.seconds - now.seconds) < timeline.frameDuration.seconds / 2 }?.time
+        return value.keyframes.first { abs($0.time.seconds - now.seconds) < timeline.frameDuration.seconds / 2 }.map { [$0.time] } ?? []
     }
 
     /// The values at the playhead, Separate Scales, and the presets with
@@ -557,6 +601,8 @@ struct KeyframeGraphView: View {
                         .foregroundStyle(Design.textPrimary)
                 }
             }
+            // Linked, the panel's top row has it, for every graph.
+            if shared == nil { GraphSkimToggle(hud: hud) }
             if names.count > 1 {
                 Toggle(isOn: $viewport.separateScales) { Image(systemName: "arrow.up.and.down.text.horizontal") }
                     .toggleStyle(.icon)
@@ -572,7 +618,7 @@ struct KeyframeGraphView: View {
                     .help("Take this graph out into a panel of its own")
                     .accessibilityLabel("Unlink \(hud.project.parameterTitle(of: key))")
             } else {
-                KeyframeEasePresets(hud: hud, key: key, target: presetTarget(c), axis: c.axis, timeline: c.timeline)
+                KeyframeEasePresets(hud: hud, key: key, targets: presetTargets(c), axis: c.axis, timeline: c.timeline)
                 if let link { KeyframeGraphLinkMenu(hud: hud, link: link) }
             }
         }
@@ -780,22 +826,44 @@ struct KeyframeGraphView: View {
                     isFocused = true
                     pointer.location = nil
                     NSCursor.arrow.set()
+                    // A drag shows what it does at the playhead, not a skim.
+                    hud.skim(to: nil)
                     let target = target(at: gesture.startLocation, c, layout: layout)
-                    drag = Drag(target: target, layout: layout, original: c.value, segments: c.segments, selectedBefore: selected)
-                    if let time = target.keyframeTime { selected = time }
-                    if case .scrub = target { selected = nil }
+                    let click = SelectClick.current
+                    drag = Drag(target: target, layout: layout, original: c.value, segments: c.segments, selectedBefore: picked, click: click)
+                    switch target {
+                    // A plain press on a keyframe not picked picks it alone,
+                    // so a drag moves it; one picked keeps the rest.
+                    case .keyframe(let time, _) where click == .only && !picked.contains(time):
+                        picked.set([time], anchor: time)
+                    case .pull(let time):
+                        picked.set([time], anchor: time)
+                    default:
+                        break
+                    }
                 }
                 guard let current = drag else { return }
                 switch current.target {
                 case .scrub:
-                    hud.onSeek(c.axis.timelineTime(atKey: c.axis.snapped(current.layout.seconds(atX: gesture.location.x))))
+                    guard Self.moved(gesture.translation) else { return }
+                    let rect = CGRect(
+                        x: min(gesture.startLocation.x, gesture.location.x), y: min(gesture.startLocation.y, gesture.location.y),
+                        width: abs(gesture.translation.width), height: abs(gesture.translation.height)
+                    )
+                    lassoRect = rect
+                    let kept = SelectClick.lassoAdds(NSEvent.modifierFlags) || current.click != .only ? current.selectedBefore.items : []
+                    picked.lasso(lassoHits(rect, c, layout: current.layout), keeping: kept)
                 case .keyframe(let time, let component):
                     guard Self.moved(gesture.translation) else { return }
+                    // A keyframe Command- or Shift-dragged joins those picked.
+                    if !picked.contains(time) { picked.press(time, current.click) }
                     let (dx, dy) = constrained(gesture.translation)
                     let toward = dx == 0 ? time : c.axis.snapped(time.seconds + Double(dx) * current.layout.secondsPerPoint)
-                    let moved = movedKeyframe(time, component: component, toward: toward, dy: dy, in: current.original, layout: current.layout, c)
+                    let moved = movedKeyframes(
+                        picked.items, dragged: time, component: component, toward: toward, dy: dy, in: current.original, layout: current.layout, c
+                    )
                     draft = moved.value
-                    drag?.movedTo = moved.time
+                    drag?.moved = moved.moves
                 case .handle(let segment, let outgoing):
                     guard Self.moved(gesture.translation) else { return }
                     let alone = NSEvent.modifierFlags.contains(.option)
@@ -815,21 +883,58 @@ struct KeyframeGraphView: View {
                 defer {
                     draft = nil
                     drag = nil
+                    lassoRect = nil
                 }
                 if dragCancelled {
                     dragCancelled = false
                     return
                 }
-                // A scrub only seeks; it leaves nothing to save.
-                guard let current = drag, current.target != .scrub else { return }
-                if case .pull(let time) = current.target, !Self.moved(gesture.translation) {
+                guard let current = drag else { return }
+                let clicked = !Self.moved(gesture.translation)
+                switch current.target {
+                case .scrub:
+                    // A click in empty space moves the playhead there and,
+                    // without Shift or Command, selects nothing.
+                    guard clicked else { return }
+                    hud.onSeek(c.axis.timelineTime(atKey: c.axis.snapped(current.layout.seconds(atX: gesture.location.x))))
+                    if current.click == .only { picked.clear() }
+                case .keyframe(let time, _) where clicked:
+                    picked.click(time, current.click, in: current.original.keyframes.map(\.time))
+                case .pull(let time) where clicked:
                     // Option-click: linear becomes bezier, and bezier linear.
                     edit { $0.toggleBezier(at: time) }
-                } else if let draft, draft != current.original {
+                default:
+                    guard let draft, draft != current.original else { return }
                     commit(draft)
-                    if let movedTo = current.movedTo { selected = movedTo }
+                    if let moves = current.moved {
+                        picked.set(Set(moves.values), anchor: picked.anchor.flatMap { moves[$0] })
+                    }
                 }
             }
+    }
+
+    /// The keyframes with a point inside `rect`, on any component shown.
+    private func lassoHits(_ rect: CGRect, _ c: Context, layout: KeyframeGraphLayout) -> Set<CMTime> {
+        let shown = visible(c.value.value.values.count)
+        return Set(c.value.keyframes.filter { keyframe in
+            let x = layout.x(keyframe.time.seconds)
+            return shown.contains { component in
+                rect.contains(CGPoint(x: x, y: layout.y(keyframe.value.values[component] + c.offset[component], component: component)))
+            }
+        }.map(\.time))
+    }
+
+    @ViewBuilder
+    private var lassoOverlay: some View {
+        if let lassoRect {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(Design.accent.opacity(0.12))
+                .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Design.accent.opacity(0.9), lineWidth: 1) }
+                .frame(width: lassoRect.width, height: lassoRect.height)
+                .offset(x: lassoRect.minX, y: lassoRect.minY)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     /// A keyframe drag's movement across and up, which Shift keeps to one
@@ -852,44 +957,56 @@ struct KeyframeGraphView: View {
         }
     }
 
-    /// `original` with the keyframe at `time` moved toward `newTime`, kept
-    /// on frames and between its neighbors, and its `component` value
-    /// moved `dy` points down the plot; with the time it lands on.
-    private func movedKeyframe(
-        _ time: CMTime, component: Int, toward newTime: CMTime, dy: CGFloat, in original: AnimatedValue<ComponentValue>,
-        layout: KeyframeGraphLayout, _ c: Context
-    ) -> (value: AnimatedValue<ComponentValue>, time: CMTime) {
+    /// `original` with the keyframes at `times` moved together as the one
+    /// at `dragged` moves toward `newTime`: by as much in time, kept on
+    /// frames and clear of the keyframes not among them, and their
+    /// `component` values by as much as the dragged one's moves for `dy`
+    /// points down the plot. With where each landed, by where it was.
+    private func movedKeyframes(
+        _ times: Set<CMTime>, dragged time: CMTime, component: Int, toward newTime: CMTime, dy: CGFloat,
+        in original: AnimatedValue<ComponentValue>, layout: KeyframeGraphLayout, _ c: Context
+    ) -> (value: AnimatedValue<ComponentValue>, moves: [CMTime: CMTime]) {
         var result = original
-        guard let index = result.keyframes.firstIndex(where: { $0.time == time }) else { return (result, time) }
+        let times = times.filter { original.keyframe(at: $0) != nil }
+        guard let dragged = original.keyframe(at: time), times.contains(time) else { return (result, [:]) }
         let frame = c.axis.keyTime(atTimeline: c.axis.timelineTime(atKey: time) + c.timeline.frameDuration) - time
-        var newTime = newTime
-        if index > 0 { newTime = CMTimeMaximum(newTime, CMTimeAdd(result.keyframes[index - 1].time, frame)) }
-        if index < result.keyframes.count - 1 { newTime = CMTimeMinimum(newTime, CMTimeSubtract(result.keyframes[index + 1].time, frame)) }
+        let room = original.shiftRange(of: times, gap: frame)
+        let shift = CMTimeMinimum(CMTimeMaximum(CMTimeSubtract(newTime, time), room.lower), room.upper)
         if dy != 0 {
-            var moved = result.keyframes[index].value
-            let shown = moved.values[component] + c.offset[component]
+            let shown = dragged.value.values[component] + c.offset[component]
             let newShown = layout.value(atY: layout.y(shown, component: component) + dy, component: component)
-            moved.values[component] = key.parameter.clamped(newShown - c.offset[component], index: component)
-            result.set(moved, at: time)
+            let delta = key.parameter.clamped(newShown - c.offset[component], index: component) - dragged.value.values[component]
+            for t in times {
+                guard var moved = result.keyframe(at: t)?.value else { continue }
+                moved.values[component] = key.parameter.clamped(moved.values[component] + delta, index: component)
+                result.set(moved, at: t)
+            }
         }
-        result.moveKeyframe(at: time, to: newTime)
-        return (result, newTime)
+        var moves: [CMTime: CMTime] = [:]
+        for t in times {
+            let shifted = CMTimeAdd(t, shift)
+            moves[t] = t == time ? shifted : c.axis.snapped(shifted.seconds)
+        }
+        // Rounding onto frames must not bring two of them together.
+        if Set(moves.values).count < moves.count { moves = Dictionary(uniqueKeysWithValues: times.map { ($0, CMTimeAdd($0, shift)) }) }
+        result.moveKeyframes(moves)
+        return (result, moves)
     }
 
-    /// Moves the keyframe at `time` `frames` frames along and its first
+    /// Moves the keyframes at `times` `frames` frames along and their first
     /// shown component's value `points` up the plot, as a drag would, in
-    /// one edit, and selects it where it lands: the arrow keys' and
-    /// VoiceOver's way to drag it.
-    private func nudge(_ time: CMTime, frames: Int, points: CGFloat, _ c: Context, layout: KeyframeGraphLayout) {
-        guard drag == nil else { return }
+    /// one edit, and selects them where they land: the arrow keys' and
+    /// VoiceOver's way to drag them.
+    private func nudge(_ times: Set<CMTime>, frames: Int, points: CGFloat, _ c: Context, layout: KeyframeGraphLayout) {
+        guard drag == nil, let time = picked.anchor.flatMap({ times.contains($0) ? $0 : nil }) ?? times.min() else { return }
         var toward = time
         if frames != 0 {
             let moved = CMTimeAdd(c.axis.timelineTime(atKey: time), CMTimeMultiply(c.timeline.frameDuration, multiplier: Int32(frames)))
             toward = c.axis.snapped(c.axis.keyTime(atTimeline: moved).seconds)
         }
         let component = visible(c.value.value.values.count).first ?? 0
-        let moved = movedKeyframe(time, component: component, toward: toward, dy: -points, in: c.value, layout: layout, c)
-        selected = moved.time
+        let moved = movedKeyframes(times, dragged: time, component: component, toward: toward, dy: -points, in: c.value, layout: layout, c)
+        picked.set(Set(moved.moves.values), anchor: moved.moves[time])
         if moved.value != c.value { commit(moved.value) }
     }
 
@@ -935,6 +1052,13 @@ struct KeyframeGraphView: View {
         pointer.location = nil
         pointer.keyframe = nil
         NSCursor.arrow.set()
+        hud.skim(to: nil)
+    }
+
+    /// The timeline time a skim at `x` on the plot shows, on a frame.
+    private func skimTime(atX x: CGFloat, _ c: Context, layout: KeyframeGraphLayout) -> CMTime {
+        let time = c.axis.timelineTime(atKey: c.axis.snapped(layout.seconds(atX: x)))
+        return c.timeline.snappedToFrame(CMTimeMaximum(.zero, time))
     }
 
     // MARK: - Editing
@@ -962,12 +1086,13 @@ struct KeyframeGraphView: View {
     private func addKeyframeAtPlayhead(_ c: Context) {
         let time = c.axis.keyTime(atTimeline: c.timeline.snappedToFrame(hud.playhead))
         addKeyframe(at: time)
-        selected = time
+        picked.set([time], anchor: time)
     }
 
-    private func deleteKeyframe(at time: CMTime) {
-        edit { $0.removeKeyframe(at: time) }
-        selected = nil
+    private func deleteKeyframes(at times: [CMTime]) {
+        guard !times.isEmpty else { return }
+        edit { value in for time in times { value.removeKeyframe(at: time) } }
+        picked.clear()
     }
 
     private func edit(_ change: @escaping (inout AnimatedValue<ComponentValue>) -> Void) {
@@ -1091,7 +1216,7 @@ extension KeyframeGraphView {
         let offset: [Double]
         let layout: KeyframeGraphLayout
         let shown: [Int]
-        let selected: CMTime?
+        let selected: Set<CMTime>
         let handles: [Handle]
 
         var body: some View {
@@ -1115,7 +1240,7 @@ extension KeyframeGraphView {
                 let mark = marks[kind] ?? KeyframeMarkShape(easedIn: keyframe.easeIn != nil, easedOut: keyframe.easeOut != nil, holds: keyframe.hold)
                     .path(in: CGRect(x: -5, y: -5, width: 10, height: 10))
                 marks[kind] = mark
-                let fill = keyframe.time == selected ? Design.keyframe : Design.textSecondary
+                let fill = selected.contains(keyframe.time) ? Design.keyframe : Design.textSecondary
                 let x = layout.x(keyframe.time.seconds)
                 for component in shown {
                     let y = layout.y(keyframe.value.values[component] + offset[component], component: component)
@@ -1145,20 +1270,23 @@ extension KeyframeGraphView {
     }
 
     /// The right-click menu: eases and Delete for the keyframe under the
-    /// pointer, or else the selected one or the one at the playhead; with
-    /// none, a keyframe to add at the playhead.
+    /// pointer (and the others picked, when it is one of them), or else the
+    /// selected ones or the one at the playhead; with none, a keyframe to
+    /// add at the playhead.
     fileprivate struct GraphMenu: View {
         let pointer: GraphPointer
-        let fallback: () -> CMTime?
-        let onEase: (KeyframeEase.Preset, CMTime) -> Void
-        let onDelete: (CMTime) -> Void
+        /// What the menu acts on, given the keyframe under the pointer.
+        let targets: (CMTime?) -> [CMTime]
+        let onEase: (KeyframeEase.Preset, [CMTime]) -> Void
+        let onDelete: ([CMTime]) -> Void
         let onAdd: () -> Void
 
         var body: some View {
-            if let time = pointer.keyframe ?? fallback() {
-                KeyframeEaseMenuItems { onEase($0, time) }
+            let times = targets(pointer.keyframe)
+            if !times.isEmpty {
+                KeyframeEaseMenuItems { onEase($0, times) }
                 Divider()
-                Button("Delete Keyframe", role: .destructive) { onDelete(time) }
+                Button(times.count == 1 ? "Delete Keyframe" : "Delete \(times.count) Keyframes", role: .destructive) { onDelete(times) }
             } else {
                 Button("Add Keyframe at Playhead", action: onAdd)
             }
@@ -1175,33 +1303,55 @@ private final class GraphPointer {
     var keyframe: CMTime?
 }
 
+/// Turns the graph editors' skimming on or off (`KeyframeGraphHUDs.skims`):
+/// on, the viewer shows the frame under the pointer as it moves over a
+/// graph, as on the timeline.
+struct GraphSkimToggle: View {
+    @Bindable var hud: KeyframeGraphHUDs
+
+    var body: some View {
+        Toggle(isOn: $hud.skims) { Image(systemName: Design.Symbol.skim) }
+            .toggleStyle(.icon)
+            .help(hud.skims ? "Skimming on: the viewer shows the frame under the pointer" : "Skimming off: the viewer shows the playhead")
+            .accessibilityLabel("Skimming")
+    }
+}
+
 /// Which keyframe the ease presets act on, and the presets: on a graph's
 /// own row, or for a linked panel on its top row, where the keyframe is
 /// named with its graph (`named`).
 struct KeyframeEasePresets: View {
     let hud: KeyframeGraphHUDs
     let key: ParameterKey
-    let target: CMTime?
+    /// The keyframes the presets act on, in time order.
+    let targets: [CMTime]
     let axis: ParameterTimeAxis
     let timeline: Timeline
     var named = false
 
+    private var description: String {
+        switch targets.count {
+        case 0: "No keyframe selected"
+        case 1: "Keyframe \(axis.timelineTime(atKey: targets[0]).timecode(frameRate: timeline.frameRate))"
+        default: "\(targets.count) keyframes"
+        }
+    }
+
     var body: some View {
         let title = named ? "\(hud.project.parameterTitle(of: key)) · " : ""
-        Text(target.map { "\(title)Keyframe \(axis.timelineTime(atKey: $0).timecode(frameRate: timeline.frameRate))" } ?? "\(title)No keyframe selected")
+        Text(title + description)
             .foregroundStyle(Design.textTertiary)
             .lineLimit(1)
             .truncationMode(named ? .middle : .tail)
         ForEach(KeyframeEase.Preset.allCases) { preset in
             Button(preset.name) {
-                guard let target else { return }
-                let key = key
-                hud.onEdit { $0.editComponents(of: key) { $0.applyEase(preset, at: target) } }
+                let key = key, targets = targets
+                hud.onEdit { $0.editComponents(of: key) { value in for time in targets { value.applyEase(preset, at: time) } } }
             }
             .help(preset.detail + (preset.shortcutHint.map { " (\($0) on the timeline)" } ?? ""))
             .fixedSize()
         }
-        .disabled(target == nil)
+        .disabled(targets.isEmpty)
     }
 }
 

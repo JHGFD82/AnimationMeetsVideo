@@ -45,11 +45,9 @@ extension EffectsPanel {
                     .disabled(clip.anchorPoint == AnimatedValue(Vector2.zero))
             },
             lane: ParameterLane(
-                marks: clip.anchorPoint.marks, geometry: c.geometry, playhead: c.frameTime(animated: animated), height: EffectsPanelMetrics.rowHeight,
-                onSeek: onSeek,
-                onMove: { from, to, copy in editClip(clip.id) { $0.anchorPoint.moveKeyframe(at: from, to: to, copying: copy) } },
-                onDelete: { time in editClip(clip.id) { $0.anchorPoint.removeKeyframe(at: time) } },
-                onEase: { time, preset in editClip(clip.id) { $0.anchorPoint.applyEase(preset, at: time) } }
+                id: key, marks: clip.anchorPoint.marks, geometry: c.geometry, playhead: c.frameTime(animated: animated),
+                height: EffectsPanelMetrics.rowHeight, onSeek: onSeek,
+                edits: LaneKeyframeEdits { (change: @escaping (inout AnimatedValue<Vector2>) -> Void) in editClip(clip.id) { change(&$0.anchorPoint) } }
             )
         )
         .help(clip.source == .graphic
@@ -103,7 +101,7 @@ extension EffectsPanel {
                         isFlagged: !effect.pasteChanges.isEmpty,
                         onToggleCollapsed: { state.toggleCollapsed(effect.id) },
                         onSetEnabled: { value in editEffect(effect.id, in: clip) { $0.enabled = value } },
-                        onSelect: { state.select(effect: effect.id) },
+                        onSelect: { state.click(effect: effect.id, in: rowOrder(clip)) },
                         onRename: { name in editEffect(effect.id, in: clip) { $0.name = name } },
                         isRenaming: Binding(
                             get: { renamingEffectID == effect.id },
@@ -157,7 +155,8 @@ extension EffectsPanel {
                 }
             }
         }
-        .selectedRow(state.selectedEffectID == effect.id && state.selectedControlID == nil)
+        .selectedRow(state.isPicked(effect.id))
+        .rowPicking(isSelected: state.isPicked(effect.id), onToggle: { state.click(effect: effect.id, in: rowOrder(clip), as: .toggle) })
         // A drawing isn't a place in the stack to drop at or move.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(EffectStackLayout.space)) } action: { frame in
             if isDrawing { stackLayout.effects[effect.id] = nil } else { stackLayout.effects[effect.id] = frame }

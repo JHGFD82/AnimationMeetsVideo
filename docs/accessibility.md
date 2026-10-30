@@ -59,7 +59,7 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | , / . | Nudge the selected clip a frame earlier or later; ten with Shift |
 | Delete | Delete the selected section, layer, transition, clip, or the clips picked together |
 | Escape | Select nothing (no clip, layer, section or lasso); not during a value drag, or a clip's move, trim or slip, which it cancels |
-| ⌘A | Pick every clip of the timeline together, for Cut, Copy, Duplicate, Delete and Put Selection in New Timeline (a lasso picks some with the pointer; a clip's VoiceOver actions Add to selection and Remove from selection do it one clip at a time) |
+| ⌘A | Pick every clip of the timeline together, for Cut, Copy, Duplicate, Delete, the nudge keys and Put Selection in New Timeline (a lasso, Command-click and Shift-click pick some with the pointer; a clip's VoiceOver actions Add to selection and Remove from selection do it one clip at a time, and Move selection one frame earlier or later moves them) |
 | ⌘X / ⌘C / ⌘V / ⌘D | Cut, copy, paste at the playhead, or duplicate the selected clip, or all the clips picked together (or the selected effect in the effects panel); also in the Edit menu |
 | A / B / Y | Arrow, blade and slip tools |
 | N | Snapping on or off |
@@ -112,13 +112,26 @@ playhead to the middle of the view when it lands out of view.
   ("Position X") and their value; pressing one opens it for typing
   (`NumericField`'s `accessibilityName`).
 
+### Effects panel lanes
+
+- **Keyframes** in the lanes read their time and ease, and whether they
+  are picked and at the playhead. Pressing one picks it and moves the
+  playhead to it; its actions add it to or remove it from what is picked,
+  move it (with the others picked) a frame earlier or later, ease it and
+  delete it. ⌘A picks every keyframe, ← → move the picked ones, Delete
+  deletes them and Escape lets go (see [effects.md](effects.md#keyframes-in-the-panel)).
+- **Effect and control rows** read as selected while picked and have Add
+  to selection or Remove from selection, as Command-click.
+
 ### Keyframe graph editor
 
 - **The graph** reads as its parameter and keyframe count, and holds an
   element per keyframe ("Keyframe at 00:00:02:00, X 400 px, Y 60 px").
   Pressing one selects it; adjusting it moves it a frame; its actions are
-  the ease presets, a frame earlier or later, raise or lower its value,
-  and Delete. The graph's own action adds a keyframe at the playhead.
+  Add to selection (or Remove from selection), the ease presets, a frame
+  earlier or later, raise or lower its value, and Delete. The arrow keys
+  then move every keyframe picked. The graph's own action adds a keyframe
+  at the playhead.
 - Its **keys** (arrows, Delete, Escape) are listed in
   [layer-transforms.md](layer-transforms.md#graph-editor).
 - The component chips, zoom sliders and Fit button read as controls. In a
