@@ -275,6 +275,38 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         keyframes = Self.normalized(keyframes)
     }
 
+    /// Moves several keyframes at once, each from a time to another, with
+    /// their eases: a selection dragged or nudged together. Any other
+    /// keyframe where one lands is replaced.
+    mutating func moveKeyframes(_ moves: [CMTime: CMTime]) {
+        guard moves.contains(where: { $0.key != $0.value }) else { return }
+        let landing = Set(moves.values)
+        keyframes = Self.normalized(keyframes.compactMap { keyframe in
+            if let to = moves[keyframe.time] {
+                var moved = keyframe
+                moved.time = to
+                return moved
+            }
+            return landing.contains(keyframe.time) ? nil : keyframe
+        })
+    }
+
+    /// How far the keyframes at `times` can move together, as a range of
+    /// shifts that keeps each at least `gap` from the keyframes not among
+    /// them, so they never pass or land on one.
+    func shiftRange(of times: Set<CMTime>, gap: CMTime) -> (lower: CMTime, upper: CMTime) {
+        var lower = CMTime.negativeInfinity, upper = CMTime.positiveInfinity
+        for (index, keyframe) in keyframes.enumerated() where times.contains(keyframe.time) {
+            if let before = keyframes[..<index].last(where: { !times.contains($0.time) }) {
+                lower = CMTimeMaximum(lower, CMTimeSubtract(CMTimeAdd(before.time, gap), keyframe.time))
+            }
+            if let after = keyframes[(index + 1)...].first(where: { !times.contains($0.time) }) {
+                upper = CMTimeMinimum(upper, CMTimeSubtract(CMTimeSubtract(after.time, gap), keyframe.time))
+            }
+        }
+        return (lower, upper)
+    }
+
     /// Moves every keyframe to `move(time)`, with its eases. Keyframes that
     /// land on the same time merge, keeping the later one.
     mutating func moveKeyframeTimes(_ move: (CMTime) -> CMTime) {

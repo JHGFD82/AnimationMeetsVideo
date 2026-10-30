@@ -102,6 +102,31 @@ private func seconds(_ value: Double) -> CMTime {
         value.set(20, at: seconds(2))
         #expect(value.keyframes.map(\.time) == [seconds(1), seconds(2), seconds(3)])
     }
+
+    /// Four keyframes a second apart, valued 0, 10, 20, 30.
+    private func four() -> AnimatedValue<Double> {
+        var value = AnimatedValue(0.0)
+        value.setAnimated(true, at: seconds(0))
+        for i in 1...3 { value.set(Double(i * 10), at: seconds(Double(i))) }
+        return value
+    }
+
+    @Test func severalKeyframesMoveTogetherWithTheirEases() {
+        var value = four()
+        value.applyEase(.easyEase, at: seconds(1))
+        value.moveKeyframes([seconds(1): seconds(1.5), seconds(2): seconds(2.5)])
+        #expect(value.keyframes.map(\.time) == [seconds(0), seconds(1.5), seconds(2.5), seconds(3)])
+        #expect(value.keyframes[1].value == 10 && value.keyframes[1].easeIn == .easy)
+    }
+
+    @Test func picksMayMoveOnlyUpToTheirNeighbors() {
+        let value = four()
+        let room = value.shiftRange(of: [seconds(1), seconds(2)], gap: seconds(0.25))
+        #expect(room.lower == seconds(-0.75))
+        #expect(room.upper == seconds(0.75))
+        // With nothing after them, they may go on.
+        #expect(value.shiftRange(of: [seconds(3)], gap: seconds(0.25)).upper == .positiveInfinity)
+    }
 }
 
 @Suite struct TransformStackTests {

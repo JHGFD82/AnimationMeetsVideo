@@ -126,6 +126,15 @@ window.
 - **Click a keyframe** to select it. The handles of its eased sides
   appear, drawn against the component that changes most over that
   segment. A linear side has no handle.
+- **Pick several** as in the timeline (see
+  [timeline.md](timeline.md#selecting-several-clips)): **Command-click**
+  adds a keyframe or takes it out, **Shift-click** picks the keyframes
+  from the one last clicked, in time, and **dragging in empty space**
+  draws a lasso round the points to pick (with Shift or Command, adding to
+  what is picked). **⌘A** picks every keyframe, and **Escape**, when no
+  drag is going on, picks none. Handles show only with one keyframe
+  picked. What a keyframe is dragged, nudged, eased or deleted with
+  applies to every keyframe picked.
 - **Drag a handle** to shape that side's ease: across sets its influence,
   up and down its speed. A handle can't leave its segment in time; it can
   overshoot in value. Over a segment whose value doesn't change only its
@@ -144,7 +153,11 @@ window.
   linear one gets Easy Ease on both sides, and one with either side eased
   goes linear (`AnimatedValue.toggleBezier`).
 - **Drag a keyframe** to move it in time (on frames, never past a
-  neighbor) and in that component's value; Shift keeps the drag to
+  neighbor) and in that component's value, with every other keyframe
+  picked: as far in time (never past a keyframe not picked) and as far
+  in that component's value (`AnimatedValue.moveKeyframes`,
+  `shiftRange`). A plain press on a keyframe not picked picks it alone
+  first; one already picked keeps the rest. Shift keeps the drag to
   whichever direction it has moved most once it has gone four points,
   for the rest of the drag. A keyframe or handle moves only once the drag
   has gone two points, so a click selects without editing. **Escape**
@@ -152,18 +165,21 @@ window.
 - Where a handle and its keyframe are both in reach (8 points), the
   keyframe takes the click unless the handle is more than 2 points
   nearer. Over the graph, a white ring marks what a click would take and
-  the pointer is a hand; over empty plot it is a left-right arrow.
-- **Click elsewhere** to move the playhead there, and drag to scrub.
+  the pointer is a hand; over empty plot it is a crosshair.
+- **Click elsewhere** to move the playhead there and pick nothing (with
+  Shift or Command, the keyframes picked stay). Dragging there draws a
+  lasso rather than scrubbing.
   **Double-click** to add a keyframe there, or select the one already
   there; a double-click never deletes.
 - **Keys**, once the graph has been clicked: ← and → move the selected
-  keyframe a frame (ten with Shift), as a drag would; ↑ and ↓ move its
+  keyframes a frame (ten with Shift), as a drag would; ↑ and ↓ move their
   first shown component's value a point on screen (ten with Shift);
-  **Delete** deletes the selected keyframe, or the one at the playhead.
-- The **preset buttons** along the top act on the selected keyframe, or
+  **Delete** deletes the selected keyframes, or the one at the playhead.
+- The **preset buttons** along the top act on the selected keyframes, or
   else the one at the playhead. The right-click menu (with **Delete
-  Keyframe**) acts on the keyframe under the pointer, or else the same;
-  with no keyframe to act on it offers **Add Keyframe at Playhead**.
+  Keyframe**) acts on the keyframe under the pointer, with the others
+  picked when it is one of them, or else the same; with no keyframe to act
+  on it offers **Add Keyframe at Playhead**.
 
 The graph starts fitted to the keyframes, their curves and their handles
 (`KeyframeGraphLayout`), and keeps its scale while a drag is in progress,

@@ -117,8 +117,10 @@ playhead to the middle of the view when it lands out of view.
 - **The graph** reads as its parameter and keyframe count, and holds an
   element per keyframe ("Keyframe at 00:00:02:00, X 400 px, Y 60 px").
   Pressing one selects it; adjusting it moves it a frame; its actions are
-  the ease presets, a frame earlier or later, raise or lower its value,
-  and Delete. The graph's own action adds a keyframe at the playhead.
+  Add to selection (or Remove from selection), the ease presets, a frame
+  earlier or later, raise or lower its value, and Delete. The arrow keys
+  then move every keyframe picked. The graph's own action adds a keyframe
+  at the playhead.
 - Its **keys** (arrows, Delete, Escape) are listed in
   [layer-transforms.md](layer-transforms.md#graph-editor).
 - The component chips, zoom sliders and Fit button read as controls. In a
