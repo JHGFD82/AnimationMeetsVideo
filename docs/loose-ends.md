@@ -50,7 +50,8 @@ Built and tested in code, never run on screen.
   the Keyboard Shortcuts window, the start sheet's recent projects.
 - [ ] **Earlier in the PR**: the title bar's name, proxy icon and edited
   dot; File > Import Media and Export; Open Recent and the start sheet;
-  Locate… and Check Sync…; Export Finished with Show in Finder.
+  Locate… and Check Sync…; the Export window's finished note with Show
+  in Finder.
 
 ## Known gaps
 

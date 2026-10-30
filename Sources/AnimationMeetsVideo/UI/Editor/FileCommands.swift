@@ -22,7 +22,7 @@ extension FocusedValues {
         set { self[ImportMediaKey.self] = newValue }
     }
 
-    /// The toolbar's Export, nil while an export runs.
+    /// The toolbar's Export…, which opens the Export window.
     var exportTimeline: FileMenuAction? {
         get { self[ExportKey.self] }
         set { self[ExportKey.self] = newValue }

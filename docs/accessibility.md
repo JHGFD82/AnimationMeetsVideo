@@ -31,8 +31,13 @@ the **Timeline** menu (`TimelineCommands`). Keys without a modifier are
 written after the item's name rather than set as menu shortcuts, since a
 menu shortcut would take the key from a text field; ⌘B and ⇧⌘B are real
 shortcuts. The keys are left alone while text is being typed, and the
-arrow, Home and End keys also while a list or other control has the
-keyboard (the browser's Clips list uses the arrows).
+arrow, Home and End keys also while a list or other control that uses
+them has the keyboard (the browser's Clips list, a slider, a menu, which
+opens on ↑ and ↓): a button or checkbox left with the keyboard passes
+them on to the playhead (`TimelineView.keepsArrowKeys`). So the editor's
+outer rails hold no menus that would keep them: the export's format and
+sound are picked in a window of their own (`ExportWindow`, from the
+toolbar's Export… or ⌘E), which has the keys only while it is in front.
 
 A one-line field that starts being edited has its whole value selected,
 however editing starts (a click on the field, a click on a value or

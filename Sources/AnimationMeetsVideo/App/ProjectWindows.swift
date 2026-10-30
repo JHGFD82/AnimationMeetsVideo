@@ -136,9 +136,11 @@ final class ProjectWindows {
 
     // MARK: - Quitting
 
-    /// Each project with unsaved changes is offered for saving, in turn;
-    /// cancelling any keeps the app open.
+    /// Running exports are offered to keep going, then each project with
+    /// unsaved changes for saving, in turn; keeping an export or
+    /// cancelling a save keeps the app open.
     func shouldTerminate() -> NSApplication.TerminateReply {
+        guard ExportWindow.confirmStopping(ExportWindow.runningAnywhere, because: "Quitting") else { return .terminateCancel }
         let unsaved = sessions.filter { $0.hasUnsavedChanges && $0.projectURL != nil }
         isTerminating = true
         guard !unsaved.isEmpty else { return .terminateNow }
