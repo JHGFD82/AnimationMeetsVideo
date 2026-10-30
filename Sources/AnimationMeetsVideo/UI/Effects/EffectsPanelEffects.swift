@@ -143,6 +143,9 @@ extension EffectsPanel {
                         )
                     }
                 }
+                if effect.kind == .audioKeys {
+                    audioKeysPreview(effect, c, dimmed: dimmed)
+                }
                 if effect.kind.isKeyframing {
                     keyframingRows(effect, c, effectDimmed: dimmed)
                 }

@@ -309,9 +309,10 @@ In order, each step usable on its own:
    Attack and Release (0 and 200 ms, time constants of the envelope),
    Output (from and to), Curve and Tolerance, and its setup's
    `audioSource` (saved as `listensToMix`, `listensToLayer` or
-   `listensToClip`). The effects panel has a Listen To row and a
-   **Spectrum…** button; the spectrum isn't drawn in the panel, so a stack
-   of them costs nothing to show. The button opens the effect's editor
+   `listensToClip`). The effects panel has a Listen To row and draws the
+   box small under the header, as every effect's graph is there
+   (`EffectGraphPreview`); the spectrum isn't drawn in the panel, so a
+   stack of them costs nothing to show. Clicking it opens the effect's editor
    (`AudioKeysEditor`) in a floating panel beside the graph editors
    (`KeyframeGraphHUDs.showAudioKeys`), with Listen To, what it drives and
    Bake Keyframes along the top, `AudioKeysGraph` filling it, and every

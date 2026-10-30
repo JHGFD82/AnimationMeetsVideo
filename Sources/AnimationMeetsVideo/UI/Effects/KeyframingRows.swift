@@ -101,9 +101,29 @@ extension EffectsPanel {
 
     // MARK: Rows
 
-    /// Bake, which is too important to sit only in the ⋯ menu, and for
-    /// Audio Keys the button that opens its spectrum and box. Drawing the
-    /// spectrum here for every effect would cost too much to keep up.
+    /// Audio Keys' box drawn small under its header, at the playhead, which
+    /// a click opens in the effect's editor (`AudioKeysEditor`). The sound
+    /// under the box is read only there: reading it for every one in a
+    /// stack would cost too much to keep up.
+    func audioKeysPreview(_ effect: Effect, _ c: RowContext, dimmed: Bool) -> some View {
+        let key = AudioKeysEditorKey(timelineID: timelineID, clipID: c.clip.id, effectID: effect.id)
+        return PlayheadReader(playhead: playhead) { _ in
+            let time = c.sourceNow(animated: true)
+            let frequencies = effect.control(.frequencyRange)?.values(at: time) ?? ControlKind.frequencyRange.defaultValues
+            let levels = effect.control(.levelRange)?.values(at: time) ?? ControlKind.levelRange.defaultValues
+            besideLane(
+                EffectGraphPreview(name: effect.displayName, onOpen: graphs.map { graphs in { graphs.showAudioKeys(key) } }) {
+                    AudioKeysGraph(
+                        bands: [], frequencies: (frequencies[0], frequencies[1]), levels: (levels[0], levels[1]),
+                        isDimmed: dimmed, onSetFrequencies: { _, _ in }, onSetLevels: { _, _ in }
+                    )
+                }
+            )
+        }
+    }
+
+    /// Bake, which is too important to sit only in the ⋯ menu. Audio Keys'
+    /// editor opens from its graph, above (`graphPreview`).
     private func keyframingActions(_ effect: Effect, _ c: RowContext) -> some View {
         HStack(spacing: 6) {
             Button("Bake Keyframes") {
@@ -111,14 +131,6 @@ extension EffectsPanel {
                 if state.selectedEffectID == effect.id { state.clear() }
             }
             .help("Remove the effect and keep its keyframes as plain keyframes")
-            if effect.kind == .audioKeys, let graphs {
-                Button {
-                    graphs.showAudioKeys(AudioKeysEditorKey(timelineID: timelineID, clipID: c.clip.id, effectID: effect.id))
-                } label: {
-                    Label("Spectrum…", systemImage: "waveform.badge.magnifyingglass")
-                }
-                .help("Open the spectrum to drag the box, adjust every setting and watch the sound as it plays")
-            }
             Spacer(minLength: 0)
         }
         .font(Design.Typeface.label)
