@@ -268,6 +268,17 @@ its time-jumped notification, so following needs no per-frame check. The view op
 Moving the playhead from the keyboard scrolls it to the middle when it
 lands out of view.
 
+Each timeline **keeps its playhead**. Opening another timeline (from the
+browser, the header's menu, or into and out of a nested one) stops
+playing, and the timeline opens at the playhead it had when it was last
+open, which the viewer shows: where playing had reached, if it was
+playing. That time is held back to the timeline's end if an edit since
+shortened it. A timeline not opened before in the window starts at 0.
+The times are kept by the editor surface (`parkedTimes` in
+`TimelineEditorSurface`) for as long as its window is open. They aren't
+saved with the project, so moving the playhead never counts as an edit.
+A second display's own timeline keeps its own.
+
 ### Skimming
 
 While a dialog is open over the window (New Timeline, Timeline

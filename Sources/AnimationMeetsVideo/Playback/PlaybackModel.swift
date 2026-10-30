@@ -493,6 +493,21 @@ final class PlaybackModel {
         move(to: time)
     }
 
+    /// Another timeline is shown, from `time`: playing and tape scrubbing
+    /// stop, and the playhead goes there. Nothing is seeked: the timeline's
+    /// item is swapped in at `time` (`ViewerPipeline`), and a skim or seek
+    /// of the one before is let go, which would otherwise take the new
+    /// item to a time of the old timeline.
+    func showTimeline(from time: CMTime) {
+        if isTapeScrubbing { stopTape() }
+        if isPlaying || player.rate != 0 { player.pause() }
+        pendingSeek = nil
+        skimTime = nil
+        playerIsSkimmed = false
+        tapeScrub.cue(time.seconds)
+        currentTime = time
+    }
+
     /// Moves the playhead and seeks the player, playing a grain of the
     /// mix there unless the tape scrubber is playing it already.
     private func move(to time: CMTime, playsGrain: Bool = true) {

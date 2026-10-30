@@ -88,4 +88,23 @@ import Testing
 
         #expect(playback.skimTime == nil)
     }
+
+    @Test func showingAnotherTimelineLetsTheSkimGoAndParksThePlayhead() async throws {
+        let (playback, url) = try await makePlayback(parkedAt: 1)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        playback.skim(to: seconds(3))
+        playback.showTimeline(from: seconds(2))
+        #expect(playback.skimTime == nil)
+        #expect(playback.currentTime == seconds(2))
+
+        // The item swapped in for the other timeline isn't sent back to the
+        // playhead or skim of the one before.
+        playback.player.replaceCurrentItem(with: AVPlayerItem(asset: AVURLAsset(url: url)))
+        await playback.player.seek(to: seconds(2), toleranceBefore: .zero, toleranceAfter: .zero)
+        playback.endSkim()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(abs(playback.player.currentTime().seconds - 2) < 0.001)
+        #expect(playback.currentTime == seconds(2))
+    }
 }
