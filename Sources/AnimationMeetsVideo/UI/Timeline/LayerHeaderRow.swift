@@ -72,7 +72,11 @@ struct LayerHeaderRow: View {
                     .font(Design.Typeface.label)
                     .textFieldStyle(.plain)
                     .focused($isNameFieldFocused)
+                    // A click on the timeline doesn't take focus, so it
+                    // ends the edit itself.
+                    .background(OutsideClickMonitor(onOutsideClick: commitRename))
                     .onSubmit { commitRename() }
+                    .onExitCommand { isEditingName = false }
                     .onAppear { isNameFieldFocused = true }
                     // onSubmit only fires on Return — clicking away to end
                     // editing without pressing Return previously left the
