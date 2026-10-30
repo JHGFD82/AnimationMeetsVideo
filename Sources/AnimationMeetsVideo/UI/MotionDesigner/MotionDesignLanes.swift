@@ -513,17 +513,39 @@ struct MotionDesignLanes: View {
         return best?.id
     }
 
-    /// The clip whose line passes near `location`, and the time there.
+    /// The clip whose line passes near `location`, and the time of its
+    /// nearest spot. Near is measured to the line as drawn, not straight up
+    /// or down: zoomed out, a line climbs steeply, and the height under the
+    /// pointer changes by more than the reach from one point across to the
+    /// next.
     private func line(at location: CGPoint, stack: Stack) -> (piece: UUID, time: Double)? {
-        let seconds = session.seconds(atX: location.x)
-        let time = CMTime(seconds: seconds, preferredTimescale: ClipTimeMap.timescale)
+        let reach: CGFloat = 12
+        var best: (piece: UUID, x: CGFloat, distance: CGFloat)?
         for (index, piece) in session.run.pieces.enumerated() {
             let clip = session.drafted(piece)
-            guard clip.startOffset <= time, time <= clip.endOffset else { continue }
-            let y = stack.y(piece: index, source: clip.sourceTime(atTimelineTime: time))
-            if abs(y - location.y) <= 12 { return (piece.id, seconds) }
+            let start = max(session.x(of: clip.startOffset.seconds), location.x - reach)
+            let end = min(session.x(of: clip.endOffset.seconds), location.x + reach)
+            guard end >= start else { continue }
+            func spot(_ x: CGFloat) -> CGPoint {
+                let time = CMTime(seconds: session.seconds(atX: x), preferredTimescale: ClipTimeMap.timescale)
+                let source = CMTimeClampToRange(clip.sourceTime(atTimelineTime: time), range: CMTimeRange(start: clip.trimStart, end: clip.trimEnd))
+                return CGPoint(x: x, y: stack.y(piece: index, source: source))
+            }
+            var a = spot(start)
+            var x = start
+            repeat {
+                x = min(x + 1, end)
+                let b = spot(x)
+                // The nearest place on the segment from a to b.
+                let dx = b.x - a.x, dy = b.y - a.y
+                let along = dx == 0 && dy == 0 ? 0 : (((location.x - a.x) * dx + (location.y - a.y) * dy) / (dx * dx + dy * dy)).clamped(between: 0, and: 1)
+                let near = CGPoint(x: a.x + along * dx, y: a.y + along * dy)
+                let distance = hypot(near.x - location.x, near.y - location.y)
+                if distance <= reach, distance < (best?.distance ?? .infinity) { best = (piece.id, near.x, distance) }
+                a = b
+            } while x < end
         }
-        return nil
+        return best.map { ($0.piece, session.seconds(atX: $0.x)) }
     }
 
     /// What a press at `location` takes hold of: a selected point's ease
