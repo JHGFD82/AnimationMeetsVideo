@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-before-commit.sh",
-            "timeout": 900,
+            "timeout": 300,
             "statusMessage": "Building and testing before the commit"
           }
         ]
