@@ -295,16 +295,7 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
     /// shifts that keeps each at least `gap` from the keyframes not among
     /// them, so they never pass or land on one.
     func shiftRange(of times: Set<CMTime>, gap: CMTime) -> (lower: CMTime, upper: CMTime) {
-        var lower = CMTime.negativeInfinity, upper = CMTime.positiveInfinity
-        for (index, keyframe) in keyframes.enumerated() where times.contains(keyframe.time) {
-            if let before = keyframes[..<index].last(where: { !times.contains($0.time) }) {
-                lower = CMTimeMaximum(lower, CMTimeSubtract(CMTimeAdd(before.time, gap), keyframe.time))
-            }
-            if let after = keyframes[(index + 1)...].first(where: { !times.contains($0.time) }) {
-                upper = CMTimeMinimum(upper, CMTimeSubtract(CMTimeSubtract(after.time, gap), keyframe.time))
-            }
-        }
-        return (lower, upper)
+        KeyframeTimes.shiftRange(of: times, among: keyframes.map(\.time), gap: gap)
     }
 
     /// Moves every keyframe to `move(time)`, with its eases. Keyframes that
@@ -361,5 +352,25 @@ extension Timeline {
     /// sit on frames so two edits at the same playhead hit the same keyframe.
     func snappedToFrame(_ time: CMTime) -> CMTime {
         CMTimeMaximum(.zero, frameAligned(time, .nearest))
+    }
+}
+
+/// Working out where keyframes picked together can go, by their times
+/// alone, for a value or for a lane of the effects panel.
+enum KeyframeTimes {
+    /// How far the `picked` among `times` (in order) can move together, as
+    /// a range of shifts that keeps each at least `gap` from the times not
+    /// picked, so they never pass or land on one.
+    static func shiftRange(of picked: Set<CMTime>, among times: [CMTime], gap: CMTime) -> (lower: CMTime, upper: CMTime) {
+        var lower = CMTime.negativeInfinity, upper = CMTime.positiveInfinity
+        for (index, time) in times.enumerated() where picked.contains(time) {
+            if let before = times[..<index].last(where: { !picked.contains($0) }) {
+                lower = CMTimeMaximum(lower, CMTimeSubtract(CMTimeAdd(before, gap), time))
+            }
+            if let after = times[(index + 1)...].first(where: { !picked.contains($0) }) {
+                upper = CMTimeMinimum(upper, CMTimeSubtract(CMTimeSubtract(after, gap), time))
+            }
+        }
+        return (lower, upper)
     }
 }

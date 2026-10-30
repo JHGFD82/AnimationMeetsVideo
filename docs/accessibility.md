@@ -112,6 +112,17 @@ playhead to the middle of the view when it lands out of view.
   ("Position X") and their value; pressing one opens it for typing
   (`NumericField`'s `accessibilityName`).
 
+### Effects panel lanes
+
+- **Keyframes** in the lanes read their time and ease, and whether they
+  are picked and at the playhead. Pressing one picks it and moves the
+  playhead to it; its actions add it to or remove it from what is picked,
+  move it (with the others picked) a frame earlier or later, ease it and
+  delete it. ⌘A picks every keyframe, ← → move the picked ones, Delete
+  deletes them and Escape lets go (see [effects.md](effects.md#keyframes-in-the-panel)).
+- **Effect and control rows** read as selected while picked and have Add
+  to selection or Remove from selection, as Command-click.
+
 ### Keyframe graph editor
 
 - **The graph** reads as its parameter and keyframe count, and holds an

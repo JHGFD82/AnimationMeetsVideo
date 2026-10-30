@@ -82,12 +82,10 @@ extension EffectsPanel {
             )
             .padding(.horizontal, 8),
             lane: ParameterLane(
-                marks: (projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] ?? value).marks,
+                id: key, marks: (projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] ?? value).marks,
                 geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated), height: EffectsPanelMetrics.rowHeight,
                 onSeek: onSeek,
-                onMove: { from, to, copy in editClip(clip.id) { $0[keyPath: keyPath].moveKeyframe(at: from, to: to, copying: copy) } },
-                onDelete: { time in editClip(clip.id) { $0[keyPath: keyPath].removeKeyframe(at: time) } },
-                onEase: { time, preset in editClip(clip.id) { $0[keyPath: keyPath].applyEase(preset, at: time) } }
+                edits: LaneKeyframeEdits { (change: @escaping (inout AnimatedValue<Double>) -> Void) in editClip(clip.id) { change(&$0[keyPath: keyPath]) } }
             )
         )
     }

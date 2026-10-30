@@ -57,9 +57,12 @@ struct ClipLaneGeometry {
 }
 
 /// A control's keyframes in a lane of the effects panel: the same diamonds
-/// and interactions as the timeline's lanes. Times going in and out of the
-/// callbacks are source times.
+/// and interactions as the timeline's lanes, picked with the other lanes'
+/// keyframes (`LaneKeyframePicks`, from the environment). Times going in
+/// and out of the edits are source times.
 struct ParameterLane: View {
+    /// The parameter the lane shows, which names it among the lanes.
+    let id: ParameterKey
     /// The keyframes, with source times.
     let marks: [KeyframeMark]
     let geometry: ClipLaneGeometry
@@ -67,16 +70,20 @@ struct ParameterLane: View {
     let playhead: CMTime
     let height: CGFloat
     let onSeek: (CMTime) -> Void
-    /// From, to, and whether Option copies it instead.
-    let onMove: (CMTime, CMTime, Bool) -> Void
-    let onDelete: (CMTime) -> Void
-    let onEase: (CMTime, KeyframeEase.Preset) -> Void
+    let edits: LaneKeyframeEdits
+
+    @Environment(LaneKeyframePicks.self) private var picks: LaneKeyframePicks?
 
     var body: some View {
         let clip = geometry.clip
         let inside = marks.filter { $0.time >= clip.trimStart && $0.time <= clip.trimEnd }
         let before = marks.filter { $0.time < clip.trimStart }.count
         let after = marks.filter { $0.time > clip.trimEnd }.count
+        // Each diamond's source time, by its time in the lane, so a pick
+        // names the keyframe exactly.
+        let sources = Dictionary(inside.map { (geometry.lane(fromSource: $0.time), $0.time) }, uniquingKeysWith: { first, _ in first })
+        let source = { (lane: CMTime) in sources[lane] ?? geometry.source(fromLane: lane) }
+        let _ = picks?.register(id, times: marks.map(\.time), geometry: geometry, edits: edits)
         KeyframeLane(
             marks: inside.map {
                 KeyframeMark(
@@ -92,13 +99,37 @@ struct ParameterLane: View {
                 geometry.lane(fromTimeline: geometry.timeline.snappedToFrame(geometry.timeline(fromLane: lane)))
             },
             onSeek: { lane in onSeek(geometry.timeline(fromLane: lane)) },
-            onMove: { from, to, copy in onMove(geometry.source(fromLane: from), geometry.source(fromLane: to), copy) },
-            onDelete: { onDelete(geometry.source(fromLane: $0)) },
-            onEase: { time, preset in onEase(geometry.source(fromLane: time), preset) },
-            timelineTime: { geometry.timeline(fromLane: $0) }
+            onMove: { from, to, copy in edits.move(source(from), geometry.source(fromLane: to), copy) },
+            // On one of several picked, the menu acts on them all.
+            onDelete: { lane in
+                if let picks, picks.picked.count > 1, picks.contains(id, source(lane)) { picks.deletePicked() } else { edits.delete([source(lane)]) }
+            },
+            onEase: { lane, preset in
+                if let picks, picks.picked.count > 1, picks.contains(id, source(lane)) { picks.easePicked(preset) } else { edits.ease([source(lane)], preset) }
+            },
+            timelineTime: { geometry.timeline(fromLane: $0) },
+            picking: picks.map { picks in picking(picks, source: source) }
         )
         .overlay(alignment: .leading) { hiddenCount(before, systemImage: "chevron.left") }
         .overlay(alignment: .trailing) { hiddenCount(after, systemImage: "chevron.right") }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { picks?.place(id, at: $0) }
+        .onDisappear { picks?.forget(id) }
+    }
+
+    private func picking(_ picks: LaneKeyframePicks, source: @escaping (CMTime) -> CMTime) -> KeyframePicking {
+        let key = { (lane: CMTime) in LaneKeyframePicks.Key(lane: id, time: source(lane)) }
+        return KeyframePicking(
+            isPicked: { picks.contains(id, source($0)) },
+            click: { picks.click(key($0), $1) },
+            pressForDrag: { picks.pressForDrag(key($0), $1) },
+            drag: { picks.drag(by: $0) },
+            endDrag: { picks.endDrag(commit: $0) },
+            shift: { picks.dragShift },
+            nudge: { lane, frames in
+                if !picks.contains(id, source(lane)) { picks.click(key(lane), .only) }
+                picks.nudge(frames: frames)
+            }
+        )
     }
 
     /// Keyframes outside the trimmed range are kept but don't play; this

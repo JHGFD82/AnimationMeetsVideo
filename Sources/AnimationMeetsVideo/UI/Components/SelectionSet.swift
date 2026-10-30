@@ -35,7 +35,7 @@ enum SelectClick: Equatable {
 /// which a Shift-click extends from. Their order is the editor's, passed
 /// in, so a run follows what is on screen (keyframes by time, rows top to
 /// bottom).
-struct SelectionSet<ID: Hashable>: Equatable {
+struct SelectionSet<ID: Hashable>: Hashable {
     private(set) var items: Set<ID> = []
     private(set) var anchor: ID?
 

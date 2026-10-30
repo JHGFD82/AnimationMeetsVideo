@@ -102,6 +102,9 @@ struct ParameterRow<MenuContent: View>: View {
     /// is given.
     var showsReset: (() -> Bool)?
     let onSelect: () -> Void
+    /// Adds the row to the rows picked, or takes it out (VoiceOver's way to
+    /// Command-click it); nil for rows that aren't picked.
+    var onToggle: (() -> Void)?
     let onSetComponent: (Int, Double) -> Void
     let onToggleAnimated: () -> Void
     let onToggleKeyframe: () -> Void
@@ -135,6 +138,7 @@ struct ParameterRow<MenuContent: View>: View {
         content
             .onMouseDown { _ in onSelect() }
             .selectedRow(isSelected)
+            .rowPicking(isSelected: isSelected, onToggle: onToggle)
             .contextMenu { menu() }
     }
 
@@ -252,6 +256,8 @@ struct ChoiceRow<MenuContent: View>: View {
     /// Puts it back to its default; nil while it is there.
     var onReset: (() -> Void)?
     let onSelect: () -> Void
+    /// As `ParameterRow.onToggle`.
+    var onToggle: (() -> Void)?
     let onChoose: @MainActor (String) -> Void
     @ViewBuilder let menu: () -> MenuContent
 
@@ -276,6 +282,7 @@ struct ChoiceRow<MenuContent: View>: View {
         content
             .onMouseDown { _ in onSelect() }
             .selectedRow(isSelected)
+            .rowPicking(isSelected: isSelected, onToggle: onToggle)
             .contextMenu { menu() }
     }
 
@@ -310,6 +317,7 @@ struct ChoiceRow<MenuContent: View>: View {
         .frame(height: EffectsPanelMetrics.rowHeight)
         .onMouseDown { _ in onSelect() }
         .selectedRow(isSelected)
+        .rowPicking(isSelected: isSelected, onToggle: onToggle)
         .contextMenu { if showsMenu { menu() } }
     }
 }
@@ -339,6 +347,8 @@ struct EffectHeaderRow<MenuContent: View>: View {
     let onToggleCollapsed: () -> Void
     let onSetEnabled: @MainActor (Bool) -> Void
     let onSelect: () -> Void
+    /// As `ParameterRow.onToggle`.
+    var onToggle: (() -> Void)?
     let onRename: (String?) -> Void
     /// Whether the name is being edited, which the ⋯ menu can start.
     @Binding var isRenaming: Bool
@@ -601,6 +611,22 @@ struct HeldColorWell: View {
             // Until the project's color has reached the well.
             try? await Task.sleep(for: .milliseconds(100))
             if !isHolding { picked = nil }
+        }
+    }
+}
+
+extension View {
+    /// A row of the stack that can be picked with others: VoiceOver reads
+    /// whether it is picked, and has an action to add it to the rows picked
+    /// or take it out, as Command-click does.
+    @ViewBuilder
+    func rowPicking(isSelected: Bool, onToggle: (() -> Void)?) -> some View {
+        if let onToggle {
+            accessibilityElement(children: .contain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .accessibilityAction(named: isSelected ? "Remove from selection" : "Add to selection", onToggle)
+        } else {
+            self
         }
     }
 }

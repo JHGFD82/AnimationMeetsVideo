@@ -26,7 +26,7 @@ extension EffectsPanel {
     func controlRow(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool, movable: Bool = true) -> some View {
         let key = ControlRowKey(
             timelineID: timelineID, clipID: c.clip.id, effect: effect, effectDimmed: effectDimmed,
-            isSelected: state.selectedControlID == control.id, showsLanes: showsKeyframeLanes,
+            isSelected: state.isPicked(control.id), showsLanes: showsKeyframeLanes,
             lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize
         )
         return StackRow(key: key) { controlRowContent(control, of: effect, c, effectDimmed: effectDimmed, movable: movable) }
@@ -60,8 +60,9 @@ extension EffectsPanel {
                 }
                 .help("Drag to move the control within the effect")
         )
-        let isSelected = state.selectedControlID == control.id
-        let select = { state.select(effect: effect.id, control: control.id) }
+        let isSelected = state.isPicked(control.id)
+        let select = { state.click(effect: effect.id, control: control.id, in: rowOrder(clip)) }
+        let toggle = { state.click(effect: effect.id, control: control.id, in: rowOrder(clip), as: .toggle) }
         let menu = { controlMenu(control, of: effect, in: clip) }
         let placed = { (frame: CGRect) in stackLayout.controls[control.id] = frame }
 
@@ -77,6 +78,7 @@ extension EffectsPanel {
                     isDimmed: effectDimmed || choiceIsOff(control, of: effect),
                     onReset: reset(control, of: effect, in: c),
                     onSelect: select,
+                    onToggle: toggle,
                     onChoose: { choice in editControl(control.id, of: effect, in: clip) { $0.choice = choice } },
                     menu: menu
                 ),
@@ -110,6 +112,7 @@ extension EffectsPanel {
                     onReset: resetAction(control, of: effect, in: c),
                     showsReset: resetIsOffered(control, of: effect, in: c),
                     onSelect: select,
+                    onToggle: toggle,
                     onSetComponent: { index, value in
                         editControl(control.id, of: effect, in: clip) { $0.setComponent(index, to: value, at: c.now.sourceNow) }
                     },
@@ -128,13 +131,11 @@ extension EffectsPanel {
                     menu: menu
                 ),
                 lane: ParameterLane(
-                    marks: shown.number.marks, geometry: c.geometry, playhead: c.frameTime(animated: control.isAnimated), height: EffectsPanelMetrics.rowHeight,
-                    onSeek: onSeek,
-                    onMove: { from, to, copy in
-                        editControl(control.id, of: effect, in: clip) { $0.number.moveKeyframe(at: from, to: to, copying: copy) }
-                    },
-                    onDelete: { time in editControl(control.id, of: effect, in: clip) { $0.number.removeKeyframe(at: time) } },
-                    onEase: { time, preset in editControl(control.id, of: effect, in: clip) { $0.number.applyEase(preset, at: time) } }
+                    id: key, marks: shown.number.marks, geometry: c.geometry, playhead: c.frameTime(animated: control.isAnimated),
+                    height: EffectsPanelMetrics.rowHeight, onSeek: onSeek,
+                    edits: LaneKeyframeEdits { (change: @escaping (inout AnimatedValue<ComponentValue>) -> Void) in
+                        editControl(control.id, of: effect, in: clip) { change(&$0.number) }
+                    }
                 )
             )
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(EffectStackLayout.space)) }, action: placed)
@@ -199,11 +200,8 @@ extension EffectsPanel {
                 menu: { Button("Reset to the Font's Default", action: reset) }
             ),
             lane: ParameterLane(
-                marks: components.marks, geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated),
-                height: EffectsPanelMetrics.rowHeight, onSeek: onSeek,
-                onMove: { from, to, copy in edit { $0.moveKeyframe(at: from, to: to, copying: copy) } },
-                onDelete: { time in edit { $0.removeKeyframe(at: time) } },
-                onEase: { time, preset in edit { $0.applyEase(preset, at: time) } }
+                id: key, marks: components.marks, geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated),
+                height: EffectsPanelMetrics.rowHeight, onSeek: onSeek, edits: LaneKeyframeEdits(edit: edit)
             )
         )
         .help("The font's \(axis.name.lowercased()), from \(NumericExpression.format(axis.minimum)) to \(NumericExpression.format(axis.maximum))")
@@ -273,11 +271,8 @@ extension EffectsPanel {
                     menu: { Button("Use the Block's \(setting.name)", action: reset) }
                 ),
                 lane: ParameterLane(
-                    marks: value.marks, geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated),
-                    height: EffectsPanelMetrics.rowHeight, onSeek: onSeek,
-                    onMove: { from, to, copy in edit { $0.moveKeyframe(at: from, to: to, copying: copy) } },
-                    onDelete: { time in edit { $0.removeKeyframe(at: time) } },
-                    onEase: { time, preset in edit { $0.applyEase(preset, at: time) } }
+                    id: key, marks: value.marks, geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated),
+                    height: EffectsPanelMetrics.rowHeight, onSeek: onSeek, edits: LaneKeyframeEdits(edit: edit)
                 )
             )
             .help("The \(setting.name.lowercased()) of the letters \(effect.text?.quotedLetters(of: run) ?? ""), set apart from the block's")
