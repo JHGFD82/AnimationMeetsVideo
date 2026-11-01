@@ -374,12 +374,47 @@ final class PlaybackModel {
         if await display.firstFrame(of: item, within: .seconds(2)) { return true }
         // A paused player holds back a new item's first picture until its
         // sound is ready, which prerolling usually ends at once; if it still
-        // hasn't drawn, it is seeked where it is and prerolled again.
+        // hasn't drawn, it is seeked where it is and prerolled again. A seek
+        // to where the item already is can do nothing at all (a timeline
+        // switched to was stuck until the playhead moved), so the item is
+        // also given its video composition again, which has a paused player
+        // draw its frame whatever its time.
         guard player.currentItem === item else { return false }
-        NSLog("Viewer: a swapped-in item hadn't drawn after 2 s; seeking it to redraw")
+        NSLog("Viewer: a swapped-in item hadn't drawn after 2 s; redrawing it (%@)", Self.describe(item, in: player, at: time))
         await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        guard player.currentItem === item, !isPlaying else { return false }
         if player.rate == 0, player.status == .readyToPlay, item.status == .readyToPlay { _ = await player.preroll(atRate: 1) }
-        return await display.firstFrame(of: item, within: .seconds(3))
+        guard player.currentItem === item, !isPlaying else { return false }
+        refreshPlayerFrame()
+        if await display.firstFrame(of: item, within: .seconds(3)) { return true }
+        if player.currentItem === item {
+            NSLog("Viewer: a swapped-in item still hadn't drawn after redrawing (%@)", Self.describe(item, in: player, at: time))
+        }
+        return false
+    }
+
+    /// What the player and a stuck item say about themselves, for the log.
+    private static func describe(_ item: AVPlayerItem, in player: AVPlayer, at time: CMTime) -> String {
+        func status(_ status: AVPlayerItem.Status) -> String {
+            switch status {
+            case .readyToPlay: "ready"
+            case .failed: "failed"
+            default: "unknown"
+            }
+        }
+        let control = switch player.timeControlStatus {
+        case .paused: "paused"
+        case .playing: "playing"
+        case .waitingToPlayAtSpecifiedRate: "waiting (\(player.reasonForWaitingToPlay?.rawValue ?? "no reason"))"
+        @unknown default: "?"
+        }
+        return [
+            "asked \(time.seconds) s, item at \(item.currentTime().seconds) s of \(item.duration.seconds) s",
+            "item \(status(item.status))\(item.error.map { ": \($0.localizedDescription)" } ?? "")",
+            "player \(player.status == .readyToPlay ? "ready" : player.status == .failed ? "failed" : "unknown"), \(control)",
+            "keeping up \(item.isPlaybackLikelyToKeepUp), buffer empty \(item.isPlaybackBufferEmpty)",
+            "outputs \(item.outputs.count), video composition \(item.videoComposition != nil)",
+        ].joined(separator: "; ")
     }
 
     /// Lets the player's item go, for a timeline with nothing to play. The
