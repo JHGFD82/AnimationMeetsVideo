@@ -215,6 +215,15 @@ emptied timeline or a slow frame never shows black in between.
   any item is (see "The viewer's picture"). A render that finishes just as
   play is pressed waits for the next pause, since a swap mid-play holds
   the picture for a moment.
+
+  Rendering several pieces at once was tried and isn't worth it: the GPU
+  is already the limit. On an M4 Pro, rendering 16 s of three
+  blurred, graded 1080p layers took 2.34 s one piece at a time and 2.22 s
+  two at a time (7.04 s and 6.24 s with motion blur on the top layer),
+  while the first piece, at the playhead, was ready after 1.09 s instead
+  of 0.57 s (3.39 s instead of 1.98 s); three at a time was slower than
+  two. `RenderThroughputBenchmark` measures this (run it with
+  `RENDER_BENCHMARK=all`, in release; see the test for the commands).
 - **Values without a build.** An edit that leaves the project's
   `StructureKey` the same (effect controls and anchor points, which the
   compositor takes, and volume and pan, which the sound taps read) never
