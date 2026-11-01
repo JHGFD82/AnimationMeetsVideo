@@ -20,8 +20,20 @@ jobs:
     # behind an availability check.
     runs-on: macos-26
     timeout-minutes: 30
+    # The Xcode the app is developed with, rather than the image's
+    # default: an older Swift rejected code the newer one builds, and
+    # crashed on some.
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Check for the pinned Xcode
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error::$DEVELOPER_DIR isn't on this runner. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
       - name: Show the toolchain
         run: |
           xcodebuild -version
