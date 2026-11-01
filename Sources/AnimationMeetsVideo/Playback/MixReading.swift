@@ -57,6 +57,10 @@ enum MixReading {
                 right.append(samples[2 * frame + 1])
             }
         }
+        if reader.status == .failed {
+            // What was read is kept; the rest plays as silence.
+            NSLog("Reading the mix failed: %@", reader.error?.localizedDescription ?? "no reason given")
+        }
         guard let first, !left.isEmpty else { return nil }
         return (first, left, right)
     }

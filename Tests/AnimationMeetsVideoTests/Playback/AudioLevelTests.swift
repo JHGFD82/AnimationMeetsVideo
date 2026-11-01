@@ -135,14 +135,22 @@ import Testing
         ])
         output.audioMix = mix
         reader.add(output)
-        #expect(reader.startReading())
-        var loudest: Float = 0
-        while let buffer = output.copyNextSampleBuffer() {
-            guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-            var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
-            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
-            loudest = max(loudest, chunk.map(abs).max() ?? 0)
+        // Off the cooperative pool: reading blocks (see `SampleReading`).
+        let handed = HandedOver(value: (reader, output))
+        let (loudest, status, error) = try await SampleReading.run { _ in
+            let (reader, output) = handed.value
+            guard reader.startReading() else { return (Float(0), reader.status, reader.error.map { "\($0)" }) }
+            var loudest: Float = 0
+            while let buffer = output.copyNextSampleBuffer() {
+                guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+                var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
+                _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
+                loudest = max(loudest, chunk.map(abs).max() ?? 0)
+            }
+            return (loudest, reader.status, reader.error.map { "\($0)" })
         }
+        // A reader that stops partway reads as silence: say why.
+        #expect(status == .completed, "The reader stopped: \(error ?? "no error")")
         let expected = 0.25 * AudioLevel.gain(decibels: 6)
         #expect(abs(loudest - expected) < 0.01)
 
