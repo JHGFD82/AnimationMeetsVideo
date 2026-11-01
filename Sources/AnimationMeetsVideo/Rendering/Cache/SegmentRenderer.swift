@@ -43,7 +43,10 @@ enum SegmentRenderer {
         } catch {
             try? FileManager.default.removeItem(at: partial)
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
-            throw CompositionError.exportFailed(error.localizedDescription)
+            // As it is: AVFoundation's own description is often only "The
+            // operation could not be completed", and the code and the
+            // error under it say why (`ErrorAdvice.chain`).
+            throw error
         }
         try cache.finish(segment.key)
     }

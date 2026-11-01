@@ -61,6 +61,19 @@ enum ErrorAdvice {
         return nil
     }
 
+    /// `error` and the ones under it, each with its domain and code, for
+    /// the log: "The operation could not be completed" alone says nothing.
+    static func chain(of error: Error) -> String {
+        var parts: [String] = []
+        var current: NSError? = error as NSError
+        for _ in 0..<4 {
+            guard let nsError = current else { break }
+            parts.append("\(nsError.domain) \(nsError.code): \(nsError.localizedDescription)")
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return parts.joined(separator: " <- ")
+    }
+
     private static func directCause(of error: NSError) -> Cause? {
         switch error.domain {
         case NSCocoaErrorDomain:

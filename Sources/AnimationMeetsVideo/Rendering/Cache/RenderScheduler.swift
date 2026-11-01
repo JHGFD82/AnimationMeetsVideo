@@ -283,7 +283,7 @@ final class RenderScheduler {
                 cache.evict(keeping: Set(segments.map(\.key)))
             } catch is CancellationError {
             } catch {
-                NSLog("Couldn't render a segment: \(error.localizedDescription)")
+                NSLog("Couldn't render a segment (%@): %@", next.key, ErrorAdvice.chain(of: error))
                 failed[next.key] = error.localizedDescription
             }
             active = nil

@@ -23,6 +23,17 @@ import Testing
         #expect(ErrorAdvice.sentence(for: general) == ErrorAdvice.Cause.noSpace.sentence)
     }
 
+    /// For the log: AVFoundation's "could not be completed" says why only
+    /// with its code and the error under it.
+    @Test func aChainNamesEachErrorsDomainAndCode() {
+        let underlying = NSError(domain: NSOSStatusErrorDomain, code: -12_785)
+        let general = NSError(domain: AVFoundationErrorDomain, code: AVError.unknown.rawValue,
+                              userInfo: [NSUnderlyingErrorKey: underlying])
+        let chain = ErrorAdvice.chain(of: general)
+        #expect(chain.hasPrefix("\(AVFoundationErrorDomain) -11800: "))
+        #expect(chain.contains(" <- \(NSOSStatusErrorDomain) -12785: "))
+    }
+
     @Test func theAppsOwnErrorsKeepTheirWording() {
         let error = ProjectStoreError.locked("another window")
         #expect(ErrorAdvice.cause(of: error) == nil)
