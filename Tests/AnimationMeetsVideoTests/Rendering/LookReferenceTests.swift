@@ -106,8 +106,13 @@ import Testing
         #expect(Set(reference.cases.keys) == Set(drawn.keys))
         for (label, pixels) in reference.cases {
             let now = try #require(drawn[label])
-            let worst = zip(pixels, now).map { zip($0, $1).map { abs($0 - $1) }.max() ?? 0 }.max() ?? 0
-            #expect(worst <= 0.002, "\(name) \(label) differs by \(worst)")
+            let differences = zip(pixels, now).map { zip($0, $1).map { abs($0 - $1) }.max() ?? 0 }
+            let worst = differences.max() ?? 0
+            // Where, and what each held, to tell a GPU's rounding from a
+            // real change: the frame is 16 pixels wide, read from the top.
+            let at = differences.firstIndex(of: worst) ?? 0
+            let place = "pixel \(at % 16), \(at / 16): recorded \(pixels.indices.contains(at) ? pixels[at] : []), drawn \(now.indices.contains(at) ? now[at] : [])"
+            #expect(worst <= 0.002, "\(name) \(label) differs by \(worst) at \(place)")
         }
     }
 }
