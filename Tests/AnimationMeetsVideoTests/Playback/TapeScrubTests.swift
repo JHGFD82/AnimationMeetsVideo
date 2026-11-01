@@ -129,14 +129,18 @@ import Testing
         }
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
         let curves = MixCurves(MixCurves.of(project))
-        let piece = TapeScrub.read(1, of: composed, curves: curves)
+        // Off the cooperative pool, as the scrubber reads on its own queue:
+        // reading blocks (see `SampleReading`).
+        let handed = HandedOver(value: composed)
+        let (piece, past) = try await SampleReading.run { _ in
+            (TapeScrub.read(1, of: handed.value, curves: curves), TapeScrub.read(10, of: handed.value, curves: curves))
+        }
         let rate = TapeScrub.sampleRate
         #expect(piece.left.count == Int(TapeScrub.pieceSeconds * rate))
         // Piece 1 is 2 to 4 seconds: quiet until a second in, then the tone.
         #expect(piece.left[Int(0.9 * rate)..<Int(0.99 * rate)].allSatisfy { abs($0) < 0.01 })
         #expect(abs(piece.left[Int(1.5 * rate)] - 0.25) < 0.005)
         // Past the end there's nothing, but still a piece.
-        let past = TapeScrub.read(10, of: composed, curves: curves)
         #expect(past.left.allSatisfy { $0 == 0 })
     }
 }
@@ -157,19 +161,26 @@ struct TapeScrubEngineTests {
         try await Task.sleep(for: .milliseconds(300))
         #expect(tape.position == 3)
 
-        // Timed by the clock rather than by the sleep, which a busy machine
-        // stretches while the tape keeps going.
+        // Its speed, from its own movement once it is going: how long the
+        // engine takes to get going on a busy machine (a CI runner) says
+        // nothing about the speed. Timed by the clock rather than by the
+        // sleep, which a busy machine stretches while the tape keeps going.
         let clock = ContinuousClock()
-        let started = clock.now
+        func seconds(_ duration: Duration) -> Double {
+            Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        }
         tape.setRate(-2)
+        let asked = clock.now
+        while tape.position > 2.95, clock.now - asked < .seconds(5) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(tape.position <= 2.95, "The tape didn't get going")
+        let from = tape.position, started = clock.now
         try await Task.sleep(for: .milliseconds(500))
-        let position = tape.position
-        let ran = clock.now - started
-        let seconds = Double(ran.components.seconds) + Double(ran.components.attoseconds) / 1e18
-        // Twice as far back as it ran, less the moment it took to get going.
-        let expected = 3 - 2 * seconds
-        #expect(position > expected - 0.05)
-        #expect(position < expected + 0.2)
+        let speed = (tape.position - from) / seconds(clock.now - started)
+        // Backwards at twice the speed, give or take a hiccup of the render
+        // thread over the half second.
+        #expect(abs(speed + 2) < 0.3, "Ran at \(speed)")
 
         tape.setRate(0)
         try await Task.sleep(for: .milliseconds(300))
