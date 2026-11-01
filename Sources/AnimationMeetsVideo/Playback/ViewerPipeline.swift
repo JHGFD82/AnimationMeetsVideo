@@ -30,7 +30,9 @@ struct ViewerSource {
 @MainActor
 protocol ViewerPlayer: AnyObject {
     var isPlaying: Bool { get }
-    /// Where a paused swap resumes: the player's time.
+    /// Where a paused swap resumes: the player's time, or the playhead's
+    /// when the player has none (no item yet, or one let go). Always a
+    /// number.
     var resumeTime: CMTime { get }
     /// Draws the project's values with the item as it is (see
     /// `PlaybackModel.showValues`).
@@ -534,7 +536,14 @@ final class ViewerPipeline {
 }
 
 extension PlaybackModel: ViewerPlayer {
-    var resumeTime: CMTime { player.currentTime() }
+    /// Without an item the player's time is invalid (its seconds NaN), and
+    /// an item swapped in at it was seeked nowhere and never drew; the
+    /// playhead is where it should be then.
+    var resumeTime: CMTime {
+        let time = player.currentTime()
+        guard player.currentItem != nil, time.isNumeric else { return currentTime }
+        return time
+    }
 
     func storeValues(_ clips: [UUID: TimelineClip]) {
         liveValues.clips = clips

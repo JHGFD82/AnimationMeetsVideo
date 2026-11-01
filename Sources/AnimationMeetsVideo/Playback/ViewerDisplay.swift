@@ -41,6 +41,10 @@ final class ViewerDisplay {
     /// output to say it has something (`outputMediaDataWillChange`).
     private var awakeUntil: CFTimeInterval = 0
     private var waiters: [UUID: (item: ObjectIdentifier, continuation: CheckedContinuation<Bool, Never>)] = [:]
+    /// When the link or timer last stepped, and an output last handed over
+    /// a frame, for the log when a swapped-in item doesn't draw.
+    private var lastStep: CFTimeInterval?
+    private var lastFrame: CFTimeInterval?
 
     /// Shows its pictures in `layer`, with `host`'s screen setting the pace
     /// of the display link.
@@ -138,13 +142,44 @@ final class ViewerDisplay {
         }
     }
 
+    /// What the display is doing about `item`: whether it follows that
+    /// item's output, and whether its link is stepping and frames coming.
+    /// A swap that never drew logs this.
+    func diagnostics(for item: AVPlayerItem) -> String {
+        let now = CACurrentMediaTime()
+        func ago(_ time: CFTimeInterval?) -> String {
+            time.map { String(format: "%.2f s ago", now - $0) } ?? "never"
+        }
+        let pacing = if let link {
+            "link \(link.isPaused ? "paused" : "running")"
+        } else if timer != nil {
+            "timer"
+        } else {
+            "no link"
+        }
+        let host: String = if let window = linkHost?.window {
+            "host window \(window.isVisible ? "visible" : "hidden"), \(window.occlusionState.contains(.visible) ? "unoccluded" : "occluded")"
+        } else {
+            linkHost == nil ? "no host" : "host off-window"
+        }
+        let followed = self.item === item
+            ? "follows it, output \(output != nil)"
+            : "follows \(self.item == nil ? "nothing" : "another item")"
+        return [
+            "display \(followed)", pacing, host,
+            "waiters \(waiters.count), last step \(ago(lastStep)), last frame \(ago(lastFrame))",
+        ].joined(separator: ", ")
+    }
+
     fileprivate func step(targetTime: CFTimeInterval?) {
         let now = CACurrentMediaTime()
+        lastStep = now
         if let item, let output {
             let time = isPlaying ? output.itemTime(forHostTime: targetTime ?? now) : item.currentTime()
             if time.isNumeric, output.hasNewPixelBuffer(forItemTime: time),
                let buffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) {
                 awakeUntil = max(awakeUntil, now + 0.5)
+                lastFrame = now
                 let id = ObjectIdentifier(item)
                 for (key, waiter) in waiters where waiter.item == id { resolve(key, true) }
                 if let onOutputFrame { onOutputFrame(buffer, time) } else { show(buffer) }

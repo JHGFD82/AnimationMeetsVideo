@@ -366,6 +366,8 @@ final class PlaybackModel {
             itemSwaps += 1
             return await display.firstFrame(of: item, within: .seconds(2))
         }
+        // An invalid time seeks nowhere and leaves the item undrawn.
+        let time = time.isNumeric ? time : currentTime
         _ = await item.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
         capture.arm(at: time)
         player.replaceCurrentItem(with: item)
@@ -381,22 +383,32 @@ final class PlaybackModel {
         // switched to was stuck until the playhead moved), so the item is
         // also given its video composition again, which has a paused player
         // draw its frame whatever its time.
+        //
+        // Where it is now, not `time`: in the 2 s the playhead may have been
+        // moved, skimmed or played, and seeking back to `time` took the
+        // viewer away from the playhead, or a playing player back in time.
+        // A seek of the person's under way is left to draw it.
         guard player.currentItem === item else { return false }
-        NSLog("Viewer: a swapped-in item hadn't drawn after 2 s; redrawing it (%@)", Self.describe(item, in: player, at: time))
-        await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        NSLog("Viewer: a swapped-in item hadn't drawn after 2 s; redrawing it (%@)", describe(item, at: time))
+        guard !isPlaying else { return false }
+        let here = item.currentTime()
+        if !isSeeking, here.isNumeric {
+            await player.seek(to: here, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
         guard player.currentItem === item, !isPlaying else { return false }
         if player.rate == 0, player.status == .readyToPlay, item.status == .readyToPlay { _ = await player.preroll(atRate: 1) }
         guard player.currentItem === item, !isPlaying else { return false }
         refreshPlayerFrame()
         if await display.firstFrame(of: item, within: .seconds(3)) { return true }
         if player.currentItem === item {
-            NSLog("Viewer: a swapped-in item still hadn't drawn after redrawing (%@)", Self.describe(item, in: player, at: time))
+            NSLog("Viewer: a swapped-in item still hadn't drawn after redrawing (%@)", describe(item, at: time))
         }
         return false
     }
 
-    /// What the player and a stuck item say about themselves, for the log.
-    private static func describe(_ item: AVPlayerItem, in player: AVPlayer, at time: CMTime) -> String {
+    /// What the player, a stuck item and the viewer's display say about
+    /// themselves, for the log.
+    private func describe(_ item: AVPlayerItem, at time: CMTime) -> String {
         func status(_ status: AVPlayerItem.Status) -> String {
             switch status {
             case .readyToPlay: "ready"
@@ -416,6 +428,8 @@ final class PlaybackModel {
             "player \(player.status == .readyToPlay ? "ready" : player.status == .failed ? "failed" : "unknown"), \(control)",
             "keeping up \(item.isPlaybackLikelyToKeepUp), buffer empty \(item.isPlaybackBufferEmpty)",
             "outputs \(item.outputs.count), video composition \(item.videoComposition != nil)",
+            "playhead \(currentTime.seconds) s, seeking \(isSeeking), skimming \(skimTime?.seconds.description ?? "no")",
+            display.diagnostics(for: item),
         ].joined(separator: "; ")
     }
 
