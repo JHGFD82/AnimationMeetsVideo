@@ -35,6 +35,33 @@ import Testing
         return harness
     }
 
+    /// Looks whose pixels near the frame's edges hang on what is past
+    /// them, which Core Image doesn't draw alike on every macOS (Neon
+    /// Edges' clamped input and its glow differed on macOS 27 at the
+    /// edges only). Each is drawn on a larger frame of colored blocks, so
+    /// it has edges to find, and compared only `margin` pixels in from the
+    /// edges: further than changing the outermost pixels from black to
+    /// white moves any pixel by more than 0.0001 at its defaults.
+    private static let framed: [String: (size: CGSize, margin: Int)] = [
+        "neonEdges": (CGSize(width: 96, height: 80), 32),
+    ]
+
+    private func harness(for name: String) throws -> CompositorHarness {
+        guard let framed = Self.framed[name] else { return try harness() }
+        var harness = CompositorHarness(size: framed.size)
+        try harness.addPicture(track: 1) { x, y in
+            SIMD4(Int(x * 12) % 2 == 0 ? 0.15 : 0.85, Int(y * 10) % 2 == 0 ? 0.25 : 0.75, Float((x * 4).truncatingRemainder(dividingBy: 1)), 1)
+        }
+        return harness
+    }
+
+    /// The pixels of `frame`, `size` across, at least `margin` in from
+    /// every edge, read from the top.
+    private static func inside(_ frame: [SIMD4<Float>], size: CGSize, margin: Int) -> [SIMD4<Float>] {
+        let width = Int(size.width), height = Int(size.height)
+        return (margin..<(height - margin)).flatMap { y in (margin..<(width - margin)).map { x in frame[y * width + x] } }
+    }
+
     /// Settings, by control, sized for this small frame where a look's
     /// defaults (made for a full-size one) change little or nothing.
     private static let tweaks: [String: [String: [Double]]] = [
@@ -81,18 +108,21 @@ import Testing
 
     @Test(arguments: kinds) func aLookDrawsAsItWasRecorded(_ name: String) throws {
         let kind = try #require(EffectKind(rawValue: name))
-        let h = try harness()
+        let h = try harness(for: name)
+        let framed = Self.framed[name]
         var drawn: [String: [SIMD4<Float>]] = [:]
         for (label, effect) in effects(kind) {
             let clip = CompositorHarness.clip(track: 1, effects: [effect], frame: h.size)
-            drawn[label] = try h.draw([clip], at: Self.time)
+            let frame = try h.draw([clip], at: Self.time)
+            drawn[label] = framed.map { Self.inside(frame, size: $0.size, margin: $0.margin) } ?? frame
         }
-        try Self.check(name, drawn)
+        let width = framed.map { Int($0.size.width) - 2 * $0.margin } ?? 16
+        try Self.check(name, drawn, width: width)
     }
 
     /// Records `drawn` as look `name`'s references, or compares it with
     /// them.
-    static func check(_ name: String, _ frames: [String: [SIMD4<Float>]]) throws {
+    static func check(_ name: String, _ frames: [String: [SIMD4<Float>]], width: Int = 16) throws {
         let drawn = frames.mapValues { $0.map { [$0.x, $0.y, $0.z, $0.w].map { ($0 * 100_000).rounded() / 100_000 } } }
         let url = folder.appending(path: "\(name).json")
         if recording {
@@ -106,8 +136,13 @@ import Testing
         #expect(Set(reference.cases.keys) == Set(drawn.keys))
         for (label, pixels) in reference.cases {
             let now = try #require(drawn[label])
-            let worst = zip(pixels, now).map { zip($0, $1).map { abs($0 - $1) }.max() ?? 0 }.max() ?? 0
-            #expect(worst <= 0.002, "\(name) \(label) differs by \(worst)")
+            let differences = zip(pixels, now).map { zip($0, $1).map { abs($0 - $1) }.max() ?? 0 }
+            let worst = differences.max() ?? 0
+            // Where, and what each held, to tell a GPU's rounding from a
+            // real change: `width` pixels across, read from the top.
+            let at = differences.firstIndex(of: worst) ?? 0
+            let place = "pixel \(at % width), \(at / width): recorded \(pixels.indices.contains(at) ? pixels[at] : []), drawn \(now.indices.contains(at) ? now[at] : [])"
+            #expect(worst <= 0.002, "\(name) \(label) differs by \(worst) at \(place)")
         }
     }
 }
