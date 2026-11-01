@@ -19,6 +19,9 @@ struct EditorView: View {
     /// In a timeline window, which shares the project window's history
     /// and undo: that window connects the history, not this one.
     let sharesHistory: Bool
+    /// Where each timeline was left, which the project's session saves in
+    /// its package; nil in a timeline window, whose surface keeps its own.
+    let viewMemory: TimelineViewMemory?
     @Environment(\.undoManager) private var undoManager
     @Environment(\.openWindow) private var openWindow
     @State private var activeTimelineID: UUID
@@ -58,7 +61,8 @@ struct EditorView: View {
         selection: TimelineSelection? = nil,
         playback: PlaybackModel? = nil,
         timelineID: UUID? = nil,
-        sharesHistory: Bool = false
+        sharesHistory: Bool = false,
+        viewMemory: TimelineViewMemory? = nil
     ) {
         self._project = project
         self.history = history
@@ -66,7 +70,10 @@ struct EditorView: View {
         self.replacement = replacement
         self.packageURL = packageURL
         self.sharesHistory = sharesHistory
-        self._activeTimelineID = State(initialValue: timelineID ?? project.wrappedValue.rootTimelineID)
+        self.viewMemory = viewMemory
+        self._activeTimelineID = State(
+            initialValue: timelineID ?? viewMemory?.openTimeline(in: project.wrappedValue) ?? project.wrappedValue.rootTimelineID
+        )
         self._selection = State(initialValue: selection)
         if let playback { self._playback = State(initialValue: playback) }
     }
@@ -123,6 +130,7 @@ struct EditorView: View {
             .environment(imports)
             .environment(sceneSplitter)
             .environment(usesFinder)
+            .environment(\.timelineViewMemory, viewMemory)
         }
         // While a song is beat matched, or clips are in the motion
         // designer, the editor is darkened and takes no input; a click on it
@@ -170,7 +178,11 @@ struct EditorView: View {
         }
         // A timeline opened is shown at its playhead, not under a skim of
         // the browser.
-        .onChange(of: activeTimeline.wrappedValue) { _, _ in skim.end() }
+        .onChange(of: activeTimeline.wrappedValue) { _, _ in
+            skim.end()
+            // Once the surface has kept where the timeline before was left.
+            Task { viewMemory?.save(for: project) }
+        }
         .onDisappear {
             tapeScrubber.close()
             sceneSplitter.close()
@@ -181,7 +193,8 @@ struct EditorView: View {
             exportWindow.close()
         }
         .onChange(of: project.id) { _, _ in
-            activeTimelineID = project.rootTimelineID
+            // The timeline open when the project was last left, if any.
+            activeTimelineID = viewMemory?.openTimeline(in: project) ?? project.rootTimelineID
             selection = nil
             skim.end()
             sceneSplitter.close()
@@ -296,10 +309,7 @@ struct EditorView: View {
         if project.timeline(id: activeTimelineID) == nil {
             activeTimelineID = project.rootTimelineID
         }
-        if let selection,
-           project.timeline(id: selection.timelineID)?
-               .layer(id: selection.layerID)?
-               .clips.contains(where: { $0.id == selection.timelineClipID }) != true {
+        if let selection, project.timelineClip(of: selection) == nil {
             self.selection = nil
         }
     }
@@ -315,7 +325,7 @@ extension EditorView: Equatable {
     /// `.equatable()`).
     nonisolated static func == (lhs: EditorView, rhs: EditorView) -> Bool {
         MainActor.assumeIsolated {
-            lhs.history === rhs.history && lhs.analysis === rhs.analysis
+            lhs.history === rhs.history && lhs.analysis === rhs.analysis && lhs.viewMemory === rhs.viewMemory
                 && lhs.replacement === rhs.replacement && lhs.packageURL == rhs.packageURL
         }
     }

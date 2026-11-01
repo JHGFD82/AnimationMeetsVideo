@@ -36,7 +36,8 @@ struct ProjectWindow: View {
         let session = session
         EditorView(
             project: Bindable(session.projectState).value, history: session.history, analysis: session.analysis,
-            replacement: session.replacement, packageURL: session.projectURL
+            replacement: session.replacement, packageURL: session.projectURL,
+            viewMemory: session.viewMemory
         )
             // The window runs again at every save; the editor follows the
             // project on its own (see `EditorView.==`).

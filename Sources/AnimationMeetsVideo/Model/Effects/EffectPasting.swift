@@ -105,9 +105,9 @@ extension EditingProject {
             let items = bundle.effects.filter { $0.effect.kind.isAudio == isAudio && stack(of: clip, takes: $0.effect.kind) }
             guard !items.isEmpty, isAudio ? playsAudio(clip) : hasEffectStack(clip) else { continue }
             let key: WritableKeyPath<TimelineClip, [Effect]> = isAudio ? \.audioEffects : \.effects
-            let stack = paste(items, origin: bundle.origin, into: replacingStack ? [] : clip[keyPath: key], of: clip,
+            let pastedStack = paste(items, origin: bundle.origin, into: replacingStack ? [] : clip[keyPath: key], of: clip,
                               at: isAudio == firstIsAudio ? index : nil, newIDs: &newIDs, pasted: &pastedIDs)
-            editClip(clipID, in: timelineID) { $0[keyPath: key] = stack }
+            editClip(clipID, in: timelineID) { $0[keyPath: key] = pastedStack }
         }
         if let pasted = clipAndLayer(clipID, in: timelineID)?.clip {
             for effect in pasted.effects where effect.kind.isKeyframing && pastedIDs.contains(effect.id) {

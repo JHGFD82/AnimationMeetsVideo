@@ -41,9 +41,11 @@ struct TimelineEditorSurface<Library: View>: View {
     /// tell it from one chosen another way (the browser, the menu), whose
     /// trail is the timelines it is inside.
     @State private var trailTarget: UUID?
-    /// Where the playhead was in each timeline shown before, for the
-    /// viewer to come back to it there.
-    @State private var parkedTimes: [UUID: CMTime] = [:]
+    /// Where each timeline was left: the project window's, which its
+    /// session saves with the project, or this surface's own.
+    @Environment(\.timelineViewMemory) private var sharedViewMemory
+    @State private var ownViewMemory = TimelineViewMemory()
+    private var viewMemory: TimelineViewMemory { sharedViewMemory ?? ownViewMemory }
 
     private var playheadTime: CMTime {
         get { playhead.time }
@@ -208,6 +210,7 @@ struct TimelineEditorSurface<Library: View>: View {
 
     var body: some View {
         followingViewer(editor)
+            .environment(\.timelineViewMemory, viewMemory)
     }
 
     private var editor: some View {
@@ -388,6 +391,7 @@ struct TimelineEditorSurface<Library: View>: View {
             graphs.playback = playback
         }
         .onDisappear {
+            park(timelineID)
             graphs.closeAll()
             // These hold this surface, whose state holds them: kept, they
             // would keep it, and the project, alive.
@@ -399,14 +403,8 @@ struct TimelineEditorSurface<Library: View>: View {
         .onChange(of: timelineID) { oldValue, newValue in
             if newValue != trailTarget { trail = project.containingTimelines(of: newValue) }
             trailTarget = nil
-            if selection?.timelineID != newValue {
-                selection = nil
-            }
-            // Where playing had reached, if it was.
-            parkedTimes[oldValue] = playhead.actionTime
-            let time = parkedTime(in: newValue)
-            playback.showTimeline(from: time)
-            playheadTime = time
+            park(oldValue)
+            let time = showParked(newValue)
             send(.timelineChanged(source(of: project), at: time))
         }
         .onChange(of: ViewerInputs(showUpTo: partialView, offlineMedia: offlineMedia)) { _, _ in
@@ -446,7 +444,8 @@ struct TimelineEditorSurface<Library: View>: View {
         .messageAlert("Import Failed", message: $dropError)
         .onAppear {
             if pipeline == nil { pipeline = ViewerPipeline(playback: playback, renderer: renderer) }
-            send(.appeared(source(of: project), at: playheadTime))
+            let time = showParked(timelineID)
+            send(.appeared(source(of: project), at: time))
         }
     }
 
@@ -640,12 +639,40 @@ struct TimelineEditorSurface<Library: View>: View {
         playback.seek(to: time)
     }
 
-    /// Where the playhead was left in `timelineID`, within the timeline as
-    /// it is now (an edit since may have shortened it); its start the first
-    /// time it is shown.
-    private func parkedTime(in timelineID: UUID) -> CMTime {
-        guard let time = parkedTimes[timelineID], let duration = project.timeline(id: timelineID)?.duration else { return .zero }
-        return CMTimeMinimum(time, duration)
+    /// Keeps where `timelineID` was left: the playhead (where playing had
+    /// reached, if it was) and the clip selected in it.
+    private func park(_ timelineID: UUID) {
+        Self.park(timelineID, playhead: playhead, selection: selection, in: viewMemory)
+    }
+
+    private static func park(_ timelineID: UUID, playhead: PlayheadState, selection: TimelineSelection?, in memory: TimelineViewMemory) {
+        let time = playhead.actionTime
+        memory.update(timelineID) { parked in
+            parked.time = time
+            parked.selection = selection?.timelineID == timelineID ? selection : nil
+        }
+    }
+
+    /// Shows `timelineID` where it was left: the playhead there (its start
+    /// the first time, held back to its end if an edit since shortened
+    /// it), and the clip selected then, unless one in it is selected
+    /// already (from Find All). Returns the playhead's time. While it is
+    /// shown, saving reads them from here.
+    @discardableResult
+    private func showParked(_ timelineID: UUID) -> CMTime {
+        let memory = viewMemory
+        let time = memory.time(in: timelineID, of: project)
+        playback.showTimeline(from: time)
+        playheadTime = time
+        if selection?.timelineID != timelineID {
+            selection = memory.selection(in: timelineID, of: project)
+        }
+        memory.noteOpen(timelineID)
+        let selection = $selection
+        memory.register("surface") { [playhead, memory] in
+            Self.park(timelineID, playhead: playhead, selection: selection.wrappedValue, in: memory)
+        }
+        return time
     }
 
     /// Goes into a nested timeline, from its clip, keeping where it came

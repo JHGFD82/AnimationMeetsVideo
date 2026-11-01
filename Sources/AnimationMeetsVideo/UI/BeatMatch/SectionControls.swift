@@ -77,8 +77,10 @@ private struct TempoControls: View {
 
     var body: some View {
         HStack(spacing: Design.Space.close) {
-            // Committed by Return, or by leaving the field.
-            TextField("Tempo", value: Binding(get: { session.selectedTempo ?? 0 }, set: apply),
+            // Committed by Return, or by leaving the field. The setter is a
+            // closure, not `apply` itself: Swift 6.3's compiler crashes
+            // making the method into the binding's setter.
+            TextField("Tempo", value: Binding(get: { session.selectedTempo ?? 0 }, set: { apply($0) }),
                       format: .number.precision(.fractionLength(2)))
                 .font(Design.Typeface.numeric)
                 .frame(width: 70)

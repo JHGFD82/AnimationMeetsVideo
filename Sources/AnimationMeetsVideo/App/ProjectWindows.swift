@@ -141,6 +141,8 @@ final class ProjectWindows {
     /// cancelling a save keeps the app open.
     func shouldTerminate() -> NSApplication.TerminateReply {
         guard ExportWindow.confirmStopping(ExportWindow.runningAnywhere, because: "Quitting") else { return .terminateCancel }
+        // Windows aren't sure to close on the way out.
+        for session in sessions { session.viewMemory.save(for: session.project) }
         let unsaved = sessions.filter { $0.hasUnsavedChanges && $0.projectURL != nil }
         isTerminating = true
         guard !unsaved.isEmpty else { return .terminateNow }

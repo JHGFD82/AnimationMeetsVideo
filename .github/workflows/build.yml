@@ -16,12 +16,24 @@ concurrency:
 
 jobs:
   build:
-    # macOS 26 for its Xcode: the viewer uses an API from the macOS 26 SDK
-    # behind an availability check.
-    runs-on: macos-26
+    # The Xcode 27 image (a preview, on macOS 27): the macos-26 image has
+    # only Xcode 26, whose Swift rejected code Xcode 27 builds, and
+    # crashed on some. The viewer also needs the macOS 26 SDK or later.
+    runs-on: xcode-27
     timeout-minutes: 30
+    # The Xcode the app is developed with, rather than the image's
+    # default (27.1). The image's 27.2 is its release candidate.
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Check for the pinned Xcode
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error::$DEVELOPER_DIR isn't on this runner. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
       - name: Show the toolchain
         run: |
           xcodebuild -version

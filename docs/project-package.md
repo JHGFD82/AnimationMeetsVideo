@@ -35,6 +35,7 @@ A project is a folder that macOS treats as a single package:
 ```
 MyProject.amv/
   project.json        the edit: assets, timelines, layers, clips
+  view-state.json     where each timeline was left (see "View state")
   Media/              optional: assets copied in by choice
   Reference/          per-asset reference data (never auto-deleted)
     <assetID>/
@@ -286,6 +287,31 @@ Requirements for the file:
   chooses its own, and the project's `jointAudioCrossfade` only when it
   isn't `"sCurve"`.
 - Written atomically so a crash cannot leave a half-written file.
+
+## View state
+
+`view-state.json` holds where the project's window was left: the timeline
+open, and for each timeline shown, its playhead (an exact rational, as in
+`project.json`), its zoom and sideways scroll, how far down each area of
+layers was scrolled, and the clip (or transition) selected, which the
+inspector and effects panel show. Opening the project opens that timeline
+and puts each back as it was (see [timeline.md](timeline.md), "Each
+timeline keeps its place").
+
+It is kept apart from `project.json` so that moving around is never an
+edit: it adds no undo step, doesn't make the project unsaved, isn't in
+backups, and doesn't trigger the outside-change check (which watches only
+`project.json`). The project's session writes it (`TimelineViewMemory`,
+`ViewStateFile`) when a timeline is switched, when the project is saved
+(to the new package on Save As) or autosaved, when the window closes and
+when the app quits, and only when it changed. A second window on one
+timeline keeps its own place and doesn't write it.
+
+It is only where things were left, so a missing or damaged file, or one
+of another `formatVersion`, opens the project as if it had none, and the
+default `.gitignore` leaves it out. Times past a timeline shortened since
+are held back to its end, and a selection of a clip no longer there is
+dropped.
 
 ## Retention
 
