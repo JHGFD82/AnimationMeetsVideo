@@ -113,6 +113,12 @@ struct InlineNameField: View {
         guard isEditing else { return }
         isEditing = false
         let trimmed = draft.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty, trimmed != name { onCommit(trimmed) }
+        guard !trimmed.isEmpty, trimmed != name else { return }
+        // On the next turn of the run loop, not now: this runs while AppKit
+        // ends the editing (Return, focus moving away, the row going), which
+        // in a List is inside its table view's own callbacks. The new name
+        // can move the row (sorted by name), and the table reordering then
+        // is the reentrant operation AppKit warns about.
+        DispatchQueue.main.async { onCommit(trimmed) }
     }
 }
