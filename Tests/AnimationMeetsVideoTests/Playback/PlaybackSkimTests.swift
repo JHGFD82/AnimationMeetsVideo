@@ -89,6 +89,25 @@ import Testing
         #expect(playback.skimTime == nil)
     }
 
+    /// A drag's seeks don't wait behind a preroll: the player is prerolled
+    /// once the playhead rests, not after each seek of the drag.
+    @Test func prerollingWaitsForThePlayheadToRest() async throws {
+        let (playback, url) = try await makePlayback(parkedAt: 0.5)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await Task.sleep(for: PlaybackModel.prerollRest * 2)
+        let before = playback.prerolls
+
+        for frame in 13...36 {
+            playback.seek(to: CMTime(value: Int64(frame), timescale: 24))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        #expect(playback.prerolls == before)
+
+        try await Task.sleep(for: PlaybackModel.prerollRest * 2)
+        #expect(playback.prerolls == before + 1)
+        #expect(await playerReaches(playback, 1.5))
+    }
+
     @Test func showingAnotherTimelineLetsTheSkimGoAndParksThePlayhead() async throws {
         let (playback, url) = try await makePlayback(parkedAt: 1)
         defer { try? FileManager.default.removeItem(at: url) }

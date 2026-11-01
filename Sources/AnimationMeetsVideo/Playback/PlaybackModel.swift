@@ -191,12 +191,14 @@ final class PlaybackModel {
     }
 
     /// Fills the player's pipeline from the paused position, so pressing
-    /// play shows frames at once. Done after every pause, seek and new
-    /// item; any seek or play cancels it.
+    /// play shows frames at once. Done after every pause and new item, and
+    /// once the playhead rests after a seek (`prerollRest`); any seek or
+    /// play cancels it.
     private func prerollIfPaused() {
         guard !isPlaying, !isSeeking, player.rate == 0,
               player.status == .readyToPlay, player.currentItem?.status == .readyToPlay
         else { return }
+        prerolls += 1
         player.cancelPendingPrerolls()
         player.preroll(atRate: 1)
         if let item = player.currentItem, let composition = item.asset as? AVComposition, let videoComposition = item.videoComposition {
@@ -584,6 +586,9 @@ final class PlaybackModel {
     private func show(_ time: CMTime) {
         pendingSeek = time
         prerenderer.cancel()
+        restingPreroll?.cancel()
+        restingPreroll = nil
+        player.cancelPendingPrerolls()
         dropRedraw()
         capture.arm(at: time)
         display.wake()
@@ -596,6 +601,17 @@ final class PlaybackModel {
     /// the playhead: until then its time isn't the playhead's.
     @ObservationIgnored private var playerIsSkimmed = false
 
+    /// How many times the player was prerolled, for tests.
+    @ObservationIgnored private(set) var prerolls = 0
+    /// The preroll waiting for the playhead to rest after a seek.
+    @ObservationIgnored private var restingPreroll: Task<Void, Never>?
+    /// How long the playhead must rest after a seek before the player is
+    /// prerolled there. A preroll decodes ahead of the playhead, and a
+    /// drag's next seek, about 16 ms later, waited behind it: on a timeline
+    /// nesting another over long-GOP footage a step took 130 ms instead of
+    /// 10, and the viewer showed a few frames a second.
+    static let prerollRest: Duration = .milliseconds(250)
+
     private func drainSeeks() async {
         while let target = pendingSeek {
             pendingSeek = nil
@@ -605,7 +621,13 @@ final class PlaybackModel {
         if skimTime == nil { playerIsSkimmed = false }
         // Settled: the frame is drawn at full size if it was drawn smaller.
         if !isPlaying, level != .full { redrawPausedFrame() }
-        prerollIfPaused()
+        restingPreroll?.cancel()
+        restingPreroll = Task { [weak self] in
+            try? await Task.sleep(for: Self.prerollRest)
+            guard !Task.isCancelled, let self else { return }
+            self.restingPreroll = nil
+            self.prerollIfPaused()
+        }
     }
 
     /// The item was swapped while playing and has seeked and resumed.

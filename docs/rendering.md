@@ -62,10 +62,15 @@ blur samples it draws by that smoothed load (see effects.md, "Time and
 Shutter"). That needs no new composition, so it can go both ways while
 playing, and it gives way before the size does.
 
-Starting playback: whenever the player is paused (after a pause, a seek,
-a new item or a size change) it is prerolled, so its pipeline is already
-full when play is pressed, and it doesn't wait to judge its buffer full
-enough (`automaticallyWaitsToMinimizeStalling` is off; media is local).
+Starting playback: whenever the player is paused (after a pause, a new
+item or a size change, and once the playhead has rested for 250 ms after
+a seek) it is prerolled, so its pipeline is already full when play is
+pressed, and it doesn't wait to judge its buffer full enough
+(`automaticallyWaitsToMinimizeStalling` is off; media is local). A seek
+drops a preroll under way or waiting: a preroll decodes ahead of the
+playhead, and a drag's next seek waited behind it. On a timeline nesting
+another over long-GOP HEVC that held the viewer to 3 to 5 frames a
+second; waiting for the playhead to rest brought it to about 50.
 On the test project that cut the wait for the first moving frame from
 about 920 ms to about 310 ms. What remains is AVPlayer holding the
 picture back to keep it in sync with the sound device, which takes longer
