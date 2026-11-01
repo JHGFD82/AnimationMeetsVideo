@@ -44,6 +44,8 @@ struct TimelineView: View {
     /// The zoom, the scroll and their edges, which only the tracks follow
     /// (see `TimelineViewportModel`).
     @State var viewportModel = TimelineViewportModel()
+    /// Where each timeline was left, to show it zoomed and scrolled so again.
+    @Environment(\.timelineViewMemory) var viewMemory
     /// The last `focus` shown, so a redraw doesn't zoom to it again.
     @State var shownFocusID: UUID?
     /// The focus whose clip is lit, until its light has faded.
@@ -399,8 +401,14 @@ struct TimelineView: View {
         }
         // Set up again on coming back, and let go of on leaving: its
         // closures hold this view (`TimelineAutoScroll.detach`).
-        .onAppear { configureAutoScroll() }
-        .onDisappear { autoScroll.detach() }
+        .onAppear {
+            configureAutoScroll()
+            showParkedViewport(of: timelineID)
+        }
+        .onDisappear {
+            autoScroll.detach()
+            parkViewport(of: timelineID)
+        }
         .onChange(of: TimingKey(timeline), initial: true) { old, new in
             keepZoomThroughRetiming(from: old, to: new)
         }
@@ -451,8 +459,10 @@ struct TimelineView: View {
         .onChange(of: clickOnBeats, initial: true) { _, on in beatClicks.isEnabled = on }
         .onChange(of: beatClickFrequency, initial: true) { _, hertz in beatClicks.frequency = hertz }
         .onChange(of: beatClickVolume, initial: true) { _, volume in beatClicks.volume = Float(volume) }
-        .onChange(of: timelineID) { _, _ in
-            viewportModel.reset()
+        .onChange(of: timelineID) { oldID, newID in
+            // Each timeline comes back zoomed and scrolled as it was left.
+            parkViewport(of: oldID)
+            showParkedViewport(of: newID)
             expandedJoint = nil
             groupSelection = []
             highlightedFocus = nil

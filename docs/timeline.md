@@ -268,16 +268,30 @@ its time-jumped notification, so following needs no per-frame check. The view op
 Moving the playhead from the keyboard scrolls it to the middle when it
 lands out of view.
 
-Each timeline **keeps its playhead**. Opening another timeline (from the
+Each timeline **keeps its place**. Opening another timeline (from the
 browser, the header's menu, or into and out of a nested one) stops
-playing, and the timeline opens at the playhead it had when it was last
-open, which the viewer shows: where playing had reached, if it was
-playing. That time is held back to the timeline's end if an edit since
-shortened it. A timeline not opened before in the window starts at 0.
-The times are kept by the editor surface (`parkedTimes` in
-`TimelineEditorSurface`) for as long as its window is open. They aren't
-saved with the project, so moving the playhead never counts as an edit.
-A second display's own timeline keeps its own.
+playing, and the timeline opens as it was when it was last open:
+
+- at the playhead it had, which the viewer shows: where playing had
+  reached, if it was playing, held back to the timeline's end if an edit
+  since shortened it;
+- zoomed and scrolled sideways as it was, and each area of layers
+  scrolled down as it was (once its layers are laid out);
+- with the clip or transition selected then, so the inspector and the
+  effects panel show it again, if it is still there.
+
+A timeline not opened before starts at 0, fitted to the window, at the
+top of each area, with nothing selected. Find All opening a timeline on a
+clip shows that clip instead (`TimelineClipFocus`).
+
+The editor surface keeps the playhead and selection, and the timeline its
+zoom and scroll, in the window's `TimelineViewMemory`. The project window
+saves it in the package, with the timeline open, as `view-state.json`
+apart from `project.json` (see [project-package.md](project-package.md),
+"View state"), so reopening the project comes back to the same timeline
+in the same place, and moving around never counts as an edit. A second
+window on one timeline, or a second display's own timeline, keeps its
+own for as long as it is open.
 
 ### Skimming
 

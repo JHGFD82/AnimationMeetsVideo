@@ -38,10 +38,30 @@ final class TimelineViewportModel {
         )
     }
 
-    /// Back to the whole timeline fitted, as for another timeline.
+    /// Counts the timelines shown, so scrolling the areas back for one
+    /// stops once another is shown.
+    @ObservationIgnored private(set) var shown = 0
+    /// How far down the areas are being scrolled back to, until they get
+    /// there (`TimelineView.restoreAreaOffsets`): what they were left at,
+    /// should the timeline be left again first.
+    @ObservationIgnored var restoringAreaOffsets: [LayerKind: CGFloat] = [:]
+
+    /// Back to the whole timeline fitted.
     func reset() {
         zoomedPixelsPerSecond = nil
         scrollX = 0
         snapIndicator = nil
+    }
+
+    /// Shows a timeline zoomed and scrolled as it was left, or fitted to
+    /// the window when it wasn't shown before. A scroll past a timeline
+    /// shortened since is held back by `TimelineViewport`.
+    func show(_ parked: ViewState.Timeline?) {
+        shown += 1
+        restoringAreaOffsets = [:]
+        reset()
+        guard let parked else { return }
+        zoomedPixelsPerSecond = parked.zoomedPixelsPerSecond.flatMap { $0.isFinite && $0 > 0 ? CGFloat($0) : nil }
+        scrollX = parked.scrollX.isFinite ? CGFloat(parked.scrollX) : 0
     }
 }

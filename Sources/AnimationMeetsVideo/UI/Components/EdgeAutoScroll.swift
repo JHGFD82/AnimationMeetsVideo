@@ -69,8 +69,27 @@ final class EdgeAutoScroll {
         return 0
     }
 
+    /// How far down the scroll view is scrolled, in points from its top;
+    /// nil before it is laid out.
+    var offset: CGFloat? {
+        guard let scrollView = anchor?.enclosingScrollView, let document = scrollView.documentView else { return nil }
+        let clip = scrollView.contentView
+        let origin = clip.bounds.origin.y
+        return clip.isFlipped ? origin : document.frame.height - clip.bounds.height - origin
+    }
+
+    /// Scrolls to `offset` points from the top, or as near as the content
+    /// allows; true once it is there.
+    @discardableResult
+    func scroll(toOffset offset: CGFloat) -> Bool {
+        guard let current = self.offset else { return false }
+        scroll(by: offset - current)
+        return abs((self.offset ?? current) - offset) < 0.5
+    }
+
     /// Scrolls down by `distance` (up when negative) and returns how far
     /// it really went, which is less at either end.
+    @discardableResult
     private func scroll(by distance: CGFloat) -> CGFloat {
         guard let scrollView = anchor?.enclosingScrollView, let document = scrollView.documentView else { return 0 }
         let clip = scrollView.contentView

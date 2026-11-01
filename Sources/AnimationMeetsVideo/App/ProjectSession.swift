@@ -22,6 +22,9 @@ final class ProjectSession {
     /// toolbar when not.
     let autosaveStatus = AutosaveStatus()
     @ObservationIgnored let fileMonitor = ProjectFileMonitor()
+    /// Where each timeline was left in the window, saved in the package
+    /// beside the project (`ViewStateFile`), never as an edit.
+    @ObservationIgnored let viewMemory = TimelineViewMemory()
     /// The project's own window, whose undo its timeline windows share
     /// (see `TimelineWindow`).
     @ObservationIgnored weak var editorWindow: NSWindow?
@@ -190,6 +193,9 @@ final class ProjectSession {
                 }
             }
             let result = restored ?? saved
+            // Before the project, which opens the editor on the timeline
+            // open when it was last left.
+            viewMemory.load(from: url)
             history.reset(to: saved.project)
             savedProject = saved.project
             // Restoring is an ordinary edit on top of the saved version, so
@@ -345,7 +351,11 @@ final class ProjectSession {
             projectLock = lock
             fileMonitor.track(package: url)
             analysis.packageURL = url
-            if isNewLocation { setProjectURL(url) }
+            if isNewLocation {
+                setProjectURL(url)
+                viewMemory.move(to: url)
+            }
+            viewMemory.save(for: project)
             ProjectWindows.shared.remember(url)
             return true
         } catch {
@@ -366,6 +376,8 @@ final class ProjectSession {
     /// only when saving after every change won't write it anyway
     /// (`autosaveIsNeeded`).
     func autosave() async {
+        // Where things are left is saved on its own, edits or not.
+        viewMemory.save(for: project)
         guard let url = projectURL, hasUnsavedChanges, project != lastAutosaved,
               Self.autosaveIsNeeded(
                   savingAutomatically: Preferences.isSavingAutomatically,
@@ -525,6 +537,7 @@ final class ProjectSession {
 
     /// The window is closing: lets go of the project's lock and watching.
     func close() {
+        viewMemory.save(for: project)
         fileMonitor.stop()
         projectLock?.release()
         projectLock = nil

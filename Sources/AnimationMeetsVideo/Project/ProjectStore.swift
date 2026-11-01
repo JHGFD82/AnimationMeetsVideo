@@ -95,7 +95,7 @@ enum ProjectStore {
 
         let ignoreURL = packageURL.appending(path: ".gitignore")
         if !fileManager.fileExists(atPath: ignoreURL.path) {
-            try "\(cacheFolderName)/\n\(backupsFolderName)/\n\(lockFileName)\n".write(to: ignoreURL, atomically: true, encoding: .utf8)
+            try "\(cacheFolderName)/\n\(backupsFolderName)/\n\(lockFileName)\n\(ViewStateFile.fileName)\n".write(to: ignoreURL, atomically: true, encoding: .utf8)
         }
         markAsPackage(packageURL)
     }
