@@ -43,8 +43,12 @@ enum ViewStateFile {
         return file.state
     }
 
+    /// Writes `state`, and has the package's `.gitignore` list the file,
+    /// for a project made before it was kept: it is one person's view, and
+    /// changes at every move.
     static func write(_ state: ViewState, to packageURL: URL) throws {
         try JSONFile.encode(FileShape(state)).write(to: url(in: packageURL), options: .atomic)
+        try? ProjectStore.ignore(fileName, in: packageURL)
     }
 
     /// The file as written: IDs as strings, so they key JSON objects.

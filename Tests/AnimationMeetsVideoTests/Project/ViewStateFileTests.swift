@@ -28,6 +28,33 @@ struct ViewStateFileTests {
         #expect(text.contains("\"1001/24000s\""))
     }
 
+    /// A project made before the view state was kept has a `.gitignore`
+    /// without it: writing the view state, or preparing the package as a
+    /// save does, adds it once, after the person's own lines.
+    @Test func anOlderGitignoreComesToListIt() throws {
+        let url = try package()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let ignore = url.appending(path: ".gitignore")
+        try "Cache/\nBackups/\n.lock\nmy-notes.txt".write(to: ignore, atomically: true, encoding: .utf8)
+
+        try ViewStateFile.write(ViewState(), to: url)
+        try ProjectStore.preparePackage(at: url)
+        try ViewStateFile.write(ViewState(), to: url)
+        #expect(try String(contentsOf: ignore, encoding: .utf8) == "Cache/\nBackups/\n.lock\nmy-notes.txt\nview-state.json\n")
+
+        // Listed already, with a leading slash: left as it is.
+        try "/view-state.json\n".write(to: ignore, atomically: true, encoding: .utf8)
+        try ViewStateFile.write(ViewState(), to: url)
+        #expect(try String(contentsOf: ignore, encoding: .utf8) == "/view-state.json\n")
+    }
+
+    @Test func aPackageWithoutAGitignoreIsLeftWithout() throws {
+        let url = try package()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try ViewStateFile.write(ViewState(), to: url)
+        #expect(!FileManager.default.fileExists(atPath: url.appending(path: ".gitignore").path))
+    }
+
     @Test func aMissingDamagedOrNewerFileStartsAfresh() throws {
         let url = try package()
         defer { try? FileManager.default.removeItem(at: url) }
