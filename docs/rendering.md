@@ -156,6 +156,17 @@ emptied timeline or a slow frame never shows black in between.
   pictures, or with anything keyframed or transitioning, is. Those are cut
   into pieces of at most 96 frames, so a render stopped by an edit loses
   little and finished pieces play as soon as they're done.
+- **One grid for the edges.** The places a picture starts or ends come in
+  any timescale (a retimed clip's can be in nanoseconds), and two whose
+  common timescale doesn't fit CoreMedia's 32 bits leave a stretch between
+  them rounded a fraction of a nanosecond past or short of the next.
+  AVFoundation turns down a video composition whose instructions overlap
+  or leave a gap, so renders fail at once and the player never draws. Each
+  stretch's range is therefore put on one grid of about a microsecond, a
+  multiple of the frame's timescale
+  (`CompositionExporter.instructionTimescale`), so frame times stay exact
+  and every stretch ends where the next begins; what a stretch draws is
+  still decided from the exact edges.
 - **Hidden layers.** A layer drawn only where a picture above it covers
   solidly is left out of the stretch (`withoutHidden`), as is one drawn
   wholly off the frame, so two opaque clips stacked in the same place

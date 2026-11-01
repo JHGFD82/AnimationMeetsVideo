@@ -58,10 +58,21 @@ extension CompositionExporter {
 
         let frame = frameDuration(for: frameRate)
         let piece = CMTimeMultiply(frame, multiplier: Int32(RenderSegment.maxFrames))
+        let grid = instructionTimescale(for: frame)
+        let last = breakpoints.count - 1
         var plan: [PlannedRange] = []
-        for index in 0..<(breakpoints.count - 1) {
+        for index in 0..<last {
             let whole = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
             guard whole.duration > .zero else { continue }
+            // What AVFoundation is given: the stretch on one grid, so it ends
+            // exactly where the next begins (see `instructionTimescale`). The
+            // last covers all of the composition. A stretch shorter than the
+            // grid holds no frame and goes; the ones beside it still meet.
+            let span = CMTimeRange(
+                start: CMTimeConvertScale(whole.start, timescale: grid, method: .roundHalfAwayFromZero),
+                end: CMTimeConvertScale(whole.end, timescale: grid, method: index + 1 == last ? .roundAwayFromZero : .roundHalfAwayFromZero)
+            )
+            guard span.duration > .zero else { continue }
             let clips = DrawClip.assembled(tree.compactMap { $0.pruned(to: whole) })
                 .withoutHidden(in: frameSize, over: whole, frame: frame)
             let leaves = clips.flatMap(\.leaves)
@@ -99,15 +110,15 @@ extension CompositionExporter {
             }
             guard needsRender else {
                 plan.append(PlannedRange(
-                    range: whole, clips: clips,
-                    segment: RenderSegment(range: whole, key: "", needsRender: false, clipIDs: owners),
+                    range: span, clips: clips,
+                    segment: RenderSegment(range: span, key: "", needsRender: false, clipIDs: owners),
                     passthrough: straight
                 ))
                 continue
             }
-            var start = whole.start
-            while start < whole.end {
-                let range = CMTimeRange(start: start, end: CMTimeMinimum(CMTimeAdd(start, piece), whole.end))
+            var start = span.start
+            while start < span.end {
+                let range = CMTimeRange(start: start, end: CMTimeMinimum(CMTimeAdd(start, piece), span.end))
                 let key = renderKey(
                     for: range, clips: clips, frame: frame,
                     frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace, canvasMargin: canvasMargin
@@ -313,5 +324,21 @@ extension CompositionExporter {
 
     static func frameDuration(for frameRate: Double) -> CMTime {
         Timeline.frameDuration(for: frameRate)
+    }
+
+    /// The timescale every stretch's range is put on: a multiple of the
+    /// frame's, so frame times stay exact, of about a microsecond.
+    ///
+    /// The times where pictures start and end come in any timescale (24,
+    /// 240 000, 24 000 000, nanoseconds from a retimed clip), and a range
+    /// keeps a duration, `end - start`, which CoreMedia rounds when the two
+    /// timescales' common multiple overflows its 32 bits. A stretch from
+    /// 25145288549/1e9 to 826/24 then ended 0.3 ns into the next one, and
+    /// AVFoundation turns down a video composition whose instructions
+    /// overlap: renders failed at once (-11800, under it -12120) and the
+    /// player never drew the item.
+    static func instructionTimescale(for frame: CMTime) -> CMTimeScale {
+        let scale = max(frame.timescale, 1)
+        return scale * max(1, 1_000_000 / scale)
     }
 }
