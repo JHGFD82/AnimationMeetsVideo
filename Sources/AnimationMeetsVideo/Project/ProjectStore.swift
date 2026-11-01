@@ -96,8 +96,25 @@ enum ProjectStore {
         let ignoreURL = packageURL.appending(path: ".gitignore")
         if !fileManager.fileExists(atPath: ignoreURL.path) {
             try "\(cacheFolderName)/\n\(backupsFolderName)/\n\(lockFileName)\n\(ViewStateFile.fileName)\n".write(to: ignoreURL, atomically: true, encoding: .utf8)
+        } else {
+            // One written before the view state was kept doesn't list it.
+            try ignore(ViewStateFile.fileName, in: packageURL)
         }
         markAsPackage(packageURL)
+    }
+
+    /// Adds `name` to the package's `.gitignore` when it doesn't list it.
+    /// A package without one is left so; the person's own lines stay.
+    static func ignore(_ name: String, in packageURL: URL) throws {
+        let ignoreURL = packageURL.appending(path: ".gitignore")
+        guard let text = try? String(contentsOf: ignoreURL, encoding: .utf8) else { return }
+        let listed = text.split(whereSeparator: \.isNewline).contains { line in
+            let entry = line.trimmingCharacters(in: .whitespaces)
+            return entry == name || entry == "/" + name
+        }
+        guard !listed else { return }
+        let separator = text.isEmpty || text.hasSuffix("\n") ? "" : "\n"
+        try (text + separator + name + "\n").write(to: ignoreURL, atomically: true, encoding: .utf8)
     }
 
     /// Sets the folder's package flag, so Finder and open and save panels

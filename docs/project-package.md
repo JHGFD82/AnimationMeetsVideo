@@ -308,8 +308,12 @@ when the app quits, and only when it changed. A second window on one
 timeline keeps its own place and doesn't write it.
 
 It is only where things were left, so a missing or damaged file, or one
-of another `formatVersion`, opens the project as if it had none, and the
-default `.gitignore` leaves it out. Times past a timeline shortened since
+of another `formatVersion`, opens the project as if it had none. The
+package's `.gitignore` leaves it out: the one a new package gets lists
+it, and one written before it was kept has it added the next time the
+view state is written or the project saved (`ProjectStore.ignore`),
+after the lines already there. A package without a `.gitignore` is left
+without one. Times past a timeline shortened since
 are held back to its end, and a selection of a clip no longer there is
 dropped.
 
