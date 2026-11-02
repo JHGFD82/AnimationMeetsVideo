@@ -59,7 +59,19 @@ extension EditingProject {
         return found
     }
 
-    func isUsed(_ item: UsedItem) -> Bool { !uses(of: item).isEmpty }
+    /// Whether anything uses `item`: `uses(of:)` isn't empty, found without
+    /// listing them, since every browser row's menu asks.
+    func isUsed(_ item: UsedItem) -> Bool {
+        timelines.contains { timeline in
+            timeline.layers.contains { layer in
+                layer.clips.contains { clip in
+                    Self.source(clip.source, is: item) || clip.effects.contains { effect in
+                        effect.input.map { Self.source($0.source, is: item) } ?? false
+                    }
+                }
+            }
+        }
+    }
 
     private static func source(_ source: ClipSource, is item: UsedItem) -> Bool {
         switch item {

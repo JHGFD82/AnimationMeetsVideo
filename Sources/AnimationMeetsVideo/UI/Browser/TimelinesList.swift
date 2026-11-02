@@ -145,7 +145,7 @@ struct TimelinesList: View {
                     picked: $picked, renamingID: $renamingID, dropHovered: $dropHovered,
                     onOpen: open, onRename: onRename, onEmbedInto: onEmbedInto,
                     onEmbed: embedOrBeep, onDuplicate: onDuplicate, onDelete: deleteOrBeep, onFindAll: findAll,
-                    menu: { id in AnyView(menu(id, order: all)) }
+                    menu: { id in AnyView(Menu(list: self, id: id, order: all)) }
                 )
                 .onChange(of: all) { _, order in picked.keep(only: order) }
             }
@@ -304,6 +304,19 @@ struct TimelinesList: View {
         }
     }
 
+    /// A timeline's menu, as a view of its own so that working out its
+    /// items (which timelines each could go into, whether it is used) waits
+    /// until the menu is shown: as `contextMenu`'s content directly, every
+    /// row's was made on every redraw, as each click to select is, and in
+    /// a project of many timelines a click took a third of a second.
+    private struct Menu: View {
+        let list: TimelinesList
+        let id: UUID
+        let order: [UUID]
+
+        var body: some View { list.menu(id, order: order) }
+    }
+
     /// A timeline's menu, in either layout. Embedding and duplicating act
     /// on everything selected when it is; with a range picked of it,
     /// embedding takes only the range.
@@ -336,8 +349,8 @@ struct TimelinesList: View {
         // Dragging onto a timeline in this tab, from the menu: into any
         // timeline that takes all of them.
         let pieces = targets.compactMap { project.timeline(id: $0) }.map { MediaPiece.timeline($0.id, from: .zero, to: $0.duration) }
-        let homes = order.filter { project.canPlaceAll(pieces, in: $0) }.compactMap { project.timeline(id: $0) }
-        Menu(targets.count > 1 ? "Embed \(targets.count) Timelines In" : "Embed In") {
+        let homes = project.timelines(acceptingAll: pieces, among: order).compactMap { project.timeline(id: $0) }
+        SwiftUI.Menu(targets.count > 1 ? "Embed \(targets.count) Timelines In" : "Embed In") {
             ForEach(homes) { home in
                 Button(home.name) { if !onEmbedInto(pieces, home.id) { NSSound.beep() } }
             }
@@ -400,7 +413,7 @@ struct TimelinesList: View {
             }
         }
         .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
-        .contextMenu { menu(timeline.id, order: order) }
+        .contextMenu { Menu(list: self, id: timeline.id, order: order) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("Opens the timeline in the editor")

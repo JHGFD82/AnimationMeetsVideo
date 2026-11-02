@@ -67,6 +67,15 @@ import Testing
         // Main holds Chorus, so it can't go inside it; nor can Verse with it.
         #expect(!project.canPlaceAll([whole(verse), whole(main)], in: chorus))
         #expect(!project.canPlaceAll([whole(chorus)], in: chorus))
+
+        // The Embed In menu's list of homes agrees, for any pick.
+        let all = [main, verse, chorus]
+        let a1 = MediaPiece(assetID: a.id, start: t(0), end: t(24))
+        let picks = [[], [whole(verse)], [whole(chorus)], [whole(main)], [whole(verse), whole(chorus)], [a1], [a1, whole(chorus)]]
+        for pieces in picks {
+            let expected = all.filter { project.canPlaceAll(pieces, in: $0) }
+            #expect(project.timelines(acceptingAll: pieces, among: all) == expected)
+        }
     }
 
     @Test func piecesOfSeveralAssetsGoBackToBackOnOneLayerInTheOrderGiven() throws {

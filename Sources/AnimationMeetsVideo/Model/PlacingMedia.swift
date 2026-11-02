@@ -46,6 +46,24 @@ extension EditingProject {
         !pieces.isEmpty && pieces.allSatisfy { canPlace($0, in: timelineID) }
     }
 
+    /// Those of `candidates` that `pieces` can all go into, in their order:
+    /// `canPlaceAll` for each, with what each timeline piece draws on
+    /// gathered once rather than for every candidate. The browser asks
+    /// this of every timeline for each row's Embed In menu.
+    func timelines(acceptingAll pieces: [MediaPiece], among candidates: [UUID]) -> [UUID] {
+        guard !pieces.isEmpty else { return [] }
+        var inside: Set<UUID> = []
+        for piece in pieces {
+            if piece.isTimeline {
+                guard let nested = timeline(id: piece.assetID), nested.duration > .zero else { return [] }
+                collectNestedTimelineIDs(startingFrom: piece.assetID, visited: &inside)
+            } else if mediaClip(id: piece.assetID) == nil {
+                return []
+            }
+        }
+        return candidates.filter { !inside.contains($0) }
+    }
+
     /// The kind of new layer a piece goes on by itself: a timeline's is video.
     func defaultLayerKind(for piece: MediaPiece) -> LayerKind {
         piece.isTimeline ? .video : defaultLayerKind(forAsset: piece.assetID)
