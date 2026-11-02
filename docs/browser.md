@@ -58,9 +58,9 @@ before it moved) opens on Clips.
   "Selecting"): a click selects one, Command-click adds or takes one out,
   Shift-click selects the run between, and Up and Down move the selection
   (Shift extends it). A **double-click opens** a timeline in the editor;
-  clicking doesn't embed it. **Embed in Active Timeline**, **Embed In**
-  (a submenu of the timelines that can take them, the same as dragging
-  them onto one; see "Dragging") and **Duplicate
+  clicking doesn't embed it. **Embed in Active Timeline** (into the
+  timeline open in the editor; to put them in another, drag them onto
+  it, see "Dragging") and **Duplicate
   Timeline** act on everything selected when the row under the menu is;
   timelines embedded together go back to back on one new layer, in the
   tab's order, as clips added together do. None goes in while any of them
@@ -283,9 +283,7 @@ open one: back to back on one new layer at its top, from its start
 over a timeline that can take all of it, the timeline is outlined in the
 accent colour; over one that can't (itself, or one inside what is
 dragged) nothing lights and the drop does nothing. The first new clip is
-selected when the timeline it went into is the one being edited. The
-menu's **Embed In** does the same without dragging, listing the
-timelines that can take everything the menu acts on.
+selected when the timeline it went into is the one being edited.
 
 - **Dragging** a selected clip drags the **whole clip**, wherever on it
   the drag starts, along with every other selected clip. A clip that

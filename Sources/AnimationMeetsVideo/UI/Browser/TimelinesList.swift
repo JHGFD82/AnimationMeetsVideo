@@ -346,16 +346,6 @@ struct TimelinesList: View {
             onEmbed(embeddable, nil)
         }
         .disabled(embeddable.isEmpty)
-        // Dragging onto a timeline in this tab, from the menu: into any
-        // timeline that takes all of them.
-        let pieces = targets.compactMap { project.timeline(id: $0) }.map { MediaPiece.timeline($0.id, from: .zero, to: $0.duration) }
-        let homes = project.timelines(acceptingAll: pieces, among: order).compactMap { project.timeline(id: $0) }
-        SwiftUI.Menu(targets.count > 1 ? "Embed \(targets.count) Timelines In" : "Embed In") {
-            ForEach(homes) { home in
-                Button(home.name) { if !onEmbedInto(pieces, home.id) { NSSound.beep() } }
-            }
-        }
-        .disabled(homes.isEmpty)
         Button("Rename Timeline") {
             picked.click(id)
             renamingID = id
