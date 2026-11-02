@@ -250,13 +250,22 @@ extension CompositionExporter {
     /// One short by less than a frame is stretched to fit, rather than let
     /// go, which left the stretch compositing live although the timeline
     /// showed it rendered.
+    ///
+    /// With `keepsFootageDecoding` (the viewer), a stretch played from its
+    /// render still asks for the footage that the first stretch drawn live
+    /// after it draws, where it is under the render too, so the player
+    /// keeps decoding it and the live stretch starts without waiting
+    /// (`LayeredInstruction.decodedOnly`).
     static func substituteCachedRanges(
         _ plan: inout [PlannedRange],
         from cache: RenderCache,
         into composition: AVMutableComposition,
-        frame: CMTime
+        frame: CMTime,
+        keepsFootageDecoding: Bool = false
     ) async throws -> Set<String> {
         var used: Set<String> = []
+        /// The tracks each stretch played from its render drew before.
+        var replaced: [Int: Set<CMPersistentTrackID>] = [:]
         var track: AVMutableCompositionTrack?
         for index in plan.indices where plan[index].segment.needsRender {
             let segment = plan[index].segment
@@ -277,6 +286,7 @@ extension CompositionExporter {
             if source.duration < segment.range.duration {
                 track.scaleTimeRange(CMTimeRange(start: segment.range.start, duration: source.duration), toDuration: segment.range.duration)
             }
+            replaced[index] = Set(plan[index].clips.flatMap(\.allTrackIDs))
             plan[index].clips = [DrawClip(
                 content: .media(MediaDraw(
                     trackID: track.trackID, base: .identity, url: file,
@@ -286,6 +296,17 @@ extension CompositionExporter {
             )]
             cache.markUsed(segment.key)
             used.insert(segment.key)
+        }
+        if keepsFootageDecoding {
+            // Back to front, so each knows what the next live stretch draws.
+            var next: Set<CMPersistentTrackID> = []
+            for index in plan.indices.reversed() {
+                if let tracks = replaced[index] {
+                    plan[index].decodedOnly = tracks.intersection(next).sorted()
+                } else {
+                    next = Set(plan[index].clips.flatMap(\.allTrackIDs))
+                }
+            }
         }
         return used
     }
@@ -316,7 +337,7 @@ extension CompositionExporter {
             LayeredInstruction(
                 timeRange: planned.range, clips: planned.clips, passthrough: planned.passthrough ?? kCMPersistentTrackID_Invalid,
                 renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options,
-                background: forPreview ? background : nil
+                background: forPreview ? background : nil, decodedOnly: planned.decodedOnly
             )
         }
         return videoComposition

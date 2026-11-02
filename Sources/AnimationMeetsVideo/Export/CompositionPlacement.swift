@@ -315,6 +315,9 @@ struct PlannedRange {
     /// The track whose frames are the stretch's as they are, when that is
     /// all it is.
     var passthrough: CMPersistentTrackID?
+    /// Tracks the player decodes through the stretch without its drawing
+    /// them (`LayeredInstruction.decodedOnly`).
+    var decodedOnly: [CMPersistentTrackID] = []
 }
 
 extension Placement.Piece {

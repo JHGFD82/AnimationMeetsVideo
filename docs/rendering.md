@@ -215,7 +215,13 @@ emptied timeline or a slow frame never shows black in between.
   is cheap since there is one layer to draw. A render can be a fraction
   of a frame shorter than its piece, whose ends are clip edges that at
   rates such as 29.97 fall between frame times; one short by under a
-  frame is stretched to fit.
+  frame is stretched to fit. In the viewer, a stretch played from its
+  render still has the player decode the footage that the next stretch
+  drawn live draws (`LayeredInstruction.decodedOnly`), without drawing
+  it. Otherwise that footage stopped decoding under the render and
+  started again from its last keyframe where the render ended. With
+  H.264 keyframes seconds apart, playback stood still there for 0.3 to
+  0.9 s. Export doesn't do this, since it never shows a late frame.
 - **Background rendering only when idle.** `RenderScheduler` renders one
   piece at a time, starting at the playhead and running to the end, then
   the pieces before it. Any edit, scrub or playback stops the

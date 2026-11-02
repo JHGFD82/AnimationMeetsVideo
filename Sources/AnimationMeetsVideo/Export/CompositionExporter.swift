@@ -244,7 +244,8 @@ enum CompositionExporter {
         let unrenderedPlan = plan
         if let cache {
             cachedKeys = try await substituteCachedRanges(
-                &plan, from: cache, into: composition, frame: frameDuration(for: timeline.frameRate)
+                &plan, from: cache, into: composition, frame: frameDuration(for: timeline.frameRate),
+                keepsFootageDecoding: forPreview
             )
         }
 
