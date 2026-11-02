@@ -376,8 +376,11 @@ struct TimelinesList: View {
     private func row(_ timeline: Timeline, _ listed: Row, order: [UUID]) -> some View {
         let isSelected = picked.contains(timeline.id)
         let isActive = timeline.id == activeTimelineID
-        return HStack(spacing: Design.Space.tight) {
+        // The triangle level with the icon, which sits by the name, not
+        // halfway down the two lines.
+        return HStack(alignment: .timelineIcon, spacing: Design.Space.tight) {
             disclosure(timeline, listed)
+                .alignmentGuide(.timelineIcon) { $0[VerticalAlignment.center] }
             label(timeline, isSelected: isSelected, isOnlySelection: isSelected && picked.items.count == 1, isActive: isActive)
         }
         .padding(.leading, CGFloat(listed.depth) * Design.Space.group)
@@ -462,6 +465,7 @@ struct TimelinesList: View {
         } icon: {
             Image(systemName: "rectangle.stack")
                 .foregroundStyle(Design.ClipTone.nested.color)
+                .alignmentGuide(.timelineIcon) { $0[VerticalAlignment.center] }
         }
     }
 
@@ -480,4 +484,13 @@ struct TimelinesList: View {
         picked.click(id)
         onOpen(id)
     }
+}
+
+private extension VerticalAlignment {
+    /// The middle of a tree row's icon, for its disclosure triangle.
+    enum TimelineIcon: AlignmentID {
+        static func defaultValue(in context: ViewDimensions) -> CGFloat { context[VerticalAlignment.center] }
+    }
+
+    static let timelineIcon = VerticalAlignment(TimelineIcon.self)
 }
