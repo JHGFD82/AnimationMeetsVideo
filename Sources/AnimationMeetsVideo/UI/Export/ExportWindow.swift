@@ -105,7 +105,10 @@ final class ExportWindow {
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: ExportView(export: self))
-        host.sizingOptions = [.preferredContentSize]
+        // The window follows the content's height, which grows by a
+        // finished export's report or a blocking note; preferred size
+        // alone left it at its first height with the rest cut off.
+        host.sizingOptions = [.minSize, .intrinsicContentSize, .maxSize]
         window.contentView = host
         closeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: window, queue: .main
