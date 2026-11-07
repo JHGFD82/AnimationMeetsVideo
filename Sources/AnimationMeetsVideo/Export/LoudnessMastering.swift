@@ -188,8 +188,13 @@ enum LoudnessMastering {
                 settings.controls[release].setComponent(0, to: ControlKind.limiterRelease.range!.upperBound, at: .zero)
             }
             limiter.apply(settings, at: .zero)
+            // The buffers keep channels apart, but a file holds them
+            // interleaved; saying so keeps Core Audio from logging that it
+            // ignored the buffers' layout.
+            var floatFile = format.settings
+            floatFile[AVLinearPCMIsNonInterleaved] = false
             let file = try AVAudioFile(
-                forWriting: url, settings: fileSettings.value ?? format.settings, commonFormat: .pcmFormatFloat32, interleaved: false
+                forWriting: url, settings: fileSettings.value ?? floatFile, commonFormat: .pcmFormatFloat32, interleaved: false
             )
             // Into the limiter, which holds peaks at full scale, a little
             // louder than wanted, and out again under the ceiling.
