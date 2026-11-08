@@ -86,7 +86,10 @@ before it moved) opens on Clips.
     name, **Open** mark and settings above it and its duration on its
     first thumbnail. The pictures are the timeline's own frames, made
     from a composition built of it (`TimelinePreview`) at the time per
-    thumbnail and size the Clips tab uses. It is built again only when
+    thumbnail and size the Clips tab uses, drawn by the compositor at
+    that size rather than at the timeline's and shrunk (shrinking a
+    full HD frame that far, AVFoundation returned some of them as
+    blocks of stale memory). It is built again only when
     something it draws changes (its own clips, or the timelines it nests
     or its effects take), values included, so editing one timeline
     leaves the others' strips alone. It waits for edits to settle (half
