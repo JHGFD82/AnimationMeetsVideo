@@ -267,6 +267,10 @@ final class SceneSplitter {
         guard let focus, media != nil else {
             allScenes = []
             scenes = []
+            // The video went (removed, or undone away): its picture and
+            // sound, playing or not, go with it.
+            skimming = nil
+            skim.end()
             return
         }
         let track = sceneTracks()[focus.assetID]

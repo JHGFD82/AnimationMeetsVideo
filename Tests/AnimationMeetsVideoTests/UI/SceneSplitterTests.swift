@@ -91,6 +91,20 @@ private final class Harness {
         #expect(splitter.markerSeconds == 5)
     }
 
+    @Test func removingTheVideoEndsItsSkim() {
+        let harness = Harness(cuts: [2, 5])
+        defer { harness.splitter.skim.end() }
+        harness.open(from: 0, to: 10)
+        harness.splitter.hover(atSeconds: 4)
+        #expect(harness.splitter.skim.isActive)
+
+        harness.project.clips.removeAll()
+        harness.splitter.update(project: harness.project)
+
+        #expect(!harness.splitter.skim.isActive)
+        #expect(harness.splitter.shownSeconds == nil)
+    }
+
     @Test func mergeJoinsOnlyScenesSideBySide() {
         let harness = Harness(cuts: [2, 5, 7])
         defer { harness.splitter.skim.end() }
