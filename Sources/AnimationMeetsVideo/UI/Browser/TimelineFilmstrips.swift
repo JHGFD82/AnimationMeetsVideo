@@ -124,8 +124,11 @@ struct TimelineFilmstrips: View {
         .onChange(of: focused) { _, focused in
             if !focused { skim?.end() }
         }
-        // Out of sight, no preview is kept or built.
-        .onDisappear { TimelinePreviews.shared.releaseAll() }
+        // Out of sight, no preview is kept or built, and none is skimmed.
+        .onDisappear {
+            skim?.end()
+            TimelinePreviews.shared.releaseAll()
+        }
         .sunken(.sunken)
     }
 

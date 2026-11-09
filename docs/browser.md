@@ -192,7 +192,9 @@ Skimming in the browser's view options (and the Settings window's
 Browser tab) turns following the pointer off. A click then shows the
 frame clicked, and the arrow keys step from it; it stays shown when the
 pointer leaves the browser, so it can be looked at, until the browser
-loses the keyboard.
+loses the keyboard, another panel than the browser or viewer is clicked
+(the timeline never takes the keyboard), the timeline starts playing, or
+the browser shows another tab (`BrowserSkimEnding`).
 
 - Skimming plays from the clip's file with its own player (`BrowserSkim`)
   shown over the viewer's picture, seeking with zero tolerance, so frames

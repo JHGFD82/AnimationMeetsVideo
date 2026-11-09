@@ -351,6 +351,7 @@ struct TimelineEditorSurface<Library: View>: View {
             }
         }
         .modifier(ActivePanelPublisher(active: activePanel))
+        .modifier(BrowserSkimEnding(active: activePanel, playback: playback))
         .onReceive(NotificationCenter.default.publisher(for: .revealEffect)) { note in
             if let id = note.object as? UUID { effectsState.select(effect: id) }
         }

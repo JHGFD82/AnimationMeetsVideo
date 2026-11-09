@@ -257,13 +257,16 @@ struct ClipsTab: View {
         // Leaving the browser gives the viewer back to the timeline; so does
         // leaving it from the keyboard. Without skimming, a frame clicked
         // stays shown until the browser loses the keyboard, so the pointer
-        // can go to look at it.
+        // can go to look at it, or until another panel is clicked or the
+        // timeline plays (`BrowserSkimEnding`): the timeline never takes
+        // the keyboard. Another tab shown in its place ends it too.
         .onHover { inside in
             if !inside, skimming { skim?.end() }
         }
         .onChange(of: focused) { _, focused in
             if !focused { skim?.end() }
         }
+        .onDisappear { skim?.end() }
         .onChange(of: order) { _, order in
             interaction.picked.keep(only: order)
             coverageCache.keep(only: Set(project.clips.map(\.id)))
