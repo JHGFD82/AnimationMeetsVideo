@@ -427,7 +427,9 @@ Settled, with the reasons, so they aren't proposed again:
    bump. This is the editor's shared zoom edge (`RubberBandZoom`, see
    timeline.md). With reduced motion it simply stops. Clicking a beat
    selects it and moves the playhead where the click landed, so clicks
-   seek however close the beats are. Keys: Space plays, M drops a
+   seek however close the beats are. Picking another section, or going
+   back to drawing, lets go of the selected beat, so the keys never edit
+   one out of sight; letting go of it turns the loop off. Keys: Space plays, M drops a
    beat or anchor at the playhead (while drawing, marks up to it), ⌘Z
    and ⇧⌘Z undo and redo, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),

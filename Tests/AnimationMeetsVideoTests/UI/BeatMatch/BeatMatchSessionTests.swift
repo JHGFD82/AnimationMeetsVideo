@@ -304,6 +304,33 @@ import Testing
         #expect(!session.isLooping)
     }
 
+    @Test func aBeatLetsGoWhenAnotherSectionIsPickedOrDrawingStarts() throws {
+        let session = try session("beat-match-session-let-go")
+        defer { session.end() }
+        session.chooseSections()
+        session.drawSection(from: 0, to: 10, snap: 0)
+        session.drawSection(from: 10, to: 20, snap: 0)
+        session.finishDrawing()
+        let sections = session.map.sections.map(\.id)
+        session.selectSection(sections[0])
+        session.addBeat(at: 4, position: 1)
+        let beat = try #require(session.selectedBeat)
+
+        // Its own section picked again keeps it; another lets go of it.
+        session.selectedSectionID = sections[0]
+        #expect(session.selectedBeat == beat)
+        session.selectSection(sections[1])
+        #expect(session.selectedBeat == nil)
+        // The arrows pick beats across sections, the section following.
+        session.seek(to: 6)
+        session.selectBeat(step: -1)
+        #expect(session.selectedBeat == beat && session.selectedSectionID == sections[0])
+
+        // Going back to drawing lets go of a beat too.
+        session.isDrawing = true
+        #expect(session.selectedBeat == nil)
+    }
+
     @Test func aNoteShowsUntilTheNextEdit() throws {
         let session = try session("beat-match-session-explain")
         defer { session.end() }

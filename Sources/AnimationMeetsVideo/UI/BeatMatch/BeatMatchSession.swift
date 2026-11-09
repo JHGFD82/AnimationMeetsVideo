@@ -84,8 +84,17 @@ final class BeatMatchSession: SecondsViewport {
 
     // MARK: Editing
 
+    /// The selected section. Picking another lets go of a beat in this
+    /// one, which the arrows and Delete would otherwise go on editing out
+    /// of sight.
     var selectedSectionID: UUID? {
-        didSet { if selectedSectionID != oldValue { refreshProvisionalTempo() } }
+        didSet {
+            guard selectedSectionID != oldValue else { return }
+            if let beat = selectedBeat, let index = map.beatIndex(at: beat), map.sections[index.section].id != selectedSectionID {
+                deselectBeat()
+            }
+            refreshProvisionalTempo()
+        }
     }
     /// The selected beat, by its time. The person lets go of it with
     /// `deselectBeat`; an edit may set it nil for a moment on the way to
@@ -101,10 +110,15 @@ final class BeatMatchSession: SecondsViewport {
         selectedBeat = nil
         isLooping = false
     }
+
     /// The kind a drawn or filled section gets.
     var drawKind: BeatSection.Kind = .consistent
-    /// True while sections are being drawn, before they are marked.
-    var isDrawing: Bool
+    /// True while sections are being drawn, before they are marked. A
+    /// selected beat lets go when drawing starts, so Delete and the arrows
+    /// go to the sections drawn.
+    var isDrawing: Bool {
+        didSet { if isDrawing, !oldValue { deselectBeat() } }
+    }
     /// What went wrong with the last fill, or a hint, until the next edit.
     private(set) var message: String?
     /// What the person should know about the last fill, until the next edit.
