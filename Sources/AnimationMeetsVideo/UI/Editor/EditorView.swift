@@ -22,6 +22,9 @@ struct EditorView: View {
     /// Where each timeline was left, which the project's session saves in
     /// its package; nil in a timeline window, whose surface keeps its own.
     let viewMemory: TimelineViewMemory?
+    /// Told the timeline being edited whenever another is opened, for a
+    /// timeline window's title.
+    let onTimelineChange: ((UUID) -> Void)?
     @Environment(\.undoManager) private var undoManager
     @Environment(\.openWindow) private var openWindow
     @State private var activeTimelineID: UUID
@@ -62,7 +65,8 @@ struct EditorView: View {
         playback: PlaybackModel? = nil,
         timelineID: UUID? = nil,
         sharesHistory: Bool = false,
-        viewMemory: TimelineViewMemory? = nil
+        viewMemory: TimelineViewMemory? = nil,
+        onTimelineChange: ((UUID) -> Void)? = nil
     ) {
         self._project = project
         self.history = history
@@ -71,6 +75,7 @@ struct EditorView: View {
         self.packageURL = packageURL
         self.sharesHistory = sharesHistory
         self.viewMemory = viewMemory
+        self.onTimelineChange = onTimelineChange
         self._activeTimelineID = State(
             initialValue: timelineID ?? viewMemory?.openTimeline(in: project.wrappedValue) ?? project.wrappedValue.rootTimelineID
         )
@@ -178,7 +183,8 @@ struct EditorView: View {
         }
         // A timeline opened is shown at its playhead, not under a skim of
         // the browser.
-        .onChange(of: activeTimeline.wrappedValue) { _, _ in
+        .onChange(of: activeTimeline.wrappedValue) { _, id in
+            onTimelineChange?(id)
             skim.end()
             // Once the surface has kept where the timeline before was left.
             Task { viewMemory?.save(for: project) }

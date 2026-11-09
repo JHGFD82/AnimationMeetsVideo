@@ -72,8 +72,8 @@ before it moved) opens on Clips.
   name, Escape puts the old one back. Its menu also has **Open**,
   **Open in New Window** (a second editor on that timeline, sharing the
   project with its window: the same undo, so ⌘Z in either undoes the last
-  edit made in either, and it closes when the project's window does;
-  `TimelineWindow`; Project Settings, Replace Media and their notices
+  edit made in either, and it closes when the project's window does; its
+  title names the timeline it has open, which may change; `TimelineWindow`; Project Settings, Replace Media and their notices
   open on whichever of the two was last in front, `projectDialogs`),
   **Embed in Active Timeline** (disabled where it can't be: it is empty,
   or would contain the active one) and **Duplicate Timeline**, which

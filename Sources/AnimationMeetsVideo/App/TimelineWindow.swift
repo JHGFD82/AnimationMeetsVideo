@@ -22,13 +22,17 @@ struct TimelineWindow: View {
     /// Tells this window from the project's others, for which shows the
     /// project's dialogs (`projectDialogs`).
     @State private var windowID = UUID()
+    /// The timeline the editor has open, once another than the one it
+    /// opened on, for the title.
+    @State private var shownTimelineID: UUID?
 
     var body: some View {
         if let ref, let session = ProjectWindows.shared.session(showing: ref.projectURL) {
             EditorView(
                 project: Bindable(session.projectState).value, history: session.history, analysis: session.analysis,
                 replacement: session.replacement, packageURL: session.projectURL,
-                timelineID: ref.timelineID, sharesHistory: true
+                timelineID: ref.timelineID, sharesHistory: true,
+                onTimelineChange: { shownTimelineID = $0 }
             )
             .equatable()
             .environment(session.projectState)
@@ -53,7 +57,8 @@ struct TimelineWindow: View {
     }
 
     private func title(in session: ProjectSession, ref: TimelineWindowRef) -> String {
-        let timeline = session.projectState.value.timeline(id: ref.timelineID)?.name ?? "Timeline"
+        let id = shownTimelineID ?? ref.timelineID
+        let timeline = session.projectState.value.timeline(id: id)?.name ?? "Timeline"
         return "\(ref.projectURL.deletingPathExtension().lastPathComponent) — \(timeline)"
     }
 }
