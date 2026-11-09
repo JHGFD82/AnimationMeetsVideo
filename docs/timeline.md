@@ -311,8 +311,9 @@ stays where it is parked. A red hairline with no tab, Final Cut's
 skimmer (`Design.skim`, which the blade's line also uses), marks the
 frame skimmed (`TimelineSkimLine`). A grain of the mix plays at each
 frame, as for moving the playhead (docs/audio.md, "Scrubbing"), unless Scrub Audio
-is off. Leaving the tracks, moving over the names column, or turning
-skimming off takes the viewer back to the playhead.
+is off. Leaving the tracks, moving over the names column, turning
+skimming off, or the window losing the keys (another window clicked, or
+the app left) takes the viewer back to the playhead.
 
 - The pointer is read by the timeline's input monitor
   (`TimelineInputMonitor`), which watches mouse-moved events without

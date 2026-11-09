@@ -59,6 +59,11 @@ struct TimelineInputMonitor: NSViewRepresentable {
         var onMagnifyEnded: (() -> Void)?
         var onHover: ((CGFloat?) -> Void)?
         private var monitor: Any?
+        /// The app going to the background, or the window losing the keys,
+        /// which end the hover: the tracking area is only live in the key
+        /// window, so the pointer leaving after either is never heard, and
+        /// a skim left on took the place of the playhead for Space.
+        private var leaveObservers: [NSObjectProtocol] = []
         /// Has the window send mouse-moved events while the pointer is over
         /// this view, and says when it leaves.
         private var trackingArea: NSTrackingArea?
@@ -80,7 +85,15 @@ struct TimelineInputMonitor: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             stopMonitoring()
-            guard window != nil else { return }
+            guard let window else { return }
+            let center = NotificationCenter.default
+            let leave: @Sendable (Notification) -> Void = { [weak self] _ in
+                MainActor.assumeIsolated { self?.onHover?(nil) }
+            }
+            leaveObservers = [
+                center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main, using: leave),
+                center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main, using: leave),
+            ]
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel, .mouseMoved]) { [weak self] event in
                 // Local monitors run on the main thread.
                 nonisolated(unsafe) let event = event
@@ -158,6 +171,8 @@ struct TimelineInputMonitor: NSViewRepresentable {
         func stopMonitoring() {
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
+            for observer in leaveObservers { NotificationCenter.default.removeObserver(observer) }
+            leaveObservers = []
         }
     }
 }
