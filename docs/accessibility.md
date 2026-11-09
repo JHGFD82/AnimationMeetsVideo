@@ -66,15 +66,6 @@ Command, still reach the panels, and a press anywhere outside the view
 lets its focus go. A new focusable view that uses `onKeyPress` claims
 its keys the same way.
 
-Typing in the inspector or effects panel, in a field or in a Text
-effect's words, ends when the mouse goes down anywhere else in the
-window, as Return or Tab ends it: what was typed is entered and the
-keyboard goes back to the editor's keys. AppKit alone ends an edit only
-on a click on something that takes the keyboard, so clicks on the
-panel's background, the viewer or the timeline left the field taking
-every key press (`endsEditingOnClickAway`, which watches the press
-without taking it, so the click still does what it does).
-
 **Help > Keyboard Shortcuts** (⌘/, `KeyboardShortcutsView`) lists these
 with the Clips list's keys and the File menu's shortcuts in one window;
 keep it in step with this table. VoiceOver reads each row's keys by

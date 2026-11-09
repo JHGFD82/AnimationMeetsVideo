@@ -57,7 +57,10 @@ Built and tested in code, never run on screen.
 - [ ] **UX review fixes (November 2026)**, which depend on how AppKit
   and SwiftUI behave at run time:
   - Type in a Text clip's words, click a clip, press Space and Delete:
-    the timeline plays and deletes; the letters picked stay picked.
+    the timeline plays and deletes; the letters picked stay picked. The
+    click that ends typing still does what it was aimed at (selects the
+    clip, presses the button): the event tests can't check this, since
+    their clicks reach no plain SwiftUI view.
   - Curves and EQ: Delete removes the picked point, arrows move it, Tab
     leaves the graph; then click a clip and Delete deletes the clip.
   - Escape mid-drag on an EQ dot, a Curves point, a range handle, a
