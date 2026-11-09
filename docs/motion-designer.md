@@ -135,8 +135,9 @@ time graph and the music.
   The arrow keys, Delete, H, E and the right-click menu (Make Hits, Make
   Markers, the eases, Remove) act on every point picked; a point that
   can't become a hit or marker without asking stays as it was, and the
-  sidebar says how many did. Handles and the pace field are for a point
-  picked alone.
+  sidebar says how many did. A right-click on a point not picked picks
+  it alone first (on an edge keyframe, that), so the menu acts on what
+  was clicked. Handles and the pace field are for a point picked alone.
 - Dragging a clip in the strip moves it by whole frames, unless a hit
   holds it. A held clip follows the pointer up to 6 points, then (or when
   let go) springs back with a small bounce, and a notice under the

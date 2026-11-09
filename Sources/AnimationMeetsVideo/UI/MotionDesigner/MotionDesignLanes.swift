@@ -224,6 +224,9 @@ struct MotionDesignLanes: View {
                 NSCursor.arrow.set()
             }
         }
+        // A right-click picks the point or edge under it first, so its
+        // menu acts on what was clicked rather than on what was picked.
+        .background(SecondaryClickMonitor { location in pickForMenu(at: location, stack: stack) })
         .contextMenu { pointMenu }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Time graph")
@@ -701,6 +704,18 @@ struct MotionDesignLanes: View {
 
     // MARK: Menus and VoiceOver
 
+    /// Before the graph's menu opens: the point under the pointer is picked
+    /// alone, unless it is among those picked, which the menu then acts on
+    /// together; else an edge keyframe there. Elsewhere the menu acts on
+    /// what is picked.
+    private func pickForMenu(at location: CGPoint, stack: Stack) {
+        if let id = point(at: location, stack: stack) {
+            if !session.pickedPoints.contains(id) { session.select(point: id) }
+        } else if let key = edge(at: location, stack: stack) {
+            session.select(edge: key)
+        }
+    }
+
     @ViewBuilder
     private var pointMenu: some View {
         let picked = session.pickedPointIDs
@@ -1044,6 +1059,60 @@ private struct MotionSkimLine: View {
                 .fill(Design.skim.opacity(0.7))
                 .frame(width: 1, height: height)
                 .offset(x: session.x(of: time.seconds).rounded() - 0.5)
+        }
+    }
+}
+
+/// Hears a right-click, or Control-click, on the view it backs, in the
+/// view's own coordinates, before the context menu it opens is built. It
+/// only listens: the click goes on to open the menu.
+private struct SecondaryClickMonitor: NSViewRepresentable {
+    let onSecondaryDown: (CGPoint) -> Void
+
+    func makeNSView(context: Context) -> MonitorView {
+        let view = MonitorView()
+        view.onSecondaryDown = onSecondaryDown
+        return view
+    }
+
+    func updateNSView(_ view: MonitorView, context: Context) {
+        view.onSecondaryDown = onSecondaryDown
+    }
+
+    static func dismantleNSView(_ view: MonitorView, coordinator: ()) {
+        view.stopMonitoring()
+    }
+
+    final class MonitorView: NSView {
+        var onSecondaryDown: ((CGPoint) -> Void)?
+        private var monitor: Any?
+
+        // Top-left origin, as the SwiftUI view it backs.
+        override var isFlipped: Bool { true }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stopMonitoring()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { [weak self] event in
+                // Local monitors run on the main thread.
+                nonisolated(unsafe) let event = event
+                MainActor.assumeIsolated { self?.handle(event) }
+                return event
+            }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard let window, event.window === window else { return }
+            guard event.type == .rightMouseDown || event.modifierFlags.contains(.control) else { return }
+            let local = convert(event.locationInWindow, from: nil)
+            if bounds.contains(local) { onSecondaryDown?(local) }
+        }
+
+        func stopMonitoring() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
         }
     }
 }
