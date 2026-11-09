@@ -49,6 +49,15 @@ it place the caret. One observer installed at launch does this for
 every field (`FieldTextSelection`); text views of several lines are left
 alone.
 
+Typing in the inspector or effects panel, in a field or in a Text
+effect's words, ends when the mouse goes down anywhere else in the
+window, as Return or Tab ends it: what was typed is entered and the
+keyboard goes back to the editor's keys. AppKit alone ends an edit only
+on a click on something that takes the keyboard, so clicks on the
+panel's background, the viewer or the timeline left the field taking
+every key press (`endsEditingOnClickAway`, which watches the press
+without taking it, so the click still does what it does).
+
 **Help > Keyboard Shortcuts** (⌘/, `KeyboardShortcutsView`) lists these
 with the Clips list's keys and the File menu's shortcuts in one window;
 keep it in step with this table. VoiceOver reads each row's keys by
