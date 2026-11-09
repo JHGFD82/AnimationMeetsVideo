@@ -781,7 +781,7 @@ itself; the person marks it once they're satisfied. The effect renders as
 it stands meanwhile, so the result can be checked while fixing it. A clip
 with unresolved changes shows a mark on its block in the timeline.
 
-**Unresolved changes block export.** The editor's toolbar shows how many
+**Unresolved changes block export.** The header above the viewer shows how many
 there are, across every timeline the export draws (nested ones too), and
 so does the Export window, with a Review… button. Clicking either, or
 trying to export, opens the **Paste Changes** list over the editor: each change with its timeline, clip and effect, a button to go to
@@ -1084,8 +1084,9 @@ In order, each step usable on its own:
     Effects Library. Unresolved changes are saved on the effect as `pasteChanges`;
     flagged effects get a marked edge and the changes listed under their
     name with Mark Resolved, and a flagged clip a warning mark on its
-    block. The toolbar shows how many there are across the timelines the
-    export draws (`timelineIDsDrawn`: nested ones and ones used as inputs)
+    block. The header above the viewer shows how many there are
+    across the timelines the export draws (`timelineIDsDrawn`: nested
+    ones and ones used as inputs)
     and opens the Paste Changes list, which Export opens too, instead of
     exporting, until nothing is left; Accept All resolves them all and
     carries on with the export. Go To selects the clip on its timeline and

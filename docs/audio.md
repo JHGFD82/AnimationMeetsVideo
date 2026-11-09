@@ -292,7 +292,7 @@ loudest sample.
 ## Loudness on export
 
 The **Loudness** menu in the Export window (`ExportView`, opened by the
-toolbar's Export… or File > Export…, ⌘E; remembered in the app's
+header's Export… or File > Export…, ⌘E; remembered in the app's
 defaults) sets how loud the export's sound is (`LoudnessTarget`):
 
 - **As Mixed** (the default): the mix as it is, mixed by the export

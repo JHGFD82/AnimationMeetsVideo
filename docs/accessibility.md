@@ -37,7 +37,7 @@ opens on ↑ and ↓): a button or checkbox left with the keyboard passes
 them on to the playhead (`TimelineView.keepsArrowKeys`). So the editor's
 outer rails hold no menus that would keep them: the export's format and
 sound are picked in a window of their own (`ExportWindow`, from the
-toolbar's Export… or ⌘E), which has the keys only while it is in front.
+header's Export… or ⌘E), which has the keys only while it is in front.
 
 A one-line field that starts being edited has its whole value selected,
 however editing starts (a click on the field, a click on a value or

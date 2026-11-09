@@ -148,8 +148,9 @@ a step recorded or merged, the end of a drag, an undo or redo), so a
 burst of edits is one write and a drag is saved when it ends. There is
 nothing to remember to save, closing a window or quitting saves without
 asking, and the title bar shows no edited dot. A save that fails shows
-**Not saved** in the toolbar (`AutosaveStatus`) instead of an alert at
-every edit, the dot comes back, and closing or quitting then asks.
+**Not saved** in the header above the viewer (`AutosaveStatus`)
+instead of an alert at every edit, the dot comes back, and closing or
+quitting then asks.
 
 With it off, `project.json` is written only by Save. Closing a window
 asks to Save, Don't Save or Cancel when its project has unsaved changes,
@@ -160,9 +161,9 @@ saving after every change on it is skipped, since that save writes the
 same edits, except while a gesture holds edits back (a motion designer
 session lands only when it closes) or after an automatic save failed
 (`ProjectSession.autosaveIsNeeded`). When
-one can't be written, the toolbar says **Not backed up** until a backup or
-save succeeds; clicking it explains why, with Save Now (`AutosaveStatus`,
-`AutosaveWarning`). When a
+one can't be written, the header above the viewer says **Not backed
+up** until a backup or save succeeds; clicking it explains why, with
+Save Now (`AutosaveStatus`, `AutosaveWarning`). When a
 project opens and its newest autosave is newer than `project.json` and
 differs from it, as after a crash or a quit that skipped saving, the app
 offers to restore it. Restoring is an ordinary, undoable edit on top of
@@ -198,7 +199,7 @@ the same files in the project's package. Restoring a backup clears the
 mark, so the new project's media is backed up as usual. A backup is written half-way under a
 hidden name and renamed when whole, off the main thread through the
 `PackageCoordinator`. One that fails shows **Not backed up** in the
-toolbar and is tried again at the next interval.
+header above the viewer and is tried again at the next interval.
 
 Opening a backup (double-clicking it, choosing it in File > Open, or
 File > Open Backup…, which starts in the front project's folder of

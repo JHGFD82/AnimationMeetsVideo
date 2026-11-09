@@ -23,6 +23,12 @@ struct TimelineEditorSurface<Library: View>: View {
     var offlineMedia: Set<UUID> = []
     /// A clip for the timeline to zoom to and light up, from Find All.
     var clipFocus: TimelineClipFocus? = nil
+    /// The project's name, at the start of the header's breadcrumb; the
+    /// external display's second editor leaves it out.
+    var projectName: String? = nil
+    /// The window's own controls, at the right end of the header, so the
+    /// project window has one bar above the viewer rather than two.
+    var headerActions: AnyView? = nil
     @ViewBuilder let library: () -> Library
     /// Renders in the background; absent in windows that don't render.
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
@@ -230,8 +236,11 @@ struct TimelineEditorSurface<Library: View>: View {
             VStack(spacing: 0) {
                 TimelineHeaderBar(
                     project: $project, timelineID: Binding(get: { timelineID }, set: { selectTimeline($0) }),
-                    trail: trail, onLeaveTo: { leaveTimeline(to: $0) }
-                )
+                    trail: trail, onLeaveTo: { leaveTimeline(to: $0) },
+                    projectName: projectName
+                ) {
+                    headerActions
+                }
 
                 HStack(spacing: 0) {
                     library()

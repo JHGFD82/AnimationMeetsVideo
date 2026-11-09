@@ -1,6 +1,14 @@
 import SwiftUI
 
-struct TimelineHeaderBar: View {
+/// The bar above the viewer. It reads as a path on the left, from the
+/// project to the open timeline through any timelines gone into on the
+/// way; the open timeline's frame size, rate and colour in the middle; and
+/// the window's own controls, Export last, on the right.
+///
+/// Weight marks the project, the root of the path, and brightness marks
+/// where you are: the project's name is semibold but quiet, the open
+/// timeline's is the brightest thing on the bar.
+struct TimelineHeaderBar<Actions: View>: View {
     @Binding var project: EditingProject
     @Binding var timelineID: UUID
     /// The timelines gone into to reach this one, outermost first, shown as
@@ -8,6 +16,9 @@ struct TimelineHeaderBar: View {
     var trail: [UUID] = []
     /// Goes back out to the timeline at this place on the trail.
     var onLeaveTo: (Int) -> Void = { _ in }
+    /// Where the path starts; nil leaves it at the timelines.
+    var projectName: String? = nil
+    @ViewBuilder var actions: () -> Actions
     @State private var showingSettings = false
     @State private var showingNew = false
 
@@ -16,18 +27,58 @@ struct TimelineHeaderBar: View {
     }
 
     var body: some View {
+        // The sides share what the middle leaves equally, so the middle is
+        // centred on the window whatever each side holds.
+        HStack(spacing: Design.Space.group) {
+            path
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let currentTimeline {
+                Text(currentTimeline.timebaseSummary)
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textTertiary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .help("The open timeline's frame size, frame rate and colour space")
+            }
+            actions()
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, Design.Space.rail)
+        .frame(minHeight: 40)
+        .rail(.raised)
+        .sheet(isPresented: $showingSettings) {
+            TimelineSettingsSheet(mode: .edit(timelineID), project: $project, isPresented: $showingSettings)
+        }
+        .sheet(isPresented: $showingNew) {
+            TimelineSettingsSheet(mode: .create, project: $project, isPresented: $showingNew) { newID in
+                timelineID = newID
+            }
+        }
+    }
+
+    private var path: some View {
         HStack(spacing: Design.Space.close) {
+            if let projectName {
+                // Gives way first when the bar is short of room: the
+                // timeline's name is the one to keep whole.
+                Text(projectName)
+                    .font(Design.Typeface.panelTitle)
+                    .foregroundStyle(Design.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(projectName)
+                    .accessibilityLabel("Project \(projectName)")
+                separator
+            }
             // Where this timeline was reached from; each is a button back.
             ForEach(Array(trail.enumerated()), id: \.offset) { index, ancestorID in
                 Button(project.timeline(id: ancestorID)?.name ?? "Timeline") { onLeaveTo(index) }
                     .buttonStyle(.plain)
                     .foregroundStyle(Design.textSecondary)
+                    .lineLimit(1)
                     .help("Back to \(project.timeline(id: ancestorID)?.name ?? "this timeline")")
                     .accessibilityLabel("Back to \(project.timeline(id: ancestorID)?.name ?? "the outer timeline")")
-                Image(systemName: "chevron.right")
-                    .font(Design.Typeface.glyphTiny)
-                    .foregroundStyle(Design.textTertiary)
-                    .accessibilityHidden(true)
+                separator
             }
             // The open timeline's name, only shown: timelines are opened
             // and renamed in the browser's Timelines tab.
@@ -35,9 +86,8 @@ struct TimelineHeaderBar: View {
                 .font(Design.Typeface.bodyEmphasis)
                 .foregroundStyle(Design.textPrimary)
                 .lineLimit(1)
-                // Its own width, so the name starts at the rail's inset like
-                // every other rail's first item; a fixed frame centred it.
                 .fixedSize()
+                .layoutPriority(1)
                 .accessibilityAddTraits(.isHeader)
             Button {
                 showingSettings = true
@@ -56,25 +106,26 @@ struct TimelineHeaderBar: View {
             .buttonStyle(.icon)
             .help("New timeline")
             .accessibilityLabel("New timeline")
+        }
+    }
 
-            Spacer()
-            if let currentTimeline {
-                Text(currentTimeline.timebaseSummary)
-                    .font(Design.Typeface.numericSmall)
-                    .foregroundStyle(Design.textTertiary)
-            }
-        }
-        .padding(.horizontal, Design.Space.rail)
-        .padding(.vertical, Design.Space.step)
-        .rail(.raised)
-        .sheet(isPresented: $showingSettings) {
-            TimelineSettingsSheet(mode: .edit(timelineID), project: $project, isPresented: $showingSettings)
-        }
-        .sheet(isPresented: $showingNew) {
-            TimelineSettingsSheet(mode: .create, project: $project, isPresented: $showingNew) { newID in
-                timelineID = newID
-            }
-        }
+    private var separator: some View {
+        Image(systemName: "chevron.right")
+            .font(Design.Typeface.glyphTiny)
+            .foregroundStyle(Design.textTertiary)
+            .accessibilityHidden(true)
+    }
+}
+
+extension TimelineHeaderBar where Actions == EmptyView {
+    init(
+        project: Binding<EditingProject>, timelineID: Binding<UUID>, trail: [UUID] = [],
+        onLeaveTo: @escaping (Int) -> Void = { _ in }, projectName: String? = nil
+    ) {
+        self.init(
+            project: project, timelineID: timelineID, trail: trail, onLeaveTo: onLeaveTo,
+            projectName: projectName, actions: { EmptyView() }
+        )
     }
 }
 

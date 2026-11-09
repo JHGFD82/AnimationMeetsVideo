@@ -1203,16 +1203,25 @@ struct UISnapshots {
         )
     }
 
-    /// The timeline's header inside a nested timeline: the timelines gone
-    /// through to reach it before its own name, each a way back.
+    /// The timeline's header inside a nested timeline: the project, then
+    /// the timelines gone through to reach it before its own name, each a
+    /// way back; the timebase in the middle and the window's controls at
+    /// the right.
     @Test func timelineBreadcrumb() throws {
         var project = EditingProject.empty
         let outer = project.rootTimelineID
         let nested = project.addTimeline(name: "Nested 1", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
         let deeper = project.addTimeline(name: "Nested 2", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
         try SnapshotSupport.render(
-            TimelineHeaderBar(project: .constant(project), timelineID: .constant(deeper), trail: [outer, nested]),
-            "timeline-breadcrumb", size: CGSize(width: 640, height: 44)
+            TimelineHeaderBar(
+                project: .constant(project), timelineID: .constant(deeper), trail: [outer, nested],
+                projectName: "Summer Reel"
+            ) {
+                Button("Export\u{2026}") {}
+                    .buttonStyle(.borderedProminent)
+                    .tint(Design.accentFill)
+            },
+            "timeline-breadcrumb", size: CGSize(width: 1100, height: 44)
         )
     }
 

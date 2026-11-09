@@ -104,22 +104,23 @@ struct EditorView: View {
         // No split view: the library sits beside the viewer inside the
         // surface, so the timeline under them spans the whole window.
         VStack(spacing: 0) {
-            EditorToolbar(
-                project: $project,
-                activeTimelineID: activeTimeline,
-                selection: $selection,
-                playback: playback,
-                annotations: annotations,
-                externalDisplay: externalDisplay,
-                analysis: analysis,
-                renderer: renderer,
-                exportWindow: exportWindow
-            )
             TimelineEditorSurface(
                 project: $project, timelineID: activeTimeline.wrappedValue,
                 selectTimeline: { [activeTimeline] in activeTimeline.wrappedValue = $0 }, selection: $selection,
                 playback: playback, analysis: analysis, offlineMedia: replacement.missingMedia,
-                clipFocus: clipFocus
+                clipFocus: clipFocus,
+                projectName: project.name,
+                headerActions: AnyView(EditorToolbar(
+                    project: $project,
+                    activeTimelineID: activeTimeline,
+                    selection: $selection,
+                    playback: playback,
+                    annotations: annotations,
+                    externalDisplay: externalDisplay,
+                    analysis: analysis,
+                    renderer: renderer,
+                    exportWindow: exportWindow
+                ))
             ) {
                 BrowserPanel(
                     access: browserProject, activeTimelineID: activeTimeline.wrappedValue, selection: $selection,

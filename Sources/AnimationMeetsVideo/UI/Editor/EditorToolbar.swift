@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+/// The editor's window-wide controls: the external display, the autosave
+/// warning, pasted changes to resolve, and Export. They sit at the right
+/// end of the timeline's header (`TimelineHeaderBar`), which the editor
+/// hands them to, so the window has one bar above the viewer.
 struct EditorToolbar: View {
     @Binding var project: EditingProject
     @Binding var activeTimelineID: UUID
@@ -36,10 +40,6 @@ struct EditorToolbar: View {
         // Once a redraw: it looks through the app's windows.
         let externalScreens = externalScreens
         return HStack(spacing: Design.Space.group) {
-            Text(project.name)
-                .font(Design.Typeface.panelTitle)
-                .foregroundStyle(Design.textPrimary)
-            Spacer(minLength: Design.Space.group)
             Menu {
                 ForEach(externalScreens.indices, id: \.self) { index in
                     let screen = externalScreens[index]
@@ -108,9 +108,6 @@ struct EditorToolbar: View {
                 .help("Pick the format and sound, and export the timeline")
             }
         }
-        .padding(.horizontal, Design.Space.rail)
-        .padding(.vertical, Design.Space.step + 2)
-        .rail(.raised)
         .sheet(isPresented: $showsPasteChanges) {
             PasteChangesSheet(
                 project: $project,
