@@ -1281,6 +1281,29 @@ struct UISnapshots {
         .background(Design.Surface.base.color)
         .preferredColorScheme(.dark)
         try await SnapshotSupport.render(view, "clip-blocks", size: CGSize(width: 560, height: 460), settle: .seconds(2))
+
+        // Open in the motion designer: hatched, with a lock, on a wide and
+        // a narrow block, a selected one, a sound clip and a still.
+        func locked(_ model: ClipBlockModel) -> ClipBlockModel {
+            var model = model
+            model.isLocked = true
+            return model
+        }
+        let still = TimelineClip(source: .graphic, startOffset: seconds(0.4), trimStart: .zero, trimEnd: seconds(3))
+        let lockedView = VStack(alignment: .leading, spacing: 14) {
+            row(64) { block(locked(.sample(video, info: pictures, height: 64))) }
+            row(64) { block(locked(.sample(video, info: pictures, selected: true, height: 64))) }
+            row(40) {
+                block(locked(.sample(narrow, info: pictures)))
+                block(.sample(wide, info: pictures))
+            }
+            row(40) { block(locked(.sample(song, info: nil, color: Design.ClipTone.audio.color, showsVolumeLine: true))) }
+            row(40) { block(locked(.sample(still, info: .graphic(title: "Title"), color: Design.ClipTone.graphic.color))) }
+        }
+        .padding(20)
+        .background(Design.Surface.base.color)
+        .preferredColorScheme(.dark)
+        try await SnapshotSupport.render(lockedView, "clip-blocks-locked", size: CGSize(width: 560, height: 340), settle: .seconds(2))
     }
 
     /// Nested timeline clips showing the timeline's own frames, as video

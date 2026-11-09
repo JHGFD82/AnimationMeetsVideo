@@ -44,9 +44,12 @@ struct ClipMenuHost: View, Equatable {
         var inGroup: Bool
         var groupSpansLayers: Bool
         var canPasteEffects: Bool
+        var isLocked = false
     }
 
-    var body: some View { block.clipMenu }
+    var body: some View {
+        if key.isLocked { block.lockedClipMenu } else { block.clipMenu }
+    }
 
     nonisolated static func == (lhs: ClipMenuHost, rhs: ClipMenuHost) -> Bool {
         MainActor.assumeIsolated { lhs.key == rhs.key }
@@ -62,9 +65,26 @@ extension ClipBlockView {
             acceptsEffects: model.acceptsEffects, acceptsSoundEffects: model.acceptsSoundEffects, playsSound: model.playsSound,
             reach: model.reach,
             canPasteClip: EditorClipboard.shared.hasClips, inGroup: model.isInGroup, groupSpansLayers: model.groupSpansLayers,
-            canPasteEffects: EditorClipboard.shared.canPasteEffects
+            canPasteEffects: EditorClipboard.shared.canPasteEffects,
+            isLocked: model.isLocked
         )
     }
+
+    /// The menu of a clip open in the motion designer: why it can't be
+    /// edited, and what leaves it as it is.
+    @ViewBuilder
+    var lockedClipMenu: some View {
+        Text(Self.lockedNote)
+        Divider()
+        Button("Copy") { handlers.onClipboard(.copy) }
+            .keyboardShortcut("c", modifiers: .command)
+        if let piece = model.clip.footagePiece {
+            Button("Show in Clips Browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
+        }
+    }
+
+    /// Why a clip open in the motion designer takes no edit.
+    static let lockedNote = "Open in the Motion Designer"
 
     /// Items for a clip picked with others act on them all (the timeline
     /// hands them out to each, see `TimelineAreas`); items that only make

@@ -38,6 +38,9 @@ struct LayerClipRow: View {
     let onSelectRange: (UUID) -> Void
     /// Whether the clips picked together are on more than one layer.
     var groupSpansLayers = false
+    /// This layer's clips open in the motion designer, which draw as
+    /// locked and take no edit (`ProjectState.lockedClipIDs`).
+    var locked: Set<UUID> = []
     /// How far the clips picked together are being dragged, given only to
     /// rows that hold some of them.
     var groupMove: CMTime? = nil
@@ -288,6 +291,7 @@ struct LayerClipRow: View {
             isSelected: isSelected || isInGroup,
             isInGroup: isInGroup,
             groupSpansLayers: isInGroup && groupSpansLayers,
+            isLocked: locked.contains(clip.id),
             selectedTransition: isSelected ? selection?.transitionEdge : nil,
             pixelsPerSecond: pixelsPerSecond,
             height: height,
@@ -461,6 +465,7 @@ extension LayerClipRow: Equatable {
             lhs.layer == rhs.layer && lhs.name == rhs.name && lhs.frameRate == rhs.frameRate
                 && lhs.timelineID == rhs.timelineID && lhs.selection == rhs.selection
                 && lhs.groupSelected == rhs.groupSelected && lhs.groupSpansLayers == rhs.groupSpansLayers
+                && lhs.locked == rhs.locked
                 && lhs.groupMove == rhs.groupMove
                 && lhs.pixelsPerSecond == rhs.pixelsPerSecond && lhs.width == rhs.width && lhs.height == rhs.height
                 && lhs.showsChannels == rhs.showsChannels && lhs.visibleX == rhs.visibleX

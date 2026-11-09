@@ -29,6 +29,7 @@ extension ClipBlockView {
             "starts at \(times.start)",
             "\(times.duration) long",
         ]
+        if model.isLocked { parts.insert("open in the Motion Designer, can't be edited here", at: 0) }
         if let transition = model.clip.transitionIn { parts.append("\(transition.kind.name) at the start") }
         if let transition = model.clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
         if !model.clip.enabled { parts.append("turned off") }
@@ -41,8 +42,22 @@ extension ClipBlockView {
 
     /// Moves and trims a frame at a time, and the clip's menu, for VoiceOver.
     /// They go through the same placement rules as dragging.
+    /// A clip open in the motion designer offers only what leaves it as it
+    /// is.
     @ViewBuilder
     var accessibilityEditActions: some View {
+        if model.isLocked {
+            Button("Copy") { handlers.onClipboard(.copy) }
+            if let piece = model.clip.footagePiece {
+                Button("Show in clips browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
+            }
+        } else {
+            unlockedEditActions
+        }
+    }
+
+    @ViewBuilder
+    private var unlockedEditActions: some View {
         let frame = Timeline.frameDuration(for: model.frameRate)
         if model.isInGroup {
             Button("Move selection one frame earlier") { _ = handlers.onMoveGroup(CMTimeSubtract(.zero, frame)) }

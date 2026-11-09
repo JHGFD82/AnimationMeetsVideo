@@ -234,6 +234,14 @@ struct ClipBlockView: View {
                         .allowsHitTesting(false)
                 }
             }
+            // Open in the motion designer: marked as locked, and nothing
+            // here moves, trims, splits or takes a drop on it meanwhile.
+            .overlay(alignment: .topTrailing) {
+                if model.isLocked {
+                    LockedClipMark(compact: drawnWidth < 130, height: model.height)
+                        .frame(width: drawnWidth, height: model.height)
+                }
+            }
             .clipShape(shape)
             // The outline, and the bevel inside it: lit along the top,
             // shaded along the bottom, so a clip reads as a block sitting
@@ -264,7 +272,7 @@ struct ClipBlockView: View {
             // blade out: tracking the pointer over every clip would run on
             // each move across the timeline for nothing.
             .overlay {
-                if model.tool == .blade {
+                if model.tool == .blade, !model.isLocked {
                     Color.clear
                         .contentShape(Rectangle())
                         .onContinuousHover(coordinateSpace: .named(space)) { phase in
@@ -286,7 +294,7 @@ struct ClipBlockView: View {
             .editorAnimation(Design.Motion.select, value: model.isSelected)
             .editorAnimation(Design.Motion.select, value: isLifted)
             .dropDestination(for: ClipDropPayload.self) { payloads, location in
-                guard let payload = payloads.first else { return false }
+                guard !model.isLocked, let payload = payloads.first else { return false }
                 let files = payloads.compactMap(\.file)
                 if !files.isEmpty {
                     handlers.onDropFiles(files, CMTime(seconds: max(0, Double((drawnX + location.x) / model.pixelsPerSecond)), preferredTimescale: 600))
@@ -317,7 +325,7 @@ struct ClipBlockView: View {
                 // Whether this clip takes what is over it isn't known until
                 // the drop, so it lights for any drag it could take, but not
                 // while it is the block being dragged.
-                let lit = targeted && !isLifted && !isTrimming
+                let lit = targeted && !isLifted && !isTrimming && !model.isLocked
                     && (model.transitionsTaken != .none || model.acceptsEffects || model.acceptsSoundEffects)
                 if isDropTarget != lit { isDropTarget = lit }
             }
@@ -342,7 +350,7 @@ struct ClipBlockView: View {
                 DragGesture(minimumDistance: 3, coordinateSpace: .global)
                     .onChanged { value in dragChanged(value) }
                     .onEnded { _ in dragEnded(liveX: liveX) },
-                including: ClipDragBook.gestureMask(for: model.tool)
+                including: model.isLocked ? .none : ClipDragBook.gestureMask(for: model.tool)
             )
             // A double-click on a nested timeline goes into it, except on
             // one of its transitions: the click selected that, and its
@@ -357,7 +365,10 @@ struct ClipBlockView: View {
             )
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
-                if model.tool == .blade {
+                if model.tool == .blade, model.isLocked {
+                    // No blade line was shown; the click says why.
+                    ClipLockRefusal.signal()
+                } else if model.tool == .blade {
                     let time = bladeTime(atX: value.location.x)
                     if time > model.clip.startOffset && time < model.clip.endOffset { handlers.onBlade(time) }
                 } else if SelectClick.current == .only,
@@ -372,11 +383,9 @@ struct ClipBlockView: View {
             // points of either side trims that edge instead of moving the
             // whole clip (SwiftUI resolves overlapping gestures to the
             // topmost hit-testable view at the touch point).
-            if model.tool == .arrow {
+            if model.tool == .arrow, !model.isLocked {
                 trimHandle(edge: .leading, liveX: liveX, liveWidth: liveWidth)
                 trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
-            }
-            if model.tool == .arrow {
                 transitionSideHandles(of: shown, liveX: liveX)
             }
             musicLinkMarks(of: shown)
@@ -568,7 +577,9 @@ struct ClipBlockView: View {
     /// copy pointer); the resize arrows with the slip tool, which slides
     /// the footage sideways. The trim handles show their own.
     private var pointerStyle: PointerStyle? {
-        switch model.tool {
+        // Nothing to grab on a clip open in the motion designer.
+        if model.isLocked { return nil }
+        return switch model.tool {
         case .arrow: isLifted ? (isCopying ? nil : .grabActive) : .grabIdle
         case .slip: .columnResize
         case .blade: nil

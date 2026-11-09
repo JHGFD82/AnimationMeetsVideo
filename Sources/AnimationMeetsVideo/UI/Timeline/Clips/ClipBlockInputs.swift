@@ -32,6 +32,10 @@ struct ClipBlockModel: Equatable {
     /// Whether the clips picked together are on more than one layer, which
     /// the motion designer can't open on.
     var groupSpansLayers = false
+    /// Whether the clip is open in the motion designer, which alone may
+    /// change it meanwhile: the block shows a lock, and offers no move,
+    /// trim, blade, drop or edit (`ProjectState.lock`).
+    var isLocked = false
     /// The transition selected on this clip, which shows its curve's points
     /// when there is room.
     var selectedTransition: TransitionEdge?

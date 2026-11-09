@@ -472,6 +472,7 @@ extension TimelineView {
         // layer: selecting or pushing on another layer leaves it as it was.
         let pushed = pushedClips
         let musicMarks = kind == .music ? selectedMusicMarks : [:]
+        let locked = lockedClipIDs
         let openTimeline = openTimelineAction
         let sceneTracks = sceneTracksAction
         let trimPreview = trimPreviewAction
@@ -492,6 +493,7 @@ extension TimelineView {
                         onToggleGroup: { toggleInGroup($0) },
                         onSelectRange: { selectRange(to: $0) },
                         groupSpansLayers: groupSpansLayers,
+                        locked: locked.isEmpty ? [] : Set(layer.clips.lazy.map(\.id).filter(locked.contains)),
                         groupMove: groupSelected[layer.id] == nil ? nil : groupMove,
                         resolveGroupMove: { resolveGroupMove($0) },
                         onGroupMovePreview: { groupMove = $0 },

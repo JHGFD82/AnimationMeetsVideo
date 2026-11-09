@@ -33,7 +33,7 @@ extension ClipBlockView {
             if x >= model.visibleX.lowerBound - 8, x <= model.visibleX.upperBound + 8 {
                 MusicLinkMark(height: model.height, pointAtTop: false, emphasized: model.isSelected)
                     .offset(x: x - MusicLinkMark.width / 2)
-                if model.isSelected, !model.isInGroup, model.tool == .arrow {
+                if model.isSelected, !model.isInGroup, model.tool == .arrow, !model.isLocked {
                     Color.clear
                         .frame(width: 14, height: 14)
                         .contentShape(Rectangle())
