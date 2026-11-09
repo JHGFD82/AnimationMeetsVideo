@@ -53,6 +53,19 @@ final class BeatMatchController {
             ),
             onClose: { [weak self] in self?.requestClose() }
         )
+        presentation?.onQuit = { [weak self] in self?.closeForQuitting() ?? true }
+    }
+
+    /// Before the app quits: closes, asking first when the draft differs
+    /// from the project; false to stay open.
+    private func closeForQuitting() -> Bool {
+        guard let session, let presentation else { return true }
+        if session.isChanged, !presentation.askToDiscardNow(
+            "Quit and discard your changes to this song's beats?",
+            detail: "Nothing you did in Beat Match reaches the timeline until you confirm it."
+        ) { return false }
+        tearDown()
+        return true
     }
 
     /// Closes the panel if the song is gone from the project.

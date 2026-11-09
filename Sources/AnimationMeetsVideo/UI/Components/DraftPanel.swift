@@ -118,6 +118,7 @@ final class DraftPanelPresentation {
                 MainActor.assumeIsolated { self?.bringToFront() }
             },
         ]
+        Self.open.append(self)
         panel.makeKeyAndOrderFront(nil)
     }
 
@@ -128,18 +129,47 @@ final class DraftPanelPresentation {
     /// Asks on the panel whether to throw away the draft's changes, and
     /// calls `discard` if so.
     func askToDiscard(_ question: String, detail: String, then discard: @escaping () -> Void) {
-        let alert = NSAlert()
-        alert.messageText = question
-        alert.informativeText = detail
-        alert.addButton(withTitle: "Keep Editing")
-        alert.addButton(withTitle: "Discard Changes").hasDestructiveAction = true
+        let alert = Self.discardAlert(question, detail: detail)
         alert.beginSheetModal(for: panel) { response in
             if response == .alertSecondButtonReturn { MainActor.assumeIsolated { discard() } }
         }
     }
 
+    /// Asks at once, with the panel in front, whether to throw away the
+    /// draft's changes, for quitting, which can't wait on a sheet.
+    func askToDiscardNow(_ question: String, detail: String) -> Bool {
+        bringToFront()
+        return Self.discardAlert(question, detail: detail).runModal() == .alertSecondButtonReturn
+    }
+
+    private static func discardAlert(_ question: String, detail: String) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = question
+        alert.informativeText = detail
+        alert.addButton(withTitle: "Keep Editing")
+        alert.addButton(withTitle: "Discard Changes").hasDestructiveAction = true
+        return alert
+    }
+
+    // MARK: Quitting
+
+    /// The panels open now, in the order they opened.
+    private static var open: [DraftPanelPresentation] = []
+    /// Asked before the app quits: closes the panel, after asking whether
+    /// to throw away its changes, and says whether quitting may go on.
+    var onQuit: () -> Bool = { true }
+
+    /// Asks each open panel before the app quits, so a draft isn't lost,
+    /// or a retiming not yet kept saved, without a word. False when one
+    /// is to stay open, which keeps the app open.
+    static func confirmQuitting() -> Bool {
+        for presentation in open where !presentation.onQuit() { return false }
+        return true
+    }
+
     /// Closes the panel and gives the editor its input back.
     func end() {
+        Self.open.removeAll { $0 === self }
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
         inputBlock?.end()

@@ -136,11 +136,14 @@ final class ProjectWindows {
 
     // MARK: - Quitting
 
-    /// Running exports are offered to keep going, then each project with
+    /// Running exports are offered to keep going, then open draft panels
+    /// ask about their changes, then each project with
     /// unsaved changes for saving, in turn; keeping an export or
     /// cancelling a save keeps the app open.
     func shouldTerminate() -> NSApplication.TerminateReply {
         guard ExportWindow.confirmStopping(ExportWindow.runningAnywhere, because: "Quitting") else { return .terminateCancel }
+        // Beat Match and the motion designer ask about their drafts first.
+        guard DraftPanelPresentation.confirmQuitting() else { return .terminateCancel }
         // Windows aren't sure to close on the way out.
         for session in sessions { session.viewMemory.save(for: session.project) }
         let unsaved = sessions.filter { $0.hasUnsavedChanges && $0.projectURL != nil }

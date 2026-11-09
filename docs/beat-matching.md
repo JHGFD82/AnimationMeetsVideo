@@ -30,7 +30,9 @@ and the beats they confirm are what the timeline uses.
   timeline as one undo step there, and turns on that song's beat markers
   (the view options' picker chooses its Music layer). **Cancel**, or the
   close button, leaves the timeline as it was, asking first if anything
-  changed, so a fill gone wrong never touches the project.
+  changed, so a fill gone wrong never touches the project. Quitting
+  with a changed draft open asks too
+  (`DraftPanelPresentation.confirmQuitting`).
 - The person can come back at any time to move, add or delete beats,
   reanalyze a section, or start over. Starting over on a song that had
   beats turns Confirm into **Remove Beats**, which takes them off the

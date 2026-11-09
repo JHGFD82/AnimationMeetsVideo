@@ -69,6 +69,31 @@ final class MotionDesignController {
             ),
             onClose: { [weak self] in self?.requestClose() }
         )
+        presentation?.onQuit = { [weak self] in self?.closeForQuitting() ?? true }
+    }
+
+    /// Before the app quits, which would save the retiming already in the
+    /// project: asks whether to keep it or put the clips back, and closes;
+    /// false to stay open.
+    private func closeForQuitting() -> Bool {
+        guard let session, let presentation else { return true }
+        guard session.isChanged else {
+            tearDown()
+            return true
+        }
+        presentation.bringToFront()
+        let alert = NSAlert()
+        alert.messageText = "Keep your retiming before quitting?"
+        alert.informativeText = "The motion designer is still open. Discarding puts the clips back as they were before it opened."
+        alert.addButton(withTitle: "Keep Retiming")
+        alert.addButton(withTitle: "Discard Changes").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: done()
+        case .alertSecondButtonReturn: revertAndClose()
+        default: return false
+        }
+        return true
     }
 
     /// Why a selection can't open, on the editor window; a selection across

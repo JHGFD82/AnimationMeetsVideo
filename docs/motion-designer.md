@@ -26,7 +26,8 @@ else around it, by dragging frames along a time graph.
   hits, markers and handles as they were (see
   [Opening on keyframed clips](#opening-on-keyframed-clips)). **Cancel**
   puts the clips back as they were when the panel opened, asking first if
-  anything changed, and leaves no undo step.
+  anything changed, and leaves no undo step. Quitting with a changed run
+  open asks whether to keep the retiming, discard it, or stay.
 - **Only the clips' timing is written**: where each clip the run changed
   plays, its trim, and its speed with its points (`MotionRun.write(into:over:)`,
   `TimelineClip.takeTiming`), onto the project as it is at that moment.
