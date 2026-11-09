@@ -175,6 +175,18 @@ struct KeyClaim: NSViewRepresentable {
     }
 }
 
+/// Tab through the parts of a focused view (a graph's points or bands):
+/// the next one, or the previous with Shift, starting from the first or
+/// the last; nil past either end, where Tab goes on to the next view, so
+/// the keyboard never gets stuck in the view.
+enum TabStep {
+    static func next(after current: Int?, of count: Int, back: Bool) -> Int? {
+        guard count > 0 else { return nil }
+        let next = current.map { $0 + (back ? -1 : 1) } ?? (back ? count - 1 : 0)
+        return (0..<count).contains(next) ? next : nil
+    }
+}
+
 extension View {
     /// Claims `keys` from the panels' key monitors while `isFocused` (see
     /// `KeyClaim`), and lets the focus go on a press outside the view.

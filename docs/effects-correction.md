@@ -85,8 +85,9 @@ up, for an effect whose package has a `graph`
   | Highs & Lows | Shadows and Highlights, each at the top of its bump: across sets the range, up or down the amount |
   | Solarize | Threshold (across, where the tones fold) |
 
-Picking a point or handle (a click, or Tab) shows its tones beside the
-graph; the arrow keys move it a hundredth (a tenth with Shift). VoiceOver
+Picking a point or handle (a click, or Tab, which after the last one,
+or ⇧Tab before the first, goes on to the next control) shows its tones
+beside the graph; the arrow keys move it a hundredth (a tenth with Shift). VoiceOver
 reads each point and handle as an element, adjusting it moves it up or
 down (a handle that only moves across, or a curve's edge, across), with actions to move it
 across and to delete a point other than an edge; each thumb of the edge

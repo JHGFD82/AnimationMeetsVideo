@@ -43,3 +43,21 @@ import Testing
         #expect(!view.claims(key(51, "\u{7F}")))
     }
 }
+
+@Suite struct TabStepTests {
+    @Test func tabStepsThroughThePartsAndThenLeaves() {
+        #expect(TabStep.next(after: nil, of: 3, back: false) == 0)
+        #expect(TabStep.next(after: 0, of: 3, back: false) == 1)
+        #expect(TabStep.next(after: 2, of: 3, back: false) == nil)
+    }
+
+    @Test func shiftTabStartsFromTheLastAndLeavesBeforeTheFirst() {
+        #expect(TabStep.next(after: nil, of: 3, back: true) == 2)
+        #expect(TabStep.next(after: 1, of: 3, back: true) == 0)
+        #expect(TabStep.next(after: 0, of: 3, back: true) == nil)
+    }
+
+    @Test func aViewWithNoPartsLetsTabGoOn() {
+        #expect(TabStep.next(after: nil, of: 0, back: false) == nil)
+    }
+}

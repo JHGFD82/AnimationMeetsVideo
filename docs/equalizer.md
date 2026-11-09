@@ -118,7 +118,8 @@ whichever track played last.
 ### Keyboard and VoiceOver
 
 Following [accessibility.md](accessibility.md): clicking a dot picks its
-band and focuses the graph; Tab and ⇧Tab step through the bands. The
+band and focuses the graph; Tab and ⇧Tab step through the bands, and
+past the last (or before the first) on to the next control. The
 left and right arrows move the picked band's frequency by a twelfth of
 an octave, up and down its gain by 0.5 dB, and ⌥ with up and down its Q
 by a sixth of an octave. VoiceOver reaches each band as an element of its

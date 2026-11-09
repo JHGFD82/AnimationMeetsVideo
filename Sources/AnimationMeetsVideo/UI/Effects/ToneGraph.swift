@@ -500,9 +500,12 @@ struct ToneGraph: View {
         let step = modifiers.contains(.shift) ? Self.nudge * 10 : Self.nudge
         switch key {
         case .tab:
-            guard count > 0 else { return false }
-            let delta = modifiers.contains(.shift) ? -1 : 1
-            picked = picked.map { ($0 + delta + count) % count } ?? 0
+            guard let next = TabStep.next(after: picked, of: count, back: modifiers.contains(.shift)) else {
+                // Past the last (or before the first): on to the next view.
+                picked = nil
+                return false
+            }
+            picked = next
         case "+", "=":
             guard let kind = editedCurve else { return false }
             addPoint(to: kind)

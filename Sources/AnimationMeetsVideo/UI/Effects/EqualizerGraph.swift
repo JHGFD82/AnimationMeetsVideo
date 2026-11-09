@@ -419,10 +419,13 @@ struct EqualizerGraph: View {
     private func handle(_ key: KeyEquivalent, modifiers: EventModifiers) -> Bool {
         if key == .tab {
             let all = bands
-            guard !all.isEmpty else { return false }
-            let step = modifiers.contains(.shift) ? -1 : 1
-            let index = picked.flatMap { all.firstIndex(of: $0) }.map { ($0 + step + all.count) % all.count } ?? 0
-            picked = all[index]
+            guard let next = TabStep.next(after: picked.flatMap { all.firstIndex(of: $0) }, of: all.count, back: modifiers.contains(.shift)) else {
+                // Past the last band (or before the first): on to the next
+                // view.
+                picked = nil
+                return false
+            }
+            picked = all[next]
             return true
         }
         guard let band = picked else { return false }
