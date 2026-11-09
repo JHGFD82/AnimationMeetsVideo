@@ -337,7 +337,9 @@ when the area's doesn't suit them all. Files of other kinds are refused.
 
 However they come in, files being imported are listed at the end of the
 Clips tab (`MediaImports`, `ImportingClips`), each under its name with a
-progress bar, until it arrives or fails. Most take a moment; a long
+progress bar, until it arrives or fails. Import… and a drop on the
+browser show the Clips tab as the import starts, from whichever tab was
+showing. Most take a moment; a long
 Matroska file takes seconds to index (see [matroska.md](matroska.md)),
 and reports how far it has got. Other files' bars run until they're in.
 Files that can't be read are skipped, and once the rest are in, one

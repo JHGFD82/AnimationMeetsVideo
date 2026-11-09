@@ -294,25 +294,27 @@ struct BrowserPanel: View {
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         guard let copying = MediaImportFlow.filesToCopy(urls, copy: copyOption.state == .on, packageURL: packageURL) else { return }
+        // At once, where the files show coming in (`ImportingClips`), not
+        // only once they are in: a long file took its time with no sign.
+        tab = .clips
         Task {
-            let imported = await MediaImportFlow.importFiles(
+            _ = await MediaImportFlow.importFiles(
                 urls, copying: copying, packageURL: packageURL, project: access.binding, imports: imports,
                 onError: { importError = $0 }
             )
-            if !imported.isEmpty { tab = .clips }
         }
     }
 
     /// Files dragged in from the Finder go into the library, as Import…
-    /// would bring them, copied when the project copies imports.
+    /// would bring them, copied when the project copies imports. The
+    /// Clips tab shows them coming in.
     private func importDropped(_ urls: [URL]) -> Bool {
         guard !MediaImportFlow.importable(urls).isEmpty else { return false }
+        tab = .clips
         Task {
-            if await MediaImportFlow.importDropped(
+            _ = await MediaImportFlow.importDropped(
                 urls, packageURL: packageURL, project: access.binding, imports: imports, onError: { importError = $0 }
-            ) != nil {
-                tab = .clips
-            }
+            )
         }
         return true
     }
