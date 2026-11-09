@@ -9,17 +9,22 @@ import SwiftUI
 /// reaches the project at once, so the timeline follows and the editor's
 /// player plays it; the editor's history holds them back meanwhile.
 /// **Done** keeps them, as one undo step, and **Cancel** (or closing the
-/// panel) puts the project back as it was, asking first if anything
+/// panel) puts the clips back as they were, asking first if anything
 /// changed. One run at a time.
+///
+/// Only the timing of the clips the panel changed is written, onto the
+/// project as it is at the time, so an edit made elsewhere while it is
+/// open (in a timeline window, or an import finishing) stays, whether the
+/// run is kept or cancelled. Such an edit is held back with the panel's,
+/// and recorded as a step of its own before the panel's when it closes.
 @MainActor @Observable
 final class MotionDesignController {
     private(set) var session: MotionDesignSession?
     var isActive: Bool { session != nil }
 
-    /// Applies an edit to the project, as one undo step.
+    /// Applies an edit to the project: one undo step, or while the panel
+    /// is open, part of the session's.
     @ObservationIgnored var onEdit: ((inout EditingProject) -> Void) -> Void = { _ in }
-    /// Puts the project as the run leaves it in place of the editor's.
-    @ObservationIgnored var onApply: (EditingProject) -> Void = { _ in }
     /// The editor's history, which records the whole session as one step.
     @ObservationIgnored var history: ProjectHistory?
     /// The editor's player, which the panel's monitor shows and plays.
@@ -48,7 +53,7 @@ final class MotionDesignController {
         }
         onOpen()
         let session = MotionDesignSession(run: run, project: project, playback: playback ?? PlaybackModel())
-        session.onDraftChange = { [weak self] draft in self?.onApply(draft) }
+        session.onDraftChange = { [weak self] write in self?.onEdit(write) }
         history?.beginGesture(quietly: true)
         self.session = session
 
@@ -128,9 +133,9 @@ final class MotionDesignController {
         ) { [weak self] in self?.revertAndClose() }
     }
 
-    /// Puts the project back as it was when the panel opened, and closes.
+    /// Puts the clips back as they were when the panel opened, and closes.
     private func revertAndClose() {
-        if let session { onApply(session.project) }
+        if let session { onEdit(session.writeOpened) }
         tearDown()
     }
 
@@ -139,9 +144,18 @@ final class MotionDesignController {
         tearDown()
     }
 
-    /// Closes, recording what the session changed as one step, if anything.
+    /// Closes, recording what was changed while it was open: first what
+    /// was edited elsewhere, as a step of its own, then the panel's
+    /// retiming on top, so undoing the retiming keeps the other edits.
     private func tearDown() {
-        history?.endGesture()
+        if let history, let session, let current = history.current?() {
+            var elsewhere = current
+            session.writeOpened(into: &elsewhere)
+            history.endGesture(elsewhere)
+            history.projectDidChange(current)
+        } else {
+            history?.endGesture()
+        }
         session?.end()
         session = nil
         presentation?.end()

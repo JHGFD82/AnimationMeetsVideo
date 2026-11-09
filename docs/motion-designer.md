@@ -25,8 +25,18 @@ else around it, by dragging frames along a time graph.
   keyframes (`ClipTime.design`), so opening it again brings back its
   hits, markers and handles as they were (see
   [Opening on keyframed clips](#opening-on-keyframed-clips)). **Cancel**
-  puts the project back as it was when the panel opened, asking first if
+  puts the clips back as they were when the panel opened, asking first if
   anything changed, and leaves no undo step.
+- **Only the clips' timing is written**: where each clip the run changed
+  plays, its trim, and its speed with its points (`MotionRun.write(into:over:)`,
+  `TimelineClip.takeTiming`), onto the project as it is at that moment.
+  So an edit made elsewhere while the panel is open (in a timeline
+  window, or an import finishing) stays, whether the run is kept or
+  cancelled. The history holds it back with the panel's changes; when the
+  panel closes it is recorded as a step of its own, under the
+  retiming's, so undoing the retiming keeps it. Not yet handled: ⌘Z in a
+  timeline window while the panel is open undoes the project's last step
+  from before the panel opened, under the panel's changes.
 - **The panel** floats over the editor like the beat match panel: the
   editor is darkened and takes no input while it is open, not even
   hovering or skimming (`WindowInputBlock`), and the panel

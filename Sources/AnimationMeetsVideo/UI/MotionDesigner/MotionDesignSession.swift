@@ -8,23 +8,32 @@ import SwiftUI
 /// selected, and the view's zoom and scroll. Each change to the run is
 /// written into the project at once (`onDraftChange`), so the timeline
 /// shows the clips where they now play and their speed keyframes as they
-/// are made, and the editor's own player plays them. See
+/// are made, and the editor's own player plays them. Only the timing of
+/// the clips it changed is written, onto the project as it is then, so
+/// edits made elsewhere while the panel is open stay. See
 /// docs/motion-designer.md.
 @MainActor @Observable
 final class MotionDesignSession: SecondsViewport {
     /// The run being edited.
     private(set) var run: MotionRun {
-        didSet { if run != oldValue { onDraftChange(draftProject) } }
+        didSet {
+            guard run != oldValue else { return }
+            let run = run
+            onDraftChange { run.write(into: &$0, over: oldValue) }
+        }
     }
+    /// The run as it opened, which Cancel writes back (`writeOpened`).
+    let opened: MotionRun
     /// Whether the project differs from how it was when the panel opened.
     var isChanged: Bool { run.isChanged }
     /// The panel's own undo history, for the run.
     @ObservationIgnored let undoManager = UndoManager()
-    /// Hears the project as the run now leaves it, after every change.
-    @ObservationIgnored var onDraftChange: (EditingProject) -> Void = { _ in }
+    /// Hears each change to the run as an edit that writes it into the
+    /// project: the timing of the clips it changed, and nothing else.
+    @ObservationIgnored var onDraftChange: ((inout EditingProject) -> Void) -> Void = { _ in }
 
     /// The project as it was when the panel opened, for names, files and
-    /// the music, and which the run is written into; Cancel puts it back.
+    /// the music. The run is written into the live project, not this.
     let project: EditingProject
     let timeline: Timeline
     /// The Music layers with a song under the run, in order: the first with
@@ -131,6 +140,7 @@ final class MotionDesignSession: SecondsViewport {
 
     init(run: MotionRun, project: EditingProject, playback: PlaybackModel) {
         self.run = run
+        opened = run
         self.project = project
         let timeline = project.timeline(id: run.timelineID)!
         self.timeline = timeline
@@ -153,11 +163,10 @@ final class MotionDesignSession: SecondsViewport {
         windowEndObserver = nil
     }
 
-    /// The timeline as the run leaves it.
-    var draftProject: EditingProject {
-        var draft = project
-        run.write(into: &draft)
-        return draft
+    /// Puts the clips the run changed back as they were when the panel
+    /// opened (Cancel), leaving the rest of the project as it now is.
+    func writeOpened(into project: inout EditingProject) {
+        opened.write(into: &project, over: run)
     }
 
     // MARK: Edits

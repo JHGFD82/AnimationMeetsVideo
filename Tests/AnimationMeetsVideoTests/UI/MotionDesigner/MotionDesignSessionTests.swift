@@ -30,9 +30,9 @@ import Testing
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
         let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
-        var applied: [EditingProject] = []
-        session.onDraftChange = { applied.append($0) }
-        func placed() -> TimelineClip? { applied.last?.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip }
+        var live = project
+        session.onDraftChange = { $0(&live) }
+        func placed() -> TimelineClip? { live.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip }
 
         // A move, every step of a drag included.
         session.beginDrag()
@@ -57,6 +57,42 @@ import Testing
         #expect(placed() == clip)
     }
 
+    @Test func editsMadeElsewhereStayThroughRetimingAndCancel() throws {
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        let other = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 1, timescale: 1))
+        project.timelines[0].layers = [
+            TimelineLayer(customName: nil, kind: .video, clips: [clip]),
+            TimelineLayer(customName: nil, kind: .video, clips: [other]),
+        ]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        var live = project
+        session.onDraftChange = { $0(&live) }
+        func placed(_ id: UUID) -> TimelineClip? { live.clipAndLayer(id, in: project.rootTimelineID)?.clip }
+
+        // Edits elsewhere while the panel is open: a clip of another layer
+        // moved, the project renamed, and the designed clip's blending.
+        live.editClip(other.id, in: project.rootTimelineID) { $0.startOffset = CMTime(value: 7, timescale: 1) }
+        live.name = "Renamed"
+        live.editClip(clip.id, in: project.rootTimelineID) { $0.time.frameBlending = .blend }
+
+        session.perform("Move Clip") { $0.movePiece(clip.id, by: CMTime(value: 1, timescale: 1)) }
+        #expect(placed(clip.id)?.startOffset == CMTime(value: 3, timescale: 1))
+        #expect(placed(clip.id)?.time.frameBlending == .blend)
+        #expect(placed(other.id)?.startOffset == CMTime(value: 7, timescale: 1))
+        #expect(live.name == "Renamed")
+
+        // Cancel puts back the clip's timing alone.
+        session.writeOpened(into: &live)
+        #expect(placed(clip.id)?.startOffset == clip.startOffset)
+        #expect(placed(clip.id)?.time.speed == clip.time.speed)
+        #expect(placed(clip.id)?.time.frameBlending == .blend)
+        #expect(placed(other.id)?.startOffset == CMTime(value: 7, timescale: 1))
+        #expect(live.name == "Renamed")
+    }
+
     @Test func edgeKeyframesAreThereOnOpeningAndGoWithTheDraft() throws {
         var project = EditingProject.empty
         let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
@@ -64,9 +100,9 @@ import Testing
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
         let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
-        var applied: [EditingProject] = []
-        session.onDraftChange = { applied.append($0) }
-        func placed() -> TimelineClip? { applied.last?.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip }
+        var live = project
+        session.onDraftChange = { $0(&live) }
+        func placed() -> TimelineClip? { live.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip }
 
         // A clip with no points opens with both, without handles, and
         // changes nothing until one is pulled out.

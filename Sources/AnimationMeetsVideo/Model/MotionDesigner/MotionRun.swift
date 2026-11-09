@@ -351,11 +351,25 @@ struct MotionRun: Equatable {
     /// keyframes and starts, a clip with pictures rounded onto the
     /// timeline's frames by moving its trim, not its footage. Pieces left
     /// alone keep their keyframes exactly.
-    func write(into project: inout EditingProject) {
+    ///
+    /// Given the run as it was `previous`ly written, only the pieces that
+    /// differ from it are written, one no longer edited going back to how
+    /// it opened. So writing each change as it is made, or the run as it
+    /// opened to put them all back, touches nothing else. Either way only
+    /// a clip's timing is written (`takeTiming`): the rest of each clip,
+    /// and of the project, stays as the project now has it, so edits made
+    /// elsewhere meanwhile are kept.
+    func write(into project: inout EditingProject, over previous: MotionRun? = nil) {
         guard let timeline = project.timeline(id: timelineID) else { return }
-        for piece in pieces where piece.isEdited {
-            var clip = piece.drafted
-            if project.isFrameLocked(clip) {
+        var wrote = false
+        for piece in pieces {
+            if let previous {
+                guard previous.pieces.first(id: piece.id) != piece else { continue }
+            } else {
+                guard piece.isEdited else { continue }
+            }
+            var clip = piece.isEdited ? piece.drafted : piece.clip
+            if piece.isEdited, project.isFrameLocked(clip) {
                 var start = timeline.frameAligned(clip.startOffset, .nearest)
                 // Rounding earlier mustn't ask for footage before its own.
                 if clip.sourceTime(atTimelineTime: start) < piece.footage.start { start = timeline.frameAligned(clip.startOffset, .up) }
@@ -364,9 +378,10 @@ struct MotionRun: Equatable {
                 clip.startOffset = start
                 clip = project.coveringWholeFrames(clip, in: timeline)
             }
-            project.editClip(piece.id, in: timelineID) { $0 = clip }
+            project.editClip(piece.id, in: timelineID) { $0.takeTiming(of: clip) }
+            wrote = true
         }
-        if let t = project.timelines.firstIndex(id: timelineID),
+        if wrote, let t = project.timelines.firstIndex(id: timelineID),
            let l = project.timelines[t].layers.firstIndex(id: layerID) {
             project.timelines[t].layers[l].clips.sort { $0.startOffset < $1.startOffset }
         }
@@ -374,6 +389,18 @@ struct MotionRun: Equatable {
 
     /// Whether Done would change anything.
     var isChanged: Bool { pieces.contains(where: \.isEdited) }
+}
+
+extension TimelineClip {
+    /// Takes on what the motion designer sets of `other`: where it plays,
+    /// the footage it plays, and its speed with the points it came from.
+    mutating func takeTiming(of other: TimelineClip) {
+        startOffset = other.startOffset
+        trimStart = other.trimStart
+        trimEnd = other.trimEnd
+        time.speed = other.time.speed
+        time.design = other.time.design
+    }
 }
 
 extension EditingProject {
