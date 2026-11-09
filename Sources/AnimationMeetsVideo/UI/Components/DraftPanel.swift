@@ -247,3 +247,23 @@ extension View {
         }
     }
 }
+
+extension NSEvent {
+    /// Whether a control with the keyboard focus in the event's window
+    /// takes this key itself, so a draft panel's keys leave it alone: the
+    /// arrows for a slider, stepper, pop-up or segmented control, and
+    /// Space for a button, pop-up, checkbox or segmented control (most of
+    /// which have the focus only with keyboard navigation on). Space on a
+    /// slider or stepper does nothing of its own, so it still plays.
+    @MainActor var isForFocusedControl: Bool {
+        guard let responder = window?.firstResponder else { return false }
+        switch keyCode {
+        case 123, 124, 125, 126:
+            return responder is NSSlider || responder is NSStepper || responder is NSPopUpButton || responder is NSSegmentedControl
+        case 49:
+            return responder is NSButton || responder is NSSegmentedControl
+        default:
+            return false
+        }
+    }
+}

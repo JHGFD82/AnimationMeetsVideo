@@ -151,6 +151,9 @@ struct MotionDesignView: View {
             }
         }
         guard flags.isDisjoint(with: [.command, .control, .option]) else { return false }
+        // A slider, stepper, pop-up or segmented control with the focus
+        // takes its own arrows and Space.
+        if event.isForFocusedControl { return false }
         let step = flags.contains(.shift) ? 10 : 1
         switch event.keyCode {
         case 123, 124:

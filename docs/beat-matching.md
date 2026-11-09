@@ -442,7 +442,9 @@ Settled, with the reasons, so they aren't proposed again:
    closes the panel, ⌘= ⌘- ⌘0 zoom, ⌘C and ⌘V
    copy and paste a consistent section's tempo. A key acts only when its
    button would (F, [ and ] only while drawing; L with a beat selected),
-   and otherwise goes on to the window; M while marking with no section
+   and otherwise goes on to the window, as the arrows and Space do to a
+   slider, stepper, pop-up or segmented control with the keyboard focus
+   (`NSEvent.isForFocusedControl`, in the motion designer too); M while marking with no section
    to mark says why in the sidebar. A typed tempo outside the range
    doubling and halving reach is explained there too. If the song can't
    be read, the waveform's place offers Try Again. Not yet tried on screen: drag feel, the dimming, and

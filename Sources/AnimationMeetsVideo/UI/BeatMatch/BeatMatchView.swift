@@ -146,12 +146,13 @@ private enum BeatMatchKeys {
             }
             return true
         }
+        // A slider, stepper, pop-up or segmented control with the focus
+        // takes its own arrows and Space.
+        if event.isForFocusedControl { return false }
         switch Int(event.keyCode) {
         case kVK_Space:
             session.togglePlayback()
         case kVK_LeftArrow, kVK_RightArrow:
-            // A slider or stepper with the focus takes its own arrows.
-            if event.window?.firstResponder is NSSlider || event.window?.firstResponder is NSStepper { return false }
             let direction: Double = Int(event.keyCode) == kVK_LeftArrow ? -1 : 1
             if session.selectedBeat != nil {
                 let step = flags.contains(.option) ? session.sampleDuration : flags.contains(.shift) ? 0.01 : 0.001
