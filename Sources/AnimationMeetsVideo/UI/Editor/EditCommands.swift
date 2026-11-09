@@ -89,7 +89,12 @@ struct EditCommands: Commands {
             command("Cut", key: "x", text: #selector(NSText.cut(_:)), \.cut)
             command("Copy", key: "c", text: #selector(NSText.copy(_:)), \.copy)
             command("Paste", key: "v", text: #selector(NSText.paste(_:)), \.paste)
-            Button("Duplicate") { editorAction(\.duplicate)?() }
+            // Text has no Duplicate of its own; while typing, ⌘D does
+            // nothing rather than duplicate what is selected behind it.
+            Button("Duplicate") {
+                guard !isTyping else { return NSSound.beep() }
+                editorAction(\.duplicate)?()
+            }
                 .keyboardShortcut("d", modifiers: .command)
                 .disabled(editorAction(\.duplicate) == nil)
             Button("Delete") {
@@ -126,9 +131,12 @@ struct EditCommands: Commands {
         return nil
     }
 
+    /// Whether text is being typed in.
+    private var isTyping: Bool { NSApp.keyWindow?.firstResponder is NSText }
+
     /// Sends `selector` to text being typed in; false when none is.
     private func sendToText(_ selector: Selector) -> Bool {
-        guard NSApp.keyWindow?.firstResponder is NSText else { return false }
+        guard isTyping else { return false }
         return NSApp.sendAction(selector, to: nil, from: nil)
     }
 

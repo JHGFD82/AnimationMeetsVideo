@@ -886,7 +886,7 @@ actions.
 The Edit menu's **Cut** (⌘X), **Copy** (⌘C), **Paste** (⌘V),
 **Duplicate** (⌘D) and **Delete** work on whatever is selected, as
 everywhere on the Mac (`EditCommands`). Text being typed in has them
-first; then Beat Match while it is open, then the effects panel, then the
+first (it has no Duplicate, so ⌘D there only beeps); then Beat Match while it is open, then the effects panel, then the
 timeline, each command going to the first that offers it. So with an
 effect selected, ⌘C copies the effect; with only a clip selected, the
 clip.
