@@ -73,9 +73,14 @@ Built and tested in code, never run on screen.
     the trim commits.
   - Motion Designer, open: edit in a Timeline window and import a file,
     then retime; both edits stay after Done and after Cancel, and ⌘Z
-    undoes the retiming first. In a Timeline window, move, trim, delete,
-    split or add an effect to a designed clip, paste over it, and ⌘Z:
-    each beeps and changes nothing; other clips edit as usual. Right-click an unselected point: the menu
+    undoes the retiming first. In a Timeline window, a designed clip is
+    hatched with a lock chip and won't drag, trim, take a drop or show
+    a blade line; its menu has only Copy and Show in Clips Browser; the
+    Timeline menu's Split (playhead in it), Nudge, Delete Selection and
+    Turn Off, and the Edit menu's Cut, Duplicate, Delete and Paste over
+    it, are greyed; the inspector and effects panel show it disabled
+    under "Open in the Motion Designer"; B, Delete and ⌘Z on it beep and
+    change nothing; other clips edit as usual. Right-click an unselected point: the menu
     acts on it. Clips in the footage strip are grabbed where drawn.
   - Start a drag in Beat Match or the designer, open a sheet (⌘. or H's
     conflict dialog), release, Keep Editing, click: nothing carries on.
@@ -106,11 +111,13 @@ Built and tested in code, never run on screen.
   [browser.md](browser.md); one meaning for both is a design decision.
   While the Motion Designer is open its clips are locked
   ([motion-designer.md](motion-designer.md)): edits from elsewhere that
-  would change them are refused with a beep, but nothing marks the
-  clips as locked in a Timeline window or the inspector beforehand, a
-  song moved elsewhere leaves a locked clip attached to it behind, a
-  redo refused meanwhile is lost, and an undo refused clears the redo
-  stack.
+  would change them are shown locked and not offered, and refused with a
+  beep if they come anyway. Still only refused, not greyed: the
+  timeline's keys (B, Delete, the nudge keys), the keyframe lanes on
+  the timeline, the browser's commands, and a drop on empty track that
+  would push a locked clip. A song moved elsewhere leaves a locked clip
+  attached to it behind, a redo refused meanwhile is lost, and an undo
+  refused clears the redo stack.
 
 - **Pasted media is analyzed again.** Scene detection runs anew in the
   project it is pasted into instead of taking the results the other

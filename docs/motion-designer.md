@@ -43,6 +43,22 @@ else around it, by dragging frames along a time graph.
   making their keyframes again, package effects refitted) still reaches
   them (`writeDerived`). A clip attached to a song moved elsewhere
   doesn't follow it; that is refused like an edit.
+- **Locked clips look locked, and nothing offers them an edit**, so the
+  refusal is a backstop. In a Timeline window a locked clip's block is
+  hatched, with a lock in a dark chip ("Motion Designer" where it fits;
+  `LockedClipMark`), and takes no move, slip, trim, transition handle,
+  music point drag, drop or blade (no blade line; a blade click beeps);
+  its menu and VoiceOver actions offer only Copy and Show in Clips
+  Browser, and VoiceOver reads it as open in the Motion Designer. The
+  Timeline menu's Split, Split All, Nudge, Delete Selection and Turn Off
+  or On rest when they would touch a locked clip (a split, whenever the
+  playhead is in one it would cut; `TimelineMenuState.make`'s `locked`),
+  as do the Edit menu's Cut, Duplicate, Delete and Paste (Paste and
+  Duplicate tried on a copy of the project, as they move other clips to
+  make room). The inspector and effects panel show a locked clip's
+  controls disabled under "Open in the Motion Designer"
+  (`lockedForMotionDesigner`). Keys (B, Delete, the nudge keys) still
+  reach the refusal, which beeps.
 - **Only the clips' timing is written**: where each clip the run changed
   plays, its trim, and its speed with its points (`MotionRun.write(into:over:)`,
   `TimelineClip.takeTiming`), onto the project as it is at that moment.
