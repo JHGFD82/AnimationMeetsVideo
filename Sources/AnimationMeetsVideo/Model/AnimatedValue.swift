@@ -80,6 +80,17 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         return first.time...last.time
     }
 
+    /// The spans between neighboring keyframes whose values differ, in
+    /// order: the value changes only within them. Narrower than
+    /// `animatedRange` where it holds still between keyframes, as between a
+    /// fade in and a fade out, since blending equal values gives that value
+    /// whatever the ease.
+    var changingRanges: [ClosedRange<CMTime>] {
+        zip(keyframes, keyframes.dropFirst()).compactMap { before, after in
+            before.value == after.value ? nil : before.time...after.time
+        }
+    }
+
     func value(at time: CMTime) -> Value {
         value(of: reading(at: time))
     }

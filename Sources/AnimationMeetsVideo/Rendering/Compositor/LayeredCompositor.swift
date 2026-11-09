@@ -39,12 +39,19 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
     /// drawn over transparency and then over this color, so it shows where
     /// export shows black, never blending with the clips. Nil over black.
     let background: [Double]?
+    /// Tracks asked of the player though nothing in the stretch draws them,
+    /// so their decoding runs on through it. A stretch played from its
+    /// render asks for the footage the stretch after it draws: decoding
+    /// that from cold where the render ends took up to a third of a second
+    /// with keyframes seconds apart, and the viewer stood still.
+    let decodedOnly: [CMPersistentTrackID]
 
     init(
         timeRange: CMTimeRange, clips: [DrawClip], passthrough: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
         renderSize: CGSize, colorSpace: ProjectColorSpace, canvasMargin: Double = EditingProject.defaultCanvasMargin,
         meter: RenderMeter? = nil, options: DrawingOptions? = nil, capture: SourceCapture? = nil,
-        keeping: ClipPictureCache.Keeping = .trails, background: [Double]? = nil
+        keeping: ClipPictureCache.Keeping = .trails, background: [Double]? = nil,
+        decodedOnly: [CMPersistentTrackID] = []
     ) {
         self.timeRange = timeRange
         self.clips = clips
@@ -58,7 +65,8 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         self.options = options
         self.capture = capture
         self.keeping = keeping
-        requiredSourceTrackIDs = Set(clips.flatMap(\.allTrackIDs)).sorted().map { NSNumber(value: $0) }
+        self.decodedOnly = decodedOnly
+        requiredSourceTrackIDs = Set(clips.flatMap(\.allTrackIDs) + decodedOnly).sorted().map { NSNumber(value: $0) }
     }
 
     /// The same stretch drawing `clips` instead, keeping pictures as
@@ -67,7 +75,7 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         LayeredInstruction(
             timeRange: timeRange, clips: clips, passthrough: passthroughTrackID, renderSize: renderSize,
             colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options, capture: capture,
-            keeping: keeping ?? self.keeping, background: background
+            keeping: keeping ?? self.keeping, background: background, decodedOnly: decodedOnly
         )
     }
 }

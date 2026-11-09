@@ -121,6 +121,32 @@ struct TimelineViewMemoryTests {
         #expect(saved.openTimelineID == nil)
     }
 
+    /// What the browser remembers of media taken out and timelines deleted
+    /// since isn't kept in the file.
+    @Test func whatTheBrowserRemembersOfWhatIsGoneIsntSaved() throws {
+        let url = try package()
+        defer { try? FileManager.default.removeItem(at: url) }
+        var (project, _, _) = project()
+        let media = MediaClip(
+            name: "A", kind: .video, url: nil, duration: CMTime(value: 10, timescale: 1), frameRate: 24, colorSpace: .rec709, codecName: "T"
+        )
+        project.addMedia(media)
+        let main = project.rootTimelineID, gone = UUID()
+        let span = SecondsSpan(start: 1, end: 2)
+        let memory = TimelineViewMemory()
+        memory.load(from: url)
+        memory.updateBrowser { browser in
+            browser.clipRanges = [.asset(media.id): span, .asset(gone): span, .scene(asset: gone, scene: "0/1"): span]
+            browser.timelineRanges = [main: span, gone: span]
+            browser.collapsedTimelines = [main, gone]
+        }
+        memory.save(for: project)
+        let saved = ViewStateFile.read(from: url).browser
+        #expect(saved.clipRanges == [.asset(media.id): span])
+        #expect(saved.timelineRanges == [main: span])
+        #expect(saved.collapsedTimelines == [main])
+    }
+
     @Test func aViewportShowsATimelineAsItWasLeft() {
         let model = TimelineViewportModel()
         model.show(ViewState.Timeline(zoomedPixelsPerSecond: 300, scrollX: 450))

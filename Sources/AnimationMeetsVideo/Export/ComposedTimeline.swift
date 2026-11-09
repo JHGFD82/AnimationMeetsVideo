@@ -48,6 +48,17 @@ struct ComposedTimeline: @unchecked Sendable {
         return result
     }
 
+    /// The same timeline drawing every stretch from its clips, none from
+    /// its renders.
+    func withoutRenders() -> ComposedTimeline {
+        guard !cachedKeys.isEmpty, let unrenderedVideoComposition else { return self }
+        var result = self
+        result.videoComposition = unrenderedVideoComposition
+        result.unrenderedVideoComposition = nil
+        result.cachedKeys = []
+        return result
+    }
+
     /// The pixel format the viewer's compositor draws this timeline in:
     /// 8-bit for SDR timelines (`SDRLayeredCompositor`), half floats
     /// otherwise. The viewer's video output asks for the same, so the

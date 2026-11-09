@@ -51,8 +51,15 @@ struct VoiceIsolationPlaybackTests {
         let player = AVPlayer(playerItem: item)
         player.volume = 0
         player.play()
-        try await Task.sleep(for: .seconds(2.5))
+        // Played to 2.5 s of the timeline, however long that takes: on a
+        // busy machine (CI) the player starts late, and a fixed wait left
+        // the end of the measured stretch unplayed and the voice too quiet.
+        let deadline = ContinuousClock.now + .seconds(60)
+        while player.currentTime().seconds < 2.5, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
         player.pause()
+        #expect(player.currentTime().seconds >= 2.5)
 
         let heard = average(played, to: 2.2), expected = average(read, to: 2.2)
         #expect(expected > 0.01)

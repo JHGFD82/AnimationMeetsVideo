@@ -107,6 +107,9 @@ struct ClipsTab: View {
     @Environment(UsesFinder.self) private var finder: UsesFinder?
     /// Removing media the timelines use, waiting to be agreed to.
     @State private var pendingRemoval: RemovalRequest?
+    /// Where the window keeps the range last picked of each clip, so it
+    /// outlasts the tab; absent where nothing is kept (previews, tests).
+    @Environment(\.timelineViewMemory) private var viewMemory
 
     private typealias Snapshot = ClipsTabModel.Snapshot
     private typealias Line = ClipsTabModel.Line
@@ -271,12 +274,26 @@ struct ClipsTab: View {
             interaction.picked.keep(only: order)
             coverageCache.keep(only: Set(project.clips.map(\.id)))
         }
+        // Clips gone, or made shorter (a replacement file), since their
+        // ranges were picked: whenever what is listed is worked out again.
+        .onChange(of: memos.snapshot.revision) { _, _ in
+            interaction.picked.keep(only: order)
+            ClipsTabModel.keepRanges(&interaction.picked, snapshot: snapshot)
+        }
+        // The ranges picked before, of this project: as the tab opens, and
+        // as the window's project opens, which reads them from its package.
+        .onChange(of: project.id, initial: true) { _, _ in
+            interaction.picked.remember(viewMemory?.browser.clipRanges ?? [:])
+            ClipsTabModel.keepRanges(&interaction.picked, snapshot: snapshot)
+        }
         // Only what the person picks: a scene renamed by an edit dropping
         // out of the selection leaves the splitter where it is.
         .onChange(of: picked.revision) { _, _ in
             let ids = interaction.picked.ordered(in: order)
             let focus = ClipsTabModel.splitterFocus(for: ids, snapshot: snapshot)
             splitter?.follow(focus, selecting: focus.map { ClipsTabModel.sceneIDs(ids, of: $0.assetID) } ?? [])
+            let spans = interaction.picked.rangeSpans
+            viewMemory?.updateBrowser { $0.clipRanges = spans }
         }
         .removalConfirmation($pendingRemoval, finder: finder)
         .sheet(item: $sensitivityTarget) { target in

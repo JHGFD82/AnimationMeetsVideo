@@ -128,8 +128,13 @@ struct TimelinesList: View {
     }
 
     /// Rows whose nested timelines are hidden. All start shown, since the
-    /// nesting is what the tab is for.
+    /// nesting is what the tab is for, until the person hides some: those
+    /// are kept in the window's view memory, so they stay hidden.
     @State private var collapsed: Set<UUID> = []
+    /// Where the window keeps the hidden rows and the range last picked of
+    /// each timeline, so they outlast the tab; absent where nothing is kept
+    /// (previews, tests).
+    @Environment(\.timelineViewMemory) private var viewMemory
 
     var body: some View {
         let nodes = Self.nodes(of: project, sort: sort)
@@ -145,10 +150,27 @@ struct TimelinesList: View {
                     picked: $picked, renamingID: $renamingID, dropHovered: $dropHovered,
                     onOpen: open, onRename: onRename, onEmbedInto: onEmbedInto,
                     onEmbed: embedOrBeep, onDuplicate: onDuplicate, onDelete: deleteOrBeep, onFindAll: findAll,
-                    menu: { id in AnyView(menu(id, order: all)) }
+                    menu: { id in AnyView(Menu(list: self, id: id, order: all)) }
                 )
                 .onChange(of: all) { _, order in picked.keep(only: order) }
             }
+        }
+        // Timelines deleted, or made shorter, since their ranges were picked.
+        .onChange(of: project.timelines.map(\.duration)) { _, _ in keepRanges() }
+        // What was left hidden and picked in this project: as the tab
+        // opens, and as the window's project opens, which reads them from
+        // its package.
+        .onChange(of: project.id, initial: true) { _, _ in
+            collapsed = viewMemory?.browser.collapsedTimelines ?? []
+            picked.remember(viewMemory?.browser.timelineRanges ?? [:])
+            keepRanges()
+        }
+        .onChange(of: collapsed) { _, collapsed in
+            viewMemory?.updateBrowser { $0.collapsedTimelines = collapsed }
+        }
+        .onChange(of: picked.revision) { _, _ in
+            let spans = picked.rangeSpans
+            viewMemory?.updateBrowser { $0.timelineRanges = spans }
         }
         // In either layout, from the keys or the Edit menu while the
         // browser is the active panel (see `EditCommands`).
@@ -246,7 +268,7 @@ struct TimelinesList: View {
     /// Moves the selection a row up or down from the timeline last clicked,
     /// or extends it there with Shift.
     private func step(_ by: Int, extending: Bool, in order: [UUID]) -> KeyPress.Result {
-        picked.step(by, from: picked.anchor, extending: extending, in: order) == nil ? .ignored : .handled
+        picked.step(by, from: picked.anchor, extending: extending, in: order, restoring: false) == nil ? .ignored : .handled
     }
 
     private func showNested(_ shown: Bool) -> KeyPress.Result {
@@ -304,6 +326,19 @@ struct TimelinesList: View {
         }
     }
 
+    /// A timeline's menu, as a view of its own so that working out its
+    /// items (which timelines each could go into, whether it is used) waits
+    /// until the menu is shown: as `contextMenu`'s content directly, every
+    /// row's was made on every redraw, as each click to select is, and in
+    /// a project of many timelines a click took a third of a second.
+    private struct Menu: View {
+        let list: TimelinesList
+        let id: UUID
+        let order: [UUID]
+
+        var body: some View { list.menu(id, order: order) }
+    }
+
     /// A timeline's menu, in either layout. Embedding and duplicating act
     /// on everything selected when it is; with a range picked of it,
     /// embedding takes only the range.
@@ -333,18 +368,8 @@ struct TimelinesList: View {
             onEmbed(embeddable, nil)
         }
         .disabled(embeddable.isEmpty)
-        // Dragging onto a timeline in this tab, from the menu: into any
-        // timeline that takes all of them.
-        let pieces = targets.compactMap { project.timeline(id: $0) }.map { MediaPiece.timeline($0.id, from: .zero, to: $0.duration) }
-        let homes = order.filter { project.canPlaceAll(pieces, in: $0) }.compactMap { project.timeline(id: $0) }
-        Menu(targets.count > 1 ? "Embed \(targets.count) Timelines In" : "Embed In") {
-            ForEach(homes) { home in
-                Button(home.name) { if !onEmbedInto(pieces, home.id) { NSSound.beep() } }
-            }
-        }
-        .disabled(homes.isEmpty)
         Button("Rename Timeline") {
-            picked.click(id)
+            picked.click(id, restoring: layout == .filmstrips)
             renamingID = id
         }
         Button(targets.count > 1 ? "Duplicate \(targets.count) Timelines" : "Duplicate Timeline") {
@@ -363,8 +388,11 @@ struct TimelinesList: View {
     private func row(_ timeline: Timeline, _ listed: Row, order: [UUID]) -> some View {
         let isSelected = picked.contains(timeline.id)
         let isActive = timeline.id == activeTimelineID
-        return HStack(spacing: Design.Space.tight) {
+        // The triangle level with the icon, which sits by the name, not
+        // halfway down the two lines.
+        return HStack(alignment: .timelineIcon, spacing: Design.Space.tight) {
             disclosure(timeline, listed)
+                .alignmentGuide(.timelineIcon) { $0[VerticalAlignment.center] }
             label(timeline, isSelected: isSelected, isOnlySelection: isSelected && picked.items.count == 1, isActive: isActive)
         }
         .padding(.leading, CGFloat(listed.depth) * Design.Space.group)
@@ -395,12 +423,12 @@ struct TimelinesList: View {
             } else if keys.contains(.shift) {
                 picked.shiftClick(timeline.id, in: order)
             } else {
-                picked.click(timeline.id)
+                picked.click(timeline.id, restoring: false)
                 if clicks == 2 { open(timeline.id) }
             }
         }
         .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
-        .contextMenu { menu(timeline.id, order: order) }
+        .contextMenu { Menu(list: self, id: timeline.id, order: order) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("Opens the timeline in the editor")
@@ -449,6 +477,7 @@ struct TimelinesList: View {
         } icon: {
             Image(systemName: "rectangle.stack")
                 .foregroundStyle(Design.ClipTone.nested.color)
+                .alignmentGuide(.timelineIcon) { $0[VerticalAlignment.center] }
         }
     }
 
@@ -462,9 +491,25 @@ struct TimelinesList: View {
         if !delete([id]) { NSSound.beep() }
     }
 
+    /// Drops the ranges remembered of timelines deleted, and fits the rest
+    /// to their timelines' lengths now.
+    private func keepRanges() {
+        picked.forgetRanges { project.timeline(id: $0) == nil }
+        picked.fitRanges { project.timeline(id: $0)?.duration.seconds }
+    }
+
     private func open(_ id: UUID) {
         renamingID = nil
-        picked.click(id)
+        picked.click(id, restoring: layout == .filmstrips)
         onOpen(id)
     }
+}
+
+private extension VerticalAlignment {
+    /// The middle of a tree row's icon, for its disclosure triangle.
+    enum TimelineIcon: AlignmentID {
+        static func defaultValue(in context: ViewDimensions) -> CGFloat { context[VerticalAlignment.center] }
+    }
+
+    static let timelineIcon = VerticalAlignment(TimelineIcon.self)
 }

@@ -297,6 +297,9 @@ struct TimelineEditorSurface<Library: View>: View {
                                 )
                             }
                         }
+                        // A click anywhere else ends typing in the inspector
+                        // or effects, even on a view that doesn't take focus.
+                        .endsEditingOnClickAway()
                         .frame(width: CGFloat(PanelResizeHandle.clamped(
                             sideWidth.wrappedValue, min: sideMinWidth, max: sideMaxWidth(in: geometry.size.width)
                         )))

@@ -38,6 +38,11 @@ import Testing
 
         let ofMatte = project.uses(of: .media(matte.id))
         #expect(ofMatte.map(\.effectID) == [effect.id])
+        // Used through a clip and through an input alike; a timeline nothing
+        // embeds isn't.
+        #expect(project.isUsed(.media(shot.id)))
+        #expect(project.isUsed(.media(matte.id)))
+        #expect(!project.isUsed(.timeline(main)))
         // The matte plays from 3 s, so a range before that holds no use.
         #expect(project.uses(of: .media(matte.id), within: CMTimeRange(start: .zero, end: Self.s(2))).isEmpty)
         #expect(project.uses(of: .media(matte.id), within: CMTimeRange(start: Self.s(4), end: Self.s(5))).count == 1)

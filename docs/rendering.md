@@ -137,7 +137,16 @@ emptied timeline or a slow frame never shows black in between.
   only saves work. A build is swapped in only while no value drag is under
   way, and one for renders alone only while paused. Another timeline
   stops the build under way (`CompositionExporter` checks for cancellation
-  between its stages and clips) and builds the new one at once. The editor
+  between its stages and clips) and builds the new one at once, unless it
+  is one shown before: the pipeline keeps the last build and picture of
+  the three timelines left most recently. Going back to one (out of a
+  nested timeline, typically) whose structure hasn't changed swaps its
+  kept build in at the kept playhead without building (a timeline nesting
+  many others took over 3 s to build), and if nothing it draws changed,
+  its kept picture is on screen at once while the item seeks. Values
+  edited meanwhile (in the nested timeline) are drawn from the clips, its
+  renders left out until it is built again, paused; renders finished
+  meanwhile are built in the same way. The editor
   only tells it what it shows (`ViewerPipeline.show`), once per edit; it
   works out the keys itself, skips an edit the picture doesn't show (a
   rename, a volume), and follows renders finishing, the package, motion
@@ -204,6 +213,14 @@ emptied timeline or a slow frame never shows black in between.
   `RenderSegment.formatVersion` is bumped when drawing changes in a way the
   key can't see. Effects add their settings to the key through the resolved
   steps.
+- **Keying is quick.** A clip is drawn the same way throughout each gap
+  between the spans where a keyframed value changes
+  (`ClipStack.changingRanges`, which leaves out keyframes that hold one
+  value, as between a fade in and a fade out), so the key repeats the last
+  frame resolved there instead of resolving each frame again; the text,
+  and so the key, is the same either way. Pieces are keyed side by side.
+  Together these took building a timeline that nests dozens of titles from
+  3.2 s to 0.17 s.
 - **Format.** ProRes 422 without sound in `Cache/Renders/<key>.mov`, drawn
   by the export compositor. A render is written as `<key>.partial.mov` and
   renamed when done; leftovers are deleted when the project opens. The
@@ -215,7 +232,13 @@ emptied timeline or a slow frame never shows black in between.
   is cheap since there is one layer to draw. A render can be a fraction
   of a frame shorter than its piece, whose ends are clip edges that at
   rates such as 29.97 fall between frame times; one short by under a
-  frame is stretched to fit.
+  frame is stretched to fit. In the viewer, a stretch played from its
+  render still has the player decode the footage that the next stretch
+  drawn live draws (`LayeredInstruction.decodedOnly`), without drawing
+  it. Otherwise that footage stopped decoding under the render and
+  started again from its last keyframe where the render ended. With
+  H.264 keyframes seconds apart, playback stood still there for 0.3 to
+  0.9 s. Export doesn't do this, since it never shows a late frame.
 - **Background rendering only when idle.** `RenderScheduler` renders one
   piece at a time, starting at the playhead and running to the end, then
   the pieces before it. Any edit, scrub or playback stops the

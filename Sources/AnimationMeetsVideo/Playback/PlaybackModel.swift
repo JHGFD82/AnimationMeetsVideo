@@ -446,6 +446,30 @@ final class PlaybackModel {
         playedUsesRenders = false
     }
 
+    // MARK: Kept pictures
+
+    /// The picture on screen and the time of the item it shows (see
+    /// `ViewerPipeline.Parked`). Not while a seek is under way, whose frame
+    /// may not be shown yet. The player's time, not the playhead's: a skim
+    /// leaves the player and the picture elsewhere, and showing another
+    /// timeline has moved the playhead already.
+    func shownFrame() -> ViewerFrame? {
+        guard !isPlaying, !isSeeking, player.currentItem != nil, let buffer = display.buffer else { return nil }
+        let time = player.currentTime()
+        return time.isNumeric ? ViewerFrame(buffer: buffer, time: time) : nil
+    }
+
+    /// Puts a kept picture on screen until the next item swapped in draws.
+    /// The item in the player, another timeline's, stops being followed,
+    /// so a frame of its still on its way can't replace the picture.
+    func show(_ frame: ViewerFrame) {
+        dropRedraw()
+        prerenderer.cancel()
+        capture.arm(at: nil)
+        display.follow(nil)
+        display.show(frame.buffer)
+    }
+
     /// Waits until `item` is ready to play or has failed, for at most two
     /// seconds.
     private static func ready(_ item: AVPlayerItem) async {

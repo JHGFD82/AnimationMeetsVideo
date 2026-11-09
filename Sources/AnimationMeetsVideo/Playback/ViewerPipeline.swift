@@ -26,6 +26,13 @@ struct ViewerSource {
     var hasContent: Bool { timeline?.layers.contains { !$0.clips.isEmpty } ?? false }
 }
 
+/// A picture the viewer showed and the time of the item it shows, kept to
+/// show again at once when its timeline is shown again.
+struct ViewerFrame {
+    var buffer: CVPixelBuffer
+    var time: CMTime
+}
+
 /// The player the pipeline drives; `PlaybackModel` in the app.
 @MainActor
 protocol ViewerPlayer: AnyObject {
@@ -46,6 +53,11 @@ protocol ViewerPlayer: AnyObject {
     @discardableResult
     func swap(to composed: ComposedTimeline, key: StructureKey, frameRate: Double, at time: CMTime) async -> Bool
     func clearItem()
+    /// The picture on screen and the time of the item it shows, while
+    /// paused and settled there; nil when that can't be told.
+    func shownFrame() -> ViewerFrame?
+    /// Puts a kept picture on screen until the item's own frame replaces it.
+    func show(_ frame: ViewerFrame)
 }
 
 /// The background renderer, as the pipeline tells it what the viewer built
@@ -80,6 +92,13 @@ extension RenderScheduler: ViewerRenderer {}
 /// picture until the new item's frame is there (`ViewerPlayer.swap`).
 /// The renderer is told of each build applied, and waits from a gesture's
 /// start until what follows its end is done.
+///
+/// Showing another timeline keeps the build of the one left and the
+/// picture it showed (`Parked`). Coming back to it (going back out of a
+/// nested timeline, typically) with its structure unchanged swaps in the
+/// kept build without building, and with nothing it draws changed puts the
+/// kept picture on screen at once; only the new item's seek is waited for,
+/// under the right picture.
 @MainActor
 @Observable
 final class ViewerPipeline {
@@ -130,6 +149,27 @@ final class ViewerPipeline {
         var composed: ComposedTimeline
     }
 
+    /// What was kept of a timeline when another was shown.
+    private struct Parked {
+        /// What it drew then: the picture is shown again only if it still
+        /// draws the same.
+        var composition: CompositionKey
+        var offlineMedia: Set<UUID>
+        var isPartial: Bool
+        /// Its latest build, of the structure it had then, and what that
+        /// build drew.
+        var built: Built
+        var builtComposition: CompositionKey
+        /// The picture on screen as it was left, if it was its own.
+        var frame: ViewerFrame?
+        /// `rendersFinished` then: renders finished since are built in
+        /// once the kept build is swapped in.
+        var rendersFinished: Int
+    }
+
+    /// How many timelines are kept (`parked`), the most recently left.
+    private static let parkedLimit = 3
+
     @ObservationIgnored private let player: ViewerPlayer
     @ObservationIgnored private let renderer: ViewerRenderer?
     @ObservationIgnored private let build: Builder
@@ -168,6 +208,15 @@ final class ViewerPipeline {
     /// Values were edited since the renderer's plan was made.
     @ObservationIgnored private var planStale = false
     @ObservationIgnored private var rendererHeld = false
+    /// The latest build applied, its item swapped in or its plan made.
+    @ObservationIgnored private var lastApplied: Built?
+    /// The timelines left, oldest first.
+    @ObservationIgnored private var parked: [(timelineID: UUID, parked: Parked)] = []
+    /// How many renders finished, for a parked build to tell whether it
+    /// misses some.
+    @ObservationIgnored private var rendersFinished = 0
+    /// How many builds were taken from a parked timeline, for tests.
+    @ObservationIgnored private(set) var parkedBuildsUsed = 0
 
     init(
         player: ViewerPlayer, renderer: ViewerRenderer?, coalescing: Duration = .milliseconds(75),
@@ -320,6 +369,7 @@ final class ViewerPipeline {
             if planStale, ready == nil { schedulePlan(after: .zero) }
             advance()
         case .renderFinished:
+            rendersFinished += 1
             // A viewer that doesn't play renders has nothing to take up.
             if let latest, !latest.source.playsRenders { return }
             if isPlaying {
@@ -328,6 +378,8 @@ final class ViewerPipeline {
                 rebuild(waitsForPause: true)
             }
         case .packageURLChanged, .drawingOptionsChanged, .offlineMediaChanged:
+            // What parked builds were built from changed too.
+            parked.removeAll()
             rebuild()
         case .playbackStateChanged(let playing):
             isPlaying = playing
@@ -338,6 +390,7 @@ final class ViewerPipeline {
             }
             advance()
         case .timelineChanged(let source, let time), .appeared(let source, let time):
+            if case .timelineChanged = event { parkShown() }
             // What was being built for the timeline before is no use:
             // stopped, and dropped when it stops.
             worker?.cancel()
@@ -348,8 +401,93 @@ final class ViewerPipeline {
             rebuildsWhenPaused = false
             planStale = false
             player.storeValues(source.project.clipsByID)
+            if case .timelineChanged = event, resumeParked(source, at: time) { return }
             request(key: Self.key(of: source), source: source, resumeAt: time, coalesces: false)
         }
+    }
+
+    // MARK: Parked timelines
+
+    /// Keeps the build of the timeline being left, and the picture on
+    /// screen if its item is that timeline's as it is now.
+    private func parkShown() {
+        guard let latest, latest.key != nil else { return }
+        let source = latest.source
+        let composition = CompositionKey(project: source.project)
+        // The build of the structure shown, of the files and the cut it
+        // shows. Values edited since it was built are told apart when it
+        // is used.
+        let built = lastApplied.flatMap { built -> Built? in
+            guard built.request.source.timelineID == source.timelineID, built.request.key == latest.key,
+                  built.request.source.offlineMedia == source.offlineMedia,
+                  built.request.source.isPartial == source.isPartial
+            else { return nil }
+            return built
+        }
+        // The picture is the timeline's once its item, of the structure
+        // shown, is swapped in. Values edited since are drawn by the item
+        // as it is, so the picture has them.
+        let frame = built != nil && !isSwapping ? player.shownFrame() : nil
+        guard let built else { return }
+        parked.removeAll { $0.timelineID == source.timelineID }
+        parked.append((source.timelineID, Parked(
+            composition: composition, offlineMedia: source.offlineMedia, isPartial: source.isPartial,
+            built: built, builtComposition: CompositionKey(project: built.request.source.project),
+            frame: frame, rendersFinished: rendersFinished
+        )))
+        if parked.count > Self.parkedLimit { parked.removeFirst(parked.count - Self.parkedLimit) }
+    }
+
+    /// Shows `source` from what was kept of it, if its structure is as it
+    /// was when it was left: its kept build is swapped in at `time`
+    /// without building, and its picture is put on screen at once if it
+    /// still draws the same and was left at `time`. False when it must be
+    /// built.
+    ///
+    /// Values edited since it was built (in a timeline nested in it, say)
+    /// are drawn by the item from the clips (`storeValues`), but its
+    /// renders and the renderer's plan hold the old ones: it plays without
+    /// its renders until it is built again, paused, or its plan is made
+    /// again if it had none.
+    private func resumeParked(_ source: ViewerSource, at time: CMTime) -> Bool {
+        guard let index = parked.firstIndex(where: { $0.timelineID == source.timelineID }) else { return false }
+        let kept = parked.remove(at: index).parked
+        guard let key = Self.key(of: source), key == kept.built.request.key,
+              kept.offlineMedia == source.offlineMedia, kept.isPartial == source.isPartial
+        else { return false }
+        let composition = CompositionKey(project: source.project)
+        if composition == kept.composition, let frame = kept.frame,
+           Self.isSameFrame(frame.time, time, frameRate: source.timeline?.frameRate ?? 24) {
+            player.show(frame)
+        }
+        let valuesChanged = composition != kept.builtComposition
+        var composed = kept.built.composed
+        if valuesChanged { composed = composed.withoutRenders() }
+        generation += 1
+        let request = Request(generation: generation, key: key, source: source, resumeAt: time)
+        latest = request
+        startedGeneration = generation
+        planStale = false
+        buildError = nil
+        ready = Built(request: request, composed: composed)
+        parkedBuildsUsed += 1
+        advance()
+        let hadRenders = !kept.built.composed.cachedKeys.isEmpty
+        let rendersMissed = kept.rendersFinished != rendersFinished && source.playsRenders
+        if rendersMissed || valuesChanged && hadRenders {
+            rebuild(waitsForPause: true)
+        } else if valuesChanged {
+            schedulePlan(after: .zero)
+        }
+        return true
+    }
+
+    /// Whether a picture of the item at `shown` is the frame at `time`:
+    /// within a frame, as where playing paused and where the playhead was
+    /// kept can be.
+    private static func isSameFrame(_ shown: CMTime, _ time: CMTime, frameRate: Double) -> Bool {
+        guard shown.isNumeric, time.isNumeric else { return false }
+        return abs(shown.seconds - time.seconds) < 1 / max(frameRate, 1)
     }
 
     /// Asks for `source` to be built, replacing what was asked before.
@@ -499,6 +637,7 @@ final class ViewerPipeline {
 
     private func apply(_ built: Built) {
         ready = nil
+        lastApplied = built
         let request = built.request
         let source = request.source
         renderer?.update(

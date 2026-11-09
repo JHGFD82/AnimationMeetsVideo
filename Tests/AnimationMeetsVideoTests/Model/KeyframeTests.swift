@@ -305,6 +305,30 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(stack.animatedRanges == [CMTimeRange(start: seconds(5 + 1), end: seconds(5 + 3))])
     }
 
+    @Test func aValueChangesOnlyBetweenKeyframesThatDiffer() {
+        // Fade in, hold, fade out: still in the middle.
+        let fade = AnimatedValue(0.0, keyframes: [
+            Keyframe(time: seconds(0), value: 0),
+            Keyframe(time: seconds(1), value: 1),
+            Keyframe(time: seconds(4), value: 1),
+            Keyframe(time: seconds(5), value: 0),
+        ])
+        #expect(fade.animatedRange == seconds(0)...seconds(5))
+        #expect(fade.changingRanges == [seconds(0)...seconds(1), seconds(4)...seconds(5)])
+        #expect(AnimatedValue(0.0).changingRanges.isEmpty)
+
+        var effect = Effect(kind: .transform, controls: [EffectControl(kind: .opacity)])
+        effect.controls[0].number = AnimatedValue(ComponentValue(values: [1]), keyframes: fade.keyframes.map {
+            $0.with(value: ComponentValue(values: [$0.value]))
+        })
+        let stack = ClipStack(effects: [effect], center: center, shift: seconds(10))
+        #expect(stack.animatedRanges == [CMTimeRange(start: seconds(10), end: seconds(15))])
+        #expect(stack.changingRanges == [
+            CMTimeRange(start: seconds(10), end: seconds(11)),
+            CMTimeRange(start: seconds(14), end: seconds(15)),
+        ])
+    }
+
     @Test func aStackAtItsDefaultsDrawsNothing() {
         let stack = ClipStack(effects: [Effect(kind: .transform), Effect(kind: .blending)], center: center)
         #expect(stack.resolve(atRoot: .zero).steps.isEmpty)

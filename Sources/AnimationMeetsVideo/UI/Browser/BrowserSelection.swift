@@ -19,6 +19,14 @@ struct BrowserSelection<ID: Hashable>: Equatable {
     /// The item Shift-click extends from: the last one clicked.
     private(set) var anchor: ID?
     private(set) var range: Range?
+    /// The range each item had when the selection last moved off it, to
+    /// pick again when it comes back (a plain click on it, or stepping to
+    /// it). Dropping a range on purpose, by clicking its item outside it,
+    /// forgets it. Items no longer listed keep theirs, unused, until
+    /// `forgetRanges` drops them, so a listing that changes for a moment
+    /// (scenes being found again) doesn't lose them. See docs/browser.md,
+    /// "Selecting".
+    private(set) var remembered: [ID: Range] = [:]
     /// Goes up each time the person picks something (clicks, Shift- and
     /// Command-clicks, ranges, clearing); dropping items that are gone
     /// doesn't count. What follows the selection, as the scene splitter
@@ -29,18 +37,34 @@ struct BrowserSelection<ID: Hashable>: Equatable {
 
     /// A plain click on `id`, at `seconds` into it when known: selects the
     /// whole item, unless the click is inside the item's range, which stays.
-    mutating func click(_ id: ID, at seconds: Double? = nil) {
-        if let range, range.item == id, let seconds, range.contains(seconds) { return }
+    /// Coming back to an item that had a range when it was left picks that
+    /// range again, unless `restoring` is off (a drag that carries the
+    /// whole item, a list that shows no ranges).
+    mutating func click(_ id: ID, at seconds: Double? = nil, restoring: Bool = true) {
+        if let range, range.item == id {
+            if let seconds, range.contains(seconds) { return }
+            // Its own range dropped on purpose: not to come back.
+            remembered[id] = nil
+            self.range = nil
+        } else {
+            leaveRange()
+            range = restoring ? remembered[id] : nil
+        }
         revision += 1
         items = [id]
         anchor = id
+    }
+
+    /// Keeps the range picked, if any, as its item's to come back to.
+    private mutating func leaveRange() {
+        if let range { remembered[range.item] = range }
         range = nil
     }
 
     /// Command-click: adds the item, or takes it out if it was in.
     mutating func commandClick(_ id: ID) {
         revision += 1
-        range = nil
+        leaveRange()
         if items.contains(id) { items.remove(id) } else { items.insert(id) }
         anchor = id
     }
@@ -53,7 +77,7 @@ struct BrowserSelection<ID: Hashable>: Equatable {
             return
         }
         revision += 1
-        range = nil
+        leaveRange()
         items = Set(order[min(from, to)...max(from, to)])
     }
 
@@ -70,6 +94,8 @@ struct BrowserSelection<ID: Hashable>: Equatable {
     mutating func setRange(of id: ID, from a: Double, to b: Double, duration: Double) {
         let start = min(a, b).clamped(between: 0, and: duration), end = max(a, b).clamped(between: 0, and: duration)
         revision += 1
+        if range?.item != id { leaveRange() }
+        remembered[id] = nil
         items = [id]
         anchor = id
         range = Range(item: id, start: start, end: end)
@@ -80,7 +106,7 @@ struct BrowserSelection<ID: Hashable>: Equatable {
     mutating func selectAll(in order: [ID]) {
         revision += 1
         items = Set(order)
-        range = nil
+        leaveRange()
         if anchor.map(order.contains) != true { anchor = order.first }
     }
 
@@ -88,7 +114,7 @@ struct BrowserSelection<ID: Hashable>: Equatable {
         revision += 1
         items = []
         anchor = nil
-        range = nil
+        leaveRange()
     }
 
     /// Drops items that are gone, keeping the order of what remains.
@@ -96,7 +122,44 @@ struct BrowserSelection<ID: Hashable>: Equatable {
         let listed = Set(order)
         items.formIntersection(listed)
         if let anchor, !listed.contains(anchor) { self.anchor = nil }
-        if let range, !listed.contains(range.item) { self.range = nil }
+        // Kept for when it is listed again, until `forgetRanges` says it's gone.
+        if let range, !listed.contains(range.item) { leaveRange() }
+    }
+
+    /// Every item's range: the one picked now and those remembered, as
+    /// spans, for keeping where the browser was left (`ViewState.Browser`).
+    var rangeSpans: [ID: SecondsSpan] {
+        var spans = remembered.mapValues { SecondsSpan(start: $0.start, end: $0.end) }
+        if let range { spans[range.item] = SecondsSpan(start: range.start, end: range.end) }
+        return spans
+    }
+
+    /// Takes up ranges kept from before (the browser opened again, or the
+    /// project), to pick again as their items are come back to. The range
+    /// picked now stays.
+    mutating func remember(_ spans: [ID: SecondsSpan]) {
+        remembered = Dictionary(uniqueKeysWithValues: spans.compactMap { id, span in
+            span.end > span.start ? (id, Range(item: id, start: span.start, end: span.end)) : nil
+        })
+        if let range { remembered[range.item] = nil }
+    }
+
+    /// Drops the remembered ranges of items `gone` says are gone for good.
+    mutating func forgetRanges(where gone: (ID) -> Bool) {
+        remembered = remembered.filter { !gone($0.key) }
+    }
+
+    /// Holds remembered ranges to items' lengths now, given by `duration`
+    /// (nil for an item not listed, whose range is left as it is), and
+    /// drops one with nothing left of it.
+    mutating func fitRanges(to duration: (ID) -> Double?) {
+        remembered = remembered.compactMapValues { kept in
+            guard let length = duration(kept.item) else { return kept }
+            var fitted = kept
+            fitted.start = kept.start.clamped(between: 0, and: length)
+            fitted.end = kept.end.clamped(between: 0, and: length)
+            return fitted.end > fitted.start ? fitted : nil
+        }
     }
 
     /// The selected items in browser order.
@@ -146,14 +209,14 @@ extension BrowserSelection {
     /// the ends; with `extending`, the run from the anchor to it, as
     /// Shift-click. Returns it, the new cursor; nil with nothing listed.
     @discardableResult
-    mutating func step(_ by: Int, from cursor: ID?, extending: Bool, in order: [ID]) -> ID? {
+    mutating func step(_ by: Int, from cursor: ID?, extending: Bool, in order: [ID], restoring: Bool = true) -> ID? {
         guard !order.isEmpty else { return nil }
         let from = cursor.flatMap(order.firstIndex(of:)) ?? (by > 0 ? -1 : order.count)
         let to = order[(from + by).clamped(between: 0, and: order.count - 1)]
         if extending {
             shiftClick(to, in: order)
         } else {
-            click(to)
+            click(to, restoring: restoring)
         }
         return to
     }

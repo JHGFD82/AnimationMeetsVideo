@@ -5,7 +5,9 @@ import Foundation
 /// opening it there again: its playhead and the clip selected, kept by the
 /// editor surface, and its zoom and scroll, kept by the timeline. Each
 /// keeps its part as a timeline is left, and says how to read the part of
-/// the timeline open now (`capture`), for saving.
+/// the timeline open now (`capture`), for saving. The browser keeps what
+/// it remembers here too (`ViewState.Browser`), so it outlasts switching
+/// the browser's tabs, and hiding and showing the browser.
 ///
 /// The project window's comes from its session, which reads and writes it
 /// in the package (`ViewStateFile`); a window without one (a second window
@@ -31,6 +33,14 @@ final class TimelineViewMemory {
     /// Changes what is kept for `timelineID`.
     func update(_ timelineID: UUID, _ change: (inout ViewState.Timeline) -> Void) {
         change(&state.timelines[timelineID, default: ViewState.Timeline()])
+    }
+
+    /// What the browser remembers of how it was left.
+    var browser: ViewState.Browser { state.browser }
+
+    /// Changes what the browser remembers.
+    func updateBrowser(_ change: (inout ViewState.Browser) -> Void) {
+        change(&state.browser)
     }
 
     func noteOpen(_ timelineID: UUID) {
@@ -99,12 +109,15 @@ final class TimelineViewMemory {
     /// Writes the state, with the open timeline as it is now, into its
     /// package when it changed since it was read or written, leaving out
     /// timelines `project` no longer has (deleted, or the empty project a
-    /// window shows before its own opens). Nothing for one with no package.
+    /// window shows before its own opens), and what the browser remembers
+    /// of media and timelines it no longer has. Nothing for one with no
+    /// package.
     func save(for project: EditingProject) {
         guard let packageURL else { return }
         var state = snapshot()
         state.timelines = state.timelines.filter { project.timeline(id: $0.key) != nil }
         if let open = state.openTimelineID, project.timeline(id: open) == nil { state.openTimelineID = nil }
+        state.browser = state.browser.kept(in: project)
         self.state = state
         guard state != written else { return }
         do {

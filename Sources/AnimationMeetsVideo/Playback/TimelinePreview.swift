@@ -91,10 +91,18 @@ final class TimelinePreview {
     }
 
     /// Set up once for each size and never changed, so requests can share it.
+    ///
+    /// The compositor draws the picture at the size asked for, rather than
+    /// at the timeline's frame size for the generator to shrink: shrinking
+    /// a full HD frame to a filmstrip's 90 pixels, the generator handed
+    /// back blocks of stale memory over much of the picture for some
+    /// timelines (title cards nested in SongFocus's), while the frame the
+    /// compositor drew was whole. Drawing small is cheaper too.
     private func generator(for composed: ComposedTimeline, pixels: Int) -> AVAssetImageGenerator {
         if let existing = generators[pixels] { return existing }
         let generator = AVAssetImageGenerator(asset: composed.composition)
-        generator.videoComposition = composed.videoComposition
+        let scale = frameSize.height > 0 ? min(1, CGFloat(pixels) / frameSize.height) : 1
+        generator.videoComposition = composed.videoComposition(scaledBy: scale)
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
         let aspect = frameSize.height > 0 ? frameSize.width / frameSize.height : 16.0 / 9

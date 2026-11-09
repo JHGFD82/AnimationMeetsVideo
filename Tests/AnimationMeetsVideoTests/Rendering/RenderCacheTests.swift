@@ -120,6 +120,42 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         project.setOpacity(60, ofClip: top.clipID, in: t)
         #expect(try await key(project) != original)
     }
+
+    /// Frames between keyframes that hold one value are keyed from the
+    /// frame resolved before them rather than resolved again; the keys must
+    /// still be the ones resolving every frame gives, including around a
+    /// change that falls between two frames and a hold that jumps.
+    @Test func keysSkippingStillFramesMatchResolvingEveryFrame() async throws {
+        let sandbox = try await RenderSandbox()
+        defer { sandbox.cleanUp() }
+        var (project, top, _) = try sandbox.stackedProject()
+        let t = project.rootTimelineID
+        func at(_ seconds: Double) -> CMTime { CMTime(seconds: seconds, preferredTimescale: 24000) }
+        var jump = Keyframe(time: at(2.1), value: ComponentValue(values: [50]))
+        jump.hold = true
+        let opacity = AnimatedValue(ComponentValue(values: [100]), keyframes: [
+            Keyframe(time: at(0), value: ComponentValue(values: [0])),
+            Keyframe(time: at(0.5), value: ComponentValue(values: [100]), easeIn: .init(influence: 0.6, speed: 2)),
+            Keyframe(time: at(1.01), value: ComponentValue(values: [100])),
+            // Between the frames at 1 s and 1 1/24 s.
+            Keyframe(time: at(1.02), value: ComponentValue(values: [70])),
+            Keyframe(time: at(2.0), value: ComponentValue(values: [70])),
+            jump,
+            Keyframe(time: at(2.4), value: ComponentValue(values: [20])),
+            Keyframe(time: at(2.9), value: ComponentValue(values: [20])),
+        ])
+        var effect = Effect(kind: .transform, controls: [EffectControl(kind: .opacity)])
+        effect.controls[0].number = opacity
+        project.editClip(top.clipID, in: t) { $0.effects = [effect] }
+
+        let skipping = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        let everyFrame = try await CompositionExporter.$keysSkipStillFrames.withValue(false) {
+            try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        }
+        let keys = skipping.segments.filter(\.needsRender).map(\.key)
+        #expect(!keys.isEmpty)
+        #expect(keys == everyFrame.segments.filter(\.needsRender).map(\.key))
+    }
 }
 
 @Suite struct RenderCacheTests {
@@ -155,6 +191,47 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         unrendered.videoComposition = composition
         let fromClips = try await centerGray(of: unrendered, at: time)
         #expect(abs(fromClips - expected) < 8)
+    }
+
+    /// The viewer keeps decoding, under a render, the footage the stretch
+    /// drawn live after it draws, so that stretch doesn't start from cold;
+    /// export doesn't, since it never waits on a frame being late.
+    @Test func aRenderKeepsTheFootageAfterItDecoding() async throws {
+        let sandbox = try await RenderSandbox()
+        defer { sandbox.cleanUp() }
+        var (project, top, _) = try sandbox.stackedProject()
+        let t = project.rootTimelineID
+        // The top clip ends halfway, so the dark one plays on alone.
+        project.editClip(top.clipID, in: t) { $0.trimEnd = CMTime(value: 36, timescale: 24) }
+        let cache = RenderCache(packageURL: sandbox.packageURL)
+        let exported = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        let needed = exported.segments.filter(\.needsRender)
+        #expect(!needed.isEmpty)
+        for segment in needed {
+            try await SegmentRenderer.render(segment, from: exported, into: cache)
+        }
+
+        func instructions(_ composed: ComposedTimeline) throws -> [LayeredInstruction] {
+            try #require(composed.videoComposition).instructions.compactMap { $0 as? LayeredInstruction }
+        }
+        let viewer = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t, forPreview: true, cache: cache)
+        #expect(viewer.cachedKeys == Set(needed.map(\.key)))
+        let drawn = try instructions(viewer)
+        let live = try #require(drawn.last)
+        let liveTracks = Set(live.clips.flatMap(\.allTrackIDs))
+        #expect(liveTracks.count == 1)
+        let rendered = drawn.filter { !$0.decodedOnly.isEmpty }
+        #expect(rendered.count == needed.count)
+        for instruction in rendered {
+            #expect(Set(instruction.decodedOnly) == liveTracks)
+            let asked = Set((instruction.requiredSourceTrackIDs ?? []).compactMap { ($0 as? NSNumber)?.int32Value })
+            #expect(asked.isSuperset(of: liveTracks))
+            // Only the render is drawn.
+            #expect(instruction.clips.count == 1)
+        }
+
+        let export = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t, cache: cache)
+        #expect(try instructions(export).allSatisfy { $0.decodedOnly.isEmpty })
     }
 
     @Test func aRenderOfAStretchEndingBetweenFramesIsStillUsed() async throws {

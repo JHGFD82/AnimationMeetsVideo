@@ -61,6 +61,8 @@ extension CompositionExporter {
         let grid = instructionTimescale(for: frame)
         let last = breakpoints.count - 1
         var plan: [PlannedRange] = []
+        /// The pieces to be rendered, by index in `plan`, still to be keyed.
+        var unkeyed: [Int] = []
         for index in 0..<last {
             let whole = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
             guard whole.duration > .zero else { continue }
@@ -119,17 +121,33 @@ extension CompositionExporter {
             var start = span.start
             while start < span.end {
                 let range = CMTimeRange(start: start, end: CMTimeMinimum(CMTimeAdd(start, piece), span.end))
-                let key = renderKey(
-                    for: range, clips: clips, frame: frame,
-                    frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace, canvasMargin: canvasMargin
-                )
+                unkeyed.append(plan.count)
                 plan.append(PlannedRange(
                     range: range, clips: clips,
-                    segment: RenderSegment(range: range, key: key, needsRender: true, clipIDs: owners),
+                    segment: RenderSegment(range: range, key: "", needsRender: true, clipIDs: owners),
                     passthrough: nil
                 ))
                 start = range.end
             }
+        }
+        // Each piece's key reads only its own clips, so they are worked out
+        // side by side.
+        let planned = plan
+        // (Task locals don't reach the threads the keys are worked out on.)
+        let skipsStillFrames = keysSkipStillFrames
+        var keys = [String](repeating: "", count: unkeyed.count)
+        keys.withUnsafeMutableBufferPointer { keys in
+            DispatchQueue.concurrentPerform(iterations: unkeyed.count) { index in
+                let piece = planned[unkeyed[index]]
+                keys[index] = renderKey(
+                    for: piece.range, clips: piece.clips, frame: frame,
+                    frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace, canvasMargin: canvasMargin,
+                    reusingStillFrames: skipsStillFrames
+                )
+            }
+        }
+        for (index, key) in zip(unkeyed, keys) {
+            plan[index].segment.key = key
         }
         return plan
     }
@@ -146,7 +164,8 @@ extension CompositionExporter {
         frameSize: CGSize,
         frameRate: Double,
         colorSpace: ProjectColorSpace,
-        canvasMargin: Double
+        canvasMargin: Double,
+        reusingStillFrames: Bool = true
     ) -> String {
         func number(_ value: Double) -> String { String(format: "%.5f", value) }
         func matrix(_ t: CGAffineTransform) -> String { [t.a, t.b, t.c, t.d, t.tx, t.ty].map(number).joined(separator: " ") }
@@ -180,41 +199,29 @@ extension CompositionExporter {
             if let blur = clip.stack.shutter.motionBlur {
                 text += "B \(number(blur.angle)) \(blur.samples) \(number(clip.stack.frameDuration.seconds))\n"
             }
+            // Between the ranges where its values change a clip is drawn
+            // the same way at every moment, so a frame with none of them
+            // since the last one resolved reads the same: its text is
+            // repeated rather than resolved again. Resolving every frame of
+            // titles that hold still between a fade in and out was nearly
+            // all of the time building a timeline nesting many took. The
+            // key comes out the same either way.
+            let changing = reusingStillFrames ? clip.stack.changingRanges : []
+            var lastResolved: (time: CMTime, text: String)?
             for index in 0..<frames {
                 let time = CMTimeAdd(range.start, CMTimeMultiply(frame, multiplier: Int32(index)))
-                let resolved = clip.stack.resolve(atRoot: time)
                 // Retimed, the file time each frame comes from isn't a
                 // straight line from where the stretch starts.
                 if clip.stack.retimed != nil {
                     text += "s \(number(clip.stack.sourceTime(atLocal: clip.stack.localTime(atRoot: time)).seconds)) "
                 }
-                for step in resolved.steps {
-                    switch step {
-                    case .place(let m, let opacity): text += "p \(matrix(m)) \(number(opacity))"
-                    case .mark(let id): text += "m \(id.uuidString)"
-                    case .matte(let effect, let mode, let amount): text += "k \(effect.uuidString) \(mode.rawValue) \(number(amount))"
-                    case .blend(let mode, let amount, let against): text += "b \(mode.rawValue) \(number(amount)) \(against?.uuidString ?? "-")"
-                    case .color(let ops):
-                        text += "g \(clip.stack.colorSpace.rawValue) " + ops.map { op in
-                            "\(op.kind.rawValue):" + (0..<4).map { number(Double(op.value[$0])) }.joined(separator: ",")
-                        }.joined(separator: " ")
-                    case .shape(let shape):
-                        text += shape.keyText
-                    case .outlineStroke(let style):
-                        text += "o " + style.keyText
-                    case .look(let look):
-                        text += "l \(clip.stack.colorSpace.rawValue) " + look.keyText
-                    }
-                    text += " "
-                }
-                if let transition = resolved.transition {
-                    text += "t \(number(transition.opacity)) \(matrix(transition.transform))"
-                    if let visible = transition.visibleRect {
-                        text += " c" + [visible.minX, visible.minY, visible.width, visible.height].map(number).joined(separator: " ")
-                    }
-                    if let reveal = transition.lumaReveal {
-                        text += " r\(number(reveal.progress)) \(reveal.keysIncoming)"
-                    }
+                if reusingStillFrames, let last = lastResolved,
+                   !changing.contains(where: { $0.start <= time && $0.end >= last.time }) {
+                    text += last.text
+                } else {
+                    let resolvedText = frameText(clip.stack.resolve(atRoot: time), of: clip)
+                    text += resolvedText
+                    if reusingStillFrames { lastResolved = (time, resolvedText) }
                 }
                 if let drawn = clip.stack.transitionFrame(atRoot: time) {
                     text += " x \(drawn.key)"
@@ -237,6 +244,39 @@ extension CompositionExporter {
                 break
             }
         }
+        /// One frame's resolved stack and transition, as the key reads them.
+        func frameText(_ resolved: ResolvedClip, of clip: DrawClip) -> String {
+            var text = ""
+            for step in resolved.steps {
+                switch step {
+                case .place(let m, let opacity): text += "p \(matrix(m)) \(number(opacity))"
+                case .mark(let id): text += "m \(id.uuidString)"
+                case .matte(let effect, let mode, let amount): text += "k \(effect.uuidString) \(mode.rawValue) \(number(amount))"
+                case .blend(let mode, let amount, let against): text += "b \(mode.rawValue) \(number(amount)) \(against?.uuidString ?? "-")"
+                case .color(let ops):
+                    text += "g \(clip.stack.colorSpace.rawValue) " + ops.map { op in
+                        "\(op.kind.rawValue):" + (0..<4).map { number(Double(op.value[$0])) }.joined(separator: ",")
+                    }.joined(separator: " ")
+                case .shape(let shape):
+                    text += shape.keyText
+                case .outlineStroke(let style):
+                    text += "o " + style.keyText
+                case .look(let look):
+                    text += "l \(clip.stack.colorSpace.rawValue) " + look.keyText
+                }
+                text += " "
+            }
+            if let transition = resolved.transition {
+                text += "t \(number(transition.opacity)) \(matrix(transition.transform))"
+                if let visible = transition.visibleRect {
+                    text += " c" + [visible.minX, visible.minY, visible.width, visible.height].map(number).joined(separator: " ")
+                }
+                if let reveal = transition.lumaReveal {
+                    text += " r\(number(reveal.progress)) \(reveal.keysIncoming)"
+                }
+            }
+            return text
+        }
         clips.forEach(describe)
         return SHA256.hash(data: Data(text.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
     }
@@ -250,13 +290,22 @@ extension CompositionExporter {
     /// One short by less than a frame is stretched to fit, rather than let
     /// go, which left the stretch compositing live although the timeline
     /// showed it rendered.
+    ///
+    /// With `keepsFootageDecoding` (the viewer), a stretch played from its
+    /// render still asks for the footage that the first stretch drawn live
+    /// after it draws, where it is under the render too, so the player
+    /// keeps decoding it and the live stretch starts without waiting
+    /// (`LayeredInstruction.decodedOnly`).
     static func substituteCachedRanges(
         _ plan: inout [PlannedRange],
         from cache: RenderCache,
         into composition: AVMutableComposition,
-        frame: CMTime
+        frame: CMTime,
+        keepsFootageDecoding: Bool = false
     ) async throws -> Set<String> {
         var used: Set<String> = []
+        /// The tracks each stretch played from its render drew before.
+        var replaced: [Int: Set<CMPersistentTrackID>] = [:]
         var track: AVMutableCompositionTrack?
         for index in plan.indices where plan[index].segment.needsRender {
             let segment = plan[index].segment
@@ -277,6 +326,7 @@ extension CompositionExporter {
             if source.duration < segment.range.duration {
                 track.scaleTimeRange(CMTimeRange(start: segment.range.start, duration: source.duration), toDuration: segment.range.duration)
             }
+            replaced[index] = Set(plan[index].clips.flatMap(\.allTrackIDs))
             plan[index].clips = [DrawClip(
                 content: .media(MediaDraw(
                     trackID: track.trackID, base: .identity, url: file,
@@ -286,6 +336,17 @@ extension CompositionExporter {
             )]
             cache.markUsed(segment.key)
             used.insert(segment.key)
+        }
+        if keepsFootageDecoding {
+            // Back to front, so each knows what the next live stretch draws.
+            var next: Set<CMPersistentTrackID> = []
+            for index in plan.indices.reversed() {
+                if let tracks = replaced[index] {
+                    plan[index].decodedOnly = tracks.intersection(next).sorted()
+                } else {
+                    next = Set(plan[index].clips.flatMap(\.allTrackIDs))
+                }
+            }
         }
         return used
     }
@@ -316,7 +377,7 @@ extension CompositionExporter {
             LayeredInstruction(
                 timeRange: planned.range, clips: planned.clips, passthrough: planned.passthrough ?? kCMPersistentTrackID_Invalid,
                 renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options,
-                background: forPreview ? background : nil
+                background: forPreview ? background : nil, decodedOnly: planned.decodedOnly
             )
         }
         return videoComposition
