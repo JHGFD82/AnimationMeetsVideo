@@ -69,6 +69,11 @@ struct ValueDragPress {
 /// a drag can go on past the edge of the screen, and reappears there when
 /// it ends. Moves are read from the mouse events' deltas. Escape ends the
 /// drag and asks for the original value back.
+///
+/// A session let go of before it finished (its field went away with the
+/// button still down, deleted by a key or undone) finishes as the button
+/// coming up would, so the pointer comes back and the hold and the undo
+/// gesture end: the mouse-up its monitor waited for no longer reaches it.
 @MainActor
 final class ValueDragSession {
     private let onMove: (_ dx: Double, _ flags: NSEvent.ModifierFlags) -> Void
@@ -132,4 +137,6 @@ final class ValueDragSession {
         NSCursor.unhide()
         onFinish(cancelled)
     }
+
+    isolated deinit { finish(cancelled: false) }
 }

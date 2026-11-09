@@ -638,7 +638,9 @@ lower or raise it. A press without a drag still opens the field for typing.
   on past the edge of the screen, and reappears where it started.
 - The viewer follows the drag live. Letting go saves it as one undo step.
   On an animated control it sets the keyframe at the playhead, as typing
-  does. Escape during a drag puts the value back.
+  does. Escape during a drag puts the value back. A field that goes away
+  mid-drag (its control deleted or undone by a key) ends the drag as
+  letting go would, and the pointer comes back.
 - Dragging while the project plays keeps it playing, and the viewer shows
   the value as it changes, as choppily as the effect draws. The frames the
   player draws are patched with the drag's values (`LiveValues`), so

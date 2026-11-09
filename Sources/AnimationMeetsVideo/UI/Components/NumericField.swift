@@ -137,6 +137,10 @@ struct NumericField: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Type a value")
                 .accessibilityAction { beginEditing() }
+                // Deleted or undone mid-drag, by a key with the button
+                // still down: the drag ends here, as the release would
+                // have ended it (see `ValueDragSession`).
+                .onDisappear { drag?.finish(cancelled: false) }
                 .onChange(of: editRequest?.wrappedValue ?? false, initial: true) { _, requested in
                     guard requested else { return }
                     editRequest?.wrappedValue = false

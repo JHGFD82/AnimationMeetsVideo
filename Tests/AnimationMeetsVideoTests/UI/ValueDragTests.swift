@@ -56,6 +56,20 @@ import Testing
         press.release()
         #expect(press.mayBegin)
     }
+
+    /// A field that goes away mid-drag lets go of its session without the
+    /// mouse-up it waited for: the session still finishes, as a release
+    /// would, so the pointer comes back and the hold and gesture end.
+    @MainActor
+    @Test func aSessionLetGoOfBeforeItFinishedFinishesAsAReleaseWould() {
+        var finishes: [Bool] = []
+        var session: ValueDragSession? = ValueDragSession(onMove: { _, _ in }, onFinish: { finishes.append($0) })
+        #expect(ValueDragSession.isActive)
+        _ = session
+        session = nil
+        #expect(finishes == [false])
+        #expect(!ValueDragSession.isActive)
+    }
 }
 
 /// A number keeps the widest it has been shown, so a decimal point added by
