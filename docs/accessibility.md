@@ -156,6 +156,10 @@ playhead to the middle of the view when it lands out of view.
   earlier or later, raise or lower its value, and Delete. The arrow keys
   then move every keyframe picked. The graph's own action adds a keyframe
   at the playhead.
+- **The time row** over the graph reads as Playhead, with its timecode;
+  adjusting it moves the playhead a frame. Clicked, ← → move the playhead
+  a frame (ten with Shift), and it is outlined in the accent while it has
+  the keys.
 - Its **keys** (arrows, Delete, Escape) are listed in
   [layer-transforms.md](layer-transforms.md#graph-editor).
 - The component chips, zoom sliders and Fit button read as controls. In a

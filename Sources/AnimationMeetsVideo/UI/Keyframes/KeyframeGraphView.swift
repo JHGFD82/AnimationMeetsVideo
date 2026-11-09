@@ -151,6 +151,10 @@ struct KeyframeGraphView: View {
     /// The keyframe selected on its own, whose handles show.
     private var selected: CMTime? { picked.single }
 
+    /// Whether the time row is over this graph: the top one of a panel,
+    /// since linked graphs share their time.
+    private var showsTimeRow: Bool { shared?.keys.first.map { $0 == key } ?? true }
+
     var body: some View {
         if let timeline = hud.project.timeline(id: key.timelineID), let stored = hud.project.components(of: key),
            let axis = hud.project.timeAxis(of: key) {
@@ -167,13 +171,23 @@ struct KeyframeGraphView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     GeometryReader { geometry in
-                        let layout = drag?.layout ?? layout(c, size: geometry.size)
-                        graph(c, layout: layout)
-                            .rubberBand(timeBandBinding, axis: .horizontal)
-                            .rubberBand($valueBand, axis: .vertical)
-                            .rubberBandScroll(shared?.timeScrollBand ?? timeScrollBand, length: layout.plot.width)
-                            .rubberBandSettling(timeScrollBandBinding)
-                            .clipped()
+                        // The time row over the first graph of a panel, to
+                        // drag the playhead along whether or not it skims.
+                        let row = showsTimeRow ? GraphTimeRow.height : 0
+                        let size = CGSize(width: geometry.size.width, height: max(1, geometry.size.height - row))
+                        let layout = drag?.layout ?? layout(c, size: size)
+                        VStack(spacing: 0) {
+                            if showsTimeRow {
+                                GraphTimeRow(hud: hud, axis: c.axis, timeline: c.timeline, layout: layout)
+                            }
+                            graph(c, layout: layout)
+                                .rubberBand(timeBandBinding, axis: .horizontal)
+                                .rubberBand($valueBand, axis: .vertical)
+                                .rubberBandScroll(shared?.timeScrollBand ?? timeScrollBand, length: layout.plot.width)
+                                .rubberBandSettling(timeScrollBandBinding)
+                                .clipped()
+                                .frame(height: size.height)
+                        }
                         .onChange(of: input.scroll) { _, scroll in
                             guard let scroll else { return }
                             // Linked graphs share the panel's input: the one

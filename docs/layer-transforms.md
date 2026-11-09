@@ -134,6 +134,14 @@ row turns it on and off for every graph editor, and the choice is kept
 between launches (`KeyframeGraphHUDs.skims`); a linked panel has it once,
 in its top row.
 
+A **time row** runs along the top of the plot (`GraphTimeRow`), a ruler
+in the timeline's timecode lined up with the plot, with the playhead's
+head on it. Clicking or dragging along it moves the playhead to the frame
+under the pointer, so the playhead can be moved from the panel with
+skimming off, where a drag on the plot would draw a lasso. Once clicked,
+← and → move the playhead a frame (ten with Shift), and VoiceOver adjusts
+it a frame at a time. A linked panel has one, over its top graph.
+
 - **Click a keyframe** to select it. The handles of its eased sides
   appear, drawn against the component that changes most over that
   segment. A linear side has no handle.

@@ -51,6 +51,7 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "F9", does: "Easy ease the keyframes at the playhead"),
             Shortcut(keys: "⇧F9  ⇧⌘F9", does: "Ease in, ease out"),
             Shortcut(keys: "⌃⌥H", does: "Hold the keyframes at the playhead"),
+            Shortcut(keys: "← →", does: "Graph's time row, once clicked: move the playhead a frame; ten with ⇧"),
         ]),
         Group(title: "Clips list", shortcuts: [
             Shortcut(keys: "↑ ↓", does: "Move the selection; ⇧ extends it"),
