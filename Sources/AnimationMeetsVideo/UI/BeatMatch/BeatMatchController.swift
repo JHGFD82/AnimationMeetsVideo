@@ -54,6 +54,7 @@ final class BeatMatchController {
             onClose: { [weak self] in self?.requestClose() }
         )
         presentation?.onQuit = { [weak self] in self?.closeForQuitting() ?? true }
+        presentation?.onHide = { [weak session] in session?.player.pause() }
     }
 
     /// Before the app quits: closes, asking first when the draft differs

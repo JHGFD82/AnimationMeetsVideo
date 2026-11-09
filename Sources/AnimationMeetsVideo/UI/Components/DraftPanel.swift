@@ -96,6 +96,9 @@ final class DraftPanelPresentation {
     private weak var editorWindow: NSWindow?
     /// Keeps the pointer out of the editor while the panel is open.
     private var inputBlock: WindowInputBlock?
+    /// Called when the app goes to the background, which hides the panel:
+    /// the editor pauses what the panel plays.
+    var onHide: () -> Void = {}
 
     init<Content: View>(
         title: String, size: NSSize, minimum: NSSize, undo: UndoManager,
@@ -116,6 +119,11 @@ final class DraftPanelPresentation {
         observers = [
             NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: editorWindow, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.bringToFront() }
+            },
+            // The panel hides when the app goes to the background; what it
+            // plays stops with it rather than going on out of sight.
+            NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.onHide() }
             },
         ]
         Self.open.append(self)
