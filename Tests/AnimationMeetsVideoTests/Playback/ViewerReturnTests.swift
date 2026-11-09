@@ -23,6 +23,18 @@ import Testing
         }
     }
 
+    /// The bytes of the pixel at the middle of `buffer`.
+    private func middlePixel(_ buffer: CVPixelBuffer?) -> [UInt8] {
+        guard let buffer else { return [] }
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer)?.assumingMemoryBound(to: UInt8.self) else { return [] }
+        let row = CVPixelBufferGetBytesPerRow(buffer), width = CVPixelBufferGetWidth(buffer)
+        let bytes = row / width
+        let offset = CVPixelBufferGetHeight(buffer) / 2 * row + width / 2 * bytes
+        return (0..<bytes).map { base[offset + $0] }
+    }
+
     @Test func goingBackOutShowsTheParentsPictureAtOnce() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }
@@ -57,9 +69,14 @@ import Testing
         playback.showTimeline(from: parked)
         pipeline.send(.timelineChanged(source(parent), at: parked))
         try await eventually("the event handled") { pipeline.eventsHandled == pipeline.eventsSent }
-        // On screen as soon as the switch is handled, before the item.
-        let shownAtOnce = playback.display.buffer === parentPicture
-        #expect(shownAtOnce)
+        // On screen as soon as the switch is handled, before the item. On a
+        // busy machine the item's own first frame, a new buffer of the same
+        // picture, can be in by the time this looks, so it is the picture
+        // that is compared; that the kept one is what goes up is
+        // `ViewerPipelineTests.goingBackShowsTheKeptPictureAndBuildAtOnce`.
+        let shownAtOnce = middlePixel(playback.display.buffer)
+        #expect(shownAtOnce == middlePixel(parentPicture))
+        #expect(shownAtOnce != middlePixel(nestedPicture))
         try await eventually("the parent swapped back in") { pipeline.swapsApplied == 3 }
         let elapsed = ContinuousClock.now - back
         #expect(pipeline.buildsStarted == 2)
