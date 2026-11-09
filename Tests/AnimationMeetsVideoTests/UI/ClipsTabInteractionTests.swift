@@ -171,6 +171,31 @@ import Testing
         #expect(interaction.draggedPieces(entry: scene, layout: layout, at: CGPoint(x: 60, y: 5), snapshot: snapshot) == [scene.piece(from: 2, to: 6)])
     }
 
+    /// A Command-drag carries the whole clip, not the range it had when
+    /// the selection moved off it.
+    @Test func aCommandDragOfAClipThatHadARangeCarriesTheWholeClip() {
+        var interaction = ClipsTabInteraction()
+        let scene = entry(1)
+        interaction.picked.setRange(of: scene.id, from: 2, to: 6, duration: scene.seconds)
+        interaction.picked.click(entry(0).id)
+        interaction.pickForDrag(entry: scene, layout: layout, at: CGPoint(x: 60, y: 5))
+        #expect(interaction.picked.range == nil)
+        #expect(interaction.draggedPieces(entry: scene, layout: layout, at: CGPoint(x: 60, y: 5), snapshot: snapshot) == [scene.piece()])
+    }
+
+    /// A click on another clip and back on this one picks its range again.
+    @Test func clickingBackOnAClipPicksItsRangeAgain() {
+        var interaction = ClipsTabInteraction()
+        let scene = entry(1)
+        interaction.picked.setRange(of: scene.id, from: 2, to: 6, duration: scene.seconds)
+        let away = FilmstripPress.click(CGPoint(x: 10, y: 5), [], clickCount: 1)
+        _ = interaction.pressed(away, entry: entry(2), layout: layout, order: snapshot.order, skimming: true)
+        #expect(interaction.picked.range == nil)
+        let back = FilmstripPress.click(CGPoint(x: 150, y: 5), [], clickCount: 1)
+        _ = interaction.pressed(back, entry: scene, layout: layout, order: snapshot.order, skimming: true)
+        #expect(interaction.picked.range == .init(item: scene.id, start: 2, end: 6))
+    }
+
     // MARK: - Show in Clips Browser
 
     @Test func footageAcrossScenesPicksFromTheFirstToTheLast() {

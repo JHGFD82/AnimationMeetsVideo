@@ -135,7 +135,7 @@ struct ClipsTabInteraction {
     /// (`pressBegan`).
     mutating func pickForDrag(entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint) {
         if let range = picked.range, range.item == entry.id, range.contains(layout.seconds(at: point)) { return }
-        if !picked.contains(entry.id) { picked.click(entry.id) }
+        if !picked.contains(entry.id) { picked.click(entry.id, restoring: false) }
     }
 
     /// What a drag from `point` carries: the range when it starts inside
@@ -220,14 +220,14 @@ struct ClipsTabInteraction {
         let covered = entries.filter { $0.start < piece.end && CMTimeAdd($0.start, $0.duration) > piece.start }
         guard let first = covered.first ?? entries.first else { return nil }
         if let last = covered.last, covered.count > 1 {
-            picked.click(first.id)
+            picked.click(first.id, restoring: false)
             picked.shiftClick(last.id, in: snapshot.order)
         } else {
             let from = CMTimeSubtract(piece.start, first.start).seconds
             let to = CMTimeSubtract(piece.end, first.start).seconds
             let slack = first.frameSeconds / 2
             if from <= slack, to >= first.seconds - slack {
-                picked.click(first.id)
+                picked.click(first.id, restoring: false)
             } else {
                 picked.setRange(of: first.id, from: from, to: to, duration: first.seconds)
             }

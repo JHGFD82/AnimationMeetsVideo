@@ -236,4 +236,28 @@ enum ClipsTabFixtures {
         #expect(memo.latest == "value 2")
         #expect(made == 2)
     }
+
+    // MARK: - Remembered ranges
+
+    @Test func rangesOfClipsGoneForGoodAreForgotten() {
+        let video = F.clip("Video"), pending = F.clip("Pending"), gone = UUID()
+        let snapshot = F.snapshot([video, pending], found: [video.id: F.coverage(cuts: [0, 5], end: 20)])
+        let kept = BrowserItemID.scene(asset: video.id, scene: "3000/600")
+        let merged = BrowserItemID.scene(asset: video.id, scene: "1800/600")
+        let waiting = BrowserItemID.scene(asset: pending.id, scene: "600/600")
+        var picked = BrowserSelection<BrowserItemID>()
+        picked.remember([
+            kept: SecondsSpan(start: 1, end: 30),
+            merged: SecondsSpan(start: 1, end: 2),
+            waiting: SecondsSpan(start: 1, end: 2),
+            .asset(gone): SecondsSpan(start: 1, end: 2),
+        ])
+        ClipsTabModel.keepRanges(&picked, snapshot: snapshot)
+        let spans = picked.rangeSpans
+        #expect(spans.count == 2)
+        // Held to the scene's 15 seconds.
+        #expect(spans[kept] == SecondsSpan(start: 1, end: 15))
+        // Its video's scenes aren't found yet: kept for when they are.
+        #expect(spans[waiting] == SecondsSpan(start: 1, end: 2))
+    }
 }

@@ -317,7 +317,7 @@ struct TimelineFilmstrips: View {
             start = CMTime(seconds: range.start, preferredTimescale: 600)
             payload = MediaDragPayload.beginDrag([.timeline(timeline.id, from: start, to: CMTime(seconds: range.end, preferredTimescale: 600))])
         } else {
-            if !picked.contains(timeline.id) { picked.click(timeline.id) }
+            if !picked.contains(timeline.id) { picked.click(timeline.id, restoring: false) }
             payload = TimelinesList.dragPayload(from: timeline.id, picked: picked, order: order, in: project)
         }
         guard !payload.pieces.isEmpty else { return nil }

@@ -51,6 +51,9 @@ before it moved) opens on Clips.
 - **Timelines**: the project's timelines as a tree (`TimelinesList`): the
   main timeline first, then those no timeline embeds, each with the
   timelines it embeds under a disclosure triangle, open to start with.
+  Which triangles are closed is remembered with the window's view state,
+  so they stay closed across switching tabs, hiding the browser and
+  opening the project again.
   Each timeline is listed once: one embedded in several timelines sits
   under the one nearest the top. Each row has its name, its duration and
   its settings (frame size, rate and colour space). The active one is
@@ -256,6 +259,21 @@ loses the keyboard.
 - **Command- or Shift-clicking** another clip while one has a range
   selects whole clips: the one with the range and the one clicked (or the
   run between them), dropping the range.
+- **Each clip remembers its range.** Moving the selection off a clip
+  that has a range (clicking another, Command- or Shift-clicking, Up and
+  Down, ⌘A, clicking off the clips) keeps the range, and coming back to
+  the clip with a plain click or Up and Down picks it again, as Final
+  Cut's browser does. A click on the clip outside its range, which drops
+  it, forgets it; a new range replaces it. A Command- or Shift-press
+  that drags a clip, and Show in Clips Browser, take the whole clip, not
+  the range it remembers. Timelines' filmstrips remember theirs the same
+  way; the tree, which shows no ranges, selects whole timelines. The
+  ranges outlast switching tabs and hiding the browser, and are saved
+  with the window's view state, so they come back when the project opens
+  again (see [project-package.md](project-package.md), "View state").
+  Those of media taken out, scenes merged or found again, and timelines
+  deleted are forgotten, and a clip shortened since holds its range to
+  its new length.
 - **Show in Clips Browser** in a timeline clip's right-click menu (or
   **Shift-F** with the clip selected, as Final Cut's Reveal in Browser)
   switches the browser to its Clips tab, picks the footage the clip plays

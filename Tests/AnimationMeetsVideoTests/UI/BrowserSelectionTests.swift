@@ -158,4 +158,102 @@ import Testing
         #expect(selection.ordered(in: order) == ["b", "c", "d"])
         #expect(selection.step(1, from: nil, extending: false, in: []) == nil)
     }
+
+    // MARK: - Remembered ranges
+
+    @Test func comingBackToAnItemPicksItsRangeAgain() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "b", from: 2, to: 6, duration: 10)
+        selection.click("d")
+        #expect(selection.range == nil)
+        selection.click("b", at: 9)
+        #expect(selection.range == .init(item: "b", start: 2, end: 6))
+        #expect(selection.items == ["b"])
+    }
+
+    @Test func steppingBackToAnItemPicksItsRangeAgain() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "b", from: 2, to: 6, duration: 10)
+        selection.step(1, from: "b", extending: false, in: order)
+        #expect(selection.range == nil)
+        selection.step(-1, from: "c", extending: false, in: order)
+        #expect(selection.range == .init(item: "b", start: 2, end: 6))
+    }
+
+    @Test func everyWayOfMovingOffARangeKeepsIt() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "a", from: 1, to: 2, duration: 10)
+        selection.commandClick("c")
+        selection.setRange(of: "b", from: 3, to: 4, duration: 10)
+        selection.shiftClick("d", in: order)
+        selection.setRange(of: "c", from: 5, to: 6, duration: 10)
+        selection.selectAll(in: order)
+        selection.setRange(of: "d", from: 7, to: 8, duration: 10)
+        selection.clear()
+        #expect(selection.remembered.count == 4)
+        #expect(selection.rangeSpans["d"] == SecondsSpan(start: 7, end: 8))
+    }
+
+    @Test func droppingARangeOnPurposeForgetsIt() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "b", from: 2, to: 6, duration: 10)
+        selection.click("b", at: 8)
+        selection.click("d")
+        selection.click("b")
+        #expect(selection.range == nil)
+        #expect(selection.remembered.isEmpty)
+    }
+
+    @Test func aClickThatIsntRestoringSelectsTheWholeItemAndKeepsItsRange() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "b", from: 2, to: 6, duration: 10)
+        selection.click("d")
+        selection.click("b", restoring: false)
+        #expect(selection.range == nil)
+        selection.click("d")
+        selection.click("b")
+        #expect(selection.range == .init(item: "b", start: 2, end: 6))
+    }
+
+    @Test func aNewRangeReplacesTheOneRemembered() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "b", from: 2, to: 6, duration: 10)
+        selection.click("d")
+        selection.setRange(of: "b", from: 1, to: 3, duration: 10)
+        selection.click("d")
+        selection.click("b")
+        #expect(selection.range == .init(item: "b", start: 1, end: 3))
+    }
+
+    @Test func rangesTakenUpFromBeforeArePickedAsTheirItemsAreComeBackTo() {
+        var selection = BrowserSelection<String>()
+        selection.remember(["b": SecondsSpan(start: 2, end: 4), "c": SecondsSpan(start: 5, end: 5)])
+        // An empty span is left out.
+        #expect(selection.remembered.count == 1)
+        selection.click("b")
+        #expect(selection.range == .init(item: "b", start: 2, end: 4))
+    }
+
+    @Test func anItemNoLongerListedKeepsItsRangeUntilForgotten() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "b", from: 2, to: 6, duration: 10)
+        selection.keep(only: ["a", "c"])
+        #expect(selection.range == nil)
+        #expect(selection.remembered["b"] != nil)
+        selection.forgetRanges { $0 == "b" }
+        #expect(selection.remembered.isEmpty)
+    }
+
+    @Test func rangesAreFittedToTheirItemsLengthsNow() {
+        var selection = BrowserSelection<String>()
+        selection.remember([
+            "a": SecondsSpan(start: 2, end: 8), "b": SecondsSpan(start: 6, end: 8), "c": SecondsSpan(start: 2, end: 8),
+        ])
+        selection.fitRanges { id in id == "c" ? nil : 5 }
+        #expect(selection.rangeSpans["a"] == SecondsSpan(start: 2, end: 5))
+        // Nothing of it is left.
+        #expect(selection.rangeSpans["b"] == nil)
+        // Not listed: left as it is.
+        #expect(selection.rangeSpans["c"] == SecondsSpan(start: 2, end: 8))
+    }
 }

@@ -177,6 +177,22 @@ enum ClipsTabModel {
         return dragPieces(for: picked.dragged(from: id, in: snapshot.order), snapshot: snapshot)
     }
 
+    /// Drops the ranges `picked` remembers of clips that are gone for
+    /// good, and fits the rest to their clips' lengths now. An asset taken
+    /// out of the project is gone, and so is a scene of a video listed by
+    /// its scenes that isn't one of them (merged, or found again). A scene
+    /// of a video listed whole, as while its scenes are being found, keeps
+    /// its range for when they are.
+    static func keepRanges(_ picked: inout BrowserSelection<BrowserItemID>, snapshot: Snapshot) {
+        let assets = Set(snapshot.clips.map(\.id))
+        picked.forgetRanges { item in
+            guard assets.contains(item.assetID) else { return true }
+            if case .scene = item { return snapshot.coverage[item.assetID] != nil && snapshot.byID[item] == nil }
+            return false
+        }
+        picked.fitRanges { snapshot.byID[$0]?.seconds }
+    }
+
     // MARK: - Scenes
 
     /// What the scene splitter shows for these picks: the stretch from the

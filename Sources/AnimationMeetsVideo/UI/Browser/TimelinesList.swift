@@ -128,8 +128,13 @@ struct TimelinesList: View {
     }
 
     /// Rows whose nested timelines are hidden. All start shown, since the
-    /// nesting is what the tab is for.
+    /// nesting is what the tab is for, until the person hides some: those
+    /// are kept in the window's view memory, so they stay hidden.
     @State private var collapsed: Set<UUID> = []
+    /// Where the window keeps the hidden rows and the range last picked of
+    /// each timeline, so they outlast the tab; absent where nothing is kept
+    /// (previews, tests).
+    @Environment(\.timelineViewMemory) private var viewMemory
 
     var body: some View {
         let nodes = Self.nodes(of: project, sort: sort)
@@ -149,6 +154,23 @@ struct TimelinesList: View {
                 )
                 .onChange(of: all) { _, order in picked.keep(only: order) }
             }
+        }
+        // Timelines deleted, or made shorter, since their ranges were picked.
+        .onChange(of: project.timelines.map(\.duration)) { _, _ in keepRanges() }
+        // What was left hidden and picked in this project: as the tab
+        // opens, and as the window's project opens, which reads them from
+        // its package.
+        .onChange(of: project.id, initial: true) { _, _ in
+            collapsed = viewMemory?.browser.collapsedTimelines ?? []
+            picked.remember(viewMemory?.browser.timelineRanges ?? [:])
+            keepRanges()
+        }
+        .onChange(of: collapsed) { _, collapsed in
+            viewMemory?.updateBrowser { $0.collapsedTimelines = collapsed }
+        }
+        .onChange(of: picked.revision) { _, _ in
+            let spans = picked.rangeSpans
+            viewMemory?.updateBrowser { $0.timelineRanges = spans }
         }
         // In either layout, from the keys or the Edit menu while the
         // browser is the active panel (see `EditCommands`).
@@ -246,7 +268,7 @@ struct TimelinesList: View {
     /// Moves the selection a row up or down from the timeline last clicked,
     /// or extends it there with Shift.
     private func step(_ by: Int, extending: Bool, in order: [UUID]) -> KeyPress.Result {
-        picked.step(by, from: picked.anchor, extending: extending, in: order) == nil ? .ignored : .handled
+        picked.step(by, from: picked.anchor, extending: extending, in: order, restoring: false) == nil ? .ignored : .handled
     }
 
     private func showNested(_ shown: Bool) -> KeyPress.Result {
@@ -347,7 +369,7 @@ struct TimelinesList: View {
         }
         .disabled(embeddable.isEmpty)
         Button("Rename Timeline") {
-            picked.click(id)
+            picked.click(id, restoring: layout == .filmstrips)
             renamingID = id
         }
         Button(targets.count > 1 ? "Duplicate \(targets.count) Timelines" : "Duplicate Timeline") {
@@ -401,7 +423,7 @@ struct TimelinesList: View {
             } else if keys.contains(.shift) {
                 picked.shiftClick(timeline.id, in: order)
             } else {
-                picked.click(timeline.id)
+                picked.click(timeline.id, restoring: false)
                 if clicks == 2 { open(timeline.id) }
             }
         }
@@ -469,9 +491,16 @@ struct TimelinesList: View {
         if !delete([id]) { NSSound.beep() }
     }
 
+    /// Drops the ranges remembered of timelines deleted, and fits the rest
+    /// to their timelines' lengths now.
+    private func keepRanges() {
+        picked.forgetRanges { project.timeline(id: $0) == nil }
+        picked.fitRanges { project.timeline(id: $0)?.duration.seconds }
+    }
+
     private func open(_ id: UUID) {
         renamingID = nil
-        picked.click(id)
+        picked.click(id, restoring: layout == .filmstrips)
         onOpen(id)
     }
 }

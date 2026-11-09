@@ -298,6 +298,14 @@ inspector and effects panel show. Opening the project opens that timeline
 and puts each back as it was (see [timeline.md](timeline.md), "Each
 timeline keeps its place").
 
+It also holds what the browser remembers (`browser`, left out when there
+is nothing): the range last picked of each clip and of each timeline's
+filmstrip, in seconds into it, and the timelines whose nested timelines
+the Timelines tab's tree hides (see [browser.md](browser.md),
+"Selecting" and "Tabs"). A clip is keyed by its asset's ID, with `#` and
+the scene's ID after it for a scene. A file without it, written before
+the browser remembered anything, reads as remembering nothing.
+
 It is kept apart from `project.json` so that moving around is never an
 edit: it adds no undo step, doesn't make the project unsaved, isn't in
 backups, and doesn't trigger the outside-change check (which watches only
@@ -315,7 +323,9 @@ view state is written or the project saved (`ProjectStore.ignore`),
 after the lines already there. A package without a `.gitignore` is left
 without one. Times past a timeline shortened since
 are held back to its end, and a selection of a clip no longer there is
-dropped.
+dropped. What the browser remembers of media taken out of the project or
+timelines deleted isn't written; ranges are held to their clips'
+lengths now, and a damaged one is left out.
 
 ## Retention
 
