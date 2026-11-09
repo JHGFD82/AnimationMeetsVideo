@@ -939,8 +939,8 @@ The lasso's rectangle fades out when the button comes up.
 - Clips picked together have no one clip for the Inspector and the effects
   panel to show. What is done to one of them is done to them all: **Cut,
   Copy, Duplicate, Delete**, **Put Selection in New Timeline**, moving and
-  nudging, **V**, ⌘B, and from the right-click menu of any of them **Turn
-  Off**, **Mute Sound**, **Detach Audio**, **Pass Through**, **Follow
+  nudging, **V**, ⌘B, and from the right-click menu of any of them
+  **Delete Selection** (**Delete** on a clip alone), **Turn Off**, **Mute Sound**, **Detach Audio**, **Pass Through**, **Follow
   Music**, **Paste Effects**, **Speed**, **Frame Blending**, **Echo**,
   **Sound at Other Speeds** and **Shutter** (each to those of them it
   applies to; a toggle sets them all to the opposite of the clip clicked).

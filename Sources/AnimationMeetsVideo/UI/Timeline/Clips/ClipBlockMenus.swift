@@ -82,6 +82,8 @@ extension ClipBlockView {
             .disabled(!EditorClipboard.shared.hasClips)
         Button("Duplicate") { handlers.onClipboard(.duplicate) }
             .keyboardShortcut("d", modifiers: .command)
+        Button(model.isInGroup ? "Delete Selection" : "Delete") { handlers.onClipboard(.delete) }
+            .keyboardShortcut(.delete, modifiers: [])
         Button(model.isInGroup ? "Put Selection in New Timeline" : "Put in New Timeline") { handlers.onClipboard(.nest) }
         Divider()
         Button(model.clip.enabled ? "Turn Off" : "Turn On") { handlers.onEditClip { [enabled = !model.clip.enabled] in $0.enabled = enabled } }

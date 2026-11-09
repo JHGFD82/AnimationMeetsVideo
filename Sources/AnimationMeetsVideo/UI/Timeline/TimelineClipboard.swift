@@ -7,6 +7,8 @@ enum ClipboardCommand {
     /// Takes the clip, or the clips picked with it, into a timeline of
     /// their own, which stands in their place.
     case nest
+    /// Deletes the clip, or the clips picked with it, without copying.
+    case delete
 }
 
 // Cutting, copying, pasting and duplicating clips (see docs/timeline.md,
@@ -87,6 +89,9 @@ extension TimelineView {
             parkPlayhead(at: placed.clip.endOffset)
         case .nest:
             if let clipID { nest([clipID]) }
+        case .delete:
+            guard let layerID, let clipID else { return }
+            host.dispatch(.deleteClip(layer: layerID, clip: clipID))
         case .duplicate:
             guard let layerID, let clipID else { return }
             var copy: TimelineClip?

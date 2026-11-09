@@ -427,6 +427,8 @@ extension TimelineView {
             if !copies.isEmpty { groupSelection = Set(copies.map(\.clipID)) }
         case .nest:
             nest(ids)
+        case .delete:
+            deleteGroup()
         }
     }
 
