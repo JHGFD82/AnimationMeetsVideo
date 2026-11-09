@@ -44,6 +44,8 @@ struct TimelineEditorSurface<Library: View>: View {
     /// Where each timeline was left: the project window's, which its
     /// session saves with the project, or this surface's own.
     @Environment(\.timelineViewMemory) private var sharedViewMemory
+    /// The window's undo, which the graph panels undo with.
+    @Environment(\.undoManager) private var undoManager
     @State private var ownViewMemory = TimelineViewMemory()
     private var viewMemory: TimelineViewMemory { sharedViewMemory ?? ownViewMemory }
 
@@ -389,7 +391,9 @@ struct TimelineEditorSurface<Library: View>: View {
             graphs.onSeek = { time in scrub(to: time) }
             graphs.onTogglePlayback = { playback.togglePlayback() }
             graphs.playback = playback
+            graphs.undoManager = undoManager
         }
+        .onChange(of: undoManager) { _, manager in graphs.undoManager = manager }
         .onDisappear {
             park(timelineID)
             graphs.closeAll()

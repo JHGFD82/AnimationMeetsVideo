@@ -14,6 +14,8 @@ struct EditorToolbar: View {
     /// Where the format and sound are picked and the export runs.
     let exportWindow: ExportWindow
     @Environment(ProjectState.self) private var projectState: ProjectState?
+    /// The editor window's undo, which the external display shares.
+    @Environment(\.undoManager) private var undoManager
     @State private var showsPasteChanges = false
     /// Whether the Paste Changes list was opened by trying to export.
     @State private var exportAfterAccepting = false
@@ -50,7 +52,8 @@ struct EditorToolbar: View {
                             primarySelection: $selection,
                             sharedPlayback: playback,
                             annotations: annotations,
-                            analysis: analysis
+                            analysis: analysis,
+                            undoManager: undoManager
                         )
                     }
                 }

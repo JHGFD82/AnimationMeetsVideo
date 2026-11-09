@@ -121,7 +121,9 @@ red and Y in green, a single property in yellow); and each keyframe a
 mark on each line, pinched where eased. The playhead is drawn in red at
 the moment of the parameter's time it plays, and follows the player while
 it plays. **Space** plays and pauses in a graph's panel, as in the main
-window.
+window, and **⌘Z** and **⇧⌘Z** undo and redo the editor's steps, the
+panel sharing its window's undo (as the external display's window
+does).
 
 **Skimming** is on unless turned off: as the pointer moves over the plot,
 the viewer shows the frame under it (on a frame of the timeline), without

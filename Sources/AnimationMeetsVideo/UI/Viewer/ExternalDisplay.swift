@@ -22,7 +22,8 @@ final class ExternalDisplayController {
         primarySelection: Binding<TimelineSelection?>,
         sharedPlayback: PlaybackModel,
         annotations: AnnotationModel,
-        analysis: AssetAnalysis
+        analysis: AssetAnalysis,
+        undoManager: UndoManager?
     ) {
         stop()
 
@@ -39,6 +40,7 @@ final class ExternalDisplayController {
         window.hasShadow = false
         window.isOpaque = true
         window.backgroundColor = .black
+        window.editorUndoManager = undoManager
 
         let content = ExternalViewerContent(
             project: project,
@@ -69,6 +71,12 @@ final class ExternalDisplayController {
 private final class KeyableBorderlessWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    /// The editor window's undo, which ⌘Z here undoes with: edits made in
+    /// this window land in the same project and its history, and the
+    /// window's own undo manager had nothing on it.
+    weak var editorUndoManager: UndoManager?
+    override var undoManager: UndoManager? { editorUndoManager ?? super.undoManager }
 }
 
 private struct ExternalViewerContent: View {

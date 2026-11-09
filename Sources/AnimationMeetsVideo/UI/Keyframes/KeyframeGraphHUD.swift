@@ -16,6 +16,10 @@ final class KeyframeGraphHUDs {
     var playhead: CMTime = .zero
     /// The player, which the graphs' playhead lines follow while it plays.
     @ObservationIgnored var playback: PlaybackModel?
+    /// The editor window's undo, which ⌘Z in a panel undoes with: the
+    /// graphs edit the editor's project, and a panel of its own would have
+    /// nothing to undo.
+    @ObservationIgnored weak var undoManager: UndoManager?
 
     @ObservationIgnored var onEdit: ((inout EditingProject) -> Void) -> Void = { _ in }
     @ObservationIgnored var onSeek: (CMTime) -> Void = { _ in }
@@ -44,7 +48,7 @@ final class KeyframeGraphHUDs {
     /// Space in a graph's panel plays or pauses, as it does in the main
     /// window: the viewer's shortcut for it only reaches the key window.
     @ObservationIgnored private var spaceMonitor: Any?
-    @ObservationIgnored private var panels: [Subject: NSPanel] = [:]
+    @ObservationIgnored private var panels: [Subject: GraphPanel] = [:]
     @ObservationIgnored private var observers: [Subject: [NSObjectProtocol]] = [:]
     /// The graphs of each graph panel.
     private var links: [UUID: KeyframeGraphLink] = [:]
@@ -92,12 +96,13 @@ final class KeyframeGraphHUDs {
             return
         }
         let key = subject
-        let panel = NSPanel(
+        let panel = GraphPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .resizable, .utilityWindow, .hudWindow],
             backing: .buffered,
             defer: false
         )
+        panel.editorUndo = { [weak self] in self?.undoManager }
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = true
         panel.isReleasedWhenClosed = false
@@ -252,6 +257,14 @@ final class KeyframeGraphHUDs {
             y: frame.maxY - 80 - step
         ))
     }
+}
+
+/// A graph editor's panel, which undoes with the editor window's undo
+/// manager, as a timeline window does (`SharedUndoWindow`): its own had
+/// nothing on it, so ⌘Z was greyed out until the main window was clicked.
+private final class GraphPanel: NSPanel {
+    var editorUndo: () -> UndoManager? = { nil }
+    override var undoManager: UndoManager? { editorUndo() ?? super.undoManager }
 }
 
 /// Hosts a graph without letting a mouse down on it move the window: a
