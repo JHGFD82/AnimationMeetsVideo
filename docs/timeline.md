@@ -248,7 +248,10 @@ scroll or player item changes. The rest of the editor reads the parked
 playhead, which catches up when playback stops, so playback doesn't
 redraw every layer on every tick. The
 values shown in property rows and the inspector hold still while playing
-for the same reason.
+for the same reason. What acts at the playhead acts where playing is,
+on its frame: paste, ⌘B, easing at the playhead, a new shape, scenes
+dropped on the new-layer place and a take's start
+(`TimelineView.playheadTime`, from `PlayheadState.actionTime`).
 
 Scrolling and zooming redraw only the tracks: the zoom, the scroll and
 their rubber bands are kept in `TimelineViewportModel`, which only

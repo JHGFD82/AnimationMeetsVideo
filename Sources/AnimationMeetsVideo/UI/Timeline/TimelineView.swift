@@ -218,7 +218,11 @@ struct TimelineView: View {
     /// layout pass (buttons, keys, the slider).
     var currentViewport: TimelineViewport { viewport(width: viewportModel.trackAreaWidth) }
 
-    var playheadTime: CMTime { playhead.time }
+    /// Where an action at the playhead acts: where playing is while the
+    /// player plays (`PlayheadState.actionTime`), on its frame, else where
+    /// the playhead is parked. Paste, the shape button, easing and the
+    /// rest acted at the parked time while ⌘B split at the playing one.
+    var playheadTime: CMTime { timeline.snappedToFrame(playhead.actionTime) }
 
     /// Shows the frame under the pointer, at `x` in the timeline (the
     /// tracks start after the names column), without moving the playhead;
@@ -234,7 +238,8 @@ struct TimelineView: View {
     }
 
     /// Where the playhead is now: the player's time while it plays, which
-    /// `playheadTime` doesn't follow, else the parked time.
+    /// isn't on a frame, else the parked time. `playheadTime` is the same
+    /// on its frame, for edits.
     var livePlayheadTime: CMTime {
         playback.isPlaying ? playback.player.currentTime() : playheadTime
     }
