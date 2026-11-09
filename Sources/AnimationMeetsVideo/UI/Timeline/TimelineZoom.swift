@@ -182,11 +182,27 @@ extension TimelineView {
     /// Only moves the playhead — per-clip selection and repositioning are
     /// owned by each clip block's own gesture in `LayerClipRow`, which sits
     /// above this and so claims clicks on clips first. The playhead lands
-    /// on frames.
-    func scrubGesture(in viewport: TimelineViewport) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in scrub(atX: value.location.x, in: viewport) }
-            .onEnded { value in scrub(atX: value.location.x, in: viewport) }
+    /// on frames. Held near either edge of the tracks, the timeline
+    /// scrolls and the playhead goes on with it, as a dragged clip does
+    /// (`TimelineAutoScroll`). Measured in window coordinates, and each
+    /// step read through the viewport as it is then, scrolled.
+    func scrubGesture() -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+            .onChanged { value in
+                let x = value.location.x
+                scrub(atWindowX: x)
+                autoScroll.track(pointerX: x) { scrub(atWindowX: x) }
+            }
+            .onEnded { value in
+                autoScroll.end()
+                scrub(atWindowX: value.location.x)
+            }
+    }
+
+    /// Moves the playhead to a point across the window, where the tracks
+    /// start after the names column.
+    private func scrub(atWindowX x: CGFloat) {
+        scrub(atX: x - geometryStore.namesColumn.maxX, in: currentViewport)
     }
 
     /// The same for views laid out across the whole span, whose x is in

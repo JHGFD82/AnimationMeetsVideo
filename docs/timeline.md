@@ -229,7 +229,9 @@ the same spirit: once they would be closer than 10 points, only every 2nd,
 
 The playhead is a yellow line through the track area with a yellow tab at
 its top, in the ruler, as in Final Cut Pro (`Design.playhead`). Clicking or
-dragging in the ruler moves it, and so does a click in the tracks, on a
+dragging in the ruler moves it (held near either edge of the tracks, the
+timeline scrolls and the playhead goes on with it, as a dragged clip
+does), and so does a click in the tracks, on a
 clip or in empty space, as in Final Cut: the click still selects the clip
 or nothing, and the playhead goes to where it was. Only a click moves it
 there: drags on the layers (moving, trimming, a lasso) stay free for the

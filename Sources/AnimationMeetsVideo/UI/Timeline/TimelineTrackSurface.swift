@@ -206,7 +206,7 @@ struct TimelineRulerLane: View {
             .rubberBandScroll(model.scrollBand, length: model.trackAreaWidth)
             .clipped()
             .contentShape(Rectangle())
-            .gesture(parent.scrubGesture(in: viewport))
+            .gesture(parent.scrubGesture())
             // To VoiceOver the ruler is the playhead:
             // adjusting it steps a frame.
             .accessibilityHidden(true)
