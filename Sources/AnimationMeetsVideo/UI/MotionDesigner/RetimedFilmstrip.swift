@@ -80,8 +80,10 @@ struct RetimedFilmstrip: View {
             .frame(width: max(1, x1 - x0), height: height)
             .overlay(alignment: .leading) { edgeHandle(piece, edge: .start) }
             .overlay(alignment: .trailing) { edgeHandle(piece, edge: .end) }
-            .offset(x: x0 + (tug?.id == piece.id ? tug?.offset ?? 0 : 0))
+            // The shape before the offset, so the clip is grabbed where it
+            // is drawn: after it, the shape stayed at the strip's start.
             .contentShape(Rectangle())
+            .offset(x: x0 + (tug?.id == piece.id ? tug?.offset ?? 0 : 0))
             .gesture(moveGesture(piece))
             .onTapGesture {
                 session.selectedPieceID = piece.id
@@ -213,8 +215,7 @@ struct RetimedFilmstrip: View {
     /// cancelled it (or a sheet over the panel let go of it), the rest of
     /// that press is ignored rather than beginning it again from where the
     /// draft went back to.
-    private func follows(_ drag: DragGesture.Value) -> Bool {
-        if press.begins(drag) {
+    private func follows(_ drag: DragGesture.Value) -> Bool {        if press.begins(drag) {
             // A press whose release went unheard leaves nothing behind.
             session.cancelDrag()
             tugSprang = false
