@@ -244,7 +244,6 @@ struct InspectorPanel: View {
                         onDeleteSelection()
                     }
                     .frame(maxWidth: .infinity)
-                    .keyboardShortcut(.delete, modifiers: .command)
                 }
             }
         }
