@@ -90,7 +90,6 @@ struct NumericField: View {
                 }
                 .frame(minWidth: 44, maxWidth: 70)
                 .focused($isFocused)
-                .background(OutsideClickMonitor(onOutsideClick: commit))
                 .accessibilityLabel(accessibilityName ?? "Value")
                 .onAppear { isFocused = true }
                 .onSubmit { commit() }

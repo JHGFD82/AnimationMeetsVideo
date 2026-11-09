@@ -40,7 +40,6 @@ struct SectionLane: View {
     /// one's draft; nil when no drop is waiting for its edit.
     @State private var pendingDrop: Int?
     @State private var dropCount = 0
-    @State private var clickMonitor: Any?
     /// Where an Option-drag's copy would land, the section staying put.
     @State private var copyDraft: TimelineSection?
     /// Whether a section is being moved (not resized), for the drop line.
@@ -82,13 +81,7 @@ struct SectionLane: View {
         .onChange(of: sections) { _, _ in
             if pendingDrop != nil { endDrop() }
         }
-        .onChange(of: editingID) { _, id in
-            id == nil ? stopClickMonitor() : startClickMonitor()
-        }
-        .onDisappear {
-            commitRename()
-            stopClickMonitor()
-        }
+        .onDisappear { commitRename() }
         .help("Sections: double-click empty space to add one, double-click one to rename it")
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sections")
@@ -305,31 +298,6 @@ struct SectionLane: View {
     private func cancelRename() {
         editingID = nil
         NSApp.keyWindow?.makeFirstResponder(nil)
-    }
-
-    /// A click anywhere outside the name field ends the edit and saves it,
-    /// as in Finder. Focus loss alone missed clicks on views that don't
-    /// take focus, leaving the field open and keeping every key press.
-    private func startClickMonitor() {
-        stopClickMonitor()
-        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
-            nonisolated(unsafe) let event = event
-            MainActor.assumeIsolated {
-                guard let window = event.window else { return }
-                if let editor = window.firstResponder as? NSTextView, editor.isFieldEditor,
-                   let hit = window.contentView?.hitTest(event.locationInWindow), hit.isDescendant(of: editor) || hit === editor {
-                    return
-                }
-                commitRename()
-                window.makeFirstResponder(nil)
-            }
-            return event
-        }
-    }
-
-    private func stopClickMonitor() {
-        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
-        clickMonitor = nil
     }
 
     /// An empty name keeps the one it had.

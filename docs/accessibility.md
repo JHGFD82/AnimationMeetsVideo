@@ -43,11 +43,18 @@ A one-line field that starts being edited has its whole value selected,
 however editing starts (a click on the field, a click on a value or
 name that opens one, Tab, Rename), so typing replaces the value as
 renaming a file in the Finder does. The first click on a field still
-being edited (focused when its sheet or panel opened, by Tab, or left
-so by a click elsewhere) selects its whole value too; later clicks in
-it place the caret. One observer installed at launch does this for
-every field (`FieldTextSelection`); text views of several lines are left
-alone.
+being edited (focused when its sheet or panel opened, or by Tab)
+selects its whole value too; later clicks in it place the caret. One
+observer installed at launch does this for every field
+(`FieldTextSelection`); text views of several lines are left alone.
+
+A press anywhere outside the text being edited ends the edit before the
+press is handled, so the field commits and the keys go back to the app,
+even when what was clicked (the timeline, the viewer, a waveform, a
+graph) doesn't take focus. This covers fields and text views alike, a
+Text layer's words included, which keep their selection. One monitor
+installed at launch does it for every window (`TextEditEnding`); no
+field needs its own.
 
 **Help > Keyboard Shortcuts** (⌘/, `KeyboardShortcutsView`) lists these
 with the Clips list's keys and the File menu's shortcuts in one window;

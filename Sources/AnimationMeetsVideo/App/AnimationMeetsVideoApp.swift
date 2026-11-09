@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WindowInputBlock.blockUnderSheets()
             // A field starting to be edited has its whole value selected.
             FieldTextSelection.install()
+            // A click anywhere else ends the text being edited.
+            TextEditEnding.install()
         }
     }
 

@@ -277,22 +277,15 @@ struct FieldTextSelectionTests {
     /// A click at `point` (from the top left) on something that doesn't
     /// take focus. Local monitors aren't sent events that skip the event
     /// queue (and taking one from it ends the test process), so the
-    /// window's `OutsideClickMonitor`s are told of it first.
+    /// app's `TextEditEnding` is told of it first.
     private func clickAway(at point: CGPoint, in harness: EventHarness) async throws {
         let location = CGPoint(x: point.x, y: harness.window.frame.height - point.y)
         guard let event = NSEvent.mouseEvent(
             with: .leftMouseDown, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: harness.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
         ) else { return }
-        for monitor in Self.views(of: OutsideClickMonitor.MonitorView.self, in: harness.window.contentView) {
-            monitor.pressed(event)
-        }
+        TextEditEnding.pressed(event)
         try await harness.click(at: point)
-    }
-
-    private static func views<V: NSView>(of type: V.Type, in view: NSView?) -> [V] {
-        guard let view else { return [] }
-        return (view as? V).map { [$0] } ?? [] + view.subviews.flatMap { views(of: type, in: $0) }
     }
 
     @Test func clickingAwayRenamesALayer() async throws {

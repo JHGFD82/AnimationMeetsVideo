@@ -72,17 +72,12 @@ struct LayerHeaderRow: View {
                     .font(Design.Typeface.label)
                     .textFieldStyle(.plain)
                     .focused($isNameFieldFocused)
-                    // A click on the timeline doesn't take focus, so it
-                    // ends the edit itself.
-                    .background(OutsideClickMonitor(onOutsideClick: commitRename))
                     .onSubmit { commitRename() }
                     .onExitCommand { isEditingName = false }
                     .onAppear { isNameFieldFocused = true }
-                    // onSubmit only fires on Return — clicking away to end
-                    // editing without pressing Return previously left the
-                    // field stuck open and never fell back to the footage
-                    // name when left blank. Committing on focus-loss too
-                    // fixes that.
+                    // A click elsewhere ends editing (`TextEditEnding`),
+                    // which commits here, falling back to the footage name
+                    // when left blank.
                     .onChange(of: isNameFieldFocused) { _, focused in
                         if !focused { commitRename() }
                     }

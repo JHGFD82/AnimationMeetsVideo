@@ -65,8 +65,6 @@ struct InlineNameField: View {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .strokeBorder(Design.accent, lineWidth: 1.5)
             }
-            // A click on a view that doesn't take focus ends the edit too.
-            .background(OutsideClickMonitor(onOutsideClick: commit))
             .padding(.horizontal, -3)
             .padding(.vertical, -1)
             .frame(minWidth: 140, alignment: .leading)
