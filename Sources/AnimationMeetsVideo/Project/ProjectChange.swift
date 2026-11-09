@@ -135,6 +135,38 @@ private struct Describer {
         clips.count == 1 ? clipLabel(clips[0].clip, in: project) : "\(clips.count) Clips"
     }
 
+    // MARK: Sections
+
+    /// A change to one section is named for it, so the Edit menu says which
+    /// section Undo brings back or takes away: "Delete Section “Chorus”".
+    private func sectionsChange(_ old: [TimelineSection], _ new: [TimelineSection], in timeline: Timeline) -> Found {
+        let oldByID = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0) })
+        let newByID = Dictionary(uniqueKeysWithValues: new.map { ($0.id, $0) })
+        let added = new.filter { oldByID[$0.id] == nil }
+        let removed = old.filter { newByID[$0.id] == nil }
+        let changed = new.compactMap { section in oldByID[section.id].flatMap { $0 != section ? ($0, section) : nil } }
+        switch (added.count, removed.count, changed.count) {
+        case (1, 0, 0):
+            return Found(name: "Add Section \(quoted(added[0].name))", what: "add-section", ids: [added[0].id])
+        case (0, 1, 0):
+            return Found(name: "Delete Section \(quoted(removed[0].name))", what: "delete-section", ids: [removed[0].id])
+        case (0, 0, 1):
+            let (was, now) = changed[0]
+            if was.name != now.name, was.start == now.start, was.end == now.end {
+                return Found(name: "Rename Section \(quoted(was.name)) to \(quoted(now.name))", what: "rename-section", ids: [now.id])
+            }
+            if was.duration == now.duration, was.name == now.name {
+                return Found(name: "Move Section \(quoted(now.name))", what: "move-section", ids: [now.id])
+            }
+            if was.name == now.name {
+                return Found(name: "Resize Section \(quoted(now.name))", what: "resize-section", ids: [now.id])
+            }
+            return Found(name: "Edit Section \(quoted(now.name))", what: "edit-section", ids: [now.id])
+        default:
+            return Found(name: "Edit Sections of \(quoted(timeline.name))", what: "sections", ids: [timeline.id])
+        }
+    }
+
     // MARK: Timelines
 
     private func timelinesChange(_ before: EditingProject, _ after: EditingProject) -> Found {
@@ -173,7 +205,7 @@ private struct Describer {
             return layersChange(old, new, project: before, after: after)
         }
         if old.sections != new.sections {
-            return Found(name: "Edit Sections of \(quoted(new.name))", what: "sections", ids: [new.id])
+            return sectionsChange(old.sections, new.sections, in: new)
         }
 
         // Clips that changed in place, in timeline order.

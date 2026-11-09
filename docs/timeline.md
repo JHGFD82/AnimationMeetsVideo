@@ -387,6 +387,11 @@ composition otherwise ends with its last media).
   long (dragging across empty space no longer draws one, which happened by
   accident). A new section is named "Section N" and its name opens for
   typing at once; Escape there takes the new section away again.
+  Making and naming it are one undo step ("Add Section “Chorus”"), and
+  one taken away with Escape leaves none, so Undo never brings back a
+  section that was never kept.
+- Each undo step for a section names it, so the Edit menu says which
+  one Undo brings back: Delete, Rename, Move or Resize Section “Chorus”.
 - Double-click a section (or use its right-click menu) to rename it, as
   with a file: the name is selected, Return or a click anywhere else saves
   it, Escape cancels, and leaving it empty keeps the old name.

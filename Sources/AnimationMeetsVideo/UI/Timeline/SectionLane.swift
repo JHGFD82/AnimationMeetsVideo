@@ -55,6 +55,9 @@ struct SectionLane: View {
     /// The timecode over the pointer while a section or an edge of it is
     /// dragged.
     @Environment(DragTimecodeReadout.self) private var readout: DragTimecodeReadout?
+    /// Making a section and naming it are one undo step, and none when
+    /// Escape takes the section away again.
+    @Environment(\.projectHistory) private var history
 
     private let space = "sectionLane"
     private let handleWidth: CGFloat = 6
@@ -65,9 +68,12 @@ struct SectionLane: View {
                 .contentShape(Rectangle())
                 .gesture(SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
                     let start = snapped(time(atX: value.location.x), excluding: nil)
+                    history?.beginGesture(quietly: true)
                     if let id = onCreate(start, CMTimeAdd(start, EditingProject.defaultSectionLength)) {
                         beginRename(id, name: "")
                         isNewSection = true
+                    } else {
+                        history?.endGesture()
                     }
                 })
             ForEach(sections) { section in
@@ -326,12 +332,26 @@ struct SectionLane: View {
         editingID = nil
         isNewSection = false
         NSApp.keyWindow?.makeFirstResponder(nil)
-        if let made { onDelete(made) }
+        if let made {
+            onDelete(made)
+            // The project is as it was before the double-click, so no step
+            // is left: Undo can't bring back a section never kept.
+            endNewSection()
+        }
+    }
+
+    /// Ends the gesture a double-click began for a new section, once the
+    /// edits above have reached the project.
+    private func endNewSection() {
+        Task { @MainActor in history?.endGesture() }
     }
 
     /// An empty name keeps the one it had.
     private func commitRename() {
+        let wasNew = isNewSection
         isNewSection = false
+        // Made and named as one step: "Add Section “Chorus”".
+        defer { if wasNew { endNewSection() } }
         guard let id = editingID else { return }
         let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
         editingID = nil

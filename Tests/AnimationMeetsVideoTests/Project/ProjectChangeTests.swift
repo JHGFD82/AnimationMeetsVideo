@@ -131,6 +131,22 @@ import Testing
         #expect(name(project) { $0.timelines[0].name = "Cut" } == "Rename Timeline to \u{201C}Cut\u{201D}")
     }
 
+    /// Each change to a section is named for the section, so Undo says
+    /// which one it brings back.
+    @Test func namesTheSectionChanged() throws {
+        var (project, _, _) = Self.oneClip()
+        let timelineID = project.rootTimelineID
+        let made = project.addSection(named: "Chorus", in: timelineID, from: .zero, to: CMTimeMultiply(Self.second, multiplier: 2))
+        let id = try #require(made)
+        #expect(name(project) { $0.addSection(named: "Bridge", in: timelineID, from: CMTimeMultiply(Self.second, multiplier: 3), to: CMTimeMultiply(Self.second, multiplier: 4)) }
+            == "Add Section \u{201C}Bridge\u{201D}")
+        #expect(name(project) { $0.deleteSection(id, in: timelineID) } == "Delete Section \u{201C}Chorus\u{201D}")
+        #expect(name(project) { $0.renameSection(id, in: timelineID, to: "Hook") } == "Rename Section \u{201C}Chorus\u{201D} to \u{201C}Hook\u{201D}")
+        #expect(name(project) { $0.moveSection(id, in: timelineID, to: Self.second) } == "Move Section \u{201C}Chorus\u{201D}")
+        #expect(name(project) { $0.setSectionEdge(id, edge: .end, in: timelineID, to: CMTimeMultiply(Self.second, multiplier: 3)) }
+            == "Resize Section \u{201C}Chorus\u{201D}")
+    }
+
     /// Two clips cut from one file read the same, but moving one is not
     /// moving the other, so their steps must not merge.
     @Test func theSameEditToDifferentClipsHasADifferentIdentity() throws {
