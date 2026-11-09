@@ -19,6 +19,9 @@ struct TimelineWindow: View {
 
     @Binding var ref: TimelineWindowRef?
     @Environment(\.dismiss) private var dismiss
+    /// Tells this window from the project's others, for which shows the
+    /// project's dialogs (`projectDialogs`).
+    @State private var windowID = UUID()
 
     var body: some View {
         if let ref, let session = ProjectWindows.shared.session(showing: ref.projectURL) {
@@ -30,6 +33,7 @@ struct TimelineWindow: View {
             .equatable()
             .environment(session.projectState)
             .environment(session.autosaveStatus)
+            .projectDialogs(session: session, window: windowID)
             .frame(minWidth: 1_100, minHeight: 700)
             .focusedSceneValue(\.projectSession, session)
             .background(SharedUndoWindow(source: { session.editorWindow }))

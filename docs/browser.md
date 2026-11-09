@@ -73,7 +73,9 @@ before it moved) opens on Clips.
   **Open in New Window** (a second editor on that timeline, sharing the
   project with its window: the same undo, so ⌘Z in either undoes the last
   edit made in either, and it closes when the project's window does;
-  `TimelineWindow`), **Embed in Active Timeline** (disabled where it can't be: it is empty,
+  `TimelineWindow`; Project Settings, Replace Media and their notices
+  open on whichever of the two was last in front, `projectDialogs`),
+  **Embed in Active Timeline** (disabled where it can't be: it is empty,
   or would contain the active one) and **Duplicate Timeline**, which
   puts a copy below it ("Main copy", "Main copy 2") with new IDs
   for its layers and clips, sharing the timelines it embeds, and

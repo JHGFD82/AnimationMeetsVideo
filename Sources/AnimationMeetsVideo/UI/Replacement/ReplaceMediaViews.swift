@@ -364,14 +364,21 @@ extension ReferenceThumbnails {
 extension View {
     /// Presents the replacement dialog, the batch summary, and notices
     /// about files that changed or went missing, with buttons to deal
-    /// with them.
+    /// with them. Several windows on one project each attach them; only
+    /// the one that `isHost` shows them, and only one, `checksFiles`,
+    /// watches the files (see `projectDialogs`).
     func mediaReplacementDialogs(
         project: Binding<EditingProject>,
         controller: MediaReplacementController,
         analysis: AssetAnalysis,
-        packageURL: URL?
+        packageURL: URL?,
+        isHost: Bool = true,
+        checksFiles: Bool = true
     ) -> some View {
-        modifier(MediaReplacementDialogs(controller: controller, project: project, analysis: analysis, packageURL: packageURL))
+        modifier(MediaReplacementDialogs(
+            controller: controller, project: project, analysis: analysis, packageURL: packageURL,
+            isHost: isHost, checksFiles: checksFiles
+        ))
     }
 }
 
@@ -380,10 +387,13 @@ private struct MediaReplacementDialogs: ViewModifier {
     @Binding var project: EditingProject
     let analysis: AssetAnalysis
     let packageURL: URL?
+    let isHost: Bool
+    let checksFiles: Bool
 
     func body(content: Content) -> some View {
         content
             .onPeriodicCheck(every: .seconds(5)) {
+                guard checksFiles else { return }
                 await controller.checkForChanges { project }
             }
             // Only the controller closes the sheet. A nil written back here
@@ -391,7 +401,7 @@ private struct MediaReplacementDialogs: ViewModifier {
             // so it is ignored; a sheet closed by any other route cancels
             // its own session, which does nothing once that session is over.
             .sheet(item: Binding(
-                get: { controller.session },
+                get: { isHost ? controller.session : nil },
                 set: { _ in }
             ), onDismiss: { controller.sheetDidDismiss() }) { session in
                 ReplaceMediaSheet(session: session, controller: controller)
@@ -402,8 +412,8 @@ private struct MediaReplacementDialogs: ViewModifier {
             .alert(
                 controller.notice?.title ?? "",
                 isPresented: Binding(
-                    get: { controller.notice != nil },
-                    set: { if !$0 { controller.notice = nil } }
+                    get: { isHost && controller.notice != nil },
+                    set: { if isHost, !$0 { controller.notice = nil } }
                 )
             ) {
                 let actions = controller.notice?.actions ?? []

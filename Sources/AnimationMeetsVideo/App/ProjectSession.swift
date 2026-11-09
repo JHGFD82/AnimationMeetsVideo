@@ -36,6 +36,11 @@ final class ProjectSession {
     /// The project as last saved or opened, to tell whether there are unsaved changes.
     private(set) var savedProject: EditingProject
     var showsProjectSettings = false
+    /// The window of this project's that shows its dialogs (Project
+    /// Settings, Replace Media and its notices): the one last in front,
+    /// its own window or a timeline window (`ProjectDialogs`); nil for
+    /// its own window.
+    private(set) var dialogWindow: UUID?
     /// Set once the person has settled unsaved changes for closing the
     /// window, so closing it again isn't asked about.
     @ObservationIgnored var closeConfirmed = false
@@ -78,6 +83,18 @@ final class ProjectSession {
         guard fitted.fitPackageEffects(newSince: old) else { return }
         history.adopt { $0.fitPackageEffects(newSince: old) }
         project = fitted
+    }
+
+    /// Makes `window` the one that shows the project's dialogs, unless one
+    /// is up, which stays on the window it opened on.
+    func showDialogs(in window: UUID?) {
+        guard dialogWindow != window, !showsProjectSettings, !replacement.isPresenting else { return }
+        dialogWindow = window
+    }
+
+    /// `window` closed: the project's own window shows its dialogs again.
+    func windowClosed(_ window: UUID) {
+        if dialogWindow == window { dialogWindow = nil }
     }
 
     /// No project yet: the window shows the start sheet.

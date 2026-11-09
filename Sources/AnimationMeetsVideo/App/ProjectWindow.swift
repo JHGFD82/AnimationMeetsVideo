@@ -44,10 +44,7 @@ struct ProjectWindow: View {
             .equatable()
             .environment(session.projectState)
             .environment(session.autosaveStatus)
-            .mediaReplacementDialogs(
-                project: Bindable(session.projectState).value, controller: session.replacement,
-                analysis: session.analysis, packageURL: session.projectURL
-            )
+            .projectDialogs(session: session, window: nil)
             .newEffectPackagePrompt(isHost: NewEffectPackagePrompt.shared.hostWindow == windowID)
             .onExternalProjectChange { session.checkForExternalProjectChange() }
             .frame(minWidth: 1_100, minHeight: 700)
@@ -67,13 +64,6 @@ struct ProjectWindow: View {
             .background(WindowCloseGuard(shouldClose: shouldClose))
             .background(WindowReader { session.editorWindow = $0 })
             .background(ProjectWindowTitle(projectState: session.projectState, savedProject: session.savedProject, packageURL: session.projectURL, autosaveStatus: session.autosaveStatus))
-            .background(
-                Color.clear.sheet(isPresented: Bindable(session).showsProjectSettings) {
-                    // Read in the sheet's own view, so the window doesn't
-                    // read the project.
-                    ProjectSettingsSheet(project: Bindable(session.projectState).value)
-                }
-            )
             .focusedSceneValue(\.projectSession, session)
             // A project opened from Finder (double-click, or dropped on
             // the Dock icon) comes to a window here rather than a new empty

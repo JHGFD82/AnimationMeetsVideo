@@ -99,10 +99,11 @@ final class MediaReplacementController {
     @ObservationIgnored private var replaced = 0
     @ObservationIgnored private var skipped: [String] = []
     /// True from when the sheet appears until it has finished closing.
-    @ObservationIgnored private var isSheetShown = false
+    /// Watched, as `isPresenting` is.
+    private var isSheetShown = false
     /// A notice held back until the sheet has closed: macOS drops an alert
     /// presented while a sheet on the same window is still closing.
-    @ObservationIgnored private var pendingNotice: Notice?
+    private var pendingNotice: Notice?
 
     func markChanged(_ ids: [UUID]) {
         changedMedia.formUnion(ids)
@@ -209,6 +210,12 @@ final class MediaReplacementController {
         missingMedia = []
         notice = nil
         pendingNotice = nil
+    }
+
+    /// Whether a sheet or notice is up, or a run is under way that will
+    /// show one, so the window showing them must stay the same.
+    var isPresenting: Bool {
+        session != nil || notice != nil || isSheetShown || pendingNotice != nil
     }
 
     func sheetDidAppear() {
