@@ -36,12 +36,15 @@ ProRes. Design notes for each area, and what each still lacks, are in
 Open `Package.swift` in Xcode and run the `AnimationMeetsVideo` scheme, or use:
 
 ```sh
-swift run
+scripts/run.sh
 ```
 
-That runs the app without a bundle, so macOS doesn't know the `.amv`
-project type or the `.amveffect` effect package type: double-clicking
-one won't open it. To build the app as a bundle that declares both,
+That builds the app bundle (debug, for speed; `scripts/run.sh release`
+for a release build) and opens it, quitting a copy already running
+first. Avoid `swift run`: it runs the app without a bundle, so the
+system save panel that New Project shows doesn't take typing, and macOS
+doesn't know the `.amv` project type or the `.amveffect` effect package
+type. To build a release bundle that declares both without opening it,
 run:
 
 ```sh

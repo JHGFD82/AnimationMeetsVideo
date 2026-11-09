@@ -2,17 +2,21 @@
 # Builds AnimationMeetsVideo.app: the SwiftPM executable wrapped in an app
 # bundle with Packaging/Info.plist, which declares the .amv project type
 # so Finder shows projects as single documents and opens them in the app.
-# `swift run` works without this, just without that Finder integration.
+# `swift run` runs without a bundle, so it lacks that Finder integration,
+# and the system save panel (New Project) doesn't take typing there;
+# scripts/run.sh builds and opens this bundle instead.
 #
 # Usage: scripts/build-app.sh [output directory, default: build]
+# CONFIGURATION=debug builds faster, for trying a change (scripts/run.sh).
 set -eu
 
 cd "$(dirname "$0")/.."
 output="${1:-build}"
+configuration="${CONFIGURATION:-release}"
 app="$output/AnimationMeetsVideo.app"
 
-swift build -c release --product AnimationMeetsVideo
-bin="$(swift build -c release --show-bin-path)"
+swift build -c "$configuration" --product AnimationMeetsVideo
+bin="$(swift build -c "$configuration" --show-bin-path)"
 binary="$bin/AnimationMeetsVideo"
 # The resource bundle, which holds the effect packages that ship with the
 # app; EffectPackageStore.builtInFolder looks for it in Contents/Resources.
