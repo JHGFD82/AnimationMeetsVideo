@@ -409,7 +409,7 @@ Settled, with the reasons, so they aren't proposed again:
    anchors, the accent for the selected beat. When the beats are too close
    for every tag, only downbeats keep theirs, and closer still none do,
    though a pinned beat keeps a small handle. While it is open the editor is
-   darkened and takes no pointer input at all, the Timeline menu rests,
+   darkened and takes no pointer input at all, the Timeline menu rests (and the Edit menu's commands for the timeline and effects),
    and a click on the editor brings the panel back. Edits change the draft in place, so a
    nudge or drop never shows the old beat for a frame. While the song
    plays nothing in the panel is rebuilt: the playhead (Core Animation

@@ -39,7 +39,9 @@ else around it, by dragging frames along a time graph.
   from before the panel opened, under the panel's changes.
 - **The panel** floats over the editor like the beat match panel: the
   editor is darkened and takes no input while it is open, not even
-  hovering or skimming (`WindowInputBlock`), and the panel
+  hovering or skimming (`WindowInputBlock`); the Timeline menu and the
+  Edit menu's commands for the timeline and effects rest
+  (`focusedSceneValueUnlessDrafting`), and the panel
   has an undo of its own for its changes, which the timeline follows.
 - It shows the footage above the music it is attached to (the song's
   waveform and its beat markers) over the same span, and a **time

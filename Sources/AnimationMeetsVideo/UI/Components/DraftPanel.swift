@@ -5,6 +5,28 @@ import SwiftUI
 // designer do: it undoes the draft rather than the project, its close
 // button asks the editor, and drags inside it belong to its views.
 
+extension View {
+    /// Publishes an editor's menu commands, except while a draft panel
+    /// (Beat Match or the motion designer) works over the editor: the
+    /// menus would act on the project behind the panel, cutting clips the
+    /// designer has open, or closing it. The commands rest meanwhile.
+    func focusedSceneValueUnlessDrafting<Value>(_ key: WritableKeyPath<FocusedValues, Value?>, _ value: Value?) -> some View {
+        modifier(RestsWhileDrafting(key: key, value: value))
+    }
+}
+
+private struct RestsWhileDrafting<Value>: ViewModifier {
+    let key: WritableKeyPath<FocusedValues, Value?>
+    let value: Value?
+    @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
+    @Environment(MotionDesignController.self) private var motionDesign: MotionDesignController?
+
+    func body(content: Content) -> some View {
+        let drafting = beatMatch?.isActive == true || motionDesign?.isActive == true
+        content.focusedSceneValue(key, drafting ? nil : value)
+    }
+}
+
 /// Undo in the panel undoes the draft, not the project.
 final class DraftPanel: NSPanel {
     weak var draftUndoManager: UndoManager?

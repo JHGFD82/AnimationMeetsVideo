@@ -404,9 +404,10 @@ struct TimelineView: View {
         }
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
-        // The Timeline menu rests while a song is beat matched.
-        .focusedSceneValue(\.timelineActions, beatMatch?.isActive == true ? nil : actions)
-        .focusedSceneValue(\.timelineEditActions, beatMatch?.isActive == true ? nil : editActions)
+        // The Timeline menu rests while a song is beat matched, or clips
+        // are in the motion designer.
+        .focusedSceneValueUnlessDrafting(\.timelineActions, actions)
+        .focusedSceneValueUnlessDrafting(\.timelineEditActions, editActions)
         .environment(autoScroll)
         // Again whenever the timeline changes: the closures read its
         // length, through this view's copy of it.
