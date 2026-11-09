@@ -666,12 +666,16 @@ func writeClickFile(seconds: Double = 12, interval: Double = 0.5, first: Double 
         return project
     }
 
+    /// Waits for a beat result or failure, however long the analysis takes:
+    /// it runs at utility priority, and on a busy machine (the whole suite,
+    /// or CI) 10 s wasn't always enough.
     private func waitForBeats(_ analysis: AssetAnalysis) async throws {
-        for _ in 0..<2000 {
+        let deadline = ContinuousClock.now + .seconds(60)
+        while ContinuousClock.now < deadline {
             if analysis.progress.isEmpty && analysis.beats.count + analysis.beatFailures.count >= 1 { return }
             try await Task.sleep(for: .milliseconds(5))
         }
-        Issue.record("beat analysis did not finish")
+        Issue.record("beat analysis did not finish: progress \(analysis.progress.values.sorted())")
     }
 
     @Test func clipsWithAudioGetBeatsAndTheyAreUnsavedUntilMarked() async throws {
