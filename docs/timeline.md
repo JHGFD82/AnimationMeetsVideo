@@ -374,7 +374,7 @@ composition otherwise ends with its last media).
 - Double-click empty space in the lane to make a section five seconds
   long (dragging across empty space no longer draws one, which happened by
   accident). A new section is named "Section N" and its name opens for
-  typing at once.
+  typing at once; Escape there takes the new section away again.
 - Double-click a section (or use its right-click menu) to rename it, as
   with a file: the name is selected, Return or a click anywhere else saves
   it, Escape cancels, and leaving it empty keeps the old name.

@@ -47,6 +47,9 @@ struct SectionLane: View {
     /// Escape during a move or resize, which drops it.
     @State private var escape = EscapableDrag()
     @State private var editingID: UUID?
+    /// The section being named was just made by a double-click: Escape on
+    /// its name takes it away again.
+    @State private var isNewSection = false
     @State private var draftName = ""
     @FocusState private var isNameFocused: Bool
     /// The timecode over the pointer while a section or an edge of it is
@@ -62,7 +65,10 @@ struct SectionLane: View {
                 .contentShape(Rectangle())
                 .gesture(SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
                     let start = snapped(time(atX: value.location.x), excluding: nil)
-                    if let id = onCreate(start, CMTimeAdd(start, EditingProject.defaultSectionLength)) { beginRename(id, name: "") }
+                    if let id = onCreate(start, CMTimeAdd(start, EditingProject.defaultSectionLength)) {
+                        beginRename(id, name: "")
+                        isNewSection = true
+                    }
                 })
             ForEach(sections) { section in
                 sectionView(section, shown: draft?.id == section.id ? draft ?? section : section)
@@ -310,15 +316,22 @@ struct SectionLane: View {
         onSelect(id)
         draftName = name
         editingID = id
+        isNewSection = false
     }
 
+    /// Escape on the name: it stays as it was, and a section just made
+    /// for it is taken away, as cancelling the double-click that made it.
     private func cancelRename() {
+        let made = isNewSection ? editingID : nil
         editingID = nil
+        isNewSection = false
         NSApp.keyWindow?.makeFirstResponder(nil)
+        if let made { onDelete(made) }
     }
 
     /// An empty name keeps the one it had.
     private func commitRename() {
+        isNewSection = false
         guard let id = editingID else { return }
         let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
         editingID = nil
