@@ -810,6 +810,11 @@ struct TimelineResizeHandle: View {
     let maxHeight: CGFloat
 
     @State private var dragStartHeight: CGFloat?
+    /// True while the drag lasts, however it ends. A drag cancelled (the
+    /// app put away mid-drag) never calls `onEnded`; this is reset then
+    /// too, and clears what the drag kept, so the next drag doesn't start
+    /// from the old height.
+    @GestureState private var isDragging = false
     @State private var isHovering = false
 
     private var isActive: Bool { isHovering || dragStartHeight != nil }
@@ -833,6 +838,7 @@ struct TimelineResizeHandle: View {
         .pointerStyle(.rowResize)
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                .updating($isDragging) { _, dragging, _ in dragging = true }
                 .onChanged { value in
                     let start = dragStartHeight ?? height
                     if dragStartHeight == nil { dragStartHeight = height }
@@ -842,6 +848,9 @@ struct TimelineResizeHandle: View {
                     dragStartHeight = nil
                 }
         )
+        .onChange(of: isDragging) { _, dragging in
+            if !dragging { dragStartHeight = nil }
+        }
     }
 }
 

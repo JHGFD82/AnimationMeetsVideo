@@ -289,6 +289,12 @@ private struct ScrubArea: View {
     @State private var scroll = ScrollPosition(edge: .leading)
     @State private var isPressing = false
     @State private var zoomBase: Double?
+    /// True while a press on the strip, or a pinch, lasts, however it
+    /// ends. One cancelled (the app put away mid-press) never calls
+    /// `onEnded`; these are reset then too and clear what it kept, so the
+    /// next click still picks and the next pinch starts from the zoom.
+    @GestureState private var pressLasts = false
+    @GestureState private var pinchLasts = false
 
     static let rulerHeight: CGFloat = 18
     static let stripHeight: CGFloat = 58
@@ -327,6 +333,7 @@ private struct ScrubArea: View {
         .background(Design.Surface.sunken.color)
         .simultaneousGesture(
             MagnifyGesture()
+                .updating($pinchLasts) { _, lasts, _ in lasts = true }
                 .onChanged { value in
                     let base = zoomBase ?? splitter.zoom
                     zoomBase = base
@@ -334,6 +341,12 @@ private struct ScrubArea: View {
                 }
                 .onEnded { _ in zoomBase = nil }
         )
+        .onChange(of: pinchLasts) { _, lasts in
+            if !lasts { zoomBase = nil }
+        }
+        .onChange(of: pressLasts) { _, lasts in
+            if !lasts { isPressing = false }
+        }
         // Zooming keeps the marker where it is on screen, or the middle
         // when the marker is off it.
         .onChange(of: splitter.zoom) { old, new in rezoom(from: old, to: new) }
@@ -430,6 +443,7 @@ private struct ScrubArea: View {
         }
         .gesture(
             DragGesture(minimumDistance: 0)
+                .updating($pressLasts) { _, lasts, _ in lasts = true }
                 .onChanged { value in
                     if !isPressing {
                         isPressing = true
