@@ -119,28 +119,6 @@ struct EffectsPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Effects")
-                    .font(Design.Typeface.panelTitle)
-                    .foregroundStyle(Design.textPrimary)
-                if let clip = selectedClip {
-                    Text(project.clipName(clip.id, in: timelineID))
-                        .font(Design.Typeface.label)
-                        .foregroundStyle(Design.textTertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                Spacer()
-                Toggle(isOn: $showsKeyframeLanes) { Image(systemName: "timeline.selection") }
-                    .toggleStyle(.icon)
-                    .help(showsKeyframeLanes ? "Hide the keyframe timeline" : "Show the keyframe timeline")
-                    .accessibilityLabel("Keyframe timeline")
-                    .accessibilityValue(showsKeyframeLanes ? "Shown" : "Hidden")
-            }
-            .padding(.horizontal, Design.Space.group)
-            .padding(.vertical, Design.Space.step)
-            .rail(.raised)
-
             if let clip = selectedClip, let timeline {
                 stack(of: clip, in: timeline)
                     .lockedForMotionDesigner(isLocked)

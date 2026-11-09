@@ -69,23 +69,6 @@ struct InspectorPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Inspector")
-                    .font(Design.Typeface.panelTitle)
-                    .foregroundStyle(Design.textPrimary)
-                Spacer()
-                if let info {
-                    Text(info.name)
-                        .font(Design.Typeface.label)
-                        .foregroundStyle(Design.textTertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-            .padding(.horizontal, Design.Space.group)
-            .padding(.vertical, Design.Space.step)
-            .rail(.raised)
-
             if info == nil {
                 ContentUnavailableView(
                     "Nothing selected",

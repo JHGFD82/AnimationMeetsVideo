@@ -78,6 +78,9 @@ struct TimelineEditorSurface<Library: View>: View {
     /// changes when the person picks one or an effect is applied.
     @AppStorage(Preferences.showsSidePanel) private var showsSidePanel = true
     @AppStorage(Preferences.sidePanelTab) private var sideTab = SidePanelTab.inspector
+    /// Whether the effects panel shows its keyframe lanes; its toggle is on
+    /// the side panel's tab bar.
+    @AppStorage(Preferences.effectsPanelShowsKeyframeLanes) private var showsKeyframeLanes = true
     /// Each side panel tab keeps its own width, and so does the browser.
     @AppStorage(Preferences.effectsPanelWidth) private var effectsPanelWidth = 640.0
     @AppStorage(Preferences.inspectorPanelWidth) private var inspectorPanelWidth = 280.0
@@ -260,10 +263,21 @@ struct TimelineEditorSurface<Library: View>: View {
                     .editorPanel(.viewer, activePanel)
                     if showsSidePanel {
                         VStack(spacing: 0) {
+                            // The tabs name the panel, so neither panel
+                            // has a title row of its own; the effects
+                            // panel's one control rides on the tab bar.
                             PanelTabBar(
                                 tabs: SidePanelTab.allCases, selection: $sideTab, title: \.title,
                                 onClose: { showsSidePanel = false }, closeHelp: "Hide the inspector and effects"
-                            )
+                            ) {
+                                if sideTab == .effects {
+                                    Toggle(isOn: $showsKeyframeLanes) { Image(systemName: "timeline.selection") }
+                                        .toggleStyle(.icon)
+                                        .help(showsKeyframeLanes ? "Hide the keyframe timeline" : "Show the keyframe timeline")
+                                        .accessibilityLabel("Keyframe timeline")
+                                        .accessibilityValue(showsKeyframeLanes ? "Shown" : "Hidden")
+                                }
+                            }
                             switch sideTab {
                             case .inspector:
                                 InspectorPanel(
