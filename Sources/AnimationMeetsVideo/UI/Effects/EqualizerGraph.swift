@@ -175,15 +175,15 @@ struct EqualizerGraph: View {
                     .contentShape(Rectangle())
                     .background(ScrollWheelMonitor { deltaY, location in scroll(deltaY, at: location, layout: layout) })
                     .gesture(dragGesture(layout))
-                    .onTapGesture(count: 2, coordinateSpace: .local) { location in
-                        guard let band = self.band(near: location, layout: layout) else { return }
-                        picked = band
-                        onEdit(band.controlKind) { $0.enabled.toggle() }
-                    }
-                    .onTapGesture(count: 1, coordinateSpace: .local) { location in
-                        picked = self.band(near: location, layout: layout)
-                        isFocused = true
-                    }
+                    // Picked as the mouse goes down: a tap gesture beside a
+                    // double-tap one waits out the double-click interval
+                    // first (see `onMouseDown`).
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .local).onChanged { value in
+                            guard let event = NSApp.currentEvent, event.type == .leftMouseDown else { return }
+                            press(at: value.startLocation, clicks: event.clickCount, layout: layout)
+                        }
+                    )
                     .accessibilityHidden(true)
                 ForEach(bands, id: \.self) { band in
                     accessibleNode(band, layout: layout)
@@ -269,6 +269,15 @@ struct EqualizerGraph: View {
     }
 
     // MARK: Editing
+
+    /// A press picks the band under it (or none) and focuses the graph; a
+    /// double-click switches the band on or off.
+    private func press(at location: CGPoint, clicks: Int, layout: EqualizerGraphLayout) {
+        let band = self.band(near: location, layout: layout)
+        picked = band
+        isFocused = true
+        if clicks == 2, let band { onEdit(band.controlKind) { $0.enabled.toggle() } }
+    }
 
     private func dragGesture(_ layout: EqualizerGraphLayout) -> some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .local)
