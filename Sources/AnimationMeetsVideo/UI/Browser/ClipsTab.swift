@@ -503,6 +503,10 @@ struct ClipsTab: View {
 
     /// See `ClipsTabInteraction.handleKey`; this carries out what it asks.
     private func handleKey(_ press: KeyPress, snapshot: Snapshot) -> Bool {
+        // A name being edited keeps its keys: Delete, Return, the arrows
+        // and I and O are the field's, not the list's (as in the
+        // Timelines tab).
+        guard renamingAsset == nil else { return false }
         let outcome = interaction.handleKey(press.key, modifiers: press.modifiers, snapshot: snapshot, skim: skimState)
         guard case .handled(let effects) = outcome else { return false }
         for effect in effects {
