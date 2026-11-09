@@ -66,15 +66,21 @@ enum AudioMixSupport {
             let (reader, output) = reading.value
             #expect(reader.startReading())
             var loudest = SIMD2<Float>.zero
+            var frames = 0
             while let buffer = output.copyNextSampleBuffer() {
                 guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
                 let start = CMSampleBufferGetPresentationTimeStamp(buffer).seconds
                 var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
                 _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
+                frames += chunk.count / 2
                 for frame in 0..<chunk.count / 2 where (skip..<stop).contains(start + Double(frame) / sampleRate) {
                     loudest = pointwiseMax(loudest, SIMD2(abs(chunk[2 * frame]), abs(chunk[2 * frame + 1])))
                 }
             }
+            // A reader that stops early hands back nil as if at the end,
+            // which would read as silence; say so instead.
+            #expect(reader.status == .completed, "The reader stopped: \(reader.error.map { "\($0)" } ?? "no error")")
+            #expect(frames > 0, "The reader gave no sound")
             return loudest
         }
     }
