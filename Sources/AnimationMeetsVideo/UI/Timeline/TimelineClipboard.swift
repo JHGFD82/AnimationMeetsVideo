@@ -32,14 +32,44 @@ extension TimelineView {
             if picked { return { groupClipboard(command) } }
             return clip.map { clip in { clipboard(command, layerID: clip.layerID, clipID: clip.clipID) } }
         }
+        // Clips open in the motion designer can't be changed: what would
+        // change one isn't offered (Copy still is).
+        let ids = picked ? groupSelection : Set(clip.map { [$0.clipID] } ?? [])
+        let changesLocked = !ids.isDisjoint(with: lockedClipIDs)
+        let pasteLeavesLocked = canPaste && leavesLockedClips { project in
+            if let group = EditorClipboard.shared.group {
+                _ = project.paste(group, in: timelineID, at: playheadTime)
+            } else if let bundle = EditorClipboard.shared.clip {
+                _ = project.paste(bundle, in: timelineID, onto: clip?.layerID ?? selectedLayerID, at: playheadTime)
+            }
+        }
+        let duplicateLeavesLocked = !changesLocked && leavesLockedClips { project in
+            if picked { _ = project.duplicateClips(groupSelection, in: timelineID) }
+            else if let clip { _ = project.duplicateClip(clip.clipID, in: timelineID) }
+        }
+        // A selected layer may hold one too (`menuSelection`).
+        let canDelete = hasSelection && !changesLocked && (lockedClipIDs.isEmpty || menuSelection.canDelete)
         return EditMenuActions(
-            cut: onClip(.cut),
+            cut: changesLocked ? nil : onClip(.cut),
             copy: onClip(.copy),
-            paste: canPaste ? { clipboard(.paste, layerID: clip?.layerID ?? selectedLayerID, clipID: nil) } : nil,
-            duplicate: onClip(.duplicate),
-            delete: hasSelection ? { _ = deleteSelection() } : nil,
-            state: [timelineID, clip?.clipID, selectedLayerID, selectedSectionID, hasSelection, canPaste, groupSelection] as [AnyHashable?]
+            paste: pasteLeavesLocked ? { clipboard(.paste, layerID: clip?.layerID ?? selectedLayerID, clipID: nil) } : nil,
+            duplicate: duplicateLeavesLocked ? onClip(.duplicate) : nil,
+            delete: canDelete ? { _ = deleteSelection() } : nil,
+            state: [timelineID, clip?.clipID, selectedLayerID, selectedSectionID, hasSelection, canPaste, groupSelection,
+                    changesLocked, pasteLeavesLocked, duplicateLeavesLocked, canDelete] as [AnyHashable?]
         )
+    }
+
+    /// Clips open in the motion designer, which nothing here may change.
+    var lockedClipIDs: Set<UUID> { projectState?.lockedClipIDs ?? [] }
+
+    /// Whether `edit` would leave the clips open in the motion designer
+    /// alone, tried on a copy of the project; true with none open.
+    private func leavesLockedClips(_ edit: (inout EditingProject) -> Void) -> Bool {
+        guard let projectState, !projectState.lockedClipIDs.isEmpty else { return true }
+        var trial = project
+        edit(&trial)
+        return projectState.allows(trial)
     }
 
     /// An Option-drag of a clip: a copy lands where the drag would have
