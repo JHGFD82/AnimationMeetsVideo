@@ -340,6 +340,8 @@ Clips tab (`MediaImports`, `ImportingClips`), each under its name with a
 progress bar, until it arrives or fails. Most take a moment; a long
 Matroska file takes seconds to index (see [matroska.md](matroska.md)),
 and reports how far it has got. Other files' bars run until they're in.
+Files that can't be read are skipped, and once the rest are in, one
+Import Failed alert names each with the reason.
 
 ## Used media
 

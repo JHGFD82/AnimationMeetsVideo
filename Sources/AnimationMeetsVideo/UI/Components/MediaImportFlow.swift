@@ -36,7 +36,9 @@ enum MediaImportFlow {
 
     /// Imports `urls` into the library, adding each to `project` as it is
     /// read, and returns those added, in order. A file that can't be read
-    /// is reported to `onError` and skipped. Each file is listed in
+    /// is skipped, and once all are tried those skipped are reported to
+    /// `onError` together (`failureMessage`), so one alert names them all
+    /// rather than each replacing the last. Each file is listed in
     /// `imports` until it is in, so the Clips tab can show it coming.
     ///
     /// A file imported before (and since removed, or never saved) comes
@@ -49,6 +51,7 @@ enum MediaImportFlow {
         var claimedIDs = Set(project.wrappedValue.clips.map(\.id))
         var usedPaths = Set(project.wrappedValue.clips.compactMap { $0.url?.standardizedFileURL.resolvingSymlinksInPath().path })
         var imported: [MediaClip] = []
+        var failures: [String] = []
         let importIDs = imports?.begin(urls) ?? []
         for (position, url) in urls.enumerated() {
             let importID = importIDs.isEmpty ? nil : importIDs[position]
@@ -80,10 +83,21 @@ enum MediaImportFlow {
                 imported.append(clip)
             } catch {
                 if let madeCopy { try? FileManager.default.removeItem(at: madeCopy) }
-                onError("\(url.lastPathComponent): \(ErrorAdvice.sentence(for: error))")
+                failures.append("\(url.lastPathComponent): \(ErrorAdvice.sentence(for: error))")
             }
         }
+        if let message = failureMessage(failures) { onError(message) }
         return imported
+    }
+
+    /// The files that couldn't be imported, each "name: why", as one
+    /// message; nil for none.
+    static func failureMessage(_ failures: [String]) -> String? {
+        switch failures.count {
+        case 0: nil
+        case 1: failures[0]
+        default: "\(failures.count) files couldn't be imported.\n\n" + failures.joined(separator: "\n")
+        }
     }
 
     /// Imports files dragged in from the Finder, copying them when the
