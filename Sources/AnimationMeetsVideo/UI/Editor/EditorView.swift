@@ -27,6 +27,9 @@ struct EditorView: View {
     let onTimelineChange: ((UUID) -> Void)?
     @Environment(\.undoManager) private var undoManager
     @Environment(\.openWindow) private var openWindow
+    /// The project's state, shared by its windows, which refuses edits to
+    /// clips the motion designer has open (`ProjectState.lock`).
+    @Environment(ProjectState.self) private var projectState: ProjectState?
     @State private var activeTimelineID: UUID
     @State private var selection: TimelineSelection?
     @State private var playback = PlaybackModel()
@@ -225,6 +228,10 @@ struct EditorView: View {
             beatMatch.onEdit = { change in change(&project) }
             beatMatch.onOpen = { [playback] in playback.player.pause() }
             motionDesign.onEdit = { change in change(&project) }
+            motionDesign.projectState = projectState
+            // An edit refused because it would change a clip the motion
+            // designer has open, from this window or another.
+            projectState?.onRefused = ClipLockRefusal.signal
             motionDesign.history = history
             motionDesign.playback = playback
             motionDesign.onOpen = { [playback] in playback.player.pause() }
@@ -258,11 +265,17 @@ struct EditorView: View {
     private func projectDidChange(_ newValue: EditingProject, from oldValue: EditingProject) {
         var refreshed = newValue
         if newValue != history.baseline, refreshed.followMusic(from: oldValue) {
+            // Refused, with a beep, when it would move a clip the motion
+            // designer has open: the clips stay where they are, and the
+            // edit that moved the song goes on to be recorded.
+            let follows = projectState?.allows(refreshed) ?? true
             project = refreshed
-            return
+            if follows { return }
         }
+        refreshed = newValue
         if refreshed.refreshKeyframing(after: oldValue) {
-            project = refreshed
+            // Follows from the edit, so a locked clip takes it too.
+            writeDerived { project = refreshed }
             return
         }
         history.projectDidChange(newValue)
@@ -281,7 +294,13 @@ struct EditorView: View {
         var refreshed = project
         guard refreshed.refreshKeyframing() else { return }
         history.adopt { $0.refreshKeyframing() }
-        project = refreshed
+        writeDerived { project = refreshed }
+    }
+
+    /// Writes what follows from an edit or from analysis arriving, which
+    /// clips locked by the motion designer take too.
+    private func writeDerived(_ write: () -> Void) {
+        if let projectState { projectState.writeDerived(write) } else { write() }
     }
 
     /// The timeline being edited, read against the current project: the
@@ -303,6 +322,9 @@ struct EditorView: View {
         history.undoManager = undoManager
         history.restore = { project = $0 }
         history.current = { project }
+        // Undo and redo can't take back clips the motion designer has open.
+        history.canRestore = { [projectState] in projectState?.allows($0) ?? true }
+        history.onRefused = ClipLockRefusal.signal
         // Undo names say which scene of a video a clip plays.
         history.scenes = { [analysis] project, assetID in
             analysis.tracks[assetID].map { project.scenes(ofAsset: assetID, track: $0) }

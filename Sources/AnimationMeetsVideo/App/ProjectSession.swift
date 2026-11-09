@@ -82,7 +82,8 @@ final class ProjectSession {
         var fitted = project
         guard fitted.fitPackageEffects(newSince: old) else { return }
         history.adopt { $0.fitPackageEffects(newSince: old) }
-        project = fitted
+        // Not an edit, so clips the motion designer has open take it too.
+        projectState.writeDerived { project = fitted }
     }
 
     /// Makes `window` the one that shows the project's dialogs, unless one

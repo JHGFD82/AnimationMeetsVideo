@@ -28,16 +28,29 @@ else around it, by dragging frames along a time graph.
   puts the clips back as they were when the panel opened, asking first if
   anything changed, and leaves no undo step. Quitting with a changed run
   open asks whether to keep the retiming, discard it, or stay.
+- **The run's clips are locked** while the panel is open: nothing but
+  the panel may change them. The lock is in the project's state, which
+  every window, panel and command writes the project through
+  (`ProjectState.lock`, `write(as:)`): a write that would change a locked
+  clip in any way (move, trim, delete, split, effects, inspector values,
+  a paste or drop over it, a media replacement that retimes it, a menu
+  command, the scene splitter), from the editor or a Timeline window, is
+  refused whole, with a beep and a VoiceOver announcement
+  (`ClipLockRefusal`); a held drag is refused at each step and beeps once.
+  Undo and redo that would change one are refused too
+  (`ProjectHistory.canRestore`); a refused undo goes back on the stack.
+  What follows from an edit rather than being one (keyframing effects
+  making their keyframes again, package effects refitted) still reaches
+  them (`writeDerived`). A clip attached to a song moved elsewhere
+  doesn't follow it; that is refused like an edit.
 - **Only the clips' timing is written**: where each clip the run changed
   plays, its trim, and its speed with its points (`MotionRun.write(into:over:)`,
   `TimelineClip.takeTiming`), onto the project as it is at that moment.
-  So an edit made elsewhere while the panel is open (in a timeline
-  window, or an import finishing) stays, whether the run is kept or
-  cancelled. The history holds it back with the panel's changes; when the
-  panel closes it is recorded as a step of its own, under the
-  retiming's, so undoing the retiming keeps it. Not yet handled: ⌘Z in a
-  timeline window while the panel is open undoes the project's last step
-  from before the panel opened, under the panel's changes.
+  So an edit made elsewhere to other clips while the panel is open (in a
+  timeline window, or an import finishing) stays, whether the run is
+  kept or cancelled. The history holds it back with the panel's changes;
+  when the panel closes it is recorded as a step of its own, under the
+  retiming's, so undoing the retiming keeps it.
 - **The panel** floats over the editor like the beat match panel: the
   editor is darkened and takes no input while it is open, not even
   hovering or skimming (`WindowInputBlock`); the Timeline menu and the

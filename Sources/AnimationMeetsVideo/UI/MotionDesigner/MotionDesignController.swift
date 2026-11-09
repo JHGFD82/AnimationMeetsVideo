@@ -12,11 +12,15 @@ import SwiftUI
 /// panel) puts the clips back as they were, asking first if anything
 /// changed. One run at a time.
 ///
-/// Only the timing of the clips the panel changed is written, onto the
-/// project as it is at the time, so an edit made elsewhere while it is
-/// open (in a timeline window, or an import finishing) stays, whether the
-/// run is kept or cancelled. Such an edit is held back with the panel's,
-/// and recorded as a step of its own before the panel's when it closes.
+/// The run's clips are locked while it is open (`ProjectState.lock`):
+/// every edit from outside the panel that would change one of them (in a
+/// timeline window, the scene splitter, a paste, a menu command, undo) is
+/// refused with a beep, and only the panel writes them. Other clips stay
+/// editable: only the timing of the clips the panel changed is written,
+/// onto the project as it is at the time, so an edit made elsewhere
+/// meanwhile stays, whether the run is kept or cancelled. Such an edit is
+/// held back with the panel's, and recorded as a step of its own before
+/// the panel's when it closes.
 @MainActor @Observable
 final class MotionDesignController {
     private(set) var session: MotionDesignSession?
@@ -25,6 +29,11 @@ final class MotionDesignController {
     /// Applies an edit to the project: one undo step, or while the panel
     /// is open, part of the session's.
     @ObservationIgnored var onEdit: ((inout EditingProject) -> Void) -> Void = { _ in }
+    /// The project's state, shared by its windows, which locks the run's
+    /// clips while the panel is open.
+    @ObservationIgnored var projectState: ProjectState?
+    /// The key to the run's clips, while they are locked.
+    @ObservationIgnored private var lockKey: UUID?
     /// The editor's history, which records the whole session as one step.
     @ObservationIgnored var history: ProjectHistory?
     /// The editor's player, which the panel's monitor shows and plays.
@@ -53,7 +62,8 @@ final class MotionDesignController {
         }
         onOpen()
         let session = MotionDesignSession(run: run, project: project, playback: playback ?? PlaybackModel())
-        session.onDraftChange = { [weak self] write in self?.onEdit(write) }
+        session.onDraftChange = { [weak self] write in self?.writeRun(write) }
+        lockKey = projectState?.lock(Set(run.pieces.map(\.id)), in: timelineID)
         history?.beginGesture(quietly: true)
         self.session = session
 
@@ -161,7 +171,7 @@ final class MotionDesignController {
 
     /// Puts the clips back as they were when the panel opened, and closes.
     private func revertAndClose() {
-        if let session { onEdit(session.writeOpened) }
+        if let session { writeRun(session.writeOpened) }
         tearDown()
     }
 
@@ -174,6 +184,8 @@ final class MotionDesignController {
     /// was edited elsewhere, as a step of its own, then the panel's
     /// retiming on top, so undoing the retiming keeps the other edits.
     private func tearDown() {
+        if let lockKey { projectState?.unlock(lockKey) }
+        lockKey = nil
         if let history, let session, let current = history.current?() {
             var elsewhere = current
             session.writeOpened(into: &elsewhere)
@@ -187,4 +199,31 @@ final class MotionDesignController {
         presentation?.end()
         presentation = nil
     }
+
+    /// Writes the run's clips, as the owner of their lock.
+    private func writeRun(_ write: (inout EditingProject) -> Void) {
+        if let projectState, let lockKey {
+            projectState.write(as: lockKey) { onEdit(write) }
+        } else {
+            onEdit(write)
+        }
+    }
+}
+
+/// What an edit refused by a clip lock does (`ProjectState.onRefused`):
+/// a beep, and for VoiceOver, why. A drag refused at every step beeps
+/// once, not at each.
+@MainActor
+enum ClipLockRefusal {
+    private static var last: Date?
+
+    static func signal() {
+        let now = Date()
+        defer { last = now }
+        if let last, now.timeIntervalSince(last) < 0.5 { return }
+        NSSound.beep()
+        AccessibilityNotification.Announcement(message).post()
+    }
+
+    static let message = "That clip is open in the Motion Designer. Close the designer to edit it."
 }

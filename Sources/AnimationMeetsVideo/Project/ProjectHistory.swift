@@ -40,6 +40,11 @@ final class ProjectHistory {
     /// the last one, at the end of a gesture (never during one), or undone
     /// or redone. Saving after every change listens here.
     var changeLanded: (() -> Void)?
+    /// Whether undo or redo may put back a snapshot: not one that changes
+    /// a clip the motion designer has open (`ProjectState.allows`).
+    var canRestore: ((EditingProject) -> Bool)?
+    /// Called when undo or redo is refused; the app beeps.
+    var onRefused: (() -> Void)?
 
     init(project: EditingProject) {
         baseline = project
@@ -149,6 +154,7 @@ final class ProjectHistory {
         // Taken before a package changed while the app ran, perhaps.
         var snapshot = relocated(snapshot)
         snapshot.fitPackageEffects()
+        if let canRestore, !canRestore(snapshot) { return refuse(snapshot, name: name) }
         let current = baseline
         baseline = snapshot
         lastRecordedAt = nil
@@ -158,6 +164,18 @@ final class ProjectHistory {
         // versa, under the same name.
         registerUndo(restoring: current, name: name)
         changeLanded?()
+    }
+
+    /// An undo refused: nothing changes, and the step goes back on the
+    /// undo stack once the undo manager has finished taking it off, so a
+    /// later undo can still take it. That clears the redo stack, as any
+    /// new step would. A redo refused is lost.
+    private func refuse(_ snapshot: EditingProject, name: String?) {
+        onRefused?()
+        guard undoManager?.isUndoing == true else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.registerUndo(restoring: snapshot, name: name) }
+        }
     }
 }
 

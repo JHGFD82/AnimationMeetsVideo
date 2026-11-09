@@ -73,7 +73,9 @@ Built and tested in code, never run on screen.
     the trim commits.
   - Motion Designer, open: edit in a Timeline window and import a file,
     then retime; both edits stay after Done and after Cancel, and ⌘Z
-    undoes the retiming first. Right-click an unselected point: the menu
+    undoes the retiming first. In a Timeline window, move, trim, delete,
+    split or add an effect to a designed clip, paste over it, and ⌘Z:
+    each beeps and changes nothing; other clips edit as usual. Right-click an unselected point: the menu
     acts on it. Clips in the footage strip are grabbed where drawn.
   - Start a drag in Beat Match or the designer, open a sheet (⌘. or H's
     conflict dialog), release, Keep Editing, click: nothing carries on.
@@ -95,10 +97,13 @@ Built and tested in code, never run on screen.
   do nothing then). Return adds a clip to the timeline in the Clips tab
   but renames in the Timelines tab, as documented in
   [browser.md](browser.md); one meaning for both is a design decision.
-  While the Motion Designer is open, an edit made elsewhere to a designed
-  clip's own timing is overwritten the next time the designer changes
-  that clip, and ⌘Z in a Timeline window undoes a step from before it
-  opened.
+  While the Motion Designer is open its clips are locked
+  ([motion-designer.md](motion-designer.md)): edits from elsewhere that
+  would change them are refused with a beep, but nothing marks the
+  clips as locked in a Timeline window or the inspector beforehand, a
+  song moved elsewhere leaves a locked clip attached to it behind, a
+  redo refused meanwhile is lost, and an undo refused clears the redo
+  stack.
 
 - **Pasted media is analyzed again.** Scene detection runs anew in the
   project it is pasted into instead of taking the results the other
