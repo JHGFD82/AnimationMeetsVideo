@@ -49,6 +49,7 @@ final class ExternalDisplayController {
             sharedPlayback: sharedPlayback,
             annotations: annotations,
             analysis: analysis,
+            onSyncChange: { [weak window] synced in window?.markupUndoManager = synced ? annotations.undoManager : nil },
             onClose: { [weak self] in self?.stop() }
         )
         // Its own window, so the editor's environment doesn't reach it: a
@@ -76,7 +77,10 @@ private final class KeyableBorderlessWindow: NSWindow {
     /// this window land in the same project and its history, and the
     /// window's own undo manager had nothing on it.
     weak var editorUndoManager: UndoManager?
-    override var undoManager: UndoManager? { editorUndoManager ?? super.undoManager }
+    /// The markup's undo, used instead while the window shows the markup
+    /// (synced), where the strokes are what is edited.
+    weak var markupUndoManager: UndoManager?
+    override var undoManager: UndoManager? { markupUndoManager ?? editorUndoManager ?? super.undoManager }
 }
 
 private struct ExternalViewerContent: View {
@@ -86,6 +90,9 @@ private struct ExternalViewerContent: View {
     let sharedPlayback: PlaybackModel
     let annotations: AnnotationModel
     let analysis: AssetAnalysis
+    /// Whether the window shows the synced viewer and its markup, or a
+    /// second editor; it undoes the one it shows.
+    let onSyncChange: (Bool) -> Void
     let onClose: () -> Void
 
     @State private var isSynced = true
@@ -100,8 +107,13 @@ private struct ExternalViewerContent: View {
                     .toggleStyle(.switch)
                 Spacer()
                 if isSynced {
+                    Button("Remove last stroke") { annotations.removeLastStroke() }
+                        .buttonStyle(.bordered)
+                        .disabled(annotations.strokes.isEmpty)
+                        .help("Undo with ⌘Z, redo with ⇧⌘Z")
                     Button("Clear markup") { annotations.clear() }
                         .buttonStyle(.bordered)
+                        .disabled(annotations.strokes.isEmpty)
                 }
                 Button("Close") { onClose() }
                     .buttonStyle(.bordered)
@@ -141,6 +153,8 @@ private struct ExternalViewerContent: View {
             if independentTimelineID == nil {
                 independentTimelineID = primaryTimelineID
             }
+            onSyncChange(isSynced)
         }
+        .onChange(of: isSynced) { _, synced in onSyncChange(synced) }
     }
 }

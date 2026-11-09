@@ -237,7 +237,9 @@ the snap line's arrival.
 - **Announcements**: VoiceOver isn't told when an edit lands (a split, a
   nudge refused at a neighbor), so the result must be found by reading.
 - **Annotations** on the external display are drawn with the pointer only;
-  VoiceOver can clear them (a Clear annotations action) but not draw.
+  VoiceOver can remove the last stroke or clear them (Remove last stroke
+  and Clear annotations actions, also buttons over the viewer) but not
+  draw. ⌘Z and ⇧⌘Z undo and redo strokes while the window shows them.
 - **Dialogs and alerts** use standard controls and should work, but have
   not been checked with VoiceOver.
 - Nothing here has been tested with VoiceOver on a real machine yet; the

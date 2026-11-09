@@ -9,11 +9,16 @@ struct AnnotationStroke: Identifiable {
 }
 
 /// Lightweight freehand markup for the external viewer. Deliberately simple
-/// ink, not the full vector engine planned for a later milestone.
+/// ink, not the full vector engine planned for a later milestone. Each
+/// stroke, removal and clearing is a step of the markup's own undo, which
+/// the external display's window uses while it shows the markup: undoing
+/// ink isn't an edit of the project, and mustn't take the place of one.
+@MainActor
 @Observable
 final class AnnotationModel {
-    var strokes: [AnnotationStroke] = []
+    private(set) var strokes: [AnnotationStroke] = []
     private(set) var liveStroke: AnnotationStroke?
+    @ObservationIgnored let undoManager = UndoManager()
 
     func beginStroke(at point: CGPoint) {
         liveStroke = AnnotationStroke(points: [point])
@@ -25,14 +30,31 @@ final class AnnotationModel {
 
     func endStroke() {
         if let liveStroke, liveStroke.points.count > 1 {
-            strokes.append(liveStroke)
+            setStrokes(strokes + [liveStroke], named: "Stroke")
         }
         liveStroke = nil
     }
 
+    func removeLastStroke() {
+        guard !strokes.isEmpty else { return }
+        setStrokes(Array(strokes.dropLast()), named: "Remove Stroke")
+    }
+
     func clear() {
-        strokes.removeAll()
         liveStroke = nil
+        guard !strokes.isEmpty else { return }
+        setStrokes([], named: "Clear Markup")
+    }
+
+    /// Sets the strokes as an undoable step; undoing it sets them back,
+    /// itself undoable, which is redo.
+    private func setStrokes(_ new: [AnnotationStroke], named name: String) {
+        let old = strokes
+        strokes = new
+        undoManager.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated { model.setStrokes(old, named: name) }
+        }
+        undoManager.setActionName(name)
     }
 }
 
@@ -63,6 +85,7 @@ struct AnnotationOverlay: View {
             .accessibilityElement()
             .accessibilityLabel("Annotations")
             .accessibilityValue(model.strokes.isEmpty ? "None" : "\(model.strokes.count) strokes")
+            .accessibilityAction(named: "Remove last stroke") { model.removeLastStroke() }
             .accessibilityAction(named: "Clear annotations") { model.clear() }
     }
 }
