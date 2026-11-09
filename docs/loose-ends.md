@@ -92,6 +92,13 @@ Built and tested in code, never run on screen.
 
 ## Known gaps
 
+- **Speed: the Timeline menu follows playback.** To keep every item's
+  on or off state exact, `TimelineMenuStatePublisher` checks the playing
+  time once a frame while a timeline plays (the menu bar is rebuilt
+  only when an item turns on or off). Not yet measured. If playback,
+  scrubbing or the menu bar is reported slow, suspect this first: lower
+  its `playingChecksPerSecond`, or check only while a menu is open.
+
 - **Left from the UX review.** The Timeline menu's Delete Selection,
   Nudge and Turn Clip Off or On stay enabled with nothing selected (they
   do nothing then). Return adds a clip to the timeline in the Clips tab

@@ -363,8 +363,10 @@ the start), a split where the playhead is in a clip it would cut, the
 steps, jumps and Go to Start or End with somewhere to go, Zoom In short
 of the closest zoom and Zoom Out and Zoom to Fit while zoomed in. Turn
 Off says what it would do: **Turn Clip Off**, or **Turn Clips On** when
-every clip picked is off. While playing, the steps, jumps and splits
-stay offered, since the menu doesn't follow the moving playhead.
+every clip picked is off. While playing, the menu follows the playing
+time, checked once a frame, so a split or jump is offered only where it
+would act then too; the menu bar is rebuilt only when an item turns on
+or off.
 
 ## VoiceOver
 

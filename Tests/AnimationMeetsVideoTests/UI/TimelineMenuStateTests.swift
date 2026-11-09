@@ -66,7 +66,7 @@ import Testing
         #expect(!atEnd.canSplit)
     }
 
-    @Test func playingLeavesThePlayheadItemsToTheActions() throws {
+    @Test func withNoTimeEveryPlayheadItemIsOffered() throws {
         let (timeline, _) = try timeline()
         let shown = state(timeline, at: nil)
         #expect(shown.canGoBack && shown.canGoForward && shown.hasPreviousEdit && shown.hasNextEdit && shown.canSplit)

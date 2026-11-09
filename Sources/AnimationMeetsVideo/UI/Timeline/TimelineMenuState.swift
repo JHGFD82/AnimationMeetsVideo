@@ -8,9 +8,6 @@ import SwiftUI
 /// limit. `TimelineMenuStatePublisher` works it out.
 struct TimelineMenuState: Equatable {
     var canPlay = false
-    /// While playing, the playhead isn't followed here (it would rebuild
-    /// the menu bar on every tick), so the moves that depend on where it
-    /// is stay offered and the actions decide.
     var canGoBack = false
     var canGoForward = false
     var hasPreviousEdit = false
@@ -47,8 +44,8 @@ struct TimelineMenuState: Equatable {
         var canDelete: Bool
     }
 
-    /// Works out the state for `timeline` with the playhead parked at
-    /// `time` (nil while playing).
+    /// Works out the state for `timeline` with the playhead at `time`;
+    /// nil, with no time to go by, offers every playhead item.
     static func make(
         timeline: Timeline, selection: Selection, parkedAt time: CMTime?,
         zoomFraction: Double, isFitted: Bool
@@ -103,9 +100,16 @@ extension FocusedValues {
 }
 
 /// Publishes the Timeline menu's state from a view of its own, which
-/// follows the parked playhead and the zoom so the timeline's body doesn't
-/// have to: only this is worked out again on a scrub, and the menu bar is
+/// follows the playhead and the zoom so the timeline's body doesn't have
+/// to: only this is worked out again on a scrub, and the menu bar is
 /// rebuilt only when an item would turn on or off.
+///
+/// While playing it checks the playing time once a frame, so Split and
+/// the jumps are offered exactly where they would act, mid-playback too.
+/// PERFORMANCE NOTE: this is the one place the menu follows playback. If
+/// playback or the menu bar feels slow, try lowering `playingChecksPerSecond`
+/// (or check only while a menu is open) before looking elsewhere; see
+/// docs/loose-ends.md.
 struct TimelineMenuStatePublisher: View {
     let timeline: Timeline
     let selection: TimelineMenuState.Selection
@@ -114,15 +118,26 @@ struct TimelineMenuStatePublisher: View {
     let viewportModel: TimelineViewportModel
     let viewport: () -> TimelineViewport
 
+    /// How often the playing time is checked: once a frame, at most 60.
+    private var playingChecksPerSecond: Double { min(60, max(1, timeline.frameRate)) }
+
     var body: some View {
-        let shown = viewport()
+        if playback.isPlaying {
+            SwiftUI.TimelineView(.periodic(from: .now, by: 1 / playingChecksPerSecond)) { _ in
+                published(at: playhead.actionTime)
+            }
+        } else {
+            published(at: playhead.time)
+        }
+    }
+
+    private func published(at time: CMTime) -> some View {
         let state = TimelineMenuState.make(
-            timeline: timeline, selection: selection,
-            parkedAt: playback.isPlaying ? nil : playhead.time,
-            zoomFraction: shown.zoomFraction,
+            timeline: timeline, selection: selection, parkedAt: time,
+            zoomFraction: viewport().zoomFraction,
             isFitted: viewportModel.zoomedPixelsPerSecond == nil
         )
-        Color.clear
+        return Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
             .focusedSceneValueUnlessDrafting(\.timelineMenuState, state)
