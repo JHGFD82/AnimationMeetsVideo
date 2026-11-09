@@ -87,9 +87,19 @@ final class BeatMatchSession: SecondsViewport {
     var selectedSectionID: UUID? {
         didSet { if selectedSectionID != oldValue { refreshProvisionalTempo() } }
     }
-    /// The selected beat, by its time.
+    /// The selected beat, by its time. The person lets go of it with
+    /// `deselectBeat`; an edit may set it nil for a moment on the way to
+    /// where the beat went, which keeps the loop.
     var selectedBeat: CMTime? {
         didSet { if selectedBeat != oldValue { refreshLoop() } }
+    }
+
+    /// Lets go of the selected beat, and of the loop around it, whose
+    /// button can't be reached without one: left on, it would start again
+    /// unasked at the next beat picked while playing.
+    func deselectBeat() {
+        selectedBeat = nil
+        isLooping = false
     }
     /// The kind a drawn or filled section gets.
     var drawKind: BeatSection.Kind = .consistent

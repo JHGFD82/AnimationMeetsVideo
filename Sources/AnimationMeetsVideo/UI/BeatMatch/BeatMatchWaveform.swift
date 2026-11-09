@@ -460,11 +460,11 @@ struct BeatMatchWaveform: View {
                 case .pressGap(let seeks):
                     session.selectedSectionID = nil
                     if seeks {
-                        session.selectedBeat = nil
+                        session.deselectBeat()
                         session.seek(to: seconds)
                     }
                 case .pressWave(let section):
-                    session.selectedBeat = nil
+                    session.deselectBeat()
                     if session.step == .drawSections { session.selectedSectionID = section }
                     session.seek(to: seconds)
                 case .scrub, nil:

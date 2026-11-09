@@ -290,6 +290,20 @@ import Testing
         #expect(session.canFillSelected)
     }
 
+    @Test func lettingGoOfTheBeatStopsTheLoop() throws {
+        let session = try session("beat-match-session-loop-off")
+        defer { session.end() }
+        session.chooseOneTempo()
+        session.addBeat(at: 4, position: 1)
+        #expect(session.selectedBeat != nil)
+        session.isLooping = true
+        // A nudge moves the beat, and the loop with it.
+        session.nudgeSelected(by: 0.01)
+        #expect(session.isLooping && session.selectedBeat != nil)
+        session.deselectBeat()
+        #expect(!session.isLooping)
+    }
+
     @Test func aNoteShowsUntilTheNextEdit() throws {
         let session = try session("beat-match-session-explain")
         defer { session.end() }
