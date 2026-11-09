@@ -31,6 +31,8 @@ struct ExportView: View {
                 }
                 SheetNote(Self.note(for: export.format))
             }
+            // The export under way is in the format it started with.
+            .disabled(export.isRunning)
             SheetSection("Sound") {
                 SheetRow("Loudness") {
                     Picker("Loudness", selection: $loudness) {
