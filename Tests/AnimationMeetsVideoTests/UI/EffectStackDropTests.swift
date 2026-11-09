@@ -1,3 +1,4 @@
+import Foundation
 import CoreGraphics
 import Testing
 @testable import AnimationMeetsVideo
@@ -26,5 +27,15 @@ import Testing
     @Test func anEmptyStackHasNoLine() {
         let empty = EffectStackDropDelegate.place(10, among: [])
         #expect(empty.index == 0 && empty.line == nil)
+    }
+
+    /// A move dropped elsewhere or cancelled never reaches the stack; the
+    /// next press, which any later drag starts with, forgets it.
+    @MainActor
+    @Test func aMoveIsForgottenAtTheNextPress() {
+        let session = EffectsDragSession()
+        session.current = .effect(clipID: UUID(), effectID: UUID())
+        session.mouseWentDown()
+        #expect(session.current == nil)
     }
 }

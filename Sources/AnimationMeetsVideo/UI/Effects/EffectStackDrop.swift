@@ -6,6 +6,11 @@ import SwiftUI
 /// must know before then whether to show a place among the effects or
 /// among one effect's controls. Nil for drags from elsewhere (the Effects
 /// Library, presets), which go among the effects.
+///
+/// A drag dropped anywhere but the stack, or cancelled, never tells the
+/// stack it ended, so what it noted is forgotten at the next mouse press:
+/// every later drag starts with one, and a drag from the library would
+/// otherwise be taken for the old move (no copy badge, the wrong stack).
 @MainActor
 final class EffectsDragSession {
     static let shared = EffectsDragSession()
@@ -15,7 +20,30 @@ final class EffectsDragSession {
         case control(clipID: UUID, effectID: UUID, controlID: UUID)
     }
 
-    var current: Dragged?
+    var current: Dragged? {
+        didSet { current == nil ? stopWatching() : watchForPress() }
+    }
+
+    private var monitor: Any?
+
+    private func watchForPress() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            // Local monitors run on the main thread.
+            MainActor.assumeIsolated { self?.mouseWentDown() }
+            return event
+        }
+    }
+
+    /// A press after the drag began: that drag is over.
+    func mouseWentDown() {
+        current = nil
+    }
+
+    private func stopWatching() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
 }
 
 /// Where each effect and control row of the stack is, in the stack's own
