@@ -80,19 +80,28 @@ struct ReplaceMediaSheet: View {
                         .foregroundStyle(Design.textSecondary)
                 }
             } actions: {
-                Button("Cancel") { controller.cancel(session) }
-                    .keyboardShortcut(.cancelAction)
+                ReplaceMediaCancelButtons(session: session, controller: controller)
             }
         case .failed(let message):
             SheetFrame(title: title, subtitle: subtitle, width: Design.SheetWidth.wide) {
                 SheetCallout(.danger, "The file couldn't be read: \(message)")
             } actions: {
-                Button("Close") { controller.cancel(session) }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+                if session.filesAfter > 0 {
+                    // The rest of the batch goes on unless asked not to.
+                    Button("Cancel All") { controller.cancel(session) }
+                        .keyboardShortcut(.cancelAction)
+                    Button("Skip This File") { controller.skip(session) }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Close") { controller.cancel(session) }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                }
             }
-            // Its one action closes it, so Escape does too.
-            .onExitCommand { controller.cancel(session) }
+            // Its one action closes it, so Escape does too; in a batch,
+            // Escape is Cancel All's.
+            .onExitCommand { if session.filesAfter == 0 { controller.cancel(session) } }
         case .ready(let analysis):
             ReplaceMediaDetails(
                 session: session, analysis: analysis, controller: controller,
@@ -111,6 +120,26 @@ struct ReplaceMediaSheet: View {
         session.isReview
             ? "Check that it still lines up with the original before the project uses it."
             : "with \(session.candidate.lastPathComponent)"
+    }
+}
+
+/// Cancel, or in a batch with files still to come, Cancel All and Skip,
+/// so one file not wanted doesn't drop the rest.
+private struct ReplaceMediaCancelButtons: View {
+    let session: ReplacementSession
+    let controller: MediaReplacementController
+
+    var body: some View {
+        if session.filesAfter > 0 {
+            Button("Cancel All") { controller.cancel(session) }
+                .keyboardShortcut(.cancelAction)
+                .help("Stop, leaving this file and the \(session.filesAfter) after it as they are")
+            Button("Skip") { controller.skip(session) }
+                .help("Leave this file as it is and go on to the next")
+        } else {
+            Button("Cancel") { controller.cancel(session) }
+                .keyboardShortcut(.cancelAction)
+        }
     }
 }
 
@@ -186,8 +215,7 @@ private struct ReplaceMediaDetails: View {
             Groove()
             syncSection
         } actions: {
-            Button("Cancel") { controller.cancel(session) }
-                .keyboardShortcut(.cancelAction)
+            ReplaceMediaCancelButtons(session: session, controller: controller)
             Button(session.isReview ? "Accept" : "Replace") { controller.confirm(session) }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)

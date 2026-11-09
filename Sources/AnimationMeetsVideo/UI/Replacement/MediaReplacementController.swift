@@ -32,6 +32,9 @@ final class ReplacementSession: Identifiable {
     var probeSeconds = 0.0
     var pictures: ReferenceThumbnails?
     var isApplying = false
+    /// How many files of the batch come after this one, which Skip goes
+    /// on to.
+    var filesAfter = 0
 
     init(asset: MediaClip, candidate: URL, isReview: Bool) {
         assetID = asset.id
@@ -375,6 +378,17 @@ final class MediaReplacementController {
         finish()
     }
 
+    /// Leaves `session`'s file as it is and goes on to the next of the
+    /// batch; the summary lists it as not replaced. Like `cancel`, a late
+    /// call for a session already over does nothing.
+    func skip(_ session: ReplacementSession) {
+        guard self.session?.id == session.id else { return }
+        task?.cancel()
+        skipped.append(session.assetName)
+        self.session = nil
+        processNext()
+    }
+
     /// Points an asset back at a file it used before. The usual comparison
     /// and sync check still happen.
     func useEarlierFile(assetID: UUID, path: String, context: Context) {
@@ -394,6 +408,7 @@ final class MediaReplacementController {
         }
 
         let session = ReplacementSession(asset: asset, candidate: request.url, isReview: request.isReview)
+        session.filesAfter = queue.count
         self.session = session
         let packageURL = context.packageURL
         // A forgotten original's data stays until the next save, but is no longer used.

@@ -146,6 +146,10 @@ stand-in is often a different container. A name that more than one file
 could match is skipped rather than guessed, and one file is never given to
 two assets. Each match goes through the same checks; only the ones that need
 a decision open the dialog, and a summary lists what was not replaced.
+While more files are to come, the dialog offers **Skip**, which leaves
+that one file as it is and goes on (the default for a file that can't be
+read), and **Cancel All**, which stops the batch; with none to come it
+offers Cancel as before.
 
 ## Files changed outside the app
 
