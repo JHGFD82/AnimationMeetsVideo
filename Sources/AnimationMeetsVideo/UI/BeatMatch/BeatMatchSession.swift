@@ -50,6 +50,9 @@ final class BeatMatchSession: SecondsViewport {
     /// the moving playhead read the player itself.
     private(set) var playhead = 0.0
     private(set) var isPlaying = false
+    /// Whether the song's tracks are read, so it can play; Play waits
+    /// for it.
+    private(set) var canPlay = false
     /// Repeats the two measures around the selected beat.
     var isLooping = false {
         didSet { if isLooping != oldValue { refreshLoop() } }
@@ -196,6 +199,7 @@ final class BeatMatchSession: SecondsViewport {
                 try Task.checkCancellation()
                 self?.songEnd = end
                 self?.player.replaceCurrentItem(with: AVPlayerItem(asset: song))
+                self?.canPlay = true
                 // Put where it was put while the tracks were read.
                 if let self, playhead > 0 { seek(to: playhead) }
                 let audio = try await BeatMatchAudio.load(url: url, alignment: alignment) { value in
@@ -957,7 +961,7 @@ final class BeatMatchSession: SecondsViewport {
         } else {
             // Not before the song's audio is read: with nothing to play
             // the player would wait, and seem to play.
-            guard player.currentItem != nil else { return }
+            guard canPlay else { return }
             playhead = playerSeconds()
             if playhead >= duration.seconds - 0.01 { seek(to: 0) }
             player.play()

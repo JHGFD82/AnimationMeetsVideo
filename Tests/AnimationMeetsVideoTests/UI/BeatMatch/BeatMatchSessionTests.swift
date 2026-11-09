@@ -331,6 +331,14 @@ import Testing
         #expect(session.selectedBeat == nil)
     }
 
+    @Test func playWaitsForTheSongToBeRead() async throws {
+        let session = try session("beat-match-session-can-play")
+        defer { session.end() }
+        #expect(!session.canPlay)
+        for _ in 0..<1200 where !session.canPlay { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(session.canPlay)
+    }
+
     @Test func aNoteShowsUntilTheNextEdit() throws {
         let session = try session("beat-match-session-explain")
         defer { session.end() }

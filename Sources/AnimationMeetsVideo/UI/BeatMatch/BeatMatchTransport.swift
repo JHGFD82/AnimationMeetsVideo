@@ -17,7 +17,8 @@ struct BeatMatchTransport: View {
                     Image(systemName: session.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
                         .frame(width: 18)
                 }
-                .help(session.isPlaying ? "Pause (Space)" : "Play (Space)")
+                .disabled(!session.canPlay)
+                .help(session.isPlaying ? "Pause (Space)" : session.canPlay ? "Play (Space)" : "Play (Space), once the song is read")
                 .accessibilityLabel(session.isPlaying ? "Pause" : "Play")
                 // Follows the player on its own, so playing redraws only
                 // this: nothing else here reads the frame's date.
