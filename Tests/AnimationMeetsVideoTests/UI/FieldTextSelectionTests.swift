@@ -63,7 +63,7 @@ struct FieldTextSelectionTests {
                 isAudioExpanded: nil, onToggleAudio: {}, onDetachAudio: {},
                 isChannelsExpanded: nil, onToggleChannels: {},
                 onRename: { renaming.committed.append($0 ?? "") }, onMove: { _ in },
-                onDragChanged: { _ in }, onDragEnded: { _ in },
+                onDragChanged: { _ in }, onDragEnded: { _ in }, onDragCancelled: {},
                 isSelected: false, onSelect: {}, onDelete: {}
             )
             .frame(width: 260)

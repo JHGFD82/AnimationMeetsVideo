@@ -27,6 +27,8 @@ struct LayerHeaderRow: View {
     /// vertical distance dragged.
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: (CGFloat) -> Void
+    /// Escape during the drag: the layers stay as they are.
+    let onDragCancelled: () -> Void
     /// Selected by clicking the header; Delete then removes the layer.
     let isSelected: Bool
     let onSelect: () -> Void
@@ -35,6 +37,7 @@ struct LayerHeaderRow: View {
     @State private var isEditingName = false
     @State private var draftName: String = ""
     @FocusState private var isNameFieldFocused: Bool
+    @State private var escape = EscapableDrag()
 
     var body: some View {
         HStack(spacing: 6) {
@@ -125,8 +128,14 @@ struct LayerHeaderRow: View {
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                .onChanged { value in onDragChanged(value.translation.height) }
-                .onEnded { value in onDragEnded(value.translation.height) }
+                .onChanged { value in
+                    guard escape.follow(onEscape: onDragCancelled) else { return }
+                    onDragChanged(value.translation.height)
+                }
+                .onEnded { value in
+                    guard escape.end() else { return }
+                    onDragEnded(value.translation.height)
+                }
         )
         .simultaneousGesture(TapGesture().onEnded { onSelect() })
         .help("Click to select, then Delete to remove the layer. Drag to reorder layers.")

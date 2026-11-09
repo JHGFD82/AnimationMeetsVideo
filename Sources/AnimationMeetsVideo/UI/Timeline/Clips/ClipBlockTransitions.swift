@@ -81,6 +81,10 @@ extension ClipBlockView {
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
+                        guard handleDrag.follow(onEscape: {
+                            readout?.hide()
+                            transitionDraft = nil
+                        }) else { return }
                         // Inward is longer for a way in, shorter for a way out.
                         let delta = timeDelta(edge == .leading ? value.translation.width : -value.translation.width)
                         let duration = handlers.snap(CMTimeAdd(transition.duration, delta))
@@ -90,6 +94,7 @@ extension ClipBlockView {
                         }
                     }
                     .onEnded { _ in
+                        guard handleDrag.end() else { return }
                         readout?.hide()
                         if let transitionDraft { handlers.onSetTransitionDuration(edge, transitionDraft.duration) }
                         transitionDraft = nil

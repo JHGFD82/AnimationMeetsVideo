@@ -56,6 +56,16 @@ extension TimelineView {
         layerDrag = nil
     }
 
+    /// Escape during a layer's drag: the layers stay as they are, and the
+    /// area stops scrolling for it.
+    func cancelLayerDrag(_ kind: LayerKind) {
+        let scroller = areaScroller(kind)
+        scroller.onScroll = nil
+        scroller.end()
+        CopyDragCursor.end()
+        layerDrag = nil
+    }
+
     /// Where a clip dragged with the pointer at `pointer` (window
     /// coordinates) and asked to start at `start` lands: on the layer
     /// under the pointer when that layer can take it, otherwise on its own

@@ -24,6 +24,8 @@ struct JoinedTransitionBridge: View {
     @State private var isDropTarget = false
     /// The joint as a side drag in progress leaves it.
     @State private var draft: (widen: CMTime, joint: TransitionJoint)?
+    /// Escape during a drag of a side, which drops it.
+    @State private var escape = EscapableDrag()
     /// The transition's length over the pointer while a side is dragged.
     @Environment(DragTimecodeReadout.self) private var readout: DragTimecodeReadout?
 
@@ -112,6 +114,10 @@ struct JoinedTransitionBridge: View {
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
+                        guard escape.follow(onEscape: {
+                            readout?.hide()
+                            draft = nil
+                        }) else { return }
                         let widen = CMTime(seconds: Double(value.translation.width * outward / pixelsPerSecond), preferredTimescale: 600)
                         if let joint = previewWiden(widen) {
                             draft = (widen, joint)
@@ -119,6 +125,7 @@ struct JoinedTransitionBridge: View {
                         }
                     }
                     .onEnded { _ in
+                        guard escape.end() else { return }
                         readout?.hide()
                         if let draft { onWiden(draft.widen) }
                         draft = nil
@@ -154,6 +161,8 @@ struct TransitionFootageLane: View {
     static let height: CGFloat = 68
 
     @State private var draft: (edit: JointEdit, joint: TransitionJoint)?
+    /// Escape during a drag, which drops it.
+    @State private var escape = EscapableDrag()
     /// The timecode over the pointer while the transition, an edge or the
     /// cut is dragged.
     @Environment(DragTimecodeReadout.self) private var readout: DragTimecodeReadout?
@@ -295,6 +304,11 @@ struct TransitionFootageLane: View {
     private func drag(_ edit: @escaping (CMTime) -> JointEdit) -> some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
+                guard escape.follow(onEscape: {
+                    readout?.hide()
+                    onTrimPreview(nil, .both)
+                    draft = nil
+                }) else { return }
                 let delta = CMTime(seconds: Double(value.translation.width / pixelsPerSecond), preferredTimescale: 600)
                 let change = edit(delta)
                 guard let joint = preview(change) else { return }
@@ -307,6 +321,7 @@ struct TransitionFootageLane: View {
                 showReading(of: change, joint, pointer: value.location)
             }
             .onEnded { _ in
+                guard escape.end() else { return }
                 readout?.hide()
                 onTrimPreview(nil, .both)
                 if let draft { onCommit(draft.edit) }

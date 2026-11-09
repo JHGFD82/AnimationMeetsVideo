@@ -82,7 +82,7 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ⇧⌘B | Split every clip the playhead is in, on every layer |
 | , / . | Nudge the selected clip a frame earlier or later; ten with Shift |
 | Delete | Delete the selected section, layer, transition, clip, or the clips picked together |
-| Escape | Select nothing (no clip, layer, section or lasso); not during a value drag, a clip's move, trim or slip, or a drag on an EQ or tone graph, a curve's edge slider or a Keyframing range handle, which it cancels |
+| Escape | Select nothing (no clip, layer, section or lasso); not during a value drag, a drag in the tracks (a clip, lasso, section, keyframe, transition side, music point or layer header), or a drag on an EQ or tone graph, a curve's edge slider or a Keyframing range handle, which it cancels |
 | ⌘A | Pick every clip of the timeline together, for Cut, Copy, Duplicate, Delete, the nudge keys and Put Selection in New Timeline (a lasso, Command-click and Shift-click pick some with the pointer; a clip's VoiceOver actions Add to selection and Remove from selection do it one clip at a time, and Move selection one frame earlier or later moves them) |
 | ⌘X / ⌘C / ⌘V / ⌘D | Cut, copy, paste at the playhead, or duplicate the selected clip, or all the clips picked together (or the selected effect in the effects panel); also in the Edit menu |
 | A / B / Y | Arrow, blade and slip tools |

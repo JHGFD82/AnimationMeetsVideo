@@ -166,6 +166,8 @@ private struct KeyframeDiamond: View {
     /// Whether the drag moves the other picked keyframes too: decided as
     /// it begins, nil before.
     @State private var movesGroup: Bool?
+    /// Escape during the drag, which drops it.
+    @State private var escape = EscapableDrag()
 
     private let size: CGFloat = 12
 
@@ -194,7 +196,7 @@ private struct KeyframeDiamond: View {
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
-                        guard abs(value.translation.width) >= 3 else { return }
+                        guard abs(value.translation.width) >= 3, escape.follow(onEscape: cancelDrag) else { return }
                         if movesGroup == nil { movesGroup = picking?.pressForDrag(time, SelectClick.current) ?? false }
                         var target = target(value.translation.width)
                         if movesGroup == true, let picking {
@@ -206,6 +208,7 @@ private struct KeyframeDiamond: View {
                         readout?.show(timelineTime(target), from: timelineTime(time), pointer: value.location)
                     }
                     .onEnded { value in
+                        guard escape.end() else { return }
                         readout?.hide()
                         let target = target(value.translation.width)
                         let copying = isCopying
@@ -273,6 +276,17 @@ private struct KeyframeDiamond: View {
                 }
                 Button("Delete keyframe") { onDelete(time) }
             }
+    }
+
+    /// Escape during a drag: the keyframe, and any picked with it, go
+    /// back, nothing moved or copied, and the rest of the drag is ignored.
+    private func cancelDrag() {
+        readout?.hide()
+        isCopying = false
+        CopyDragCursor.end()
+        if movesGroup == true { picking?.endDrag(false) }
+        movesGroup = nil
+        dragX = 0
     }
 
     private var easeDescription: String {

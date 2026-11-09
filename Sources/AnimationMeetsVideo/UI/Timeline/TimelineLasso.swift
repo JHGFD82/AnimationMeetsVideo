@@ -9,6 +9,8 @@ struct LassoDrag: Equatable {
     var current: CGPoint
     /// Clips already picked when it began, kept when Shift was held.
     var kept: Set<UUID>
+    /// Clips picked together when it began, which Escape puts back.
+    var before: Set<UUID> = []
 
     var rect: CGRect {
         CGRect(
@@ -216,8 +218,11 @@ extension TimelineView {
                 let placesPlayhead = tool != .blade && flags.isDisjoint(with: [.command, .control, .shift])
                 if isEmptyTrackSpace(point, pixelsPerSecond: pixelsPerSecond) {
                     lassoFading = false
-                    lasso = LassoDrag(start: point, current: point, kept: SelectClick.lassoAdds(flags) ? groupSelectionIncludingClip : [])
+                    lasso = LassoDrag(
+                        start: point, current: point, kept: SelectClick.lassoAdds(flags) ? groupSelectionIncludingClip : [], before: groupSelection
+                    )
                     playheadClick = placesPlayhead ? point : nil
+                    _ = lassoEscape.follow(onEscape: cancelLasso)
                     return true
                 }
                 guard placesPlayhead, isOnClip(point, pixelsPerSecond: pixelsPerSecond) else { return false }
@@ -235,6 +240,7 @@ extension TimelineView {
                 }
             },
             onUp: { point in
+                lassoEscape.end()
                 if let start = playheadClick {
                     playheadClick = nil
                     if hypot(point.x - start.x, point.y - start.y) < 3 {
@@ -256,6 +262,15 @@ extension TimelineView {
             },
             onSecondaryDown: { point in selectClipForMenu(at: point, pixelsPerSecond: pixelsPerSecond) }
         )
+    }
+
+    /// Escape during a lasso: it is gone, and the clips picked before it
+    /// are picked again. The rest of the drag finds no lasso to follow.
+    private func cancelLasso() {
+        guard let drag = lasso else { return }
+        lasso = nil
+        playheadClick = nil
+        groupSelection = drag.before
     }
 
     /// Lets the lasso go: its rectangle fades, then it is gone.

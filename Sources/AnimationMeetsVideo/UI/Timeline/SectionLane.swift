@@ -44,6 +44,8 @@ struct SectionLane: View {
     @State private var copyDraft: TimelineSection?
     /// Whether a section is being moved (not resized), for the drop line.
     @State private var isMoving = false
+    /// Escape during a move or resize, which drops it.
+    @State private var escape = EscapableDrag()
     @State private var editingID: UUID?
     @State private var draftName = ""
     @FocusState private var isNameFocused: Bool
@@ -172,6 +174,7 @@ struct SectionLane: View {
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .named(space))
                     .onChanged { value in
+                        guard escape.follow(onEscape: cancelDrag) else { return }
                         let original = edge == .start ? section.start : section.end
                         let proposed = CMTimeAdd(original, delta(value.translation.width))
                         let target = snap(proposed, section.id)
@@ -181,6 +184,7 @@ struct SectionLane: View {
                         if let resized { readout?.show(edge == .start ? resized.start : resized.end, from: original) }
                     }
                     .onEnded { _ in
+                        guard escape.end() else { return }
                         readout?.hide()
                         onSnapIndicator(nil)
                         if let draft, draft != section {
@@ -219,6 +223,7 @@ struct SectionLane: View {
     private func moveGesture(_ section: TimelineSection) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .named(space))
             .onChanged { value in
+                guard escape.follow(onEscape: cancelDrag) else { return }
                 var start = CMTimeAdd(section.start, delta(value.translation.width))
                 let end = CMTimeAdd(start, section.duration)
                 // Whichever end is nearer a target snaps.
@@ -250,6 +255,7 @@ struct SectionLane: View {
                 if let landing { readout?.show(landing.start, from: section.start) }
             }
             .onEnded { _ in
+                guard escape.end() else { return }
                 readout?.hide()
                 onSnapIndicator(nil)
                 isMoving = false
@@ -263,6 +269,17 @@ struct SectionLane: View {
                     endDrop()
                 }
             }
+    }
+
+    /// Escape during a move or resize: the section goes back to where it
+    /// was, nothing edited, and the rest of the drag is ignored.
+    private func cancelDrag() {
+        readout?.hide()
+        onSnapIndicator(nil)
+        isMoving = false
+        CopyDragCursor.end()
+        copyDraft = nil
+        endDrop()
     }
 
     private func showDraft(_ section: TimelineSection?) {

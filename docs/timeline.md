@@ -579,7 +579,11 @@ functions commit what they return.
 - **Escape** while moving, trimming or slipping cancels: the clip springs
   back to where it was and nothing is edited. The rest of that drag does
   nothing until the button comes up; Escape then doesn't also clear the
-  selection.
+  selection. The same goes for every other drag in the tracks: a lasso
+  (the clips picked before it are picked again), a section or its edge,
+  a keyframe, a transition's side, an expanded transition, the music
+  point and a layer's header. Drags follow `EscapableDrag`
+  (`UI/Components/DragEscape.swift`), which new drags use too.
 - An edit let go of that the project **refuses** springs back at once,
   with the block's rim flashing in the warning colour and the alert
   sound, rather than sitting in the wrong place until it gives up.

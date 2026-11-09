@@ -130,6 +130,8 @@ struct TimelineView: View {
     @State var groupMove: CMTime?
     /// The lasso being dragged across the tracks.
     @State var lasso: LassoDrag?
+    /// Escape during the lasso, which puts the selection back.
+    @State var lassoEscape = EscapableDrag()
     /// A press in the tracks, in window coordinates, which moves the
     /// playhead there if it comes up as a click rather than a drag.
     @State var playheadClick: CGPoint?

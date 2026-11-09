@@ -74,6 +74,9 @@ struct ClipBlockView: View {
     @State var musicPointDraft: CMTime?
     /// A transition's length while its inner side is dragged.
     @State var transitionDraft: (edge: TransitionEdge, duration: CMTime)?
+    /// Escape during a drag of a transition's side or the music point,
+    /// which have no part in the block's own drag (`drag`).
+    @State var handleDrag = EscapableDrag()
     /// Counts drops the block has flashed for: an edit that has come back
     /// down from the project, or one that was refused. See `ConfirmFlash`.
     @State private var flashCount = 0

@@ -245,6 +245,7 @@ extension TimelineView {
                         onMove: { offset in host.dispatch(TimelineAction.moveLayer(layer.id, offset)) },
                         onDragChanged: { dy in dragLayer(layer, by: dy) },
                         onDragEnded: { dy in endLayerDrag(layer.id, dy: dy + areaScroller(layer.kind).scrolled) },
+                        onDragCancelled: { cancelLayerDrag(layer.kind) },
                         isSelected: selectedLayerID == layer.id,
                         onSelect: {
                             selectedLayerID = layer.id

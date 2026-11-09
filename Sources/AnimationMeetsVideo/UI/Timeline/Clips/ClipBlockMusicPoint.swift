@@ -41,12 +41,17 @@ extension ClipBlockView {
                         .gesture(
                             DragGesture(minimumDistance: 1, coordinateSpace: .named(space))
                                 .onChanged { value in
+                                    guard handleDrag.follow(onEscape: {
+                                        readout?.hide()
+                                        musicPointDraft = nil
+                                    }) else { return }
                                     let time = CMTime(seconds: Double(max(0, value.location.x) / model.pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
                                     let draft = clampedMusicPoint(handlers.snapTime(time) ?? time)
                                     musicPointDraft = draft
                                     if let origin = musicPointTime(of: model.clip) { readout?.show(draft, from: origin) }
                                 }
                                 .onEnded { _ in
+                                    guard handleDrag.end() else { return }
                                     readout?.hide()
                                     guard let draft = musicPointDraft else { return }
                                     if draft == musicPointTime(of: model.clip) {
