@@ -397,7 +397,9 @@ Settled, with the reasons, so they aren't proposed again:
    line with tips under it, then the controls in labelled groups. Each
    command shows its key as a keycap rather than in its name. Start Over,
    Undo, Redo, Cancel and Confirm (Continue while drawing) sit in a footer
-   that doesn't scroll. The Sections step, once done, goes back to
+   that doesn't scroll. While drawing, a Selected Section pop-up picks
+   the section the edge and delete commands change, the keyboard's way
+   to the click on the strip. The Sections step, once done, goes back to
    drawing when clicked. Filling a section selects the next to mark without
    scrolling the view. Resizing the
    panel keeps the same stretch of

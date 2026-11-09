@@ -133,12 +133,24 @@ private struct DrawingControls: View {
                                  action: session.drawSectionToPlayhead)
                 BeatMatchCommand("Fill Gap at Playhead", key: "F") { session.fillGap(at: session.livePlayhead) }
             }
-            if let section = session.selectedSection {
+            if !session.map.sections.isEmpty {
                 BeatMatchGroup("Selected Section") {
-                    BeatMatchSectionSummary(section: section)
-                    BeatMatchCommand("Start to Playhead", key: "[") { session.moveSelectedEdgeToPlayhead(.start) }
-                    BeatMatchCommand("End to Playhead", key: "]") { session.moveSelectedEdgeToPlayhead(.end) }
-                    BeatMatchCommand("Delete Section", key: "⌫", role: .destructive, action: session.deleteSelectedSection)
+                    // The keyboard's way to pick a section to change, as
+                    // a click on the strip does; picking a kind lets go.
+                    Picker("Selected Section", selection: Binding(get: { session.selectedSectionID }, set: { session.selectSection($0) })) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(Array(session.map.sections.enumerated()), id: \.element.id) { index, section in
+                            Text("\(index + 1). \(section.kind.name)").tag(UUID?.some(section.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .help("The section the commands below change")
+                    if let section = session.selectedSection {
+                        BeatMatchSectionSummary(section: section)
+                        BeatMatchCommand("Start to Playhead", key: "[") { session.moveSelectedEdgeToPlayhead(.start) }
+                        BeatMatchCommand("End to Playhead", key: "]") { session.moveSelectedEdgeToPlayhead(.end) }
+                        BeatMatchCommand("Delete Section", key: "⌫", role: .destructive, action: session.deleteSelectedSection)
+                    }
                 }
             }
         }
