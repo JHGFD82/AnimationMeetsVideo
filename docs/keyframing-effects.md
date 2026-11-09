@@ -1,12 +1,13 @@
 # Keyframing effects
 
 Status: **built** (see [Building it](#building-it) for what each step
-does and leaves out). A new **Keyframing** category in the
-Effects Library: effects that draw nothing and instead write keyframes
-onto other controls, from a sound (Audio Keys, as Trapcode Sound Keys
-does in After Effects), from a song's beats, from noise (Wiggler, as
-After Effects' Wiggler) or from the control's own keyframes (Smoother,
-Looper).
+does and leaves out). A **Keyframing** category of effects that draw
+nothing and instead write keyframes onto other controls, from a sound
+(Audio Keys, as Trapcode Sound Keys does in After Effects), from a song's
+beats, from noise (Wiggler, as After Effects' Wiggler) or from the
+control's own keyframes (Smoother, Looper). They are picked for a control
+in the [Keyframe Designer](#the-keyframe-designer), opened from an
+effect's ⋯ menu, rather than from the Effects Library.
 
 ## The idea: they write real keyframes
 
@@ -150,16 +151,54 @@ song, so the expensive part is done once per audio file and kept:
   done in well under a millisecond with vDSP. So the box and every
   slider regenerate the keyframes as fast as they're dragged.
 
-## The library and the panel
+## The Keyframe Designer
 
-The Effects Library lists a **Keyframing** category after Mattes
-(`EffectCategory.keyframing`), with a chip per kind, dragged onto a clip
-or into the stack like any effect. Dropped on a clip, a new Keyframing
-effect goes to the top of the stack and targets the first numeric control
-below it; dropped into the stack, it targets the first below where it
-lands.
+A Keyframing effect is about one control, so it is made from that
+control rather than dragged from the Effects Library, which doesn't list
+the category (`EffectsListPanel.kinds`). Every effect's ⋯ menu with a
+numeric control has **Keyframe Designer…**, as does a numeric control's
+own ⋯ menu; a Keyframing effect's has **Open in Keyframe Designer…**, and
+its row a **Keyframe Designer…** button. The menus never list the methods
+themselves: they open the designer, a floating panel beside the graph
+editors, one per clip (`KeyframeDesigner`,
+`KeyframeGraphHUDs.showDesigner`), turned to the control it was opened
+from: the one asked for, else the effect's first a method drives, else
+its first.
 
-In the panel its row has the Target picker, Combine, and the kind's
+- **Along the top**: Control, a picker of every control of the clip a
+  method can drive (each effect's numeric controls, its sound effects'
+  and its volume, those driven named with their method: "Transform ·
+  Position (Wiggler)"), the graphs' skimming, and **Bake Keyframes**.
+- **Down the left**: the **Method**, a chip for None and each kind, the
+  one driving the control lit, with a line on what it does; under it, for
+  a method, its note when it can't write, Regenerate and Keep Edits when
+  it is out of date with hand edits, **Applies To** (Component, Combine,
+  Listen To or Beats From, and the Range, from the playhead), and its
+  **Settings** as fields and pop-ups, set at the playhead.
+- **Filling the right**: the control's graph (`KeyframeGraphView`, with
+  its time row to drag the playhead along), which every change redraws as
+  the keyframes are made again. Audio Keys puts the sound's spectrum and
+  its box over it (`AudioKeysGraph`), at the playhead or, while it plays,
+  the player's time.
+
+Picking a method (`EditingProject.setKeyframing`) is one undo step: with
+none driving the control, a Keyframing effect of that kind goes just
+above the control's effect, so it reaches it (at the top for the volume
+or a sound effect's control), Audio Keys listening to the whole mix and
+Beat Keys to the first Sound or Music layer with beats. Over another
+method, the old one is taken away, putting the control back as it was,
+and the new one takes its place in the stack, keeping its Component,
+Combine, Range, beats and sound. **None** takes it away, putting the
+control back. Picking the one already driving it changes nothing. A clip
+with no picture stack can't hold one, so there the chips are off with a
+note.
+
+The effects stay in the stack, where they can be turned off, moved,
+copied and deleted like any effect.
+
+## The panel
+
+In the panel a Keyframing effect's row has the Target picker, Combine, and the kind's
 settings (Audio Keys' under Listen and Keyframes headers, Beat Keys'
 under Beats and Keyframes), choices included: unlike a shape's, which
 the panel leaves to the inspector, they are set nowhere else, and the target's keyframe lane highlights the keyframes it made
@@ -266,8 +305,8 @@ In order, each step usable on its own:
    - Keyframing effects are no-ops to the compositor and the sound taps,
      and have no animated ranges. They go only in the picture's stack, so
      a clip with no pictures can't have one yet.
-2. **Library and panel** (done). The Effects Library lists the category
-   with the others. In the panel a Keyframing effect has Target (None, each
+2. **Library and panel** (done; the library no longer lists the
+   category, see step 5). In the panel a Keyframing effect has Target (None, each
    target by effect and control name, and Unavailable for one that's gone
    or above), Component (All or each of the target's, when it has more
    than one), Combine (not for the kinds that reshape) and, for Beat Keys,
@@ -313,11 +352,11 @@ In order, each step usable on its own:
    `listensToClip`). The effects panel has a Listen To row and draws the
    box small under the header, as every effect's graph is there
    (`EffectGraphPreview`); the spectrum isn't drawn in the panel, so a
-   stack of them costs nothing to show. Clicking it opens the effect's editor
-   (`AudioKeysEditor`) in a floating panel beside the graph editors
-   (`KeyframeGraphHUDs.showAudioKeys`), with Listen To, what it drives and
-   Bake Keyframes along the top, `AudioKeysGraph` filling it, and every
-   setting as fields underneath, set at the playhead. The graph shows the
+   stack of them costs nothing to show. Clicking it opens the Keyframe
+   Designer on the control it drives (see
+   [The Keyframe Designer](#the-keyframe-designer)), with `AudioKeysGraph`
+   over the control's graph and every setting as fields beside them, set
+   at the playhead. The spectrum shows the
    bands heard (−96 to 0 dB) at the playhead, or at the player's time while
    it plays, so the spectrum moves with the sound (only it redraws), with
    the box shaded up to how loud its range is now. The box's edges or
@@ -328,4 +367,8 @@ In order, each step usable on its own:
    a "Reading the sound…" note), and when it arrives the editor makes them
    in the undo baseline as well as the project, since the analysis
    arriving isn't an edit.
-
+5. **Keyframe Designer** (done), as described in
+   [The Keyframe Designer](#the-keyframe-designer): the methods move out
+   of the Effects Library into a panel opened from an effect's ⋯ menu,
+   which drives one control at a time against its graph, and replaces
+   Audio Keys' own editor. Effects already in a project are untouched.

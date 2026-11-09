@@ -250,6 +250,7 @@ extension EffectsPanel {
             Button("Rename") { renamingEffectID = effect.id }
         }
         Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
+        keyframeDesignerItem(effect, in: clip)
         if effect.kind.isKeyframing {
             keyframingMenu(effect, clip)
         } else if !effect.kind.isAudio, effect.missing == nil {
@@ -284,10 +285,30 @@ extension EffectsPanel {
         Button("Delete", role: .destructive) { delete(effect, from: clip) }
     }
 
+    /// Keyframe Designer…, which opens the clip's designer on `control`, or
+    /// else this effect's first control a method drives, or its first
+    /// numeric one. Not for a Keyframing effect, which has its own item,
+    /// nor one with no numeric controls, nor a clip with no picture stack
+    /// to hold the method.
+    @ViewBuilder
+    func keyframeDesignerItem(_ effect: Effect, in clip: TimelineClip, control: EffectControl? = nil) -> some View {
+        let controls = EditingProject.designableControls(of: effect)
+        if let graphs, !controls.isEmpty, project.hasEffectStack(clip) {
+            let targets = controls.map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
+            let target = control.map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
+                ?? targets.first { project.keyframingEffect(driving: $0, in: clip) != nil } ?? targets[0]
+            Button("Keyframe Designer…") {
+                graphs.showDesigner(KeyframeDesignerKey(timelineID: timelineID, clipID: clip.id), target: target)
+            }
+            .help("Make this control's keyframes from a sound, the beats, a wiggle, a wave and more, against its graph")
+        }
+    }
+
     /// The ⋯ menu of a graphic clip's drawing: what changes its settings,
     /// not what would treat it as an effect in the stack.
     @ViewBuilder
     private func drawingMenu(_ effect: Effect, in clip: TimelineClip) -> some View {
+        keyframeDesignerItem(effect, in: clip)
         Button("Reset") { editEffect(effect.id, in: clip) { $0.reset(in: timeline?.frameSize) } }
             .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
         let addable = effect.missingControlKinds.filter { effect.kind.panelLists($0) }

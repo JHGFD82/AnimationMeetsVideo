@@ -369,6 +369,9 @@ extension EffectsPanel {
             ))
         }
         Button(control.enabled ? "Disable" : "Enable") { editControl(control.id, of: effect, in: clip) { $0.enabled.toggle() } }
+        if !control.kind.isChoice, !control.kind.isCurve {
+            keyframeDesignerItem(effect, in: clip, control: control)
+        }
         Divider()
         Button("Delete", role: .destructive) {
             editEffect(effect.id, in: clip) { $0.removeControl(control.id) }

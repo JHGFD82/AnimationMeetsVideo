@@ -11,17 +11,18 @@ extension Design {
     /// tone of what it shapes, not a new colour: the scene splitter cuts
     /// video, the beat matcher maps music, the motion designer shapes
     /// motion as graphics are, and the graph editor shapes effects as
-    /// adjustment layers carry them. The main timeline, where they all
+    /// adjustment layers carry them, as does the keyframe designer, which
+    /// writes the graph editor's keyframes. The main timeline, where they all
     /// come back to, has none.
     enum ToolTone {
-        case sceneSplitter, beatMatcher, motionDesigner, graphEditor
+        case sceneSplitter, beatMatcher, motionDesigner, graphEditor, keyframeDesigner
 
         var color: Color {
             switch self {
             case .sceneSplitter: ClipTone.video.color
             case .beatMatcher: ClipTone.music.color
             case .motionDesigner: ClipTone.graphic.color
-            case .graphEditor: ClipTone.adjustment.color
+            case .graphEditor, .keyframeDesigner: ClipTone.adjustment.color
             }
         }
 
@@ -31,6 +32,7 @@ extension Design {
             case .beatMatcher: "metronome"
             case .motionDesigner: "point.topleft.down.to.point.bottomright.curvepath"
             case .graphEditor: "chart.xyaxis.line"
+            case .keyframeDesigner: "wand.and.stars"
             }
         }
 
@@ -41,6 +43,7 @@ extension Design {
             case .beatMatcher: "Beat Match"
             case .motionDesigner: "Motion Designer"
             case .graphEditor: "Graph Editor"
+            case .keyframeDesigner: "Keyframe Designer"
             }
         }
     }

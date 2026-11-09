@@ -6,8 +6,8 @@ import SwiftUI
 /// log scale across and level up, with the box over it. The box's left and
 /// right edges are the frequency range, its bottom and top the levels that
 /// read 0 and 1, and a line across it how loud its range is now. Drag an
-/// edge to move it, or inside to move the whole box. Shown in the effect's
-/// editor (`AudioKeysEditor`), where the four values are also fields.
+/// edge to move it, or inside to move the whole box. Shown in the Keyframe
+/// Designer (`KeyframeDesigner`), where the four values are also fields.
 ///
 /// A drag is held to one side of the project (`ProjectState.hold`), with
 /// the box drawn from the drag's own values, and written to the project

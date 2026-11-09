@@ -6,7 +6,7 @@ import SwiftUI
 /// The graph editors open for an editor surface: floating HUD panels, one
 /// per parameter (a layer's position, its volume, …) or several linked
 /// into one on a shared timeline, so several can be open side by side, and
-/// the Audio Keys editors, one per effect. The surface
+/// the Keyframe Designers, one per clip. The surface
 /// keeps `project` and `playhead` current and says how to edit and seek;
 /// the panels' graphs read from here.
 @MainActor @Observable
@@ -52,11 +52,13 @@ final class KeyframeGraphHUDs {
     @ObservationIgnored private var observers: [Subject: [NSObjectProtocol]] = [:]
     /// The graphs of each graph panel.
     private var links: [UUID: KeyframeGraphLink] = [:]
+    /// The control each open Keyframe Designer drives.
+    @ObservationIgnored private var designerFocus: [KeyframeDesignerKey: KeyframeDesignerFocus] = [:]
 
     /// What a panel shows.
     private enum Subject: Hashable {
         case graphs(UUID)
-        case audioKeys(AudioKeysEditorKey)
+        case designer(KeyframeDesignerKey)
     }
 
     /// A graph's height in a panel, which a linked graph adds to it.
@@ -72,10 +74,25 @@ final class KeyframeGraphHUDs {
         openGraphs(KeyframeGraphLink([key]))
     }
 
-    /// Opens an Audio Keys effect's editor, or brings it to the front.
-    func showAudioKeys(_ key: AudioKeysEditorKey) {
-        let host = GraphHostingView(rootView: AudioKeysEditor(hud: self, key: key))
-        open(.audioKeys(key), content: host, size: NSSize(width: 640, height: 460), minimum: NSSize(width: 480, height: 360))
+    /// Opens a clip's Keyframe Designer on `target`, or brings it to the
+    /// front, turned to `target` when one is given.
+    func showDesigner(_ key: KeyframeDesignerKey, target: KeyframingTarget?) {
+        if let focus = designerFocus[key], let panel = panels[.designer(key)] {
+            if let target { focus.target = target }
+            panel.orderFront(nil)
+            return
+        }
+        let focus = KeyframeDesignerFocus(target: target)
+        designerFocus[key] = focus
+        let input = GraphInput()
+        let host = GraphHostingView(rootView: KeyframeDesigner(hud: self, key: key, focus: focus, input: input))
+        host.input = input
+        open(.designer(key), content: host, size: NSSize(width: 900, height: 520), minimum: NSSize(width: 700, height: 400))
+    }
+
+    /// Opens the designer on the control a Keyframing effect drives.
+    func showDesigner(drivenBy effect: Effect, onClip clipID: UUID, in timelineID: UUID) {
+        showDesigner(KeyframeDesignerKey(timelineID: timelineID, clipID: clipID), target: effect.keyframing?.target)
     }
 
     private func openGraphs(_ link: KeyframeGraphLink) {
@@ -220,7 +237,7 @@ final class KeyframeGraphHUDs {
     private func exists(_ subject: Subject) -> Bool {
         switch subject {
         case .graphs(let id): links[id]?.keys.contains { project.components(of: $0) != nil } == true
-        case .audioKeys(let key): project.clipAndLayer(key.clipID, in: key.timelineID)?.clip.effect(id: key.effectID) != nil
+        case .designer(let key): project.clipAndLayer(key.clipID, in: key.timelineID) != nil
         }
     }
 
@@ -229,7 +246,10 @@ final class KeyframeGraphHUDs {
             NotificationCenter.default.removeObserver(observer)
         }
         panels.removeValue(forKey: key)
-        if case .graphs(let id) = key { links.removeValue(forKey: id) }
+        switch key {
+        case .graphs(let id): links.removeValue(forKey: id)
+        case .designer(let key): designerFocus.removeValue(forKey: key)
+        }
     }
 
     private func title(of subject: Subject) -> String {
@@ -237,9 +257,8 @@ final class KeyframeGraphHUDs {
         case .graphs(let id):
             let titles = (links[id]?.keys ?? []).map { project.parameterTitle(of: $0) }
             return titles.count > 1 ? "Linked: \(titles.joined(separator: ", "))" : titles.first ?? "Graph"
-        case .audioKeys(let key):
-            let name = project.clipAndLayer(key.clipID, in: key.timelineID)?.clip.effect(id: key.effectID)?.displayName ?? "Audio Keys"
-            return "\(project.clipName(key.clipID, in: key.timelineID)) · \(name)"
+        case .designer(let key):
+            return "\(Design.ToolTone.keyframeDesigner.name): \(project.clipName(key.clipID, in: key.timelineID))"
         }
     }
 

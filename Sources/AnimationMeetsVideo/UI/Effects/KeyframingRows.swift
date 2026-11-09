@@ -53,7 +53,7 @@ extension EffectsPanel {
             }
             if effect.kind == .beatKeys {
                 keyframingChoice(
-                    "Beats From", effect, c, dimmed: effectDimmed, options: beatLayerOptions(setup, c),
+                    "Beats From", effect, c, dimmed: effectDimmed, options: project.beatLayerOptions(current: setup.beatLayer, in: c.timeline),
                     selected: setup.beatLayer?.uuidString ?? "none",
                     help: "The Sound or Music layer whose beat map it follows"
                 ) { choice, setup in
@@ -74,6 +74,9 @@ extension EffectsPanel {
     /// The ⋯ menu's items for a Keyframing effect.
     @ViewBuilder
     func keyframingMenu(_ effect: Effect, _ clip: TimelineClip) -> some View {
+        if let graphs {
+            Button("Open in Keyframe Designer…") { graphs.showDesigner(drivenBy: effect, onClip: clip.id, in: timelineID) }
+        }
         Button("Bake Keyframes") {
             project.bakeKeyframing(effect.id, ofClip: clip.id, in: timelineID)
             if state.selectedEffectID == effect.id { state.clear() }
@@ -102,17 +105,16 @@ extension EffectsPanel {
     // MARK: Rows
 
     /// Audio Keys' box drawn small under its header, at the playhead, which
-    /// a click opens in the effect's editor (`AudioKeysEditor`). The sound
+    /// a click opens in the Keyframe Designer (`KeyframeDesigner`). The sound
     /// under the box is read only there: reading it for every one in a
     /// stack would cost too much to keep up.
     func audioKeysPreview(_ effect: Effect, _ c: RowContext, dimmed: Bool) -> some View {
-        let key = AudioKeysEditorKey(timelineID: timelineID, clipID: c.clip.id, effectID: effect.id)
         return PlayheadReader(playhead: playhead) { _ in
             let time = c.sourceNow(animated: true)
             let frequencies = effect.control(.frequencyRange)?.values(at: time) ?? ControlKind.frequencyRange.defaultValues
             let levels = effect.control(.levelRange)?.values(at: time) ?? ControlKind.levelRange.defaultValues
             besideLane(
-                EffectGraphPreview(name: effect.displayName, onOpen: graphs.map { graphs in { graphs.showAudioKeys(key) } }) {
+                EffectGraphPreview(name: effect.displayName, onOpen: graphs.map { graphs in { [timelineID] in graphs.showDesigner(drivenBy: effect, onClip: c.clip.id, in: timelineID) } }) {
                     AudioKeysGraph(
                         bands: [], frequencies: (frequencies[0], frequencies[1]), levels: (levels[0], levels[1]),
                         isDimmed: dimmed, onSetFrequencies: { _, _ in }, onSetLevels: { _, _ in }
@@ -122,10 +124,14 @@ extension EffectsPanel {
         }
     }
 
-    /// Bake, which is too important to sit only in the ⋯ menu. Audio Keys'
-    /// editor opens from its graph, above (`graphPreview`).
+    /// The Keyframe Designer, where its settings are shaped against the
+    /// graph, and Bake, which is too important to sit only in the ⋯ menu.
     private func keyframingActions(_ effect: Effect, _ c: RowContext) -> some View {
         HStack(spacing: 6) {
+            if let graphs {
+                Button("Keyframe Designer…") { graphs.showDesigner(drivenBy: effect, onClip: c.clip.id, in: timelineID) }
+                    .help("Shape it against the graph of the control it drives")
+            }
             Button("Bake Keyframes") {
                 project.bakeKeyframing(effect.id, ofClip: c.clip.id, in: timelineID)
                 if state.selectedEffectID == effect.id { state.clear() }
@@ -183,16 +189,6 @@ extension EffectsPanel {
         return options
     }
 
-    private func beatLayerOptions(_ setup: KeyframingSetup, _ c: RowContext) -> [(id: String, name: String)] {
-        let layers = c.timeline.layers.filter(\.kind.isAudio)
-        var options: [(id: String, name: String)] = [("none", "None")]
-        options += layers.map { ($0.id.uuidString, project.displayName(of: $0, in: c.timeline)) }
-        if let id = setup.beatLayer, !layers.contains(where: { $0.id == id }) {
-            options.append((id.uuidString, "Unavailable"))
-        }
-        return options
-    }
-
     private func componentNames(of target: KeyframingTarget, in clip: TimelineClip) -> [String]? {
         switch target {
         case .volume: ["Level"]
@@ -201,18 +197,7 @@ extension EffectsPanel {
         }
     }
 
-    private func targetID(_ target: KeyframingTarget?) -> String {
-        switch target {
-        case nil: "none"
-        case .volume?: "volume"
-        case .control(let effectID, let controlID)?: "\(effectID.uuidString)|\(controlID.uuidString)"
-        }
-    }
+    private func targetID(_ target: KeyframingTarget?) -> String { KeyframingTargetID(target).rawValue }
 
-    private static func target(from id: String) -> KeyframingTarget? {
-        if id == "volume" { return .volume }
-        let parts = id.split(separator: "|").compactMap { UUID(uuidString: String($0)) }
-        guard parts.count == 2 else { return nil }
-        return .control(effectID: parts[0], controlID: parts[1])
-    }
+    private static func target(from id: String) -> KeyframingTarget? { KeyframingTargetID(rawValue: id).target }
 }

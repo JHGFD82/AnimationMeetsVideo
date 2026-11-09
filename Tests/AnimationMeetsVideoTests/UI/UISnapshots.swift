@@ -1614,14 +1614,44 @@ struct UISnapshots {
         )
     }
 
-    /// The Audio Keys editor on the same song, the playhead in its low
-    /// burst: the spectrum filling the panel, the box with the level
-    /// across it, and every setting as fields.
-    @Test func audioKeysEditor() throws {
+    /// The Keyframe Designer driving a shape's Position with a Wiggler: the
+    /// control picker along the top, the methods with Wiggler lit, what it
+    /// applies to and its settings down the left, and Position's graph
+    /// with its wiggle, under the time row, on the right.
+    @Test func keyframeDesigner() throws {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID
         let added = project.addShapeLayer(.rectangle, to: timelineID)
         let shape = try #require(added)
+        let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+        let transformID = try #require(transform)
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip)
+        let position = try #require(clip.effect(id: transformID)?.control(.position))
+        let target = KeyframingTarget.control(effectID: transformID, controlID: position.id)
+        project.setKeyframing(.wiggler, driving: target, onClip: shape.clipID, in: timelineID)
+        let hud = KeyframeGraphHUDs()
+        hud.update(project: project)
+        hud.playhead = CMTime(value: 1, timescale: 1)
+        try SnapshotSupport.render(
+            KeyframeDesigner(
+                hud: hud, key: KeyframeDesignerKey(timelineID: timelineID, clipID: shape.clipID),
+                focus: KeyframeDesignerFocus(target: target), input: GraphInput()
+            ),
+            "keyframe-designer", size: CGSize(width: 900, height: 560)
+        )
+    }
+
+    /// The Keyframe Designer with Audio Keys driving a shape's Scale from a
+    /// song, the playhead in its low burst: the spectrum and its box, with
+    /// the level across it, over Scale's graph, and Listen To with the
+    /// settings as fields on the left.
+    @Test func keyframeDesignerAudioKeys() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+        let transformID = try #require(transform)
         let url = URL(fileURLWithPath: "/tmp/audio-keys-editor-\(UUID().uuidString).wav")
         let samples = tone(60, amplitude: 0.5, seconds: 1) + tone(2500, amplitude: 0.05, seconds: 1)
         SpectrogramStore.shared.set(Spectrogram.analyze(zip(samples, tone(400, amplitude: 0.1, seconds: 2)).map { $0 + $1 }), for: url)
@@ -1632,14 +1662,19 @@ struct UISnapshots {
         song.hasAudio = true
         project.clips.append(song)
         project.putOnMusicLayer([song.id])
-        let effect = project.addEffect(.audioKeys, toClip: shape.clipID, in: timelineID)
-        let effectID = try #require(effect)
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip)
+        let scale = try #require(clip.effect(id: transformID)?.control(.scale))
+        let target = KeyframingTarget.control(effectID: transformID, controlID: scale.id)
+        project.setKeyframing(.audioKeys, driving: target, onClip: shape.clipID, in: timelineID)
         let hud = KeyframeGraphHUDs()
         hud.update(project: project)
         hud.playhead = CMTime(value: 1, timescale: 2)
         try SnapshotSupport.render(
-            AudioKeysEditor(hud: hud, key: AudioKeysEditorKey(timelineID: timelineID, clipID: shape.clipID, effectID: effectID)),
-            "audio-keys-editor", size: CGSize(width: 640, height: 460)
+            KeyframeDesigner(
+                hud: hud, key: KeyframeDesignerKey(timelineID: timelineID, clipID: shape.clipID),
+                focus: KeyframeDesignerFocus(target: target), input: GraphInput()
+            ),
+            "keyframe-designer-audio-keys", size: CGSize(width: 900, height: 620)
         )
     }
 

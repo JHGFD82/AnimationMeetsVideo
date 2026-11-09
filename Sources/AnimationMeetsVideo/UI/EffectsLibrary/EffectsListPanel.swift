@@ -61,7 +61,7 @@ struct EffectsListPanel: View {
             .accessibilityAction(named: "New Effect Package") { NewEffectPackagePrompt.shared.ask() }
             .accessibilityAction(named: "Show Effects Folder") { NewEffectPackagePrompt.showEffectsFolder() }
 
-            Text("Drag an effect onto a clip or into the stack, or double-click it to add it to the selected clip. Text and shapes are in the browser's Generators tab.")
+            Text("Drag an effect onto a clip or into the stack, or double-click it to add it to the selected clip. Text and shapes are in the browser's Generators tab, and keyframes made from a sound, the beats or a wiggle in Keyframe Designer… in an effect's ⋯ menu.")
                 .font(Design.Typeface.micro)
                 .foregroundStyle(Design.textTertiary)
                 .padding(.horizontal, Design.Space.group)
@@ -96,8 +96,10 @@ struct EffectsListPanel: View {
     }
 
     /// What the library lists: every effect but the generators (text and
-    /// the shapes), which aren't effects but clips of their own.
-    static var kinds: [EffectKind] { EffectKind.all.filter { !$0.drawsShape } }
+    /// the shapes), which aren't effects but clips of their own, and the
+    /// Keyframing ones, which are picked for a control in the Keyframe
+    /// Designer (Keyframe Designer… in an effect's ⋯ menu).
+    static var kinds: [EffectKind] { EffectKind.all.filter { !$0.drawsShape && !$0.isKeyframing } }
 
     /// Adds to the selected clip; a beep when none is selected or it can't
     /// take the effect.
