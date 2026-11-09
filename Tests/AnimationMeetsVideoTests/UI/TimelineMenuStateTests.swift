@@ -19,12 +19,32 @@ import Testing
 
     private func state(
         _ timeline: Timeline, clips: Set<UUID> = [], canDelete: Bool = false, at time: Double? = 0,
-        zoom: Double = 0, fitted: Bool = true
+        zoom: Double = 0, fitted: Bool = true, locked: Set<UUID> = []
     ) -> TimelineMenuState {
         TimelineMenuState.make(
             timeline: timeline, selection: .init(clips: clips, canDelete: canDelete),
-            parkedAt: time.map { seconds($0) }, zoomFraction: zoom, isFitted: fitted
+            parkedAt: time.map { seconds($0) }, zoomFraction: zoom, isFitted: fitted, locked: locked
         )
+    }
+
+    @Test func aClipOpenInTheMotionDesignerIsOfferedNothing() throws {
+        let (timeline, clip) = try timeline(clipAt: 2)
+        let shown = state(timeline, clips: [clip], canDelete: true, at: 5, locked: [clip])
+        #expect(!shown.canDelete)
+        #expect(!shown.canNudgeEarlier && !shown.canNudgeLater)
+        #expect(shown.enabledToggle == nil)
+        #expect(!shown.canSplit && !shown.canSplitAll)
+        // With nothing selected, a split at the playhead would cut it too.
+        let unselected = state(timeline, at: 5, locked: [clip])
+        #expect(!unselected.canSplit && !unselected.canSplitAll)
+        // Away from it, the playhead items are as ever.
+        let before = state(timeline, at: 1, locked: [clip])
+        #expect(before.canGoBack && before.hasNextEdit)
+        // With no time to go by, a split needs a clip that isn't locked.
+        #expect(!state(timeline, at: nil, locked: [clip]).canSplit)
+        // Unlocked, all of it comes back.
+        let free = state(timeline, clips: [clip], canDelete: true, at: 5)
+        #expect(free.canDelete && free.canSplit && free.enabledToggle != nil)
     }
 
     @Test func nothingSelectedOffersNoSelectionItems() throws {

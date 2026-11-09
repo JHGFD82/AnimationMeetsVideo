@@ -143,11 +143,14 @@ extension TimelineView {
         var clips = groupSelection
         if clips.isEmpty, let selection, selection.timelineID == timelineID { clips = [selection.timelineClipID] }
         let effectsTakeDelete = activePanel?.current == .sidePanel && showsEffects && effectsState.hasSelection
-        let hasSelected = !groupSelection.isEmpty
-            || selectedSectionID.map { id in timeline.sections.contains { $0.id == id } } == true
-            || selectedLayerID.map { timeline.layer(id: $0) != nil } == true
-            || selection?.timelineID == timelineID
-        return TimelineMenuState.Selection(clips: clips, canDelete: hasSelected && !effectsTakeDelete)
+        let hasSection = selectedSectionID.map { id in timeline.sections.contains { $0.id == id } } == true
+        let layer = selectedLayerID.flatMap { timeline.layer(id: $0) }
+        let hasSelected = !groupSelection.isEmpty || hasSection || layer != nil || selection?.timelineID == timelineID
+        // A layer goes with its clips, which may be open in the motion
+        // designer (the clips picked are checked in `TimelineMenuState`).
+        let locked = projectState?.lockedClipIDs ?? []
+        let deletesLocked = groupSelection.isEmpty && !hasSection && layer?.clips.contains { locked.contains($0.id) } == true
+        return TimelineMenuState.Selection(clips: clips, canDelete: hasSelected && !effectsTakeDelete && !deletesLocked)
     }
 
     /// What the Timeline menu does in this timeline. See `TimelineCommands`.

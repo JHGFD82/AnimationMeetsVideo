@@ -411,7 +411,8 @@ struct TimelineView: View {
         .background {
             TimelineMenuStatePublisher(
                 timeline: timeline, selection: menuSelection, playhead: playhead, playback: playback,
-                viewportModel: viewportModel, viewport: { currentViewport }
+                viewportModel: viewportModel, viewport: { currentViewport },
+                locked: projectState?.lockedClipIDs ?? []
             )
         }
         .focusedSceneValueUnlessDrafting(\.timelineEditActions, editActions)

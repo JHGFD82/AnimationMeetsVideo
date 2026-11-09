@@ -45,16 +45,25 @@ struct TimelineMenuState: Equatable {
     }
 
     /// Works out the state for `timeline` with the playhead at `time`;
-    /// nil, with no time to go by, offers every playhead item.
+    /// nil, with no time to go by, offers every playhead item. `locked`
+    /// are clips the motion designer has open, which nothing here may
+    /// change (`ProjectState.lockedClipIDs`): an item that would touch one
+    /// isn't offered.
     static func make(
         timeline: Timeline, selection: Selection, parkedAt time: CMTime?,
-        zoomFraction: Double, isFitted: Bool
+        zoomFraction: Double, isFitted: Bool, locked: Set<UUID> = []
     ) -> TimelineMenuState {
         var state = TimelineMenuState()
         let hasLength = timeline.duration > .zero
         state.canPlay = hasLength
         let clips = timeline.layers.flatMap(\.clips)
         let chosen = clips.filter { selection.clips.contains($0.id) }
+        let touchesLocked = chosen.contains { locked.contains($0.id) }
+        /// A split cuts every clip it finds, so one locked clip among them
+        /// refuses it whole.
+        func canSplit(_ found: [(layerID: UUID, clipID: UUID)]) -> Bool {
+            !found.isEmpty && !found.contains { locked.contains($0.clipID) }
+        }
         if let time {
             let now = timeline.snappedToFrame(time)
             let end = timeline.snappedToFrame(timeline.duration)
@@ -63,17 +72,17 @@ struct TimelineMenuState: Equatable {
             let edges = clips.flatMap { [$0.startOffset, $0.endOffset] }.map { timeline.snappedToFrame($0) } + [end]
             state.hasPreviousEdit = edges.contains { $0 < now }
             state.hasNextEdit = edges.contains { $0 > now }
-            state.canSplit = !timeline.clipsToSplit(at: now, selected: selection.clips, everyClip: false).isEmpty
-            state.canSplitAll = !timeline.clipsToSplit(at: now, selected: selection.clips, everyClip: true).isEmpty
+            state.canSplit = canSplit(timeline.clipsToSplit(at: now, selected: selection.clips, everyClip: false))
+            state.canSplitAll = canSplit(timeline.clipsToSplit(at: now, selected: selection.clips, everyClip: true))
         } else {
             state.canGoBack = hasLength
             state.canGoForward = hasLength
             state.hasPreviousEdit = hasLength
             state.hasNextEdit = hasLength
-            state.canSplit = !clips.isEmpty
-            state.canSplitAll = !clips.isEmpty
+            state.canSplit = clips.contains { !locked.contains($0.id) }
+            state.canSplitAll = state.canSplit
         }
-        if !chosen.isEmpty {
+        if !chosen.isEmpty, !touchesLocked {
             // Clips move no further back than the timeline's start.
             state.canNudgeEarlier = chosen.map(\.startOffset).min().map { $0 > .zero } ?? false
             state.canNudgeLater = true
@@ -81,7 +90,7 @@ struct TimelineMenuState: Equatable {
                 ? .turnOn(count: chosen.count)
                 : .turnOff(count: chosen.count)
         }
-        state.canDelete = selection.canDelete
+        state.canDelete = selection.canDelete && !touchesLocked
         state.canZoomIn = hasLength && zoomFraction < 1 - 1e-6
         state.canZoomOut = !isFitted
         return state
@@ -117,6 +126,8 @@ struct TimelineMenuStatePublisher: View {
     let playback: PlaybackModel
     let viewportModel: TimelineViewportModel
     let viewport: () -> TimelineViewport
+    /// Clips open in the motion designer, which no item may touch.
+    let locked: Set<UUID>
 
     /// How often the playing time is checked: once a frame, at most 60.
     private var playingChecksPerSecond: Double { min(60, max(1, timeline.frameRate)) }
@@ -135,7 +146,8 @@ struct TimelineMenuStatePublisher: View {
         let state = TimelineMenuState.make(
             timeline: timeline, selection: selection, parkedAt: time,
             zoomFraction: viewport().zoomFraction,
-            isFitted: viewportModel.zoomedPixelsPerSecond == nil
+            isFitted: viewportModel.zoomedPixelsPerSecond == nil,
+            locked: locked
         )
         return Color.clear
             .frame(width: 0, height: 0)
