@@ -66,7 +66,8 @@ enum EqualizerSpectrumMode: String, CaseIterable, Identifiable {
 ///
 /// A drag of a dot is held to one side of the project (`ProjectState.hold`),
 /// with the graph drawn from its own copy of the effect, and written to the
-/// project once, when the drag ends.
+/// project once, when the drag ends. Escape during it puts the band back as
+/// it was, on or off; a graph that goes away mid-drag ends it there.
 struct EqualizerGraph: View {
     /// The effect the project has; `effect` is the drag's while one is held.
     let committed: Effect
@@ -93,6 +94,10 @@ struct EqualizerGraph: View {
     @State private var spectrum = SpectrumBallistics()
     @State private var picked: EqualizerBand?
     @State private var drag: DragState?
+    /// Escape during a drag, which cancels it.
+    @State private var escape: DragEscape?
+    /// Whether Escape cancelled this press's drag (see `ValueDragPress`).
+    @State private var press = ValueDragPress()
     @FocusState private var isFocused: Bool
     /// The spectrum read from the file while paused, and where.
     @State private var paused: PausedReading?
@@ -139,6 +144,9 @@ struct EqualizerGraph: View {
         var band: EqualizerBand
         var start: [Double]
         var startPoint: CGPoint
+        /// The band's control before the drag, switched on or not, which
+        /// Escape puts back.
+        var original: EffectControl?
     }
 
     /// One color per band, around the wheel so neighbors tell apart.
@@ -211,7 +219,12 @@ struct EqualizerGraph: View {
         }
         .task(id: PausedRequest(time: time, mode: spectrumMode, effect: effect)) { await readPausedSpectrum() }
         .onAppear { EqualizerSpectrum.shared.watch(effect.id) }
-        .onDisappear { EqualizerSpectrum.shared.unwatch(effect.id) }
+        .onDisappear {
+            EqualizerSpectrum.shared.unwatch(effect.id)
+            // Gone mid-drag (its effect deleted or the clip let go of by a
+            // key): the drag ends here, or the project stays held.
+            endDrag()
+        }
         .opacity(isDimmed ? 0.55 : 1)
         .background(Color.black.opacity(0.18))
         .focusable()
@@ -261,9 +274,13 @@ struct EqualizerGraph: View {
         DragGesture(minimumDistance: 2, coordinateSpace: .local)
             .onChanged { value in
                 if drag == nil {
-                    guard let band = self.band(near: value.startLocation, layout: layout) else { return }
+                    guard press.mayBegin, let band = self.band(near: value.startLocation, layout: layout) else { return }
                     history?.beginGesture()
-                    drag = DragState(band: band, start: values(of: band), startPoint: point(of: band, layout: layout))
+                    drag = DragState(
+                        band: band, start: values(of: band), startPoint: point(of: band, layout: layout),
+                        original: effect.control(band.controlKind)
+                    )
+                    escape = DragEscape { cancelDrag() }
                     picked = band
                     // Switching a band on is a change of its own, made before the drag is held.
                     if !isOn(band) { onEdit(band.controlKind) { $0.enabled = true } }
@@ -280,18 +297,43 @@ struct EqualizerGraph: View {
                 }
             }
             .onEnded { _ in
-                guard drag != nil else { return }
-                let edits = stepEdits
-                projectState?.endHold()
-                heldEffect = nil
-                stepEdits = []
-                drag = nil
-                // The drag's last step goes to the project once; a drag let
-                // go (see `ProjectState.letGo`) has written it already.
-                for edit in edits { onEdit(edit.kind, edit.change) }
-                // After the last edit has reached the project.
-                Task { @MainActor in history?.endGesture() }
+                press.release()
+                endDrag()
             }
+    }
+
+    /// The drag let go: its last step goes to the project, as one undo.
+    private func endDrag() {
+        guard drag != nil else { return }
+        let edits = stepEdits
+        escape?.end()
+        escape = nil
+        projectState?.endHold()
+        heldEffect = nil
+        stepEdits = []
+        drag = nil
+        // The drag's last step goes to the project once; a drag let go
+        // (see `ProjectState.letGo`) has written it already.
+        for edit in edits { onEdit(edit.kind, edit.change) }
+        // After the last edit has reached the project.
+        Task { @MainActor in history?.endGesture() }
+    }
+
+    /// Escape during the drag: the band goes back as it was, on or off,
+    /// and the rest of the press drags nothing.
+    private func cancelDrag() {
+        guard let drag else { return }
+        escape?.end()
+        escape = nil
+        press.cancel()
+        projectState?.endHold()
+        heldEffect = nil
+        stepEdits = []
+        self.drag = nil
+        // A drag let go has written to the project, and switching the band
+        // on always has.
+        if let original = drag.original { onEdit(drag.band.controlKind) { $0 = original } }
+        Task { @MainActor in history?.endGesture() }
     }
 
     /// An edit a drag makes: to the project, and while the drag is held to

@@ -5,7 +5,9 @@ import SwiftUI
 /// ruler: a band from where it starts writing to where it stops (the whole
 /// clip with no range set), with a handle at each end to drag on the
 /// timeline's frames. A drag is one undo step, held to one side of the
-/// project (`ProjectState.hold`) and written to it when it ends. Each handle is also an
+/// project (`ProjectState.hold`) and written to it when it ends; Escape
+/// during it puts the end back, and a bar that goes away mid-drag ends it
+/// there. Each handle is also an
 /// adjustable element, a frame a step, for VoiceOver and the keyboard; the
 /// effect's Range menu does the same from its ⋯ menu.
 struct KeyframingRangeBar: View {
@@ -22,6 +24,12 @@ struct KeyframingRangeBar: View {
     /// The end a drag has moved, and where, which the project lags behind
     /// while the drag is held.
     @State private var dragged: (isStart: Bool, time: CMTime)?
+    /// The end the drag moves, where it was, which Escape puts back.
+    @State private var origin: (isStart: Bool, time: CMTime)?
+    /// Escape during a drag, which cancels it.
+    @State private var escape: DragEscape?
+    /// Whether Escape cancelled this press's drag (see `ValueDragPress`).
+    @State private var press = ValueDragPress()
 
     private static let handleWidth: CGFloat = 7
 
@@ -46,6 +54,9 @@ struct KeyframingRangeBar: View {
         }
         .frame(width: geometry.width, height: PanelRuler.height, alignment: .topLeading)
         .coordinateSpace(name: Self.space)
+        // Gone mid-drag (the clip let go of by a key): the drag ends here,
+        // or the project stays held.
+        .onDisappear(perform: endDrag)
     }
 
     private func handle(at x: CGFloat, isStart: Bool) -> some View {
@@ -60,9 +71,12 @@ struct KeyframingRangeBar: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
                     .onChanged { value in
                         if !dragging {
+                            guard press.mayBegin else { return }
                             dragging = true
+                            origin = (isStart, time)
                             history?.beginGesture()
                             projectState?.beginHold()
+                            escape = DragEscape { cancelDrag() }
                         }
                         let moved = geometry.clampedSource(atTimeline: geometry.timelineTime(atX: value.location.x))
                         dragged = (isStart, moved)
@@ -73,16 +87,8 @@ struct KeyframingRangeBar: View {
                         }
                     }
                     .onEnded { _ in
-                        guard dragging else { return }
-                        let last = dragged
-                        projectState?.endHold()
-                        dragged = nil
-                        dragging = false
-                        // The last end goes to the project once; a drag let
-                        // go (see `ProjectState.letGo`) has written it already.
-                        if let last { set(last.isStart, to: last.time) }
-                        // After the last edit has reached the project.
-                        Task { @MainActor in history?.endGesture() }
+                        press.release()
+                        endDrag()
                     }
             )
             .pointerStyle(.frameResize(position: isStart ? .leading : .trailing))
@@ -96,6 +102,41 @@ struct KeyframingRangeBar: View {
                 let moved = direction == .increment ? CMTimeAdd(timeline, frame) : CMTimeSubtract(timeline, frame)
                 set(isStart, to: geometry.clampedSource(atTimeline: moved))
             }
+    }
+
+    /// The drag let go: its last end goes to the project, as one undo.
+    private func endDrag() {
+        guard dragging else { return }
+        let last = dragged
+        escape?.end()
+        escape = nil
+        projectState?.endHold()
+        dragged = nil
+        origin = nil
+        dragging = false
+        // The last end goes to the project once; a drag let go (see
+        // `ProjectState.letGo`) has written it already.
+        if let last { set(last.isStart, to: last.time) }
+        // After the last edit has reached the project.
+        Task { @MainActor in history?.endGesture() }
+    }
+
+    /// Escape during the drag: the end goes back, and the rest of the
+    /// press drags nothing.
+    private func cancelDrag() {
+        guard dragging else { return }
+        // Only a drag let go (or not held) has reached the project.
+        let reachedProject = projectState.map { !$0.isHolding } ?? true
+        let origin = origin
+        escape?.end()
+        escape = nil
+        press.cancel()
+        projectState?.endHold()
+        dragged = nil
+        self.origin = nil
+        dragging = false
+        if reachedProject, let origin { set(origin.isStart, to: origin.time) }
+        Task { @MainActor in history?.endGesture() }
     }
 
     private func set(_ isStart: Bool, to time: CMTime) {

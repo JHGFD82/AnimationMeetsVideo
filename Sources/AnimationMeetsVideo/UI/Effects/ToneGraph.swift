@@ -38,7 +38,9 @@ struct ToneGraphLayout {
 ///
 /// A drag is held to one side of the project (`ProjectState.hold`), with
 /// the graph drawn from its own copy of the effect, and written to the
-/// project once, when it ends, as one undo step.
+/// project once, when it ends, as one undo step. Escape during it puts the
+/// effect back as it was, a point it added included; a graph that goes
+/// away mid-drag ends it there.
 struct ToneGraph: View {
     /// The effect the project has; `effect` is the drag's while one is held.
     let committed: Effect
@@ -57,6 +59,14 @@ struct ToneGraph: View {
     /// The picked point of the curve, or handle, by its index.
     @State private var picked: Int?
     @State private var drag: DragState?
+    /// The effect before the drag's gesture began, which Escape puts
+    /// back, and the controls the drag has changed.
+    @State private var dragOrigin: Effect?
+    @State private var touched: Set<ControlKind> = []
+    /// Escape during a drag, which cancels it.
+    @State private var escape: DragEscape?
+    /// Whether Escape cancelled this press's drag (see `ValueDragPress`).
+    @State private var press = ValueDragPress()
     /// The effect's measured response, kept while the next is measured.
     @State private var response: [SIMD3<Double>]?
     @FocusState private var isFocused: Bool
@@ -141,6 +151,9 @@ struct ToneGraph: View {
             sidebar
         }
         .task(id: ResponseRequest(effect: effect, time: time)) { await measure() }
+        // Gone mid-drag (its effect deleted or the clip let go of by a key):
+        // the drag ends here, or the project stays held.
+        .onDisappear(perform: endDrag)
         .opacity(isDimmed ? 0.55 : 1)
     }
 
@@ -238,6 +251,7 @@ struct ToneGraph: View {
     /// An edit a drag makes: to the project, and while the drag is held to
     /// the copy of the effect the graph draws.
     private func dragEdit(_ kind: ControlKind, _ change: @escaping (inout EffectControl) -> Void) {
+        if dragOrigin != nil { touched.insert(kind) }
         if heldEffect != nil {
             heldEffect = heldEffect?.changing(kind, change)
             stepEdits.append((kind, change))
@@ -271,7 +285,7 @@ struct ToneGraph: View {
     private func dragGesture(_ layout: ToneGraphLayout) -> some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .local)
             .onChanged { value in
-                if drag == nil, !beginDrag(at: value.startLocation, layout: layout) { return }
+                if drag == nil, !press.mayBegin || !beginDrag(at: value.startLocation, layout: layout) { return }
                 let shift = NSEvent.modifierFlags.contains(.shift)
                 var dx = Double(value.translation.width / max(layout.plot.width, 1))
                 var dy = Double(-value.translation.height / max(layout.plot.height, 1))
@@ -279,7 +293,10 @@ struct ToneGraph: View {
                 if shift { if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 } }
                 dragStep(dx, dy)
             }
-            .onEnded { _ in endDrag() }
+            .onEnded { _ in
+                press.release()
+                endDrag()
+            }
     }
 
     /// The slider under the plot that moves the edited curve's edges.
@@ -294,12 +311,16 @@ struct ToneGraph: View {
             isFocused: isFocused,
             onDrag: { edge, dx in
                 if drag == nil {
-                    history?.beginGesture()
-                    guard beginDrag(of: index(edge)) else { return }
+                    guard press.mayBegin else { return }
+                    beginGesture()
+                    guard beginDrag(of: index(edge)) else { return endDrag() }
                 }
                 dragStep(dx, 0)
             },
-            onDragEnded: endDrag,
+            onDragEnded: {
+                press.release()
+                endDrag()
+            },
             onNudge: { edge, dx in nudge(index(edge), dx: dx) },
             name: "\(kind.name) curve"
         )
@@ -316,16 +337,54 @@ struct ToneGraph: View {
         }
     }
 
+    /// Starts the drag's undo gesture, before anything it changes, and
+    /// listens for Escape.
+    private func beginGesture() {
+        history?.beginGesture()
+        dragOrigin = effect
+        touched = []
+        escape = DragEscape { cancelDrag() }
+    }
+
+    /// The drag let go: its last step goes to the project, as one undo.
     private func endDrag() {
-        guard drag != nil else { return }
+        guard dragOrigin != nil else { return }
         let edits = stepEdits
+        escape?.end()
+        escape = nil
         projectState?.endHold()
         heldEffect = nil
         stepEdits = []
         drag = nil
+        dragOrigin = nil
+        touched = []
         // The drag's last step goes to the project once; a drag let go
         // (see `ProjectState.letGo`) has written it already.
         for edit in edits { onEdit(edit.kind, edit.change) }
+        Task { @MainActor in history?.endGesture() }
+    }
+
+    /// Escape during the drag: every control it changed goes back as it
+    /// was, a point it added included, and the rest of the press drags
+    /// nothing.
+    private func cancelDrag() {
+        guard let origin = dragOrigin else { return }
+        let kinds = touched
+        escape?.end()
+        escape = nil
+        press.cancel()
+        projectState?.endHold()
+        heldEffect = nil
+        stepEdits = []
+        drag = nil
+        dragOrigin = nil
+        touched = []
+        // A drag let go has written to the project, and a point added has
+        // always.
+        for kind in kinds {
+            guard let control = origin.control(kind) else { continue }
+            onEdit(kind) { $0 = control }
+        }
         Task { @MainActor in history?.endGesture() }
     }
 
@@ -336,7 +395,8 @@ struct ToneGraph: View {
         if index == nil, let kind = editedCurve {
             let x = layout.tone(atX: location.x)
             guard let at = curve(kind).insertionIndex(atX: x) else { return false }
-            history?.beginGesture()
+            beginGesture()
+            touched.insert(kind)
             let time = time
             onEdit(kind) { control in
                 control.enabled = true
@@ -348,10 +408,14 @@ struct ToneGraph: View {
             }
             index = at
         } else if index != nil {
-            history?.beginGesture()
+            beginGesture()
         }
         guard let index else { return false }
-        return beginDrag(of: index)
+        guard beginDrag(of: index) else {
+            endDrag()
+            return false
+        }
+        return true
     }
 
     /// Starts dragging point or handle `index`, from the effect with any

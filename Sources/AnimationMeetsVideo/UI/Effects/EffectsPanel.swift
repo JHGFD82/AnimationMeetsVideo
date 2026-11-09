@@ -717,7 +717,7 @@ struct EffectsPanel: View {
         if flags == .command, key == "a", showsKeyframeLanes, !(event.window?.firstResponder is NSText), state.keyframes.selectAll() {
             return true
         }
-        if event.keyCode == 53, flags.isEmpty, !state.keyframes.isEmpty, !ValueDragSession.isActive {
+        if event.keyCode == 53, flags.isEmpty, !state.keyframes.isEmpty, !ValueDragSession.isActive, !DragEscape.isActive {
             state.keyframes.clear()
             return true
         }

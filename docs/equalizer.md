@@ -85,7 +85,7 @@ fields under it.
   octave per 40 points dragged, or 120 scrolled; a scroll is one undo once
   it stops, and scrolling anywhere else scrolls the panel); ⇧-drag to move along one axis. Dragging a band that's off turns
   it on, and double-clicking one switches it on or off. A drag is one
-  undo. While the band is keyframed, a drag sets a keyframe at the
+  undo; Escape during it puts the band back as it was, on or off. While the band is keyframed, a drag sets a keyframe at the
   playhead, as editing its fields does.
 - **Spectrum**: behind the curves, the sound at the playhead while it
   plays, after the EQ (the default) or before it, or off, from the

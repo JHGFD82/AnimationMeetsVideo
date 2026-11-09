@@ -91,7 +91,8 @@ reads each point and handle as an element, adjusting it moves it up or
 down (a handle that only moves across, or a curve's edge, across), with actions to move it
 across and to delete a point other than an edge; each thumb of the edge
 slider is an element too, which adjusting moves across. A drag is one undo step, held to one side
-of the project while it lasts, as an EQ band's is.
+of the project while it lasts, as an EQ band's is; Escape during it
+puts the curve or handle back, a point the drag added included.
 
 ### What else could use it
 
