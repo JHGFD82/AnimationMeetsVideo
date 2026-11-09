@@ -56,6 +56,11 @@ enum CompositionExporter {
     /// (`CompositionError.missingMedia`), so a gap is never written out.
     @TaskLocal static var skipsMissingMedia = false
 
+    /// Off, a render key resolves every frame of every clip rather than
+    /// repeating frames that hold still (`renderKey`), for a test to check
+    /// the keys come out the same.
+    @TaskLocal static var keysSkipStillFrames = true
+
     /// Drops what was read from the file at `url`, for when it was replaced
     /// or changed on disk.
     static func forgetCachedMedia(at url: URL) async {

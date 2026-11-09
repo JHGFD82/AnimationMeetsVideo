@@ -110,7 +110,22 @@ struct ClipStack: @unchecked Sendable {
     /// order and not overlapping. Outside them the clip is drawn the same
     /// way at every moment.
     var animatedRanges: [CMTimeRange] {
-        let keyframed = (effects.flatMap(\.animatedRanges) + [anchorPoint.animatedRange].compactMap { $0 }).map {
+        rootRanges(keyframed: effects.flatMap(\.animatedRanges) + [anchorPoint.animatedRange].compactMap { $0 })
+    }
+
+    /// The same narrowed to where a keyframed value changes, leaving out
+    /// where it holds still between keyframes. The clip is drawn the same
+    /// way throughout each gap between them, though not necessarily the
+    /// same in one gap as in the next. For the render key, which needn't
+    /// look at each frame of such a gap.
+    var changingRanges: [CMTimeRange] {
+        rootRanges(keyframed: effects.flatMap(\.changingRanges) + anchorPoint.changingRanges)
+    }
+
+    /// `keyframed` (source time) in root time, with where the transitions
+    /// play and, for a look that moves by itself, everywhere.
+    private func rootRanges(keyframed: [ClosedRange<CMTime>]) -> [CMTimeRange] {
+        let keyframed = keyframed.map {
             // (A backwards clip plays its later footage first.)
             let a = timelineTime(forSource: $0.lowerBound), b = timelineTime(forSource: $0.upperBound)
             return CMTimeRange(

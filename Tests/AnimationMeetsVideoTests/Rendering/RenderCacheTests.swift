@@ -120,6 +120,42 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         project.setOpacity(60, ofClip: top.clipID, in: t)
         #expect(try await key(project) != original)
     }
+
+    /// Frames between keyframes that hold one value are keyed from the
+    /// frame resolved before them rather than resolved again; the keys must
+    /// still be the ones resolving every frame gives, including around a
+    /// change that falls between two frames and a hold that jumps.
+    @Test func keysSkippingStillFramesMatchResolvingEveryFrame() async throws {
+        let sandbox = try await RenderSandbox()
+        defer { sandbox.cleanUp() }
+        var (project, top, _) = try sandbox.stackedProject()
+        let t = project.rootTimelineID
+        func at(_ seconds: Double) -> CMTime { CMTime(seconds: seconds, preferredTimescale: 24000) }
+        var jump = Keyframe(time: at(2.1), value: ComponentValue(values: [50]))
+        jump.hold = true
+        let opacity = AnimatedValue(ComponentValue(values: [100]), keyframes: [
+            Keyframe(time: at(0), value: ComponentValue(values: [0])),
+            Keyframe(time: at(0.5), value: ComponentValue(values: [100]), easeIn: .init(influence: 0.6, speed: 2)),
+            Keyframe(time: at(1.01), value: ComponentValue(values: [100])),
+            // Between the frames at 1 s and 1 1/24 s.
+            Keyframe(time: at(1.02), value: ComponentValue(values: [70])),
+            Keyframe(time: at(2.0), value: ComponentValue(values: [70])),
+            jump,
+            Keyframe(time: at(2.4), value: ComponentValue(values: [20])),
+            Keyframe(time: at(2.9), value: ComponentValue(values: [20])),
+        ])
+        var effect = Effect(kind: .transform, controls: [EffectControl(kind: .opacity)])
+        effect.controls[0].number = opacity
+        project.editClip(top.clipID, in: t) { $0.effects = [effect] }
+
+        let skipping = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        let everyFrame = try await CompositionExporter.$keysSkipStillFrames.withValue(false) {
+            try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        }
+        let keys = skipping.segments.filter(\.needsRender).map(\.key)
+        #expect(!keys.isEmpty)
+        #expect(keys == everyFrame.segments.filter(\.needsRender).map(\.key))
+    }
 }
 
 @Suite struct RenderCacheTests {

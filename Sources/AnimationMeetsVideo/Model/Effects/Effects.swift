@@ -475,6 +475,9 @@ struct EffectControl: Identifiable, Equatable, Sendable {
 
     /// The control's keyframe span, nil when not animated.
     var animatedRange: ClosedRange<CMTime>? { number.animatedRange }
+
+    /// Where the control's value changes (`AnimatedValue.changingRanges`).
+    var changingRanges: [ClosedRange<CMTime>] { number.changingRanges }
 }
 
 /// One effect in a clip's stack.
@@ -689,6 +692,13 @@ struct Effect: Identifiable, Equatable, Sendable {
     var animatedRanges: [ClosedRange<CMTime>] {
         guard enabled, !kind.isKeyframing else { return [] }
         return controls.compactMap { $0.enabled ? $0.animatedRange : nil } + (text?.animatedRanges ?? [])
+    }
+
+    /// The same narrowed to where a control's value changes; a Text
+    /// effect's styled runs count throughout their keyframes.
+    var changingRanges: [ClosedRange<CMTime>] {
+        guard enabled, !kind.isKeyframing else { return [] }
+        return controls.flatMap { $0.enabled ? $0.changingRanges : [] } + (text?.animatedRanges ?? [])
     }
 }
 
