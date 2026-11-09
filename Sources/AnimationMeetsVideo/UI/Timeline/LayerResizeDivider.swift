@@ -12,8 +12,6 @@ struct LayerResizeDivider: View {
     let onEnded: () -> Void
     /// VoiceOver's increment and decrement, in points.
     let onStep: (CGFloat) -> Void
-    @State private var isDragging = false
-    @State private var showsCursor = false
 
     static let hitHeight: CGFloat = 6
 
@@ -21,25 +19,16 @@ struct LayerResizeDivider: View {
         Color.clear
             .frame(height: Self.hitHeight)
             .contentShape(Rectangle())
-            .onHover { inside in
-                if inside, !showsCursor {
-                    NSCursor.resizeUpDown.push()
-                    showsCursor = true
-                } else if !inside, showsCursor, !isDragging {
-                    NSCursor.pop()
-                    showsCursor = false
-                }
-            }
+            // SwiftUI's pointer, not a pushed NSCursor: a drag let go of
+            // outside the strip never heard the hover end, and the pushed
+            // cursor stayed everywhere.
+            .pointerStyle(.rowResize)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
-                        isDragging = true
                         onChanged(value.translation.height, NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask))
                     }
-                    .onEnded { _ in
-                        isDragging = false
-                        onEnded()
-                    }
+                    .onEnded { _ in onEnded() }
             )
             .help("Drag to resize the layer. Option: every layer of this kind. Option-Shift: every layer shown.")
             .accessibilityElement()
