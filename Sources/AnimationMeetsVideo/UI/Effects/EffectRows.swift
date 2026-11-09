@@ -696,6 +696,7 @@ struct KeyframingEditsRow: View {
 struct HeldColorWell: View {
     let name: String
     let selection: Binding<CGColor>
+    var supportsOpacity = true
 
     @Environment(\.projectHistory) private var history
     @Environment(ProjectState.self) private var projectState: ProjectState?
@@ -710,7 +711,7 @@ struct HeldColorWell: View {
         ColorPicker(
             name,
             selection: Binding(get: { picked ?? selection.wrappedValue }, set: { change(to: $0) }),
-            supportsOpacity: true
+            supportsOpacity: supportsOpacity
         )
     }
 

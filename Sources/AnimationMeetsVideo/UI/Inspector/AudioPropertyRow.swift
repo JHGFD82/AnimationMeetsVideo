@@ -157,13 +157,9 @@ struct AudioPropertyRow: View {
             .frame(width: 54, alignment: .leading)
             .disabled(isReadOnly)
 
-            Slider(
-                value: Binding(
-                    get: { property.clamped(current) },
-                    set: { newValue in setValue(property.rounded(newValue)) }
-                ),
-                in: property.range
-            )
+            HeldSlider(value: property.clamped(current), range: property.range, rounded: property.rounded) { newValue in
+                setValue(newValue)
+            }
             .controlSize(.mini)
             .frame(minWidth: 40, maxWidth: 90)
             .help(property.help)

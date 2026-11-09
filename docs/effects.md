@@ -641,6 +641,11 @@ lower or raise it. A press without a drag still opens the field for typing.
   does. Escape during a drag puts the value back. A field that goes away
   mid-drag (its control deleted or undone by a key) ends the drag as
   letting go would, and the pointer comes back.
+- The volume and pan sliders and a transition's sliders are held the
+  same way (`HeldSlider`), and a transition's color well as an effect's
+  is (`HeldColorWell`): one undo step for the whole drag however long it
+  pauses. A slider's drag can't be cancelled with Escape, since AppKit
+  tracks it in a loop no key reaches.
 - Dragging while the project plays keeps it playing, and the viewer shows
   the value as it changes, as choppily as the effect draws. The frames the
   player draws are patched with the drag's values (`LiveValues`), so

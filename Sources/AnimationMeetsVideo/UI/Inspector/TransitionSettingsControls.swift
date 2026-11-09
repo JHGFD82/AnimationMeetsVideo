@@ -34,7 +34,7 @@ struct TransitionSettingsControls: View {
             .pickerStyle(.segmented)
             .help("Which way it moves")
         case .color:
-            ColorPicker("Color", selection: colorBinding, supportsOpacity: false)
+            HeldColorWell(name: "Color", selection: colorBinding, supportsOpacity: false)
                 .font(Design.Typeface.label)
                 .help("The color it passes through")
         case .center:
@@ -69,22 +69,8 @@ struct TransitionSettingsControls: View {
         }
     }
 
-    /// A slider from 0 to 1 labeled with its name and value in percent.
     private func fractionSlider(_ name: String, value: Binding<Double>) -> some View {
-        HStack(spacing: Design.Space.step) {
-            Text(name)
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.textTertiary)
-                .frame(width: 92, alignment: .leading)
-            Slider(value: value, in: 0...1)
-                .accessibilityLabel(name)
-                .accessibilityValue("\(Int((value.wrappedValue * 100).rounded())) percent")
-            Text("\(Int((value.wrappedValue * 100).rounded()))%")
-                .font(Design.Typeface.numericSmall)
-                .foregroundStyle(Design.textSecondary)
-                .frame(width: 36, alignment: .trailing)
-                .accessibilityHidden(true)
-        }
+        FractionSlider(name: name, value: value)
     }
 
     private func binding<Value>(_ keyPath: WritableKeyPath<TransitionOptions, Value>) -> Binding<Value> {
@@ -125,5 +111,33 @@ struct TransitionSettingsControls: View {
                 onChange(options)
             }
         )
+    }
+}
+
+/// A slider from 0 to 1 labeled with its name and value in percent. A
+/// drag is held to one side of the project (`HeldSlider`), and the
+/// percent follows it.
+private struct FractionSlider: View {
+    let name: String
+    let value: Binding<Double>
+
+    @State private var dragged: Double?
+
+    var body: some View {
+        let percent = Int(((dragged ?? value.wrappedValue) * 100).rounded())
+        HStack(spacing: Design.Space.step) {
+            Text(name)
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textTertiary)
+                .frame(width: 92, alignment: .leading)
+            HeldSlider(value: value.wrappedValue, range: 0...1, onDrag: { dragged = $0 }) { value.wrappedValue = $0 }
+                .accessibilityLabel(name)
+                .accessibilityValue("\(percent) percent")
+            Text("\(percent)%")
+                .font(Design.Typeface.numericSmall)
+                .foregroundStyle(Design.textSecondary)
+                .frame(width: 36, alignment: .trailing)
+                .accessibilityHidden(true)
+        }
     }
 }
