@@ -159,7 +159,7 @@ struct TimelinesList: View {
             if !deleteSelection(order: all) { NSSound.beep() }
             return .handled
         }
-        .focusedSceneValue(\.browserEditActions, EditMenuActions(
+        .focusedSceneValueUnlessDrafting(\.browserEditActions, EditMenuActions(
             delete: { if !deleteSelection(order: all) { NSSound.beep() } },
             // What is shown: a collapsed row's timelines stay out.
             selectAll: { picked.selectAll(in: layout == .tree ? Self.rows(of: nodes, collapsed: collapsed).map(\.timelineID) : all) },

@@ -249,7 +249,7 @@ struct ClipsTab: View {
         }
         // Delete and Select All in the Edit menu, while the browser is the
         // active panel (see `EditCommands`).
-        .focusedSceneValue(\.browserEditActions, EditMenuActions(
+        .focusedSceneValueUnlessDrafting(\.browserEditActions, EditMenuActions(
             delete: { if !removeSelection(snapshot) { NSSound.beep() } },
             selectAll: { interaction.picked.selectAll(in: order) },
             state: [AnyHashable(picked.revision), AnyHashable(memos.snapshot.revision)]
