@@ -54,8 +54,51 @@ Built and tested in code, never run on screen.
   dot; File > Import Media and Export; Open Recent and the start sheet;
   Locate… and Check Sync…; the Export window's finished note with Show
   in Finder.
+- [ ] **UX review fixes (November 2026)**, which depend on how AppKit
+  and SwiftUI behave at run time:
+  - Type in a Text clip's words, click a clip, press Space and Delete:
+    the timeline plays and deletes; the letters picked stay picked.
+  - Curves and EQ: Delete removes the picked point, arrows move it, Tab
+    leaves the graph; then click a clip and Delete deletes the clip.
+  - Escape mid-drag on an EQ dot, a Curves point, a range handle, a
+    lasso, a section, a keyframe and a layer header (one auto-scrolling
+    its area): each goes back and the selection stays.
+  - Press Delete while holding a value drag: the pointer comes back.
+  - Scroll the effects panel past an EQ with a trackpad and a mouse
+    wheel: no Q change.
+  - ⌘Z after moving a keyframe in a graph panel, and in the external
+    display in both modes.
+  - Hold → in the Tape Scrubber, click the main window: the tape stops.
+  - Trim a clip's end until auto-scroll takes its start out of view:
+    the trim commits.
+  - Motion Designer, open: edit in a Timeline window and import a file,
+    then retime; both edits stay after Done and after Cancel, and ⌘Z
+    undoes the retiming first. Right-click an unselected point: the menu
+    acts on it. Clips in the footage strip are grabbed where drawn.
+  - Start a drag in Beat Match or the designer, open a sheet (⌘. or H's
+    conflict dialog), release, Keep Editing, click: nothing carries on.
+  - Quit with each draft panel changed: each asks first.
+  - Open Recent on a damaged project with another open: the new window
+    closes after the alert.
+  - Skimming off, click a clip frame, click the timeline, Space: the
+    timeline plays with no browser frame over the viewer.
+  - Replace Media… and ⌘J from a Timeline window open there; Skip in a
+    batch replacement carries on.
+  - Rename a clip in the browser and press Backspace and Return inside
+    the field; ⌘D in a name field beeps.
+  - At launch with the start sheet up, ⌘I and ⌘E are disabled.
 
 ## Known gaps
+
+- **Left from the UX review.** The Timeline menu's Delete Selection,
+  Nudge and Turn Clip Off or On stay enabled with nothing selected (they
+  do nothing then). Return adds a clip to the timeline in the Clips tab
+  but renames in the Timelines tab, as documented in
+  [browser.md](browser.md); one meaning for both is a design decision.
+  While the Motion Designer is open, an edit made elsewhere to a designed
+  clip's own timing is overwritten the next time the designer changes
+  that clip, and ⌘Z in a Timeline window undoes a step from before it
+  opened.
 
 - **Pasted media is analyzed again.** Scene detection runs anew in the
   project it is pasted into instead of taking the results the other
