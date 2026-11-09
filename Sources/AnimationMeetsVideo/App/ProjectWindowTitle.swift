@@ -1,10 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// Shows the open project in its window's title bar as the Mac shows a
-/// document: its name as the title, the package's icon beside it (drag
-/// it, or Command-click the title for the folders it is in), and the dot
-/// in the close button while there are unsaved changes.
+/// Names the app in the window's title bar, and shows the open project
+/// there as the Mac shows a document: the package's icon beside the title
+/// (drag it, or Command-click the title for the folders it is in), and the
+/// dot in the close button while there are unsaved changes. The project's
+/// own name is on the timeline's header, at the start of its breadcrumb.
 ///
 /// A view of its own, so reading the project on every edit runs only this
 /// body and not the scene's.
@@ -22,7 +23,7 @@ struct ProjectWindowTitle: View {
         // saves are failing.
         let savingFails = autosaveStatus.failure != nil && autosaveStatus.kind == .save
         WindowDocumentState(
-            title: packageURL == nil ? "Animation Meets Video" : project.name,
+            title: "Animation Meets Video",
             url: packageURL,
             isEdited: packageURL != nil && project != savedProject && (!savesAutomatically || savingFails)
         )
