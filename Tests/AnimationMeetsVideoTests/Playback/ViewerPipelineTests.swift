@@ -60,6 +60,24 @@ import Testing
             return true
         }
         func clearItem() { cleared += 1 }
+
+        /// The picture on screen, as `shownFrame` reports it.
+        var screen: ViewerFrame?
+        /// The times of the kept pictures put on screen, with how many swaps
+        /// had started by then.
+        var keptShown: [(time: CMTime, swapsStarted: Int)] = []
+        func shownFrame() -> ViewerFrame? { screen }
+        func show(_ frame: ViewerFrame) {
+            keptShown.append((frame.time, swapsStarted))
+            screen = frame
+        }
+    }
+
+    /// A picture of the item at `seconds`.
+    static func frame(at seconds: Double) -> ViewerFrame {
+        var buffer: CVPixelBuffer?
+        CVPixelBufferCreate(nil, 4, 4, kCVPixelFormatType_32BGRA, nil, &buffer)
+        return ViewerFrame(buffer: buffer!, time: CMTime(seconds: seconds, preferredTimescale: 600))
     }
 
     final class FakeRenderer: ViewerRenderer {
@@ -396,5 +414,130 @@ import Testing
         try await settle(h)
         // A held step is drawn, never planned or built.
         #expect(h.pipeline.buildsStarted == 1)
+    }
+
+    // MARK: Going back to a timeline
+
+    /// Embeds a new timeline B, of one clip, in the harness's timeline A,
+    /// and returns B's ID and the source showing it.
+    private func embedTimeline(in h: inout Harness) -> (id: UUID, source: ViewerSource) {
+        let nested = h.project.addTimeline(name: "B", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
+        _ = h.project.importClip(
+            MediaClip(
+                name: "n", kind: .video, url: URL(fileURLWithPath: "/tmp/nested.mov"), duration: CMTime(value: 2, timescale: 1),
+                frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+            ),
+            intoTimeline: nested
+        )
+        h.project.embedTimeline(nested, intoTimeline: h.timelineID)
+        return (nested, ViewerSource(project: h.project, renderProject: h.project, timelineID: nested))
+    }
+
+    /// Going back out of a nested timeline, nothing edited, shows the
+    /// picture the timeline was left with before anything else, and swaps
+    /// in the build it had without building it again.
+    @Test func goingBackShowsTheKeptPictureAndBuildAtOnce() async throws {
+        var h = Harness()
+        let nested = embedTimeline(in: &h)
+        h.builder.gate.open()
+        let parkedAt = CMTime(seconds: 1.5, preferredTimescale: 600)
+        h.pipeline.send(.appeared(h.source(), at: parkedAt))
+        try await eventually { h.player.swapped.count == 1 }
+        try await settle(h)
+        h.player.screen = Self.frame(at: 1.5)
+
+        h.pipeline.send(.timelineChanged(nested.source, at: .zero))
+        try await eventually { h.player.swapped.count == 2 }
+        h.player.screen = Self.frame(at: 0)
+        h.player.readiness.isOpen = false
+        h.pipeline.send(.timelineChanged(h.source(), at: parkedAt))
+        try await eventually { h.player.swapsStarted == 3 }
+        try await settle(h)
+
+        let builds = h.builder.started.count
+        #expect(builds == 2)
+        #expect(h.pipeline.parkedBuildsUsed == 1)
+        let kept = h.player.keptShown.map(\.time.seconds)
+        #expect(kept == [1.5])
+        // On screen before the swap started, whose frame isn't ready yet.
+        let swapsByThen = h.player.keptShown.first?.swapsStarted
+        #expect(swapsByThen == 2)
+        h.player.readiness.open()
+        try await eventually { h.player.swapped.count == 3 }
+    }
+
+    /// Goes into the nested timeline, edits its clip with `edit`, and
+    /// comes back out, with `h.player.screen` at 0 as it was left.
+    private func goInAndBack(_ h: inout Harness, editing edit: (inout TimelineClip) -> Void) async throws {
+        var nested = embedTimeline(in: &h)
+        h.builder.gate.open()
+        h.pipeline.send(.appeared(h.source(), at: .zero))
+        try await eventually { h.player.swapped.count == 1 }
+        try await settle(h)
+        h.player.screen = Self.frame(at: 0)
+
+        h.pipeline.send(.timelineChanged(nested.source, at: .zero))
+        try await eventually { h.player.swapped.count == 2 }
+        let clip = h.project.timeline(id: nested.id)!.layers[0].clips[0].id
+        h.project.editClip(clip, in: nested.id, edit)
+        nested.source = ViewerSource(project: h.project, renderProject: h.project, timelineID: nested.id)
+        h.pipeline.show(nested.source)
+        try await settle(h)
+
+        h.pipeline.send(.timelineChanged(h.source(), at: .zero))
+        try await eventually { h.player.swapped.count == 3 }
+        try await settle(h)
+    }
+
+    /// An edit of the nested timeline's values while in it changes the
+    /// picture of the timeline it is in, not its structure: going back
+    /// swaps the kept build in, which draws the values from the clips, but
+    /// doesn't show the picture kept, and makes the renderer's plan again.
+    @Test func goingBackAfterAValueEditInsideShowsNoKeptPicture() async throws {
+        var h = Harness()
+        try await goInAndBack(&h) { $0.anchorPoint = AnimatedValue(Vector2(x: 5, y: 0)) }
+        #expect(h.pipeline.parkedBuildsUsed == 1)
+        #expect(h.player.keptShown.isEmpty)
+        // A's plan made again, last, and not swapped. (B's plan for the
+        // edit may or may not have been made before going back.)
+        try await eventually { h.builder.built.count >= 3 && h.builder.built.last?.timelineID == h.timelineID }
+        try await settle(h)
+        #expect(h.player.swapped.count == 3)
+    }
+
+    /// An edit of the nested timeline's structure changes the structure of
+    /// the timeline it is in: going back builds that one again.
+    @Test func goingBackAfterAStructuralEditInsideBuildsAgain() async throws {
+        var h = Harness()
+        try await goInAndBack(&h) { $0.startOffset = CMTime(value: 1, timescale: 2) }
+        let builds = h.builder.started.count
+        // A, B, B again for the edit, then A.
+        #expect(builds == 4)
+        #expect(h.pipeline.parkedBuildsUsed == 0)
+        #expect(h.player.keptShown.isEmpty)
+    }
+
+    /// Renders finished while away aren't in the kept build: it is shown
+    /// at once, then built again with them once swapped in.
+    @Test func rendersFinishedWhileAwayAreBuiltInAfterGoingBack() async throws {
+        var h = Harness()
+        let nested = embedTimeline(in: &h)
+        h.builder.gate.open()
+        h.pipeline.send(.appeared(h.source(), at: .zero))
+        try await eventually { h.player.swapped.count == 1 }
+        try await settle(h)
+
+        h.pipeline.send(.timelineChanged(nested.source, at: .zero))
+        try await eventually { h.player.swapped.count == 2 }
+        h.pipeline.send(.renderFinished)
+        try await eventually { h.builder.built.count == 3 }
+        try await eventually { h.player.swapped.count == 3 }
+        try await settle(h)
+
+        h.pipeline.send(.timelineChanged(h.source(), at: .zero))
+        try await eventually { h.player.swapped.count == 5 }
+        #expect(h.pipeline.parkedBuildsUsed == 1)
+        let last = h.builder.built.last?.timelineID
+        #expect(last == h.timelineID)
     }
 }

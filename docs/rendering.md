@@ -137,7 +137,16 @@ emptied timeline or a slow frame never shows black in between.
   only saves work. A build is swapped in only while no value drag is under
   way, and one for renders alone only while paused. Another timeline
   stops the build under way (`CompositionExporter` checks for cancellation
-  between its stages and clips) and builds the new one at once. The editor
+  between its stages and clips) and builds the new one at once, unless it
+  is one shown before: the pipeline keeps the last build and picture of
+  the three timelines left most recently. Going back to one (out of a
+  nested timeline, typically) whose structure hasn't changed swaps its
+  kept build in at the kept playhead without building (a timeline nesting
+  many others took over 3 s to build), and if nothing it draws changed,
+  its kept picture is on screen at once while the item seeks. Values
+  edited meanwhile (in the nested timeline) are drawn from the clips, its
+  renders left out until it is built again, paused; renders finished
+  meanwhile are built in the same way. The editor
   only tells it what it shows (`ViewerPipeline.show`), once per edit; it
   works out the keys itself, skips an edit the picture doesn't show (a
   rename, a volume), and follows renders finishing, the package, motion
