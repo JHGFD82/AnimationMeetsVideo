@@ -420,13 +420,14 @@ struct ClipBlockView: View {
         .accessibilityActions { accessibilityEditActions }
         .onChange(of: model.clip.music) { _, _ in musicPointDraft = nil }
         .onChange(of: model.tool) { _, _ in setBladeX(nil) }
-        // A block taken away mid-drag (a trim that scrolled it out of the
-        // row) never hears its gesture end: let go of what the drag holds.
+        // A block taken away mid-drag (its clip deleted or undone) never
+        // hears its gesture end: the drag is dropped as Escape drops it,
+        // taking down every preview it sent up, which would otherwise
+        // stay on screen.
         .onDisappear {
             guard drag.kind != nil else { return }
+            if !drag.isCancelledDrag { cancelDrag() }
             drag.finish()
-            autoScroll?.end()
-            CopyDragCursor.end()
         }
         .onChange(of: model.clip) { _, _ in
             if pendingDrop != nil {
@@ -629,7 +630,10 @@ struct ClipBlockView: View {
             isLifted = false
             handlers.onDragging(false)
         }
-        if isTrimming { isTrimming = false }
+        if isTrimming {
+            isTrimming = false
+            handlers.onDragging(false)
+        }
         readout?.hide()
         sendSnapIndicator(nil)
         sendTrimPreview(nil)
@@ -887,7 +891,12 @@ struct ClipBlockView: View {
     /// A trim drag of `edge` moved by `translation` points, the pointer at
     /// `pointer`: previews it.
     private func trimChanged(_ edge: Edge, translation: CGFloat, pointer: CGPoint) {
-        if !isTrimming { isTrimming = true }
+        if !isTrimming {
+            isTrimming = true
+            // The row keeps drawing a clip being trimmed, so a trim that
+            // scrolls its start out of view isn't culled and lost.
+            handlers.onDragging(true)
+        }
         var delta = timeDelta(translation + (autoScroll?.scrolled ?? 0))
         let edgeTime = edge == .leading ? model.clip.startOffset : model.clip.endOffset
         let snapped = handlers.snapTime(CMTimeAdd(edgeTime, delta))
@@ -922,7 +931,10 @@ struct ClipBlockView: View {
             if !isTrimming { clicked() }
             endDrop()
         }
-        if isTrimming { isTrimming = false }
+        if isTrimming {
+            isTrimming = false
+            handlers.onDragging(false)
+        }
     }
 
     private func trimHandle(edge: Edge, liveX: CGFloat, liveWidth: CGFloat) -> some View {

@@ -149,7 +149,8 @@ struct LayerClipRow: View {
     }
 
     @State private var followerShift: FollowerShift?
-    /// The clip lifted by a move drag, drawn above its neighbors.
+    /// The clip being moved or trimmed: drawn above its neighbors, and
+    /// drawn wherever it is, so a drag scrolled away from it goes on.
     @State private var liftedClipID: UUID?
     /// Each clip's handlers, which its block reads as it acts.
     @State private var handlerStore = LiveClipHandlerStore()

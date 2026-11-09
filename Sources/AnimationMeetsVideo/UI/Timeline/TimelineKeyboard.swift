@@ -7,6 +7,8 @@ extension TimelineView {
     /// Delete removes the selected layer, else the selected transition,
     /// else the selected clip.
     func deleteSelection() -> Bool {
+        // Not under a drag, which may be of what would go (see `handleKey`).
+        guard !DragEscape.isActive else { return false }
         // The effects panel has the key while it is the active panel and
         // something in it is selected.
         if activePanel?.current == .sidePanel, showsEffects, effectsState.hasSelection { return false }
@@ -51,6 +53,11 @@ extension TimelineView {
             clearSelection()
             return true
         }
+        // While a drag runs, the keys that edit or change the tool are
+        // held back: deleting the clip being dragged, or switching to the
+        // blade under a trim, left the drag's previews up with nothing to
+        // end them.
+        if DragEscape.isActive { return true }
         // Command-A picks every clip together.
         if event.keyCode == 0, flags == .command { return selectAllClips() }
         // Delete and Forward Delete, without modifiers.
