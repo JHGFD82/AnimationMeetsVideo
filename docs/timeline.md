@@ -584,6 +584,12 @@ functions commit what they return.
   a keyframe, a transition's side, an expanded transition, the music
   point and a layer's header. Drags follow `EscapableDrag`
   (`UI/Components/DragEscape.swift`), which new drags use too.
+- While a drag runs, the keys that **edit or change the tool** (Delete,
+  ⌘A, the tool keys, nudging) do nothing, so the clip being dragged can't
+  be deleted from under it. A clip block that goes away mid-drag all the
+  same (an undo removes its clip) takes its previews with it, as Escape
+  does; one being trimmed is kept drawn while the trim scrolls it out of
+  view.
 - An edit let go of that the project **refuses** springs back at once,
   with the block's rim flashing in the warning colour and the alert
   sound, rather than sitting in the wrong place until it gives up.
