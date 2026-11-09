@@ -38,15 +38,42 @@ final class PresetsModel {
         try PresetStore.rename(preset, to: name, in: folder)
     }
 
-    /// Moves the preset's file to the Trash, so a deletion can be undone
-    /// from there.
-    func delete(_ preset: EffectPreset) throws {
+    /// Moves the preset's file to the Trash, with an undo on
+    /// `undoManager` that puts it back (and a redo that trashes it again).
+    /// Throws when the Trash can't take it; deleting it for good is then
+    /// `deletePermanently`, once confirmed.
+    func trash(_ url: URL, undoManager: UndoManager?) throws {
+        var resulting: NSURL?
+        defer { reload() }
+        try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
+        guard let trashed = resulting as URL? else { return }
+        undoManager?.registerUndo(withTarget: self) { [weak undoManager] model in
+            MainActor.assumeIsolated { model.untrash(trashed, to: url, undoManager: undoManager) }
+        }
+        undoManager?.setActionName("Delete Preset")
+    }
+
+    /// Puts a preset trashed by `trash` back where it was, with a redo
+    /// that trashes it again. A beep when it can't (gone from the Trash,
+    /// or another preset has its name now).
+    func untrash(_ trashed: URL, to url: URL, undoManager: UndoManager?) {
         defer { reload() }
         do {
-            try FileManager.default.trashItem(at: preset.url, resultingItemURL: nil)
+            try FileManager.default.moveItem(at: trashed, to: url)
         } catch {
-            try PresetStore.delete(preset)
+            NSSound.beep()
+            return
         }
+        undoManager?.registerUndo(withTarget: self) { [weak undoManager] model in
+            MainActor.assumeIsolated { try? model.trash(url, undoManager: undoManager) }
+        }
+        undoManager?.setActionName("Delete Preset")
+    }
+
+    /// Deletes the preset's file for good, which can't be undone.
+    func deletePermanently(_ preset: EffectPreset) throws {
+        defer { reload() }
+        try PresetStore.delete(preset)
     }
 
     func showInFinder(_ url: URL) {

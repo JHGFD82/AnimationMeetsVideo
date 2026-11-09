@@ -35,6 +35,9 @@ struct EffectsLibrary: View {
     @State private var renaming: EffectPreset?
     @State private var draftName = ""
     @State private var problem: String?
+    /// A preset the Trash couldn't take, to delete for good once confirmed.
+    @State private var permanentDeletion: EffectPreset?
+    @Environment(\.undoManager) private var undoManager
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,6 +57,15 @@ struct EffectsLibrary: View {
             Button("Rename", action: commitRename)
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Delete “\(permanentDeletion?.name ?? "")” Permanently?", isPresented: $permanentDeletion.isPresent) {
+            Button("Delete", role: .destructive) {
+                guard let preset = permanentDeletion else { return }
+                do { try presets.deletePermanently(preset) } catch { problem = error.localizedDescription }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It can't be moved to the Trash, so deleting it can't be undone.")
+        }
         .messageAlert("Preset Problem", message: $problem)
         .onReceive(NotificationCenter.default.publisher(for: .presetsChanged)) { _ in presets.reload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in presets.reload() }
@@ -70,8 +82,10 @@ struct EffectsLibrary: View {
         do { try presets.rename(preset, to: draftName) } catch { problem = error.localizedDescription }
     }
 
+    /// Moves the preset to the Trash, which Undo takes it back from; one
+    /// the Trash can't take is deleted for good only once confirmed.
     private func delete(_ preset: EffectPreset) {
-        do { try presets.delete(preset) } catch { problem = error.localizedDescription }
+        do { try presets.trash(preset.url, undoManager: undoManager) } catch { permanentDeletion = preset }
     }
 
     /// Puts a preset's effects on the selected clip, below its stacks; a

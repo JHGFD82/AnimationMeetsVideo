@@ -745,7 +745,9 @@ keys. A clip block with effects shows a small badge with the count.
   by every project. Presets are files in `~/Library/Application Support/
   AnimationMeetsVideo/Presets/`, one JSON file each, and appear in the
   Effects Library's **Presets** tab, where they can be renamed, deleted or
-  shown in the Finder. Drag one onto a clip, or into a stack at a spot,
+  shown in the Finder. A deleted preset goes to the Trash, and Undo
+  (⌘Z) brings it back; one the Trash can't take is deleted for good only
+  once that is confirmed. Drag one onto a clip, or into a stack at a spot,
   or double-click it (or choose Apply to Selected Clip from its menu) to
   put it on the selected clip.
 - **What travels.** Keyframe times are stored from the start of the
