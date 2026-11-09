@@ -31,8 +31,12 @@ struct EffectsLibrary: View {
     /// The presets, which every project and window shares.
     var presets = PresetsModel.shared
 
+    /// The preset being renamed in this window, with the name being typed.
+    @State private var renaming: EffectPreset?
+    @State private var draftName = ""
+    @State private var problem: String?
+
     var body: some View {
-        @Bindable var presets = presets
         VStack(spacing: 0) {
             PanelTabBar(tabs: EffectsLibraryTab.allCases, selection: $tab, title: \.title, onClose: onClose, closeHelp: "Hide the Effects Library")
             switch tab {
@@ -41,18 +45,33 @@ struct EffectsLibrary: View {
             case .transitions:
                 TransitionsPanel()
             case .presets:
-                PresetsList(model: presets, onApply: applyToSelectedClip)
+                PresetsList(model: presets, onApply: applyToSelectedClip, onRename: beginRenaming, onDelete: delete)
             }
         }
         .panelSurface(.base)
-        .alert("Rename Preset", isPresented: $presets.renaming.isPresent) {
-            TextField("Name", text: $presets.draftName)
-            Button("Rename") { presets.commitRename() }
+        .alert("Rename Preset", isPresented: $renaming.isPresent) {
+            TextField("Name", text: $draftName)
+            Button("Rename", action: commitRename)
             Button("Cancel", role: .cancel) {}
         }
-        .messageAlert("Preset Problem", message: $presets.errorMessage)
+        .messageAlert("Preset Problem", message: $problem)
         .onReceive(NotificationCenter.default.publisher(for: .presetsChanged)) { _ in presets.reload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in presets.reload() }
+    }
+
+    private func beginRenaming(_ preset: EffectPreset) {
+        draftName = preset.name
+        renaming = preset
+    }
+
+    private func commitRename() {
+        guard let preset = renaming else { return }
+        renaming = nil
+        do { try presets.rename(preset, to: draftName) } catch { problem = error.localizedDescription }
+    }
+
+    private func delete(_ preset: EffectPreset) {
+        do { try presets.delete(preset) } catch { problem = error.localizedDescription }
     }
 
     /// Puts a preset's effects on the selected clip, below its stacks; a

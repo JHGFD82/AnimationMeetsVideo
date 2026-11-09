@@ -5,14 +5,12 @@ import SwiftUI
 /// The presets in the presets folder, for the Effects Library's Presets
 /// tab. They are shared by every project, so they are read from the
 /// folder again when the app comes forward or one is saved, not kept per
-/// project.
+/// project. What a window is doing with them (a rename being typed, a
+/// problem to show) is that window's library's own, so it shows there
+/// and nowhere else.
 @MainActor @Observable
 final class PresetsModel {
     var library = PresetLibrary()
-    /// The preset being renamed, with the name being typed.
-    var renaming: EffectPreset?
-    var draftName = ""
-    var errorMessage: String?
 
     let folder: URL
 
@@ -31,33 +29,24 @@ final class PresetsModel {
         library = PresetStore.load(from: folder)
     }
 
-    func beginRenaming(_ preset: EffectPreset) {
-        draftName = preset.name
-        renaming = preset
-    }
-
-    func commitRename() {
-        guard let preset = renaming else { return }
-        renaming = nil
-        let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Gives `preset` the name typed, trimmed; an empty or unchanged one
+    /// changes nothing.
+    func rename(_ preset: EffectPreset, to typed: String) throws {
+        let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != preset.name else { return }
-        do {
-            try PresetStore.rename(preset, to: name, in: folder)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        reload()
+        defer { reload() }
+        try PresetStore.rename(preset, to: name, in: folder)
     }
 
     /// Moves the preset's file to the Trash, so a deletion can be undone
     /// from there.
-    func delete(_ preset: EffectPreset) {
+    func delete(_ preset: EffectPreset) throws {
+        defer { reload() }
         do {
             try FileManager.default.trashItem(at: preset.url, resultingItemURL: nil)
         } catch {
-            do { try PresetStore.delete(preset) } catch { errorMessage = error.localizedDescription }
+            try PresetStore.delete(preset)
         }
-        reload()
     }
 
     func showInFinder(_ url: URL) {
@@ -77,6 +66,9 @@ struct PresetsList: View {
     let model: PresetsModel
     /// Puts the preset on the selected clip, below its stack.
     let onApply: (EffectPreset) -> Void
+    /// Asks for a new name for the preset.
+    let onRename: (EffectPreset) -> Void
+    let onDelete: (EffectPreset) -> Void
 
     /// The preset whose contents are shown, once the pointer has rested on
     /// it a moment, so passing over the list doesn't flash a card per row.
@@ -97,10 +89,10 @@ struct PresetsList: View {
                         .contextMenu {
                             Button("Apply to Selected Clip") { onApply(preset) }
                             Divider()
-                            Button("Rename…") { model.beginRenaming(preset) }
+                            Button("Rename…") { onRename(preset) }
                             Button("Show in Finder") { model.showInFinder(preset.url) }
                             Divider()
-                            Button("Delete", role: .destructive) { model.delete(preset) }
+                            Button("Delete", role: .destructive) { onDelete(preset) }
                         }
                         .accessibilityAction(named: "Apply to the selected clip") { onApply(preset) }
                 }
