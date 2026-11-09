@@ -40,6 +40,11 @@ struct TimelineView: View {
     @State var recorder = AudioRecorder()
     @State var showingRecord = false
     @State var recordError: String?
+    /// The timeline the take in progress was started in, which it lands
+    /// in wherever the view has gone since.
+    @State var recordingTimelineID: UUID?
+    /// A stopped take is being kept and imported: no new one starts yet.
+    @State var isSavingTake = false
 
     /// The zoom, the scroll and their edges, which only the tracks follow
     /// (see `TimelineViewportModel`).
@@ -321,7 +326,9 @@ struct TimelineView: View {
                     .help(recorder.isRecording ? "Recording: open to stop" : "Record a take from a microphone or an app onto a new Sound layer")
                     .accessibilityLabel(recorder.isRecording ? "Recording" : "Record")
                     .popover(isPresented: $showingRecord) {
-                        RecordPopover(recorder: recorder, onRecord: startRecording, onStop: stopRecording, error: recordError)
+                        RecordPopover(
+                            recorder: recorder, isSaving: isSavingTake, onRecord: startRecording, onStop: stopRecording, error: recordError
+                        )
                     }
                     Toggle(isOn: $snapping) {
                         Image(systemName: Design.Symbol.snap)

@@ -1618,6 +1618,15 @@ struct UISnapshots {
         )
     }
 
+    /// The record popover while a stopped take is saved.
+    @Test func recordPopoverSaving() throws {
+        try SnapshotSupport.render(
+            RecordPopover(recorder: AudioRecorder(), isSaving: true, onRecord: { _, _ in }, onStop: {}, error: nil)
+                .background(Design.Surface.overlay.color),
+            "record-popover-saving", size: CGSize(width: 300, height: 200)
+        )
+    }
+
     /// Annotation ink: two finished strokes and one being drawn.
     @Test func annotations() throws {
         let model = AnnotationModel()

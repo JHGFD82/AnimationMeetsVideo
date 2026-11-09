@@ -8,6 +8,8 @@ import SwiftUI
 /// docs/audio.md, "Recording".
 struct RecordPopover: View {
     let recorder: AudioRecorder
+    /// A stopped take is being kept and imported; Record waits for it.
+    var isSaving = false
     /// Starts the take, with what to record from and whether to play.
     let onRecord: (RecordingSource, Bool) -> Void
     let onStop: () -> Void
@@ -69,7 +71,14 @@ struct RecordPopover: View {
                         Label("Record", systemImage: "record.circle")
                     }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(source == nil)
+                    .disabled(source == nil || isSaving)
+                    if isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Saving take…")
+                            .font(Design.Typeface.label)
+                            .foregroundStyle(Design.textSecondary)
+                    }
                 }
             }
             if let error {

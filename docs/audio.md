@@ -472,10 +472,13 @@ timeline while recording** on (the default), the timeline plays from the
 playhead while the take records, for voice-over or for catching what a
 DAW or browser plays in time with the picture; off, the take lands at the
 playhead. **Stop** (or Return) ends it. The button stays red while a take
-records, and the popover shows its length and level. Both choices are
-remembered in the app's defaults.
+records, and the popover shows its length and level. While a stopped
+take is saved it says **Saving take…** and Record waits; if saving
+fails, the popover opens again to say why. Both choices are remembered
+in the app's defaults.
 
-The take goes on a new Sound layer at the top of its area, as a clip of a
+The take goes into the timeline it was started in, even if another has
+been opened since, on a new Sound layer at the top of its area, as a clip of a
 new asset named for when it was recorded ("Recording 2026-10-17 at
 22.05.09"). The file is a 32-bit float CAF at the source's own rate,
 copied into the project's `Media/` folder, or for a project not saved yet
