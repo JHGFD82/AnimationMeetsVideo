@@ -131,6 +131,10 @@ struct EqualizerGraph: View {
     /// The height it takes in the effects panel.
     static let panelHeight: CGFloat = 150
 
+    /// The keys it takes while it has the keyboard, which the panels'
+    /// shortcuts leave to it (`claimsKeys`).
+    private static let keys: Set<KeyEquivalent> = [.leftArrow, .rightArrow, .upArrow, .downArrow, .tab]
+
     private struct DragState {
         var band: EqualizerBand
         var start: [Double]
@@ -213,7 +217,8 @@ struct EqualizerGraph: View {
         .focusable()
         .focusEffectDisabled()
         .focused($isFocused)
-        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .tab]) { press in
+        .claimsKeys(Self.keys, while: $isFocused)
+        .onKeyPress(keys: Self.keys) { press in
             handle(press.key, modifiers: press.modifiers) ? .handled : .ignored
         }
     }

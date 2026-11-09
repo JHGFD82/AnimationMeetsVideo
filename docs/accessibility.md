@@ -56,6 +56,16 @@ Text layer's words included, which keep their selection. One monitor
 installed at launch does it for every window (`TextEditEnding`); no
 field needs its own.
 
+A drawn view that takes keys itself while focused (a tone graph's
+arrows, Tab, Delete and +; an EQ graph's arrows and Tab) claims them
+with `claimsKeys`, and every panel's key monitor (`KeyPressMonitor`)
+leaves those keys to it while it has the keyboard, so Delete removes the
+picked curve point rather than the effect or the clip, and the arrows
+move it rather than the playhead. Keys it doesn't claim, and any with
+Command, still reach the panels, and a press anywhere outside the view
+lets its focus go. A new focusable view that uses `onKeyPress` claims
+its keys the same way.
+
 **Help > Keyboard Shortcuts** (⌘/, `KeyboardShortcutsView`) lists these
 with the Clips list's keys and the File menu's shortcuts in one window;
 keep it in step with this table. VoiceOver reads each row's keys by

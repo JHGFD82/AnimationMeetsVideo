@@ -67,6 +67,10 @@ struct ToneGraph: View {
     /// A hundredth of the tones per arrow key press.
     private static let nudge = 0.01
 
+    /// The keys it takes while it has the keyboard, which the panels'
+    /// shortcuts leave to it (`claimsKeys`).
+    private static let keys: Set<KeyEquivalent> = [.leftArrow, .rightArrow, .upArrow, .downArrow, .tab, .delete, .deleteForward, "+", "="]
+
     private struct DragState {
         var index: Int
         /// The effect as the drag found it, which each step starts from.
@@ -130,7 +134,8 @@ struct ToneGraph: View {
             .focusable()
             .focusEffectDisabled()
             .focused($isFocused)
-            .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .tab, .delete, .deleteForward, "+", "="]) { press in
+            .claimsKeys(Self.keys, while: $isFocused)
+            .onKeyPress(keys: Self.keys) { press in
                 handle(press.key, modifiers: press.modifiers) ? .handled : .ignored
             }
             sidebar
