@@ -135,6 +135,21 @@ extension TimelineView {
 
     // MARK: - Playhead keys and the Timeline menu
 
+    /// What the Timeline menu's selection items act on (see
+    /// `TimelineMenuState`): the clips picked together or the selected
+    /// clip, and whether Delete would remove anything, by the same rules
+    /// as `deleteSelection`.
+    var menuSelection: TimelineMenuState.Selection {
+        var clips = groupSelection
+        if clips.isEmpty, let selection, selection.timelineID == timelineID { clips = [selection.timelineClipID] }
+        let effectsTakeDelete = activePanel?.current == .sidePanel && showsEffects && effectsState.hasSelection
+        let hasSelected = !groupSelection.isEmpty
+            || selectedSectionID.map { id in timeline.sections.contains { $0.id == id } } == true
+            || selectedLayerID.map { timeline.layer(id: $0) != nil } == true
+            || selection?.timelineID == timelineID
+        return TimelineMenuState.Selection(clips: clips, canDelete: hasSelected && !effectsTakeDelete)
+    }
+
     /// What the Timeline menu does in this timeline. See `TimelineCommands`.
     var actions: TimelineActions {
         TimelineActions(

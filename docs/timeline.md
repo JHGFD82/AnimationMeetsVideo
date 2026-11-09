@@ -356,6 +356,16 @@ the **Timeline** menu (`TimelineCommands`) and in
 written after the item's name rather than set as menu shortcuts, since a
 menu shortcut would take the key from a text field.
 
+The menu offers an item only when it would do something there
+(`TimelineMenuState`): Delete Selection with something selected, the
+nudges and Turn Off with clips selected (Nudge Earlier not for a clip at
+the start), a split where the playhead is in a clip it would cut, the
+steps, jumps and Go to Start or End with somewhere to go, Zoom In short
+of the closest zoom and Zoom Out and Zoom to Fit while zoomed in. Turn
+Off says what it would do: **Turn Clip Off**, or **Turn Clips On** when
+every clip picked is off. While playing, the steps, jumps and splits
+stay offered, since the menu doesn't follow the moving playhead.
+
 ## VoiceOver
 
 Clips, layers, the playhead, sections, keyframes and joined transitions
@@ -857,7 +867,7 @@ Through** for nested clips.
 **V** turns the selected clip off, or every clip picked together; if all
 of them are off already it turns them on again. The clip's menu has
 **Turn Off** / **Turn On** for that clip, and the Timeline menu the same
-as V. A clip that is off stays where it is and can still be moved,
+as V, named for what it would do. A clip that is off stays where it is and can still be moved,
 trimmed and edited, but it is drawn faded and without colour and plays
 as a gap: it is left out of the picture, the sound, renders and exports.
 The timeline keeps its length when the clip that is off is the last one.

@@ -407,6 +407,13 @@ struct TimelineView: View {
         // The Timeline menu rests while a song is beat matched, or clips
         // are in the motion designer.
         .focusedSceneValueUnlessDrafting(\.timelineActions, actions)
+        // Which of its items the Timeline menu offers.
+        .background {
+            TimelineMenuStatePublisher(
+                timeline: timeline, selection: menuSelection, playhead: playhead, playback: playback,
+                viewportModel: viewportModel, viewport: { currentViewport }
+            )
+        }
         .focusedSceneValueUnlessDrafting(\.timelineEditActions, editActions)
         .environment(autoScroll)
         // Again whenever the timeline changes: the closures read its

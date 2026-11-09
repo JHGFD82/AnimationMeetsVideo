@@ -72,51 +72,61 @@ extension FocusedValues {
 /// shortcuts.
 struct TimelineCommands: Commands {
     @FocusedValue(\.timelineActions) private var actions
+    /// Which items would do something now; each is offered only then.
+    @FocusedValue(\.timelineMenuState) private var state
     /// The person's, not a timeline's, so they work with no timeline in
     /// front.
     @AppStorage(Preferences.timelineSkimming) private var skimming = true
     @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
 
+    /// Whether an item is offered: a timeline is in front and the item
+    /// would do something there.
+    private func offers(_ item: KeyPath<TimelineMenuState, Bool>) -> Bool {
+        guard actions != nil, let state else { return false }
+        return state[keyPath: item]
+    }
+
     var body: some Commands {
         CommandMenu("Timeline") {
             Button("Play/Pause  Space") { actions?.togglePlayback() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canPlay))
 
             Divider()
 
             Button("Back One Frame  ←") { actions?.step(-1) }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canGoBack))
             Button("Forward One Frame  →") { actions?.step(1) }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canGoForward))
             Button("Back Ten Frames  ⇧←") { actions?.step(-10) }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canGoBack))
             Button("Forward Ten Frames  ⇧→") { actions?.step(10) }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canGoForward))
             Button("Previous Edit  ↑") { actions?.previousEdit() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.hasPreviousEdit))
             Button("Next Edit  ↓") { actions?.nextEdit() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.hasNextEdit))
             Button("Go to Start  Home") { actions?.goToStart() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canGoBack))
             Button("Go to End  End") { actions?.goToEnd() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canGoForward))
 
             Divider()
 
             Button("Split Clip at Playhead") { actions?.splitAtPlayhead() }
                 .keyboardShortcut("b", modifiers: .command)
-                .disabled(actions == nil)
+                .disabled(!offers(\.canSplit))
             Button("Split All Clips at Playhead") { actions?.splitAllAtPlayhead() }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
-                .disabled(actions == nil)
+                .disabled(!offers(\.canSplitAll))
             Button("Nudge Clip Earlier  ,") { actions?.nudge(-1) }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canNudgeEarlier))
             Button("Nudge Clip Later  .") { actions?.nudge(1) }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canNudgeLater))
             Button("Delete Selection  ⌫") { actions?.deleteSelection() }
-                .disabled(actions == nil)
-            Button("Turn Clip Off or On  V") { actions?.toggleEnabled() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canDelete))
+            // Says what it would do: off, or on again when all are off.
+            Button("\(state?.enabledToggle?.title ?? "Turn Clip Off")  V") { actions?.toggleEnabled() }
+                .disabled(actions == nil || state?.enabledToggle == nil)
 
             Divider()
 
@@ -140,11 +150,11 @@ struct TimelineCommands: Commands {
             Divider()
 
             Button("Zoom In  =") { actions?.zoomIn() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canZoomIn))
             Button("Zoom Out  −") { actions?.zoomOut() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canZoomOut))
             Button("Zoom to Fit  \\") { actions?.zoomToFit() }
-                .disabled(actions == nil)
+                .disabled(!offers(\.canZoomOut))
 
             Divider()
 
