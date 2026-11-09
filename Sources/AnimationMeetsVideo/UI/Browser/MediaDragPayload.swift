@@ -24,6 +24,11 @@ struct MediaDragPayload: Transferable, Equatable {
 
     private static let prefix = "amv-media:"
 
+    /// Whether `text` is a payload's, without reading the rest of it.
+    static func isPayloadText(_ text: String) -> Bool {
+        text.hasPrefix(prefix)
+    }
+
     /// The first asset of the drag in progress, set as a drag begins. A drop
     /// target can't read the payload until it is dropped, and the timeline
     /// needs to know sooner whether it is sound, to offer the right kind of

@@ -29,7 +29,8 @@ extension View {
             guard project.canPlaceAll(pieces, in: part.timelineID) else { return false }
             return onDrop(pieces, part.timelineID)
         } isTargeted: { inside in
-            if inside, project.canPlaceAll(MediaDragSession.shared.pieces, in: part.timelineID) {
+            let session = MediaDragSession.shared
+            if inside, session.isDragging, project.canPlaceAll(session.pieces, in: part.timelineID) {
                 hovered.wrappedValue.insert(part)
             } else {
                 hovered.wrappedValue.remove(part)
