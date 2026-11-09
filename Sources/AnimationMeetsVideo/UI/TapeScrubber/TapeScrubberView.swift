@@ -18,6 +18,9 @@ struct TapeScrubberView: View {
     /// The arrow key running the tape, if one is.
     @State private var heldKey: KeyEquivalent?
     @State private var burst: Task<Void, Never>?
+    /// Whether the panel has the keys: a key let go of after it lost them
+    /// is never heard here.
+    @Environment(\.controlActiveState) private var activeState
 
     static let slit = CGSize(width: 320, height: 40)
 
@@ -36,6 +39,11 @@ struct TapeScrubberView: View {
             .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat, .up], action: handleKey)
             .onChange(of: isAvailable) { _, available in
                 if !available { letGo() }
+            }
+            // Another window clicked, or the app left, with an arrow held:
+            // its key-up goes elsewhere, so the tape stops now.
+            .onChange(of: activeState) { _, state in
+                if state != .key { releaseKey() }
             }
             .onDisappear { letGo() }
             .accessibilityElement()
@@ -88,6 +96,13 @@ struct TapeScrubberView: View {
             break
         }
         return .handled
+    }
+
+    /// Stops the tape an arrow key is running, if one is.
+    private func releaseKey() {
+        guard heldKey != nil else { return }
+        heldKey = nil
+        playback.releaseTape()
     }
 
     /// Half a second of tape at `rate`, for VoiceOver's adjust.

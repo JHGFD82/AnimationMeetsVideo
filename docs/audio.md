@@ -389,8 +389,9 @@ further it goes, up to 8 times normal; to the left it plays backwards.
 Dragging back past where it was grabbed reverses it. Letting go brings
 the tape to rest, and the playhead onto the start of the frame it
 stopped in. Holding the Left or Right Arrow key runs it at normal
-speed that way, four times with Shift; VoiceOver's adjust plays half a
-second either way.
+speed that way, four times with Shift, until it is let go or the panel
+loses the keys (another window clicked, or the app left); VoiceOver's
+adjust plays half a second either way.
 
 Nothing waits on the dial. The engine starts when the window opens and
 runs until it closes, so grabbing it doesn't wait for a device. The
