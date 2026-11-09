@@ -60,7 +60,8 @@ struct ProjectWindow: View {
                         }
                     },
                     onOpen: { ProjectSession.chooseProjectToOpen().map(open) },
-                    onOpenRecent: { ProjectWindows.shared.openRecent($0, from: session, openWindow: openWindow) }
+                    onOpenRecent: { ProjectWindows.shared.openRecent($0, from: session, openWindow: openWindow) },
+                    onClose: closeOffered
                 )
             }
             .background(WindowCloseGuard(shouldClose: shouldClose))
@@ -110,6 +111,22 @@ struct ProjectWindow: View {
             .onDisappear { session.close() }
     }
 
+    /// Whether another window has a project, so this one can close
+    /// without quitting the app.
+    private var othersOpen: Bool {
+        ProjectWindows.shared.sessions.contains { $0 !== session && !$0.isEmpty }
+    }
+
+    /// The start sheet's Close Window, offered while another window has
+    /// a project.
+    private var closeOffered: (() -> Void)? {
+        othersOpen ? { closeWindow() } : nil
+    }
+
+    private func closeWindow() {
+        session.editorWindow?.close()
+    }
+
     private func open(_ package: URL) {
         ProjectWindows.shared.open(package, from: session, openWindow: openWindow)
     }
@@ -119,7 +136,11 @@ struct ProjectWindow: View {
     /// the last quit, the first here and the rest in windows of their own.
     private func openAtStart() async {
         if let url {
-            if !(await session.open(url)) { self.url = nil }
+            guard !(await session.open(url)) else { return }
+            self.url = nil
+            // A window opened for a project that failed (its alert said
+            // why) goes, when another window has a project to go back to.
+            if othersOpen { closeWindow() }
             return
         }
         let windows = ProjectWindows.shared

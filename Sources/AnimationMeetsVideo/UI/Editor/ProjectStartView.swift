@@ -9,6 +9,10 @@ struct ProjectStartView: View {
     let onNew: () -> Void
     let onOpen: () -> Void
     var onOpenRecent: (URL) -> Void = { _ in }
+    /// Closes this window, offered in place of Quit while another window
+    /// has a project, so a window left empty (its project failed to open)
+    /// doesn't hold the app to quitting.
+    var onClose: (() -> Void)?
 
     /// As many as fit without the sheet growing tall; the rest are in
     /// File > Open Recent.
@@ -47,7 +51,12 @@ struct ProjectStartView: View {
             }
 
             HStack(spacing: Design.Space.step) {
-                Button("Quit") { NSApp.terminate(nil) }
+                if let onClose {
+                    Button("Close Window", action: onClose)
+                        .keyboardShortcut(.cancelAction)
+                } else {
+                    Button("Quit") { NSApp.terminate(nil) }
+                }
                 Spacer()
                 Button("Open project…", action: onOpen)
                 Button("New project…", action: onNew)

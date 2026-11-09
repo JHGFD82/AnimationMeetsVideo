@@ -27,7 +27,9 @@ Built and tested in code, never run on screen.
   (its window comes forward); close a window with unsaved changes
   (saving after every change off); quit with several open and relaunch
   (all reopen); double-click a project in Finder while a start sheet is
-  up, and while every window has a project.
+  up, and while every window has a project; Open Recent on a damaged
+  project while another is open (its new window closes after the
+  alert).
 - [ ] **Saving after every change**: edit, nudge, drag a value; check
   `project.json` is written once a drag ends and not during it; undo and
   redo; make a save fail (a read-only volume) and see **Not saved**.
