@@ -22,6 +22,8 @@ struct RetimedFilmstrip: View {
     /// Whether the held clip being pulled has sprung back already, so the
     /// rest of that drag leaves it be.
     @State private var tugSprang = false
+    /// The press a move or trim follows (`follows`).
+    @State private var press = DragPress()
 
     /// The tiles' height, inside the lane's padding.
     private var tileHeight: CGFloat { height - 10 }
@@ -36,6 +38,8 @@ struct RetimedFilmstrip: View {
         .frame(width: width, height: height, alignment: .topLeading)
         .clipped()
         .background(Design.Surface.sunken.color)
+        // A sheet over the panel takes a move's or trim's release.
+        .onDraftPanelSheet { if session.isDragging { session.cancelDrag() } }
     }
 
     @ViewBuilder
@@ -160,34 +164,37 @@ struct RetimedFilmstrip: View {
             .onHover { inside in (inside ? NSCursor.resizeLeftRight : NSCursor.arrow).set() }
             .highPriorityGesture(DragGesture(minimumDistance: 1)
                 .onChanged { drag in
+                    guard follows(drag) else { return }
                     session.selectedPieceID = piece.id
                     session.select(point: nil)
-                    session.beginDragIfNeeded()
                     let from = (edge == .start ? piece.span.start : piece.span.end).seconds
-                    let target = from + Double(drag.translation.width) * session.secondsPerPoint
+                    let target = from + Double(press.translation(drag).width) * session.secondsPerPoint
                     let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint, excluding: piece.id)
                     session.dragTrim(piece.id, edge: edge, to: snapped ?? target)
                 }
-                .onEnded { _ in session.endDrag("Trim Clip") })
+                .onEnded { _ in
+                    session.endDrag("Trim Clip")
+                    press.end()
+                })
             .accessibilityHidden(true)
     }
 
     private func moveGesture(_ piece: MotionRun.Piece) -> some Gesture {
         DragGesture(minimumDistance: 3)
             .onChanged { drag in
+                guard follows(drag) else { return }
                 if session.selectedPieceID != piece.id || session.selectedPointID != nil || session.selectedEdge != nil {
                     session.selectedPieceID = piece.id
                     session.select(point: nil)
                 }
+                let pull = press.translation(drag).width
                 guard session.run.canMove(piece.id) else {
                     // Held by a hit: it gives a little, then springs back.
                     guard !tugSprang else { return }
-                    let pull = drag.translation.width
                     if abs(pull) <= Self.tugReach { tug = (piece.id, pull) } else { springBack(piece.id) }
                     return
                 }
-                session.beginDragIfNeeded()
-                let delta = Double(drag.translation.width) * session.secondsPerPoint
+                let delta = Double(pull) * session.secondsPerPoint
                 session.dragPiece(
                     piece.id, by: CMTime(seconds: delta, preferredTimescale: ClipTimeMap.timescale),
                     snapTolerance: 8 * session.secondsPerPoint
@@ -197,7 +204,23 @@ struct RetimedFilmstrip: View {
                 if !session.run.canMove(piece.id), !tugSprang { springBack(piece.id) }
                 tugSprang = false
                 session.endDrag("Move Clip")
+                press.end()
             }
+    }
+
+    /// Whether a move or trim follows this change of its drag: the drag
+    /// begins once, at the first change of its press, and once Escape has
+    /// cancelled it (or a sheet over the panel let go of it), the rest of
+    /// that press is ignored rather than beginning it again from where the
+    /// draft went back to.
+    private func follows(_ drag: DragGesture.Value) -> Bool {
+        if press.begins(drag) {
+            // A press whose release went unheard leaves nothing behind.
+            session.cancelDrag()
+            tugSprang = false
+            session.beginDrag()
+        }
+        return session.isDragging
     }
 
     /// Lets a held clip go back to its place with a small bounce, and says

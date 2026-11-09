@@ -174,9 +174,12 @@ time graph and the music.
   Linear again), Delete removes it,
   ← → move it (or else the playhead, even with a clip selected) a frame
   and ⇧ ten, N turns snapping on and off as on the timeline, Escape lets
-  go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the draft and
+  go (or cancels a drag, which then ignores the rest of that press),
+  ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the draft and
   ⇧⌘Z redoes (not mid-drag), ⌘Return is Done. Scrolling scrolls; ⌥ or
-  ⌘ scrolling, or a pinch, zooms.
+  ⌘ scrolling, or a pinch, zooms. A sheet opening over the panel
+  mid-drag (Cancel's question, or a conflict to agree to) cancels the
+  drag too, since the sheet takes the button's release (`DragPress`).
 - **The zoom's edge** is the editor's shared one (`RubberBandZoom`, see
   [timeline.md](timeline.md)): zooming out past the whole window
   squeezes all the lanes together about the pointer,

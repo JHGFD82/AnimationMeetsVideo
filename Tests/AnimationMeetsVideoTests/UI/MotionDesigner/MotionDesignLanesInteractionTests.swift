@@ -31,6 +31,46 @@ struct MotionDesignLanesInteractionTests {
 
     private func points(_ session: MotionDesignSession) -> Int { session.run.pieces.reduce(0) { $0 + $1.map.points.count } }
 
+    /// The lanes with Escape cancelling a drag, as the panel's keys do.
+    private func lanesWithEscape(_ session: MotionDesignSession) -> some View {
+        MotionDesignLanes(session: session)
+            .background(KeyPressMonitor { event in
+                guard event.keyCode == 53 else { return false }
+                session.cancelDrag()
+                return true
+            })
+    }
+
+    @Test func escapeCancelsAClipMovedInTheStripForTheRestOfThePress() async throws {
+        let session = try session()
+        defer { session.end() }
+        let before = session.run
+        let harness = EventHarness(lanesWithEscape(session), size: Self.size)
+        try await harness.settle()
+
+        // The clip's middle, in the footage strip under the ruler.
+        let grab = CGPoint(x: session.x(of: 4), y: MotionDesignLanes.rulerHeight + MotionDesignLanes.filmHeight / 2)
+        try await harness.press(at: grab, dragTo: CGPoint(x: grab.x + 40, y: grab.y))
+        #expect(session.run != before)
+        harness.escape()
+        try await harness.settle()
+        #expect(session.run == before)
+        // Moving on doesn't take the drag up again, and nothing is recorded.
+        harness.mouse(.leftMouseDragged, at: CGPoint(x: grab.x + 80, y: grab.y))
+        try await harness.settle()
+        harness.mouse(.leftMouseUp, at: CGPoint(x: grab.x + 80, y: grab.y))
+        try await harness.settle(250)
+        #expect(session.run == before)
+        #expect(!session.canUndo)
+
+        // The next press drags again.
+        try await harness.press(at: grab, dragTo: CGPoint(x: grab.x + 40, y: grab.y))
+        harness.mouse(.leftMouseUp, at: CGPoint(x: grab.x + 40, y: grab.y))
+        try await harness.settle(250)
+        #expect(session.run != before)
+        #expect(session.canUndo)
+    }
+
     @Test func aClickOffTheLineMovesThePlayheadAndAddsNothing() async throws {
         let session = try session()
         defer { session.end() }

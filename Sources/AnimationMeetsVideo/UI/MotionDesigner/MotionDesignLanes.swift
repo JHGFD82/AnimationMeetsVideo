@@ -57,6 +57,8 @@ struct MotionDesignLanes: View {
     private static let dragDistance: CGFloat = 3
 
     @State private var drag: GraphDrag?
+    /// The press the graph's drag follows, which a sheet can cut short.
+    @State private var press = DragPress()
     /// The lasso being dragged across the graph.
     @State private var lassoRect: CGRect?
     /// Where the drag snapped, to draw.
@@ -101,6 +103,9 @@ struct MotionDesignLanes: View {
                 onHover: { x in session.skim(atX: x) }
             )
         )
+        // A sheet over the panel (Cancel's question, or a conflict to
+        // agree to) takes the drag's release: it lets go now.
+        .onDraftPanelSheet { abandonDrag() }
     }
 
     // MARK: Notice
@@ -638,24 +643,31 @@ struct MotionDesignLanes: View {
     private func graphGesture(stack: Stack) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
-                if drag == nil { drag = grab(at: gesture.startLocation, stack: stack) }
+                // What was left of a press whose release a sheet took goes.
+                if press.begins(gesture), drag != nil {
+                    session.cancelDrag()
+                    resetDrag()
+                }
+                guard !press.isAbandoned else { return }
+                let translation = press.translation(gesture)
+                if drag == nil { drag = grab(at: press.origin, stack: stack) }
                 if case .pressed(let grab) = drag {
-                    guard hypot(gesture.translation.width, gesture.translation.height) >= Self.dragDistance else { return }
+                    guard hypot(translation.width, translation.height) >= Self.dragDistance else { return }
                     drag = startDragging(grab)
                 }
                 switch drag {
                 case .points(let id, let from, _):
                     guard let start = from[id] else { break }
-                    let target = start + Double(gesture.translation.width) * session.secondsPerPoint
+                    let target = start + Double(translation.width) * session.secondsPerPoint
                     let piece = session.run.piece(holdingPoint: id).map { session.run.pieces[$0.piece].id }
                     let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint, excluding: piece)
                     snapTime = snapped
                     session.dragEdit { MotionDesignSession.movePoints(from, by: (snapped ?? target) - start, in: &$0) }
                 case .lasso(let from, let kept, _):
-                    guard hypot(gesture.translation.width, gesture.translation.height) >= Self.dragDistance else { break }
+                    guard hypot(translation.width, translation.height) >= Self.dragDistance else { break }
                     let rect = CGRect(
                         x: min(from.x, gesture.location.x), y: min(from.y, gesture.location.y),
-                        width: abs(gesture.translation.width), height: abs(gesture.translation.height)
+                        width: abs(translation.width), height: abs(translation.height)
                     )
                     lassoRect = rect
                     session.lasso(points: points(in: rect, stack: stack), keeping: kept)
@@ -674,6 +686,9 @@ struct MotionDesignLanes: View {
                 }
             }
             .onEnded { gesture in
+                let abandoned = press.isAbandoned
+                press.end()
+                guard !abandoned else { return resetDrag() }
                 switch drag {
                 case .points(_, let from, let added): session.endDrag(added ? "Add Marker" : from.count > 1 ? "Move Points" : "Move Point")
                 // A click on a point picks it as the keys held say.
@@ -696,10 +711,24 @@ struct MotionDesignLanes: View {
                     session.seek(to: time)
                 default: break
                 }
-                drag = nil
-                snapTime = nil
-                lassoRect = nil
+                resetDrag()
             }
+    }
+
+    private func resetDrag() {
+        drag = nil
+        snapTime = nil
+        lassoRect = nil
+    }
+
+    /// Lets go of the drag under way, putting the draft back as it was
+    /// when the drag began, as Escape does: a sheet opening over the panel
+    /// takes its release. The rest of its press is ignored.
+    private func abandonDrag() {
+        guard drag != nil else { return }
+        session.cancelDrag()
+        resetDrag()
+        press.abandon()
     }
 
     // MARK: Menus and VoiceOver

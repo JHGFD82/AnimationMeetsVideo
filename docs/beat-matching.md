@@ -429,7 +429,9 @@ Settled, with the reasons, so they aren't proposed again:
    selects it and moves the playhead where the click landed, so clicks
    seek however close the beats are. Picking another section, or going
    back to drawing, lets go of the selected beat, so the keys never edit
-   one out of sight; letting go of it turns the loop off. Keys: Space plays, M drops a
+   one out of sight; letting go of it turns the loop off. A sheet opening
+   over the panel mid-drag takes the button's release, so the drag lets
+   go then, changing nothing (`DragPress`). Keys: Space plays, M drops a
    beat or anchor at the playhead (while drawing, marks up to it), ⌘Z
    and ⇧⌘Z undo and redo, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),

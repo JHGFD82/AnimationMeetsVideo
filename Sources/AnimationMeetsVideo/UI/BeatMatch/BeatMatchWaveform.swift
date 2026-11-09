@@ -36,6 +36,8 @@ struct BeatMatchWaveform: View {
     @State private var snapX: CGFloat?
     /// Whether Option is held while a beat is dragged, which copies it.
     @State private var isCopying = false
+    /// The press the drag follows, which a sheet can cut short.
+    @State private var press = DragPress()
 
     private enum Drag {
         case scrub
@@ -111,6 +113,8 @@ struct BeatMatchWaveform: View {
             )
             .onChange(of: geometry.size.width, initial: true) { _, width in session.viewWidth = width }
         }
+        // A sheet over the panel takes the drag's release: it lets go now.
+        .onDraftPanelSheet { abandonDrag() }
         .accessibilityElement()
         .accessibilityLabel("Waveform of \(session.assetName)")
         .accessibilityValue(accessibilityValue)
@@ -390,13 +394,17 @@ struct BeatMatchWaveform: View {
     private func dragGesture(height: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                // What was left of a press whose release a sheet took goes.
+                if press.begins(value) { resetDrag() }
+                guard !press.isAbandoned else { return }
+                let origin = press.origin
                 dragX = value.location.x
-                if drag == nil { drag = begin(at: value.startLocation) }
-                let moved = abs(value.translation.width) > 3
+                if drag == nil { drag = begin(at: origin) }
+                let moved = abs(press.translation(value).width) > 3
                 // Option copies a beat or a section instead of moving it.
                 if case .pressSection(let id) = drag, moved, NSEvent.modifierFlags.contains(.option),
                    let section = session.map.section(id: id) {
-                    drag = .copySection(id, grab: session.seconds(atX: value.startLocation.x) - section.start.seconds)
+                    drag = .copySection(id, grab: session.seconds(atX: origin.x) - section.start.seconds)
                 }
                 if case .beat = drag, moved { isCopying = CopyDragCursor.update() }
                 if case .copySection = drag { CopyDragCursor.update() }
@@ -404,7 +412,7 @@ struct BeatMatchWaveform: View {
                 case .scrub:
                     session.seek(to: session.seconds(atX: value.location.x))
                 case .pressGap where moved:
-                    let start = session.seconds(atX: value.startLocation.x)
+                    let start = session.seconds(atX: origin.x)
                     drag = .draw(from: snapped(start, excluding: nil) ?? start, gapAt: start)
                     showDrawing()
                 case .pressWave where moved:
@@ -426,14 +434,13 @@ struct BeatMatchWaveform: View {
                 }
             }
             .onEnded { value in
+                let translation = press.translation(value)
+                let abandoned = press.isAbandoned
                 defer {
-                    drag = nil
-                    preview = nil
-                    previewID = nil
-                    snapX = nil
-                    isCopying = false
-                    CopyDragCursor.end()
+                    resetDrag()
+                    press.end()
                 }
+                guard !abandoned else { return }
                 let seconds = session.seconds(atX: value.location.x)
                 switch drag {
                 case .draw(let from, let gapAt):
@@ -443,7 +450,7 @@ struct BeatMatchWaveform: View {
                 case .beat(let time, let grab):
                     // A click, not a drag: the playhead goes where it
                     // landed, so seeking works however close the beats are.
-                    if abs(value.translation.width) <= 1 {
+                    if abs(translation.width) <= 1 {
                         session.seek(to: seconds)
                     } else {
                         let target = session.seconds(atX: value.location.x - grab)
@@ -471,6 +478,23 @@ struct BeatMatchWaveform: View {
                     break
                 }
             }
+    }
+
+    /// Lets go of the drag under way without changing anything (a sheet
+    /// opening over the panel); the rest of its press is ignored.
+    private func abandonDrag() {
+        guard drag != nil else { return }
+        resetDrag()
+        press.abandon()
+    }
+
+    private func resetDrag() {
+        drag = nil
+        preview = nil
+        previewID = nil
+        snapX = nil
+        isCopying = false
+        CopyDragCursor.end()
     }
 
     /// Where an Option-dragged section's copy would start: under the

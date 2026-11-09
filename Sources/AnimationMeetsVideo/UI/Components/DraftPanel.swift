@@ -119,6 +119,7 @@ final class DraftPanelPresentation {
             },
         ]
         Self.open.append(self)
+        DragPress.watchPresses()
         panel.makeKeyAndOrderFront(nil)
     }
 
@@ -177,5 +178,72 @@ final class DraftPanelPresentation {
         panel.delegate = nil
         panel.close()
         editorWindow?.makeKeyAndOrderFront(nil)
+    }
+}
+
+/// Which press of the mouse button a drag in a draft panel follows. A
+/// sheet opened over the panel mid-drag (Cancel's question, say) takes
+/// the button's release, so the drag's end is never heard: its state
+/// stayed live, and the next click on the view carried the old drag on.
+/// A drag let go when a sheet opens (`abandon`) ignores the rest of its
+/// press, and any change from a press since the last one heard starts
+/// afresh (`begins`), whether or not the end of the last was heard.
+struct DragPress {
+    /// Presses of the left button in the app, counted before they reach
+    /// any view, once a draft panel has opened.
+    @MainActor private(set) static var count = 0
+    @MainActor private static var monitor: Any?
+
+    @MainActor static func watchPresses() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            // Local monitors run on the main thread.
+            MainActor.assumeIsolated { count += 1 }
+            return event
+        }
+    }
+
+    private var press: Int?
+    /// Whether the press under way was let go of, and is ignored.
+    private(set) var isAbandoned = false
+    /// Where the press began, in the view's coordinates.
+    private(set) var origin: CGPoint = .zero
+
+    /// At each change of a drag: true for the first change of a press,
+    /// with `origin` set to where it began. A press after one whose end
+    /// went unheard may reach the gesture as a change of the old one;
+    /// its origin is then where the pointer is now.
+    @MainActor mutating func begins(_ value: DragGesture.Value) -> Bool {
+        if let press, press == Self.count { return false }
+        origin = press == nil ? value.startLocation : value.location
+        press = Self.count
+        isAbandoned = false
+        return true
+    }
+
+    /// How far the pointer is from where the press began.
+    func translation(_ value: DragGesture.Value) -> CGSize {
+        CGSize(width: value.location.x - origin.x, height: value.location.y - origin.y)
+    }
+
+    /// Lets go of the press under way: the rest of it is ignored.
+    mutating func abandon() {
+        isAbandoned = true
+    }
+
+    /// The press ended, and was heard to.
+    mutating func end() {
+        press = nil
+        isAbandoned = false
+    }
+}
+
+extension View {
+    /// Runs `action` when a sheet is about to open over a draft panel,
+    /// which will take the release of a drag under way there.
+    func onDraftPanelSheet(perform action: @escaping () -> Void) -> some View {
+        onReceive(NotificationCenter.default.publisher(for: NSWindow.willBeginSheetNotification)) { note in
+            if note.object is DraftPanel { action() }
+        }
     }
 }
