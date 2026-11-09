@@ -68,9 +68,12 @@ enum SnapshotSupport {
     /// A song to draw: a click every half second (120 BPM) with every
     /// fourth one louder, over a quiet hum, written to `<name>.caf` in
     /// the snapshot folder. Each caller names its own file, so tests
-    /// running side by side don't write over each other's.
+    /// running side by side don't write over each other's; outside a
+    /// snapshot run the folder is this test process's own, so test runs
+    /// of other checkouts at the same time don't either.
     static func clickSong(named name: String, seconds: Double = 40) throws -> MediaClip {
         let directory = directory ?? FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnimationMeetsVideoTests-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent(name + ".caf")
         let rate = 44_100.0
