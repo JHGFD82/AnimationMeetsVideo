@@ -244,7 +244,7 @@ struct ClipsTab: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .delete, .deleteForward, "i", "o"]) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .delete, .deleteForward, "i", "o", "e"]) { press in
             handleKey(press, snapshot: snapshot) ? .handled : .ignored
         }
         // Delete and Select All in the Edit menu, while the browser is the
@@ -515,6 +515,7 @@ struct ClipsTab: View {
             case .step(let frames): skim?.step(frames: frames)
             case .endSkim: skim?.end()
             case .addToTimeline(let pieces): addToTimeline(pieces)
+            case .rename(let assetID): renamingAsset = assetID
             case .removeSelection: if !removeSelection(snapshot) { NSSound.beep() }
             }
         }

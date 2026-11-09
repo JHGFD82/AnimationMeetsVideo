@@ -26,11 +26,29 @@ import Testing
         #expect(outcome == .unhandled)
     }
 
-    @Test func returnAddsWhatIsPicked() {
+    @Test func returnRenamesTheOneClipPickedAndAddsNothing() {
         var interaction = ClipsTabInteraction()
         interaction.picked.click(.asset(song.id))
         let outcome = interaction.handleKey(.return, modifiers: [], snapshot: snapshot, skim: .none)
+        #expect(outcome == .handled([.endSkim, .rename(song.id)]))
+    }
+
+    @Test func returnLeavesScenesAndSeveralClipsAlone() {
+        var interaction = ClipsTabInteraction()
+        interaction.picked.click(entry(0).id)
+        #expect(interaction.handleKey(.return, modifiers: [], snapshot: snapshot, skim: .none) == .unhandled)
+        interaction.picked.click(.asset(song.id))
+        interaction.picked.commandClick(entry(0).id)
+        #expect(interaction.handleKey(.return, modifiers: [], snapshot: snapshot, skim: .none) == .unhandled)
+    }
+
+    @Test func eAddsWhatIsPicked() {
+        var interaction = ClipsTabInteraction()
+        interaction.picked.click(.asset(song.id))
+        let outcome = interaction.handleKey("e", modifiers: [], snapshot: snapshot, skim: .none)
         #expect(outcome == .handled([.addToTimeline([entry(2).piece()])]))
+        // Shift-E is the timeline's (the effects panel).
+        #expect(interaction.handleKey("e", modifiers: .shift, snapshot: snapshot, skim: .none) == .unhandled)
     }
 
     @Test func deleteWithOptionIsLeftAloneButCommandDeleteRemoves() {

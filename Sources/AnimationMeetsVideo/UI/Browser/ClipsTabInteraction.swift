@@ -42,6 +42,8 @@ struct ClipsTabInteraction {
         case step(frames: Int)
         case endSkim
         case addToTimeline([MediaPiece])
+        /// Edit the name of this media in place.
+        case rename(UUID)
         /// Take the media wholly selected out of the project, or beep.
         case removeSelection
     }
@@ -167,9 +169,11 @@ struct ClipsTabInteraction {
         return true
     }
 
-    /// Up and down move the selection (Shift extends it); Return adds the
-    /// selection to the timeline, and Delete (or Command-Delete) takes the
-    /// media wholly selected out of the project. Option-Left and
+    /// Up and down move the selection (Shift extends it); Return renames
+    /// the one clip selected, as in the Finder and the Timelines tab; E
+    /// adds the selection to the end of the timeline, as Final Cut's
+    /// Append, and Delete (or Command-Delete) takes the media wholly
+    /// selected out of the project. Option-Left and
     /// Option-Right skim the selected clip a frame at a time (ten with
     /// Shift), I and O set its range's ends where it is skimmed, and Escape
     /// stops skimming.
@@ -192,7 +196,16 @@ struct ClipsTabInteraction {
         case .escape:
             return skim.isActive ? .handled([.endSkim]) : .unhandled
         case .return:
-            guard let first = picked.range?.item ?? picked.ordered(in: snapshot.order).first else { return .unhandled }
+            // Only a whole clip has a name of its own to edit; a scene is
+            // named for its clip.
+            guard modifiers.isEmpty, picked.items.count == 1, let only = picked.items.first,
+                  let entry = snapshot.byID[only], entry.sceneNumber == nil
+            else { return .unhandled }
+            return .handled([.endSkim, .rename(entry.clip.id)])
+        case "e":
+            guard modifiers.isDisjoint(with: [.command, .option, .control, .shift]),
+                  let first = picked.range?.item ?? picked.ordered(in: snapshot.order).first
+            else { return .unhandled }
             return .handled([.addToTimeline(ClipsTabModel.piecesToAdd(from: first, snapshot: snapshot, picked: picked))])
         case .delete, .deleteForward:
             // Command-Delete removes too, as in the Finder.

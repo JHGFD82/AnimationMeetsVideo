@@ -231,8 +231,9 @@ the browser shows another tab (`BrowserSkimEnding`).
 - **Click** selects the whole clip.
 - **Renaming** a clip works as in the Finder: a click on the name of a
   clip already selected (after a moment, so it isn't taken for a
-  double-click) makes it a bordered field over the name, as does
-  **Rename** in its menu or its heading's; Return or clicking away keeps
+  double-click) makes it a bordered field over the name, as do Return
+  with the one clip selected and **Rename** in its menu or its
+  heading's; Return or clicking away keeps
   the new name, Escape puts the old one back. It renames the asset, not
   its file. Scenes are numbered, so only whole clips and headings have a
   name to change.
@@ -313,8 +314,9 @@ timelines that can take everything the menu acts on.
   order** (the order of the Clips tab, scenes in source order), whatever
   order they were selected in. Drops follow the timeline's rules for where
   a clip lands ([timeline.md](timeline.md)).
-- **Add to Timeline** (context menu, or Return) does the same for the
-  selection without dragging.
+- **Add to Timeline** (context menu, or E, as Final Cut's Append) does
+  the same for the selection without dragging. Return never adds: it
+  renames, as in the Timelines tab and the Finder.
 - **Mute added video sound** (in the view options, and the Settings
   window's Browser tab; off by default) puts video clips that have sound
   on the timeline with it muted (`TimelineClip.soundMuted`). The sound
@@ -434,7 +436,8 @@ size into a temporary folder, and never saved with the project.
 Following [accessibility.md](accessibility.md):
 
 - The arrow keys move the selection between clips; Shift extends it;
-  Return adds the selection to the timeline; ⌘A selects every clip;
+  Return renames the one clip selected; E adds the selection to the
+  timeline; ⌘A selects every clip;
   Delete removes what is selected, asking first when it is used (see
   "Removing").
 - In the Timelines tab, Right and Left show and hide the timelines the
@@ -473,7 +476,7 @@ Following [accessibility.md](accessibility.md):
    Click, Command-click and Shift-click; whole-clip drags of several
    assets in browser order; ranges dragged across unselected clips, with
    handles; arrows,
-   Shift-arrows and Return. Built together with stage 2, since both
+   Shift-arrows, Return to rename and E to add. Built together with stage 2, since both
    needed the clips drawn by hand rather than in a list.
 4. **Skimming** (built, Clips tab; not yet tried on screen) in the viewer,
    Space to play, Option-arrows, I and O.
