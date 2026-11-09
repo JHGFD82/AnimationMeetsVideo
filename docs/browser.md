@@ -336,6 +336,8 @@ the Clips list and onto the timeline whole: on a clip, onto that clip's
 layer at the drop time, landing as media from the browser would; in an
 area, onto a new layer of the area's kind, or of each file's own kind
 when the area's doesn't suit them all. Files of other kinds are refused.
+If another timeline is opened while they import, they stay in the Clips
+list only.
 
 However they come in, files being imported are listed at the end of the
 Clips tab (`MediaImports`, `ImportingClips`), each under its name with a

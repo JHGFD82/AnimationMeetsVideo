@@ -63,6 +63,10 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var pipeline: ViewerPipeline?
     /// Why a file dragged in from the Finder couldn't be imported.
     @State private var dropError: String?
+    /// The timeline shown now, kept where work that finishes later (a
+    /// drop's import) reads it then: `timelineID` in such a closure is the
+    /// one shown when it began.
+    @State private var shownTimelineID: UUID?
     /// As tall as the person makes it, not as tall as its layers need: its
     /// areas share whatever height it has and scroll the rest.
     @AppStorage(Preferences.timelineHeight) private var timelineHeight: Double = 280
@@ -405,6 +409,7 @@ struct TimelineEditorSurface<Library: View>: View {
             graphs.onSeek = { _ in }
             graphs.onTogglePlayback = {}
         }
+        .onChange(of: timelineID, initial: true) { _, id in shownTimelineID = id }
         .onChange(of: timelineID) { oldValue, newValue in
             if newValue != trailTarget { trail = project.containingTimelines(of: newValue) }
             trailTarget = nil
@@ -502,7 +507,10 @@ struct TimelineEditorSurface<Library: View>: View {
                 urls, packageURL: renderer?.packageURL, project: $project, imports: imports, onError: { dropError = $0 }
             ) else { return }
             let pieces = imported.map { MediaPiece(assetID: $0.id, start: .zero, end: $0.duration) }
-            guard self.timelineID == timelineID else { return }
+            // Another timeline opened meanwhile: the files stay in the
+            // library rather than landing on one no longer shown (and
+            // taking the selection from the one that is).
+            guard (shownTimelineID ?? timelineID) == timelineID else { return }
             if !place(pieces, onLayer: layerID, at: time, kind: kind), kind != nil {
                 place(pieces, onLayer: nil, at: time, kind: nil)
             }
