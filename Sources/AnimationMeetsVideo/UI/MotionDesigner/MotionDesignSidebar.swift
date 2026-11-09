@@ -53,8 +53,11 @@ struct MotionDesignSidebar: View {
                         .accessibilityLabel(session.redoTitle)
                 }
                 Spacer(minLength: 0)
+                // ⌘. rather than Escape, which lets go of a drag or the
+                // selection, as in Beat Match.
                 Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
+                    .keyboardShortcut(".", modifiers: .command)
+                    .help("Put the clips back as they were and close (⌘.)")
                 Button("Done", action: onDone)
                     .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)

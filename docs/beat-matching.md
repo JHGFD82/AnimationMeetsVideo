@@ -436,7 +436,10 @@ Settled, with the reasons, so they aren't proposed again:
    and ⇧⌘Z undo and redo, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),
    ↑ ↓ select the previous and next beat, Delete, L loops, Return fills,
-   ⌘Return confirms (continues while drawing), ⌘= ⌘- ⌘0 zoom, ⌘C and ⌘V
+   ⌘Return confirms (continues while drawing), ⌘. cancels, Escape lets
+   go of a drag (which then changes nothing), else of the selected beat
+   and its loop, else while drawing of the selected section, and never
+   closes the panel, ⌘= ⌘- ⌘0 zoom, ⌘C and ⌘V
    copy and paste a consistent section's tempo. A key acts only when its
    button would (F, [ and ] only while drawing; L with a beat selected),
    and otherwise goes on to the window; M while marking with no section

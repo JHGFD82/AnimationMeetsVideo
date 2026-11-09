@@ -38,6 +38,8 @@ struct BeatMatchWaveform: View {
     @State private var isCopying = false
     /// The press the drag follows, which a sheet can cut short.
     @State private var press = DragPress()
+    /// Escape during a drag that would change the map lets go of it.
+    @State private var escape: DragEscape?
 
     private enum Drag {
         case scrub
@@ -432,6 +434,7 @@ struct BeatMatchWaveform: View {
                 default:
                     break
                 }
+                if escape == nil, changesMap(moved: moved) { escape = DragEscape { abandonDrag() } }
             }
             .onEnded { value in
                 let translation = press.translation(value)
@@ -480,8 +483,20 @@ struct BeatMatchWaveform: View {
             }
     }
 
-    /// Lets go of the drag under way without changing anything (a sheet
-    /// opening over the panel); the rest of its press is ignored.
+    /// Whether the drag under way changes the map when it ends: drawing,
+    /// an edge, a copy, or a beat once it has moved. Escape is its own
+    /// meanwhile, and lets go of it.
+    private func changesMap(moved: Bool) -> Bool {
+        switch drag {
+        case .draw, .edge, .copySection: true
+        case .beat: moved
+        default: false
+        }
+    }
+
+    /// Lets go of the drag under way without changing anything (Escape,
+    /// or a sheet opening over the panel); the rest of its press is
+    /// ignored.
     private func abandonDrag() {
         guard drag != nil else { return }
         resetDrag()
@@ -495,6 +510,8 @@ struct BeatMatchWaveform: View {
         snapX = nil
         isCopying = false
         CopyDragCursor.end()
+        escape?.end()
+        escape = nil
     }
 
     /// Where an Option-dragged section's copy would start: under the

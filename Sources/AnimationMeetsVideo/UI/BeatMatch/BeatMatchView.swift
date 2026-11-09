@@ -16,8 +16,11 @@ import SwiftUI
 /// selected beat, while drawing F fills the gap at the playhead and [ and ]
 /// move the selected section's edges to it, Return fills the selected
 /// section, ⌘Return confirms (continues, while drawing), ⌘Z and ⇧⌘Z undo
-/// and redo, ⌘= and ⌘- zoom and ⌘0 fits. A key does only what its
-/// control would do just then, and otherwise goes on to the window.
+/// and redo, ⌘= and ⌘- zoom and ⌘0 fits. Escape lets go of a drag, else
+/// of the selected beat (and its loop), else while drawing of the
+/// selected section; it never closes the panel, which ⌘. and the Cancel
+/// button do. A key does only what its control would do just then, and
+/// otherwise goes on to the window.
 ///
 /// Each part is a view of its own that reads only the session's
 /// properties it shows, so a change to one, such as the song's volume as
@@ -166,10 +169,26 @@ private enum BeatMatchKeys {
         case kVK_Return, kVK_ANSI_KeypadEnter:
             guard session.canFillSelected else { return false }
             session.fillSelected()
+        case kVK_Escape:
+            // A drag under way took Escape already (`DragEscape`). Taken
+            // with nothing to let go of too: the panel closes on ⌘. or
+            // its Cancel button, not on a stray Escape.
+            escape(in: session)
         default:
             return handleCharacter(event.charactersIgnoringModifiers?.lowercased(), in: session)
         }
         return true
+    }
+
+    /// Escape: lets go of the selected beat and its loop, or else, while
+    /// drawing, of the selected section. While marking, the section is
+    /// the one being marked, which stays.
+    static func escape(in session: BeatMatchSession) {
+        if session.selectedBeat != nil || session.isLooping {
+            session.deselectBeat()
+        } else if session.step == .drawSections {
+            session.selectedSectionID = nil
+        }
     }
 
     private static func handleCharacter(_ character: String?, in session: BeatMatchSession) -> Bool {

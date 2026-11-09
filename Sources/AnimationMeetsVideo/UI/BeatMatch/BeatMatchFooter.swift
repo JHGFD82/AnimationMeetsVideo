@@ -35,9 +35,12 @@ struct BeatMatchFooter: View {
                     .accessibilityLabel("Redo")
             }
             Spacer(minLength: 0)
+            // ⌘. rather than Escape, which lets go of a drag or the
+            // selection first (`BeatMatchKeys`), so a stray one doesn't close.
             Button("Cancel", action: onCancel)
-                .keyboardShortcut(.cancelAction)
+                .keyboardShortcut(".", modifiers: .command)
                 .fixedSize()
+                .help("Close without changing the timeline (⌘.)")
             // Emptied by Start Over, the draft can take the song's beats off
             // the timeline. While drawing, the way on is to mark the beats;
             // once a section has them, they can go on the timeline. Return
