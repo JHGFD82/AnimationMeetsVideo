@@ -95,9 +95,16 @@ struct InspectorPanel: View {
                 .frame(maxHeight: .infinity)
             } else {
                 ScrollView { groups.padding(Design.Space.group) }
+                    .lockedForMotionDesigner(isLocked)
             }
         }
         .panelSurface(.base)
+    }
+
+    /// Whether the clip is open in the motion designer, which alone may
+    /// change it meanwhile.
+    private var isLocked: Bool {
+        timelineClip.map { projectState?.lockedClipIDs.contains($0.id) == true } ?? false
     }
 
     @ViewBuilder

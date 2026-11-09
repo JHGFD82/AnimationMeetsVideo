@@ -110,6 +110,13 @@ struct EffectsPanel: View {
         return project.clipAndLayer(selection.timelineClipID, in: timelineID)?.clip
     }
 
+    /// Whether the selected clip is open in the motion designer, which
+    /// alone may change it meanwhile.
+    private var isLocked: Bool {
+        guard let selection, selection.timelineID == timelineID else { return false }
+        return projectState?.lockedClipIDs.contains(selection.timelineClipID) == true
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -136,6 +143,7 @@ struct EffectsPanel: View {
 
             if let clip = selectedClip, let timeline {
                 stack(of: clip, in: timeline)
+                    .lockedForMotionDesigner(isLocked)
             } else {
                 ContentUnavailableView(
                     "No clip selected",
@@ -149,8 +157,10 @@ struct EffectsPanel: View {
         .panelSurface(.base)
         // Over the lanes while a keyframe on them is dragged.
         .dragTimecodeReadout(frameRate: timeline?.frameRate ?? 0)
-        .background(KeyPressMonitor(handler: handleKey))
-        .focusedSceneValueUnlessDrafting(\.effectsEditActions, editActions)
+        // A clip open in the motion designer takes no key or Edit command
+        // here; its controls are disabled under a note saying why.
+        .background(KeyPressMonitor { isLocked ? false : handleKey($0) })
+        .focusedSceneValueUnlessDrafting(\.effectsEditActions, isLocked ? nil : editActions)
         .alert("Save as Preset", isPresented: $presetSave.isPresent) {
             TextField("Name", text: $presetName)
             Button("Save", action: savePreset)

@@ -594,6 +594,20 @@ struct UISnapshots {
             ),
             "adjustment-inspector", size: CGSize(width: 340, height: 420)
         )
+
+        // The same clip open in the motion designer: its controls disabled
+        // under a note saying why.
+        let state = ProjectState(project)
+        _ = state.lock([adjustment.clipID], in: t)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: adjustment.layerID, timelineClipID: adjustment.clipID),
+                info: .adjustment, timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            )
+            .environment(state),
+            "adjustment-inspector-locked", size: CGSize(width: 340, height: 460)
+        )
     }
 
     /// The inspector for a text layer of two lines, right-aligned, with its
