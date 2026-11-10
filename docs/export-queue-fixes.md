@@ -1645,7 +1645,7 @@ long queue pushed the actions off screen.
 
 ### 13. Name the timeline on finished rows too
 
-- [ ] Done
+- [x] Done
 
 **Why.** `outcomeRow(_:showsTimeline:)` builds a prefix naming the
 timeline when several exports ended, but only the failed case uses it.

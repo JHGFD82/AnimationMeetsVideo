@@ -35,4 +35,12 @@ struct ExportViewTests {
         #expect(windowHeight(waiting: 2) > windowHeight(waiting: 0))
         #expect(windowHeight(waiting: 80) == windowHeight(waiting: 40))
     }
+
+    @Test func severalOutcomesEachNameTheirTimeline() {
+        let saved = ExportWindow.Ended(timelineName: "Main", outcome: .finished(url: URL(filePath: "/tmp/Trailer.mov"), report: nil))
+        let failed = ExportWindow.Ended(timelineName: "Teaser", outcome: .failed("The disk is full."))
+        #expect(ExportView.message(for: saved, showsTimeline: true) == "\u{201C}Main\u{201D}: \u{201C}Trailer.mov\u{201D} was saved.")
+        #expect(ExportView.message(for: failed, showsTimeline: true) == "\u{201C}Teaser\u{201D}: Export failed. The disk is full.")
+        #expect(ExportView.message(for: saved, showsTimeline: false) == "\u{201C}Trailer.mov\u{201D} was saved.")
+    }
 }

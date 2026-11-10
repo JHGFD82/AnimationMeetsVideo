@@ -466,6 +466,12 @@ final class ExportWindow {
         outcomes = outcome.map { [Ended(timelineName: timelineName, outcome: $0)] } ?? []
     }
 
+    /// Shows `ended` as if those exports had ended, oldest first, for a
+    /// picture of the view (`UISnapshots`).
+    func showOutcomesWithoutRunning(_ ended: [Ended]) {
+        outcomes = ended
+    }
+
     /// Shows `current` under way, `progress` along, with `queue` waiting
     /// behind it, for a picture of the view (`UISnapshots`).
     func showQueueWithoutRunning(current: Job, progress: Double, queue: [Job]) {
