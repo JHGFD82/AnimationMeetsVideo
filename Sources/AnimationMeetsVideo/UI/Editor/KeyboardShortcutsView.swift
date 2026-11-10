@@ -46,6 +46,7 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "\\", does: "Fit the timeline to the window"),
             Shortcut(keys: "L", does: "Show or hide volume rows"),
             Shortcut(keys: "⇧E", does: "Show the selected clip's effects"),
+            Shortcut(keys: "⇧F", does: "Show the selected clip's footage in the Clips list"),
         ]),
         Group(title: "Keyframes", shortcuts: [
             Shortcut(keys: "F9", does: "Easy ease the keyframes at the playhead"),
