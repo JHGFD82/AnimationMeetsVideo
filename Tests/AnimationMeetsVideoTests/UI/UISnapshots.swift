@@ -351,6 +351,23 @@ struct UISnapshots {
             report: "The mix measured −19.2 LUFS and was raised 5.2 dB to −14 LUFS."
         ))
         try SnapshotSupport.render(ExportView(export: finished), "export-window-finished", size: CGSize(width: 460, height: 420))
+
+        // Main exporting, with two more timelines queued behind it.
+        let project = EditingProject.empty
+        func job(_ name: String, _ format: ExportFormat, _ file: String) -> ExportWindow.Job {
+            ExportWindow.Job(
+                project: project, timelineID: project.rootTimelineID, timelineName: name, format: format,
+                loudness: .asMixed, audioTracks: .mix, destination: URL(filePath: "/tmp/\(file)")
+            )
+        }
+        let queued = ExportWindow()
+        queued.timelineName = "Teaser"
+        queued.showQueueWithoutRunning(
+            current: job("Main", .proRes422, "Trailer.mov"),
+            progress: 0.42,
+            queue: [job("Teaser", .proRes4444, "Trailer Teaser.mov"), job("Main", .wavMix, "Trailer.wav")]
+        )
+        try SnapshotSupport.render(ExportView(export: queued), "export-window-queue", size: CGSize(width: 460, height: 520))
     }
 
     /// The Clips tab: a video under its name as five scenes (the fourth

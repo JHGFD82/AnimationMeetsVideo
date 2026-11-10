@@ -193,7 +193,15 @@ private struct ExportProgress: View {
                 .controlSize(.small)
                 .frame(width: 90)
                 .accessibilityLabel("Export progress")
-                .help("Exporting")
+                .help(waiting.isEmpty ? "Exporting" : "Exporting, \(waiting)")
+        }
+    }
+
+    /// The exports queued behind the one under way, as a phrase.
+    private var waiting: String {
+        switch export.queue.count {
+        case 0: ""
+        case let count: "\(count) more waiting"
         }
     }
 }

@@ -8,9 +8,11 @@ import UniformTypeIdentifiers
 /// where one left with the keyboard kept the arrow keys from the
 /// playhead; in a window of their own they have the keys only while it is
 /// in front. It runs the export too, so closing it leaves one going, with
-/// its progress on the toolbar, and it comes back when the export ends.
-/// Stopping an export, or closing the project or quitting while one runs,
-/// asks first (`confirmStopping`).
+/// its progress on the toolbar, and it comes back when the exports end.
+/// Export… while one runs queues the timeline the editor shows then, in
+/// the format and sound picked then, to start once those before it end;
+/// the queue is listed in the window. Stopping an export, or closing the
+/// project or quitting while one runs, asks first (`confirmStopping`).
 @MainActor
 @Observable
 final class ExportWindow {
@@ -20,10 +22,15 @@ final class ExportWindow {
     /// Pasted effect changes still to resolve in what it draws, which
     /// block the export (see `EditorToolbar.exportProject`).
     var pasteChangeCount = 0
-    private(set) var isRunning = false
+    /// The export under way, if any.
+    private(set) var current: Job?
+    /// Exports waiting for the one under way, the first to start first.
+    private(set) var queue: [Job] = []
     private(set) var progress: Double = 0
-    /// How the last export ended, shown until the next starts.
-    private(set) var outcome: Outcome?
+    /// How the exports since the window was last idle ended, oldest
+    /// first, shown until an export starts with none running.
+    private(set) var outcomes: [Ended] = []
+    var isRunning: Bool { current != nil }
     /// Exports what the window shows, once pasted changes are dealt with.
     @ObservationIgnored var onExport: () -> Void = {}
     /// Opens the Paste Changes list in the editor.
@@ -33,8 +40,8 @@ final class ExportWindow {
     @ObservationIgnored weak var editorWindow: NSWindow?
     /// The project's package, whose closing stops the export.
     @ObservationIgnored var packageURL: URL?
-    /// Where the running export is going.
-    @ObservationIgnored private var destination: URL?
+    /// The editor's, which pauses while exports run.
+    @ObservationIgnored private weak var renderer: RenderScheduler?
     @ObservationIgnored private var window: NSWindow?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var closeObserver: NSObjectProtocol?
@@ -62,31 +69,57 @@ final class ExportWindow {
     }
 
     /// Asks whether to stop `exports`, which `reason` (\"Closing the
-    /// project\") would, and stops them on yes. True when there are none
-    /// or they were stopped; false to keep them going, and the window or
-    /// app open.
+    /// project\") would, and stops them, and those queued behind them, on
+    /// yes. True when there are none or they were stopped; false to keep
+    /// them going, and the window or app open.
     static func confirmStopping(_ exports: [ExportWindow], because reason: String) -> Bool {
         guard !exports.isEmpty else { return true }
+        let jobs = exports.flatMap { export in [export.current].compactMap { $0 } + export.queue }
+        guard askToStop(jobs, because: reason) else { return false }
+        for export in exports { export.cancel() }
+        return true
+    }
+
+    /// Asks whether to stop `jobs`; true on yes.
+    private static func askToStop(_ jobs: [Job], because reason: String) -> Bool {
         let alert = NSAlert()
-        if exports.count == 1, let name = exports[0].destination?.lastPathComponent {
-            alert.messageText = "Stop exporting \u{201C}\(name)\u{201D}?"
+        if jobs.count == 1 {
+            alert.messageText = "Stop exporting \u{201C}\(jobs[0].destination.lastPathComponent)\u{201D}?"
         } else {
-            alert.messageText = "Stop \(exports.count) exports?"
+            alert.messageText = "Stop \(jobs.count) exports?"
         }
-        let what = exports.count == 1 ? "the export" : "the exports"
+        let what = jobs.count == 1 ? "the export" : "the exports"
         alert.informativeText = "\(reason) stops \(what), and what is exported so far is deleted."
         // Return keeps the export going; stopping it takes a click or Tab.
         alert.addButton(withTitle: "Keep Exporting")
         let stop = alert.addButton(withTitle: "Stop Export")
         stop.hasDestructiveAction = true
-        guard alert.runModal() == .alertSecondButtonReturn else { return false }
-        for export in exports { export.cancel() }
-        return true
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     enum Outcome: Equatable {
         case finished(url: URL, report: String?)
         case failed(String)
+    }
+
+    /// One export as it was asked for, with the project as it was then,
+    /// so edits made while it waits don't change what it exports.
+    struct Job: Identifiable {
+        let id = UUID()
+        let project: EditingProject
+        let timelineID: UUID
+        let timelineName: String
+        let format: ExportFormat
+        let loudness: LoudnessTarget
+        let audioTracks: ExportAudioTracks
+        let destination: URL
+    }
+
+    /// How one export ended.
+    struct Ended: Identifiable, Equatable {
+        let id = UUID()
+        let timelineName: String
+        let outcome: Outcome
     }
 
     /// Opens the window, or brings it to the front.
@@ -106,8 +139,9 @@ final class ExportWindow {
         window.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: ExportView(export: self))
         // The window follows the content's height, which grows by a
-        // finished export's report or a blocking note; preferred size
-        // alone left it at its first height with the rest cut off.
+        // finished export's report, a blocking note or the queue;
+        // preferred size alone left it at its first height with the rest
+        // cut off.
         host.sizingOptions = [.minSize, .intrinsicContentSize, .maxSize]
         window.contentView = host
         closeObserver = NotificationCenter.default.addObserver(
@@ -130,20 +164,29 @@ final class ExportWindow {
         editorWindow?.makeKeyAndOrderFront(nil)
     }
 
+    /// Stops the export under way and drops those waiting.
     func cancel() {
+        queue.removeAll()
         task?.cancel()
     }
 
-    /// Stops the running export once the person agrees to.
+    /// Stops the export under way once the person agrees to; the next
+    /// one waiting starts.
     func confirmAndCancel() {
-        _ = Self.confirmStopping([self], because: "Stopping")
+        guard let current, Self.askToStop([current], because: "Stopping") else { return }
+        task?.cancel()
+    }
+
+    /// Takes a waiting export out of the queue.
+    func remove(_ id: Job.ID) {
+        queue.removeAll { $0.id == id }
     }
 
     /// Asks where to save, then exports `timelineID` of `project` there
-    /// in the format and sound picked. `renderer` pauses meanwhile, and a
-    /// ProRes 422 export reuses its renders.
+    /// in the format and sound picked: now, or, while another export
+    /// runs, once those queued before it end. `renderer` pauses
+    /// meanwhile, and a ProRes 422 export reuses its renders.
     func run(project: EditingProject, timelineID: UUID, renderer: RenderScheduler) {
-        guard !isRunning else { return }
         let format = format
         let panel = NSSavePanel()
         switch format {
@@ -153,65 +196,106 @@ final class ExportWindow {
             // The name is a new folder's, with a file per layer in it.
             panel.message = "Stems are saved in a new folder with this name, one file for each layer with sound."
         }
-        panel.nameFieldStringValue = format == .wavStems ? "\(project.name) Stems" : project.name
+        let timelineName = project.timeline(id: timelineID)?.name ?? timelineName
+        // A second export of the project is told apart by its timeline.
+        let baseName = isRunning && !timelineName.isEmpty ? "\(project.name) \(timelineName)" : project.name
+        panel.nameFieldStringValue = format == .wavStems ? "\(baseName) Stems" : baseName
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         // As the window's menus (`ExportView`) keep them.
         let defaults = UserDefaults.standard
-        let target = defaults.string(forKey: Preferences.exportLoudness).flatMap { LoudnessTarget(rawValue: $0) } ?? .asMixed
-        let tracks = defaults.string(forKey: Preferences.exportAudioTracks).flatMap { ExportAudioTracks(rawValue: $0) } ?? .mix
-        let cache = renderer.cache
+        let job = Job(
+            project: project,
+            timelineID: timelineID,
+            timelineName: timelineName,
+            format: format,
+            loudness: defaults.string(forKey: Preferences.exportLoudness).flatMap { LoudnessTarget(rawValue: $0) } ?? .asMixed,
+            audioTracks: defaults.string(forKey: Preferences.exportAudioTracks).flatMap { ExportAudioTracks(rawValue: $0) } ?? .mix,
+            destination: url
+        )
+        self.renderer = renderer
+        if isRunning {
+            queue.append(job)
+        } else {
+            outcomes = []
+            renderer.setExporting(true)
+            start(job)
+        }
+    }
+
+    private func start(_ job: Job) {
+        let cache = renderer?.cache
         progress = 0
-        outcome = nil
-        destination = url
-        isRunning = true
-        renderer.setExporting(true)
+        current = job
         task = Task {
-            defer {
-                task = nil
-                isRunning = false
-                renderer.setExporting(false)
-            }
             let progress: @Sendable (Double) -> Void = { fraction in
                 Task { @MainActor in self.progress = fraction }
             }
             // Only shown once the export is done.
             let report = ReportBox()
+            let url = job.destination
+            var outcome: Outcome?
             do {
-                switch format {
+                switch job.format {
                 case .proRes422, .proRes4444:
                     try await CompositionExporter.export(
-                        project: project, timelineID: timelineID, preset: format.movie ?? .proRes422,
-                        loudness: target, audioTracks: tracks, to: url, cache: cache, progress: progress,
-                        onMastered: { report.value = $0 }
+                        project: job.project, timelineID: job.timelineID, preset: job.format.movie ?? .proRes422,
+                        loudness: job.loudness, audioTracks: job.audioTracks, to: url, cache: cache,
+                        progress: progress, onMastered: { report.value = $0 }
                     )
                 case .wavMix:
                     report.value = try await AudioExport.exportMix(
-                        project: project, timelineID: timelineID, loudness: target, to: url, progress: progress
+                        project: job.project, timelineID: job.timelineID, loudness: job.loudness, to: url,
+                        progress: progress
                     )
                 case .wavStems:
                     try await AudioExport.exportStems(
-                        project: project, timelineID: timelineID, named: project.name, in: url, progress: progress
+                        project: job.project, timelineID: job.timelineID, named: job.project.name, in: url,
+                        progress: progress
                     )
                 }
                 outcome = .finished(url: url, report: report.value?.summary)
             } catch is CancellationError {
-                // The user cancelled; nothing to report.
-                return
+                // Stopped by the person; nothing to report.
             } catch {
                 outcome = .failed(ErrorAdvice.sentence(for: error))
             }
-            // The outcome is shown in the window, back if it was closed.
-            // A long export may finish with the app behind another.
-            show()
-            NSApp.requestUserAttention(.informationalRequest)
+            ended(job, outcome)
         }
+    }
+
+    /// Notes how `job` ended and starts the next one waiting, or, with
+    /// none, lets rendering go on and shows how they all ended.
+    private func ended(_ job: Job, _ outcome: Outcome?) {
+        task = nil
+        if let outcome { outcomes.append(Ended(timelineName: job.timelineName, outcome: outcome)) }
+        if !queue.isEmpty {
+            start(queue.removeFirst())
+            return
+        }
+        current = nil
+        renderer?.setExporting(false)
+        // Not when the last was stopped: by the person, in the window, or
+        // by its project closing, which closed the window too.
+        guard outcome != nil else { return }
+        // The outcomes are shown in the window, back if it was closed.
+        // A long export may finish with the app behind another.
+        show()
+        NSApp.requestUserAttention(.informationalRequest)
     }
 
     /// Shows `outcome` as if an export had ended, for a picture of the
     /// view (`UISnapshots`).
-    func showOutcomeWithoutRunning(_ outcome: Outcome?) {
-        self.outcome = outcome
+    func showOutcomeWithoutRunning(_ outcome: Outcome?, timelineName: String = "Main") {
+        outcomes = outcome.map { [Ended(timelineName: timelineName, outcome: $0)] } ?? []
+    }
+
+    /// Shows `current` under way, `progress` along, with `queue` waiting
+    /// behind it, for a picture of the view (`UISnapshots`).
+    func showQueueWithoutRunning(current: Job, progress: Double, queue: [Job]) {
+        self.current = current
+        self.progress = progress
+        self.queue = queue
     }
 
     private func didClose() {

@@ -300,9 +300,20 @@ defaults) sets how loud the export's sound is (`LoudnessTarget`):
 - **−14 LUFS** for streaming services, **−16 LUFS** for podcasts and
   Apple's spec, **−23 LUFS** for EBU R128 broadcast.
 
+Export… in the window starts the export at once. Clicked again while one
+runs, it queues the timeline the editor shows then, asking where to save
+it as usual: the menus stay open for it, and each export keeps the
+format, loudness and movie tracks, and the project as it was, from when
+it was asked for. The window lists the export under way with its
+progress and those waiting, which run in turn and can be taken out with
+their remove buttons; the toolbar's progress is the one under way. When
+the last has ended the window comes back with how each ended.
+
 Stopping an export, or closing its project's window or quitting while it
 runs, asks first, since what was exported so far is deleted
-(`ExportWindow.confirmStopping`).
+(`ExportWindow.confirmStopping`). Stop Export… stops the one under way and
+starts the next waiting; closing the project or quitting stops the queue
+too.
 
 With a target, the sound is mastered before the pictures are exported
 (`LoudnessMastering`), taking the first tenth of the progress bar.
