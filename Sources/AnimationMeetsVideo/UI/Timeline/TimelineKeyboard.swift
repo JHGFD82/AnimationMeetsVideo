@@ -277,9 +277,10 @@ extension TimelineView {
         return !targets.isEmpty
     }
 
-    /// Eases the keyframes at the playhead in the property rows that are
-    /// showing, under the selected clip's layer or under every layer when
-    /// nothing is selected. False when there are none.
+    /// Eases the keyframes at the playhead: the selected clip's controls
+    /// while the effects panel shows, and the volume rows that are showing,
+    /// under the selected clip's layer or under every layer when nothing is
+    /// selected. False when there are none.
     func easeKeyframesAtPlayhead(_ preset: KeyframeEase.Preset) -> Bool {
         let time = timeline.snappedToFrame(playheadTime)
         let layers: [TimelineLayer]

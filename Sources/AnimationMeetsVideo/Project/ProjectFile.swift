@@ -948,8 +948,7 @@ struct ProjectFile: Codable {
     struct LayerEntry: Codable {
         var id: UUID
         var customName: String?
-        /// `LayerKind`'s raw value. Absent in projects saved before layers
-        /// had kinds, which get one from their clips on load.
+        /// `LayerKind`'s raw value.
         var kind: String
         var clips: [ClipEntry]
         /// Decibels, on Sound and Music layers; absent while at 0 and not
