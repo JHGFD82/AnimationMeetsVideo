@@ -915,7 +915,7 @@ version loads.
 
 ### 5. Keep outcomes that end behind the save panel
 
-- [ ] Done
+- [x] Done
 
 **Why.** `run()` reads `isRunning` again after the save panel returns,
 to decide whether the new export clears the old outcomes. The panel is

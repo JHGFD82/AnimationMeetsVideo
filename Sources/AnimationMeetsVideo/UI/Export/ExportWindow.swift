@@ -28,7 +28,8 @@ final class ExportWindow {
     private(set) var queue: [Job] = []
     private(set) var progress: Double = 0
     /// How the exports since the window was last idle ended, oldest
-    /// first, shown until an export starts with none running.
+    /// first, cleared once an export saved while none ran starts; those
+    /// that end while its save panel is up stay.
     private(set) var outcomes: [Ended] = []
     var isRunning: Bool { current != nil }
     /// Exports what the window shows, once pasted changes are dealt with.
@@ -231,8 +232,11 @@ final class ExportWindow {
     func run(project: EditingProject, timelineID: UUID, renderer: RenderScheduler) {
         let format = format
         let timelineName = project.timeline(id: timelineID)?.name ?? timelineName
+        // Read before the panel, which is modal but lets the queue run on:
+        // exports that end while it is up must not count as a fresh start.
+        let wasRunning = isRunning
         // A second export of the project is told apart by its timeline.
-        let baseName = isRunning && !timelineName.isEmpty ? "\(project.name) \(timelineName)" : project.name
+        let baseName = wasRunning && !timelineName.isEmpty ? "\(project.name) \(timelineName)" : project.name
         let suggested = format == .wavStems ? "\(baseName) Stems" : baseName
         // Never the name of one under way or waiting, which this one would
         // delete (`ExportDestinations`).
@@ -258,8 +262,9 @@ final class ExportWindow {
             audioTracks: defaults.string(forKey: Preferences.exportAudioTracks).flatMap { ExportAudioTracks(rawValue: $0) } ?? .mix,
             destination: url
         )
-        // Read after the panel: what runs now decides start or queue.
-        add(job, clearingOutcomes: !isRunning, renderer: renderer)
+        // What runs now decides start or queue (`add`); what ran when
+        // Export… was clicked decides whether earlier outcomes clear.
+        add(job, clearingOutcomes: !wasRunning, renderer: renderer)
     }
 
     /// Asks where to save an export in `format`, suggesting `name`: a file,
@@ -279,7 +284,8 @@ final class ExportWindow {
 
     /// Starts `job`, or queues it while another export runs; `renderer`
     /// pauses until the last has ended. `clearingOutcomes` first drops how
-    /// the exports before it ended.
+    /// the exports before it ended: true for an export saved while none
+    /// ran, even if one started or ended while its save panel was up.
     func add(_ job: Job, clearingOutcomes: Bool, renderer: RenderScheduler) {
         self.renderer = renderer
         if clearingOutcomes { outcomes = [] }

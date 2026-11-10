@@ -148,6 +148,46 @@ import Testing
         #expect(h.export.outcomes.count == 1)
     }
 
+    // Whether Export… clears the outcomes is decided by what ran when it
+    // was clicked, not by what runs once its save panel answers. An export
+    // can't be ended inside the stand-in panel, which holds the main actor
+    // the queue needs, so this starts one there instead.
+    @Test func outcomesClearWhenTheWindowWasIdleAsExportWasClicked() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "A.mov")
+        let b = exportJob(to: "B.mov")
+        h.add(a)
+        h.exports.finish(a.id)
+        try await h.settle { !h.export.isRunning }
+        #expect(h.export.outcomes.count == 1)
+
+        h.answerSavePanel = { [weak h] _ in
+            guard let h else { return nil }
+            h.export.add(b, clearingOutcomes: false, renderer: h.renderer)
+            return URL(filePath: "/tmp/amv-export-tests/C.mov")
+        }
+        h.run()
+
+        #expect(h.export.outcomes.isEmpty)
+        #expect(h.export.current?.id == b.id)
+        #expect(h.export.queue.count == 1)
+        try await h.stopAll()
+    }
+
+    @Test func anExportSavedWhileOneRunsKeepsHowTheLastEnded() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "A.mov")
+        let x = exportJob(to: "X.mov")
+        h.add(a)
+        h.exports.finish(a.id)
+        try await h.settle { !h.export.isRunning }
+        #expect(h.export.outcomes.count == 1)
+
+        h.export.add(x, clearingOutcomes: false, renderer: h.renderer)
+        #expect(h.export.outcomes.map(\.outcome) == [.finished(url: a.destination, report: nil)])
+        try await h.stopAll()
+    }
+
     @Test func eachExportStartsAtNoProgress() async throws {
         let h = ExportQueueHarness()
         let a = exportJob(to: "A.mov")
