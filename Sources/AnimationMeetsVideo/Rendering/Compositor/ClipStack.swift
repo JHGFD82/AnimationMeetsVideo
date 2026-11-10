@@ -100,8 +100,8 @@ struct ClipStack: @unchecked Sendable {
 
     /// Whether an effect in the stack gives a different picture when it is
     /// drawn at another size, such as a blur whose radius is in pixels.
-    /// Position, Scale, Rotation, Opacity, Blending and Color work on single
-    /// pixels, so none yet.
+    /// No built-in effect does; an effect package says so with
+    /// `dependsOnPixelSize` in its effect.json, as the blurs do.
     var dependsOnPixelSize: Bool {
         effects.contains { $0.enabled && $0.kind.dependsOnPixelSize }
     }

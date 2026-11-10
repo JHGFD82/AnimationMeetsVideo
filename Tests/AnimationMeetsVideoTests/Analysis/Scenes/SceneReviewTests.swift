@@ -4,11 +4,9 @@ import Foundation
 import Testing
 @testable import AnimationMeetsVideo
 
-// A review of scene detection and splitting, as tests. Tests that pin down
-// behavior that is correct are ordinary tests. Tests that pin down a defect
-// are wrapped in `withKnownIssue`: they assert what should happen, and the
-// suite fails when the defect is fixed, as a reminder to remove the wrapper.
-// Tests named "…Today" record current behavior that may be a limitation by
+// A review of scene detection and splitting, as tests that pin down
+// behavior that is correct; the defects it found have been fixed. Tests
+// named "…Today" record current behavior that may be a limitation by
 // design; they are not endorsements of it.
 
 private func seconds(_ time: CMTime) -> Double { time.seconds }
