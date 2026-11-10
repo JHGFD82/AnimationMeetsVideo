@@ -68,29 +68,6 @@ extension EditingProject {
         return ids
     }
 
-    /// The kind a layer saved before layers had kinds must have been, from
-    /// its clips: video if any has pictures (or it has none), sound if it
-    /// holds sound detached from video, otherwise music.
-    func inferredKind(of layer: TimelineLayer) -> LayerKind {
-        let audioOnly = layer.clips.filter(isAudioOnly)
-        guard !layer.clips.isEmpty, audioOnly.count == layer.clips.count else { return .video }
-        let detached = audioOnly.contains { clip in
-            guard case .media(let media) = resolvedInfo(for: clip.source) else { return false }
-            return media.kind == .video
-        }
-        return detached ? .sound : .music
-    }
-
-    /// Gives the layers in `ids` the kind their clips imply. For projects
-    /// saved before layers had kinds.
-    mutating func inferLayerKinds(of ids: Set<UUID>) {
-        for t in timelines.indices {
-            for l in timelines[t].layers.indices where ids.contains(timelines[t].layers[l].id) {
-                timelines[t].layers[l].kind = inferredKind(of: timelines[t].layers[l])
-            }
-        }
-    }
-
     /// Moves a clip onto a new layer of `kind` at the top of the stack, as
     /// when it is dropped on the "new layer" zone or on the empty part of an
     /// area. It keeps its time, or starts at `start` when given (moved onto

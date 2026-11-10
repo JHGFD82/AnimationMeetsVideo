@@ -104,28 +104,6 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(project.addScenes(scenes, ofAsset: asset.id, intoTimeline: t, kind: .video) == nil)
     }
 
-    @Test func layersSavedWithoutAKindGetOneFromTheirClips() throws {
-        var project = EditingProject.empty
-        let t = project.rootTimelineID
-        let pictureResult = project.importClip(video(sound: true), intoTimeline: t)
-        let picture = try #require(pictureResult)
-        let musicResult = project.importClip(song(), intoTimeline: t)
-        let music = try #require(musicResult)
-        let detachedResult = project.detachAudio(in: t, layer: picture.layerID)
-        let detached = try #require(detachedResult)
-        let empty = TimelineLayer(customName: nil, kind: .music, clips: [])
-        project.timelines[0].layers.append(empty)
-
-        let ids = Set(layers(project).map(\.id))
-        for l in project.timelines[0].layers.indices { project.timelines[0].layers[l].kind = .video }
-        project.inferLayerKinds(of: ids)
-        let kinds = Dictionary(uniqueKeysWithValues: layers(project).map { ($0.id, $0.kind) })
-        #expect(kinds[picture.layerID] == .video)
-        #expect(kinds[music.layerID] == .music)
-        #expect(kinds[detached] == .sound)
-        #expect(kinds[empty.id] == .video)
-    }
-
     @Test func defaultNamesCountWithinEachKind() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID
