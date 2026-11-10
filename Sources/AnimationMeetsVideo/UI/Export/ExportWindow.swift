@@ -235,6 +235,14 @@ final class ExportWindow {
         queue.removeAll { $0.id == id }
     }
 
+    /// Shows `fraction` as the progress of the export `id`, if that is still
+    /// the one under way: progress hops to the main actor, so the last hops
+    /// of one export can land after the next has started at 0.
+    func setProgress(_ fraction: Double, of id: Job.ID) {
+        guard current?.id == id else { return }
+        progress = fraction
+    }
+
     /// Asks where to save, then exports `timelineID` of `project` there
     /// in the format and sound picked: now, or, while another export
     /// runs, once those queued before it end. `renderer` pauses
@@ -311,9 +319,10 @@ final class ExportWindow {
         let cache = renderer?.cache
         progress = 0
         current = job
+        let id = job.id
         task = Task {
             let progress: @Sendable (Double) -> Void = { fraction in
-                Task { @MainActor in self.progress = fraction }
+                Task { @MainActor in self.setProgress(fraction, of: id) }
             }
             var outcome: Outcome?
             do {

@@ -242,6 +242,37 @@ import Testing
         try await h.stopAll()
     }
 
+    @Test func progressFromAnEndedExportIsDropped() {
+        let export = ExportWindow()
+        let ended = exportJob(to: "A.mov")
+        let next = exportJob(to: "B.mov")
+        export.showQueueWithoutRunning(current: next, progress: 0, queue: [])
+        export.setProgress(0.97, of: ended.id)
+        #expect(export.progress == 0)
+        export.setProgress(0.3, of: next.id)
+        #expect(export.progress == 0.3)
+    }
+
+    // A progress hop of an export that has ended, landing after the next
+    // one started, leaves the next one's progress alone.
+    @Test func lateProgressFromAnEndedExportIsDropped() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "A.mov")
+        let b = exportJob(to: "B.mov")
+        h.add(a)
+        h.add(b)
+        try await h.settle { h.exports.hasStarted(a.id) }
+        h.exports.finish(a.id)
+        try await h.settle { h.exports.hasStarted(b.id) }
+        h.exports.report(0.25, from: b.id)
+        try await h.settle { h.export.progress == 0.25 }
+
+        h.exports.report(0.97, from: a.id)
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(h.export.progress == 0.25)
+        try await h.stopAll()
+    }
+
     @Test func aSecondExportIsToldApartByItsTimeline() async throws {
         let h = ExportQueueHarness()
         h.answerSavePanel = { _ in nil }

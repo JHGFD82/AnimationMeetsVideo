@@ -1028,7 +1028,7 @@ say that the alert's modal loop lets the export end and the next start.
 
 ### 7. Drop progress from an export that has ended
 
-- [ ] Done
+- [x] Done
 
 **Why.** The progress callback hops to the main actor with an unkeyed
 `Task { @MainActor in self.progress = fraction }`. Hops queued just
