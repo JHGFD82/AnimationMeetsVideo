@@ -1,10 +1,10 @@
 # Audio levels
 
 Status: **implemented**: keyframed volume and pan on clips and on Sound
-and Music layers, sound effects (EQ, Compressor, Limiter) on clips,
-fades and crossfades under transitions, all applied in playback and
-export, scrubbing by grains and like tape, a meter of the whole mix
-with its short-term loudness,
+and Music layers, sound effects (EQ, Compressor, Limiter, Voice
+Isolation) on clips and on those layers, fades and crossfades under
+transitions, all applied in playback and export, scrubbing by grains
+and like tape, a meter of the whole mix with its short-term loudness,
 exports mastered to a loudness target with peaks held under −1 dBFS, a
 choice of output devices, and takes recorded from inputs and other apps.
 Writing and placing a take are tested; capturing from a device or an

@@ -1,16 +1,22 @@
 # Layer transforms and keyframes
 
-Status: **replaced** by [effects.md](effects.md). Layers no longer have a
-transform: position, scale, rotation and opacity are the controls of the
-Transform effect on a clip, and the timeline's property rows and the
-inspector's transform section (P, S, R and T) are gone. Everything this
-document says about **keyframes, eases, the graph editor and arithmetic in
-numeric fields** still holds, and applies to effect controls, the anchor
-point and volume. The sections on layer properties below describe how the
-layer transform worked and are kept for reference until the effects panel
-replaces them.
+Status: **replaced** by [effects.md](effects.md), except for keyframes.
+Layers no longer have a transform: position, scale, rotation and opacity
+are the controls of the Transform effect on a clip, every visual clip has
+an anchor point, and the timeline's property rows and the inspector's
+transform section (P, S, R and T) are gone. What this document says about
+**keyframes, eases, the graph editor and arithmetic in numeric fields** is
+built and current, and applies to effect controls, the anchor point,
+speed, volume and pan. [Not implemented yet](#not-implemented-yet) is the list
+of keyframe work still open. The sections marked **History** (Properties,
+In the timeline, In the inspector, Rendering and Saving) describe how the
+removed layer transform worked and are kept for reference only.
 
 ## Properties
+
+**History.** This section describes the removed layer transform. The
+Transform effect and the anchor point that replaced it are in
+[effects.md](effects.md#transform).
 
 Every layer that draws pictures (a layer holding video or a nested
 timeline) has a `LayerTransform`. Audio-only layers have none and show no
@@ -25,7 +31,7 @@ controls. The properties follow After Effects:
 
 The layer scales and turns about the center of its timeline's frame. Fitted
 content is centered in the frame, so this is also the content's own center.
-There is no anchor point yet.
+There was no anchor point (clips have one now).
 
 Transforms belong to the **layer**, not to individual clips, so every clip
 on the layer moves together, and keyframe times are in the **timeline's
@@ -34,12 +40,9 @@ Effects, where a layer is one clip and its keyframes travel with it).
 
 ### Only 2D for now
 
-Position and scale are 2D and rotation is about the z axis only. 3D layers
-(z position, x/y rotation, orientation, a camera) may come later. The model
-is set up for that: `Vector2` would gain a `Vector3` sibling, and each 3D
-property would be one more `AnimatedValue` on `LayerTransform`. Rendering
-3D would need a custom compositor (see [Rendering](#rendering)), since the
-built-in one takes only an affine transform.
+This still holds for the Transform effect: position and scale are 2D and
+rotation is about the z axis only. 3D (z position, x/y rotation,
+orientation, a camera) may come later; nothing is designed for it yet.
 
 ## Keyframes
 
@@ -49,7 +52,8 @@ volume (see [audio.md](audio.md)) is keyframed the same way.
 
 - Before its first keyframe a property holds the first keyframe's value,
   after its last it holds the last one's, and in between it blends,
-  linearly unless either keyframe is eased (see [Easing](#easing)).
+  linearly unless either keyframe is eased (see [Easing](#easing)). After
+  a held keyframe it keeps that keyframe's value until the next one.
 - A property has at most one keyframe per time. Keyframes are identified by
   their time, which is snapped to the timeline's frames (exactly, so 23.976
   fps keyframes land on 1001/24000 s steps). Editing a value with the
@@ -86,13 +90,15 @@ Presets, named as on transitions:
 | Ease In | Shift-F9 | The incoming side to Easy Ease (slows into the keyframe); the other side stays |
 | Ease Out | Cmd-Shift-F9 | The outgoing side (leaves the keyframe slowly) |
 | Easy Ease | F9 | Both sides: speed 0, 33% influence |
+| Hold | Ctrl-Option-H | Keeps the value until the next keyframe, then jumps (see [hold keyframes](motion-designer.md#hold-keyframes)) |
 
-They're in each keyframe's right-click menu on the timeline and in the
-graph editor. The F9 keys ease the keyframes at the playhead in every
-property row that is showing, under the selected clip's layer or under
-every layer when nothing is selected (on a laptop keyboard, with Fn
-unless the function keys are set to act as standard keys). Setting a
-keyframe's value or retiming it keeps its eases.
+They're in each keyframe's right-click menu in the effects panel's lanes
+and the timeline's volume rows, and in the graph editor. The F9 keys ease
+the keyframes at the playhead: with the effects panel open, those of the
+selected clip, and those on any volume row that is showing, under the
+selected clip's layer or under every layer when nothing is selected (on
+a laptop keyboard, with Fn unless the function keys are set to act as
+standard keys). Setting a keyframe's value or retiming it keeps its eases.
 
 The shape of an ease is set by dragging its handle in the parameter's
 graph editor (see [Graph editor](#graph-editor)).
@@ -100,10 +106,12 @@ graph editor (see [Graph editor](#graph-editor)).
 ### Graph editor
 
 Each animated property has a graph button (a small chart) after its
-keyframe buttons, in the timeline and the effects panel (and the
-inspector's Layer sound rows); volume does too. It
-opens that parameter's graph editor in a floating **HUD panel** of its
-own, titled with the layer and the parameter ("Video 1 · Position"), so
+keyframe buttons, in the effects panel, on the timeline's volume rows
+and in the inspector's Layer sound rows. It opens that parameter's graph
+editor in a floating **HUD panel** of its own, titled with the clip, the
+effect and the control ("Beach · Transform · Position"), the clip alone
+before a clip's anchor point, speed, volume or pan ("Beach · Speed"), or
+the layer before a layer's volume or pan ("Music 1 · Volume"), so
 several can be open side by side: one per parameter, and pressing the
 button again brings the existing panel forward (`KeyframeGraphHUDs`).
 Panels move only by their title bar, so every drag inside goes to the
@@ -262,6 +270,12 @@ it shows once.
 
 ## In the timeline
 
+**History.** The property rows and the P, S, R and T keys below were
+removed with the layer transform. The keyframe lanes live on in the
+effects panel (see [effects.md](effects.md#keyframes-in-the-panel)) and
+on the timeline's volume rows, whose diamonds still work as the list
+below says.
+
 Each visual layer has a disclosure arrow left of its number. The arrow shows
 all four properties under the layer, or hides them. The keys work like After
 Effects:
@@ -295,6 +309,8 @@ Which properties are shown is view state, not saved in the project.
 
 ## In the inspector
 
+**History.** This section was removed with the layer transform.
+
 With a clip selected, the inspector's **Layer Transform** section has the
 same four rows for that clip's layer, plus **Reset Transform**.
 
@@ -311,7 +327,7 @@ arithmetic, evaluated by `NumericExpression`:
 - Text that isn't a complete expression, or a result that isn't a finite
   number (such as `1/0`), beeps and leaves the value unchanged.
 
-This applies to all fillable numeric fields: the transform values and the
+This applies to all fillable numeric fields: the effect values and the
 timeline settings' width, height and frame rate. In the settings sheet the
 field shows the result when Return is pressed or focus leaves, and the form
 reads it the same way, so pressing Create without leaving a field still
@@ -320,6 +336,11 @@ works. New numeric fields should use `NumericField`, or
 bound to text.
 
 ## Rendering
+
+**History.** `PlacementAnimation` and `TransformStage` are gone, and the
+built-in compositor is no longer used: `buildComposedTimeline` now plans
+a tree of clips that `LayeredCompositor` draws, in preview and export
+alike (see [effects.md](effects.md#one-compositor)).
 
 The preview and export share `CompositionExporter.buildComposedTimeline`,
 so animation looks the same in both.
@@ -347,6 +368,12 @@ so animation looks the same in both.
   `LayeredCompositor`, in preview and export alike.
 
 ## Saving
+
+**History.** The format version is now 2, and loading refuses a layer
+with a `transform` key as an unknown key (see
+[effects.md](effects.md#saving)). An animated value's `value` or
+`keyframes`, and its keyframes' eases, are still written as described
+below.
 
 Each layer in `project.json` may have a `transform` object. It is absent for
 untransformed layers, and each property in it is absent while it has its
@@ -380,16 +407,13 @@ ignore it, and drop the transforms if it saved the project.
 
 - Spatial (curved) motion paths for position, and
   separate easing per component.
-- In the graph editor: a speed graph, selecting several keyframes, and keeping linked scale's aspect when
-  dragging one component.
-- **Image layers.** Still images can't be imported yet. When they can, they
-  are visual layers and get the same transform.
-- **Anchor point**, and **3D** (see [Only 2D for now](#only-2d-for-now)).
-- **Dragging in the viewer** to move, scale or rotate a layer, and dragging
-  across a value to scrub it.
-- **Selecting several keyframes**, copying and pasting them, and deleting
-  with the Delete key.
-- **U** to show only animated properties, as in After Effects.
-- **Motion blur** for nested timelines.
-- Each edit rebuilds the player item, as other edits do. Fine for typed
-  values; live dragging in the viewer will need a cheaper update path.
+- In the graph editor: a speed graph, and keeping linked Scale's aspect
+  when dragging one component.
+- **3D** (see [Only 2D for now](#only-2d-for-now)).
+- **Dragging in the viewer** to move, scale or rotate a clip (left out on
+  purpose for now, see [effects.md](effects.md#not-in-this-plan)).
+- **Copying and pasting keyframes.** Whole effects can be copied, with
+  their keyframes, but not keyframes on their own.
+- **U** to show only animated properties, as in After Effects. The
+  timeline's property rows it was meant for are gone, so where it would
+  act is open.

@@ -52,14 +52,14 @@ before blurring, put Scale above Blur. To blur first, drag it the other way.
   Position +5 px, duplicated fifty times, moves the clip 250 px. Two
   Blending effects apply two blend modes, one after the other. Other effects
   can sit between them.
-- **Effects of any kind mix freely.** Effects added later (blurs, keys,
-  generators) go in the same list.
+- **Effects of any kind mix freely.** Blurs, keys and generators go in
+  the same list as transforms, blending and color.
 
 ## What has a stack
 
-Every visual clip has one: a media clip with pictures, a nested timeline,
-and later images, text and shapes. Audio-only clips have none. Clips with
-sound also have a stack of sound effects, described in
+Every visual clip has one: a media clip with pictures (video or a still),
+a nested timeline, and a text or shape clip. Audio-only clips have none.
+Clips with sound also have a stack of sound effects, described in
 [audio.md](audio.md#sound-effects). Layers no
 longer have a transform. Animation across several clips goes on an
 adjustment layer (see [Adjustment layers](#adjustment-layers)). Volume
@@ -85,8 +85,8 @@ Keyframes, inputs and Time all count in a clip's **source time**:
   alignment offset (see [media-replacement.md](media-replacement.md))
   shifts the frames read, not the animation, so moves stay on the picture.
 - For a nested timeline, that timeline's time.
-- For a still (and later text and shapes), which has no time of its own,
-  the time since the clip's start.
+- For a still, text or shapes, which have no time of their own, the time
+  since the clip's start.
 
 **Splitting** a clip gives each half a full copy of its stack, anchor
 point, Time, Shutter and volume. Since keyframes are in source time, each
@@ -274,8 +274,8 @@ through the nested clip's own stack and transitions like any other clip.
 Nothing inside a nested timeline sees what is under it in the parent; only
 its alpha shows through. The root timeline draws over black.
 
-This replaces flattening. Today nested timelines are flattened into one
-stack of tracks; instead the compositor gets a tree and draws each nested
+This replaced flattening, where nested timelines became one stack of
+tracks; the compositor gets a tree (`DrawClip`) and draws each nested
 timeline into an image of its own.
 
 #### Pass through
@@ -291,7 +291,8 @@ nested clip's own stack can only hold steps that work layer by layer:
 - **Opacity**, a dissolve, and motion blur are applied to each layer
   inside. Where those layers overlap this differs from applying them to the
   group, and the panel notes it.
-- **Time** retimes the nested timeline as usual.
+- **Time** isn't offered on a nested clip, passing through or not (see
+  [Building it](#building-it), step 9).
 - **Everything else** (Blending, Color, neighborhood effects, wipes, the
   film dissolve) needs one combined picture, so it is dimmed with a note
   and does nothing while Pass Through is on.
@@ -321,16 +322,17 @@ Pass-through nested clips cost no more to draw than the layers they hold.
   up 300% is drawn at that size, with the matrix applied to each layer
   inside, instead of drawing it at 100% and enlarging the result. This is
   only exact when every step inside is per pixel (transforms, blending,
-  color). A future effect whose result depends on pixel size (a blur
-  radius) stops the push at that nested timeline. Text and shapes, when they
-  come, are drawn at their final size the same way.
+  color). An effect whose result depends on pixel size (a blur radius)
+  stops the push at that nested timeline. Text and shapes are drawn at
+  their final size the same way (see [graphic-layers.md](graphic-layers.md)).
 - **The canvas has an edge.** Intermediate images keep pixels moved off the
   frame, so a later step can bring them back, up to a margin of half the
   frame's width and height on each side (twice the frame's area). A
-  project setting, **Canvas Margin**, allows more for the rare stack that
-  needs it; a full frame on each side is nine times the area, which is a
-  lot of memory at 4K. Chains without a neighborhood step have no such
-  limit, since nothing is drawn until the end.
+  project setting, `canvasMargin`, allows more for the rare stack that
+  needs it; it has no control in the app yet and is set only in
+  `project.json`. A full frame on each side is nine times the area,
+  which is a lot of memory at 4K. Chains without a neighborhood step
+  have no such limit, since nothing is drawn until the end.
 
 ### One compositor
 
@@ -664,7 +666,7 @@ The panel has its own ruler and playhead, spanning the selected clip. The
 button at the right of the panel's title hides them and the lanes, so the
 controls take the panel's whole width, and shows them again; the choice is
 kept between launches. To the right of each control row is its keyframe lane, with the same diamonds
-and interactions as the timeline's lanes today: click to go to it, drag to
+and interactions as the timeline's volume rows: click to go to it, drag to
 retime, right-click for ease presets (Hold among them, see
 [hold keyframes](motion-designer.md#hold-keyframes)) and Delete Keyframe. The panel's
 playhead is the timeline's: scrubbing either moves both.
@@ -859,15 +861,20 @@ installed, which is kept rather than refused (see
 ## Testing
 
 The test that the built-in and custom compositors draw the same picture
-goes away with the built-in compositor. In its place:
+went away with the built-in compositor. In its place:
 
-- Reference frames for each effect and blend mode, compared within a small
-  tolerance.
-- Folding, pushing transforms into nested timelines and skipping
-  equivalent intermediates each checked against drawing every step
-  separately, on the same stacks.
-- Strict loading checked against a file per kind of error, for the message
-  and the path.
+- Reference frames, compared within a small tolerance, for the looks that
+  moved into effect packages (`LookReferenceTests`). Blend modes and Color
+  are checked against a restatement of their formulas instead, and the
+  other effects (Transform, Matte and the rest) have no stored frames
+  yet.
+- Pushing transforms into a nested timeline is checked against drawing
+  without the push (`NestedDrawingTests`). Folding is checked only on the
+  steps it gives (fifty moves fold into one); neither it nor skipping
+  equivalent intermediates is yet checked against drawing every step
+  separately.
+- Strict loading is checked against a file per kind of error, for the
+  message and the path (`ProjectStoreTests`).
 
 ## Not in this plan
 
@@ -960,9 +967,10 @@ In order, each step usable on its own:
    the nested frame's size and be enlarged. To get that, a layer's placement
    in the frame it is drawn into (here, and for pass-through) is applied to
    its picture first, and its own moves are conjugated to work in the placed
-   frame, which is the same picture. `EffectKind.dependsOnPixelSize` (false
-   for every effect so far) stops the push at a nested timeline holding an
-   effect whose result changes with pixel size.
+   frame, which is the same picture. `EffectKind.dependsOnPixelSize` (set
+   by the blurs, sharpens and a few other packages, in their `effect.json`)
+   stops the push at a nested timeline holding an effect whose result
+   changes with pixel size.
 8. **Adjustment layers** with reach (done). An adjustment layer is a video
    layer flagged `isAdjustment`, holding adjustment clips (`ClipSource.adjustment`:
    no media, any length, and keyframes count from the clip's own start). The
@@ -1013,7 +1021,8 @@ In order, each step usable on its own:
    under the current finished clip. Motion Blur draws the finished clip at
    that many moments across the shutter (`frameDuration × angle / 360`,
    centered on the frame) and averages them. While playing, the viewer
-   draws two, or none at Quarter quality, and Motion Blur in Preview
+   draws as many as frames have room for, or none at Quarter quality (see
+   [Time and Shutter](#time-and-shutter)), and Motion Blur in Preview
    (the viewer's camera menu, remembered per Mac) turns it off there;
    `DrawingOptions` carries this to the compositor without rebuilding
    anything. Sound at other speeds is the host's audio time-pitch algorithm
@@ -1052,11 +1061,11 @@ In order, each step usable on its own:
     with the search kept to about a sixth of the width, since a far match
     in a repeating texture would only be wrong.
     Frames of different sizes fade.
-    The flow is estimated again for each frame drawn between the same two
-    source frames, which slow motion repeats; a cache of fields is the first
-    thing to add if renders prove slow. Vision's flow runs a little short of
-    large motions, so a frame is closer to its neighbors than the true
-    in-between one when the footage moves fast
+    The flow between two source frames is measured once and kept for each
+    frame drawn between them (`FlowFieldCache`, see
+    [Time and Shutter](#time-and-shutter)). Vision's flow runs a little
+    short of large motions, so a frame is closer to its neighbors than the
+    true in-between one when the footage moves fast
 12. **Copy, paste and presets**, with paste changes and the export check
     (done). An `EffectBundle` is a set of effects taken from a clip's stack
     with their keyframe times counted from the source clip's trim start

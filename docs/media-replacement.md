@@ -30,8 +30,8 @@ After a replacement the old file is assumed to be gone, so it cannot be
 read to compare against. The app therefore saves a small **reference record**
 of every asset at import time, while the original still exists. This is the
 same data described in [scene-cuts.md](scene-cuts.md): thumbnails at cuts,
-sparse interval thumbnails, dense frames near used ranges, a frame-luma
-signature, an audio envelope, and a metadata snapshot.
+sparse interval thumbnails, the per-frame change scores that serve as a
+picture signature, an audio envelope, and a metadata snapshot.
 
 Because it is the only record of the original, it is kept separately from
 the render cache and is never evicted automatically. See
@@ -59,7 +59,7 @@ still; the replacement is refused with a message saying so.
 | Difference | Handling |
 | --- | --- |
 | Resolution | Ignored. The new file is scaled to occupy the same frame as the old one, preserving aspect ratio. |
-| Frame rate | Ignored. Times are stored as rational seconds, so the new file is sampled at the nearest frame for the project's frame rate. Variable-frame-rate files get a warning. |
+| Frame rate | Ignored. Times are stored as rational seconds, so the new file is sampled at the nearest frame for the project's frame rate. |
 | Color space, SDR to SDR | Not yet converted; the project's color space is only a label today (see Decisions). |
 
 ### 2. Confirmed with the person

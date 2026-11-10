@@ -38,7 +38,9 @@ else around it, by dragging frames along a time graph.
   refused whole, with a beep and a VoiceOver announcement
   (`ClipLockRefusal`); a held drag is refused at each step and beeps once.
   Undo and redo that would change one are refused too
-  (`ProjectHistory.canRestore`); a refused undo goes back on the stack.
+  (`ProjectHistory.canRestore`); a refused undo goes back on the stack
+  (which clears the redo stack, as any new step would), and a refused
+  redo is lost.
   What follows from an edit rather than being one (keyframing effects
   making their keyframes again, package effects refitted) still reaches
   them (`writeDerived`). A clip attached to a song moved elsewhere

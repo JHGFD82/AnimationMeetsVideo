@@ -1,10 +1,12 @@
 # The browser
 
-Status: **being built**. See "Building it" for the stages and which are
-done. Replaces the library sidebar described in
-[scene-cuts.md](scene-cuts.md) ("In the browser") and the library parts of
-[timeline.md](timeline.md); their scene editing (merge, split,
-sensitivity, Find Scenes Again) carries over unchanged.
+Status: **built** (stages 1 to 6 of "Building it"; 2 to 6 not yet tried
+on screen). Preset previews over generated test footage (stage 7) are
+**planned**; presets now live in the Effects Library, so that work
+belongs there (see "Previewing presets"). Replaces the library sidebar
+described in [scene-cuts.md](scene-cuts.md) ("In the browser") and the
+library parts of [timeline.md](timeline.md); their scene editing (merge,
+split, sensitivity, Find Scenes Again) carries over unchanged.
 
 The browser is the panel left of the viewer that holds what can go into a
 timeline. It and the panel right of the viewer can each be resized by
@@ -434,10 +436,15 @@ and VoiceOver reads it by row and column.
 
 Presets are in the Effects Library's Presets tab (see
 [effects.md](effects.md), "Copying and presets"). Resting the pointer on
-one shows a card of what it holds, top of the stack first: each effect's
-name (and its kind when renamed), whether it is off, and the settings
-that differ from a new effect of its kind, with animated ones marked.
-VoiceOver reads the same as the row's hint. A preset's tile shows a thumbnail of the preset applied to **generated test
+one shows a card of what it holds (`PresetContents`), top of the stack
+first: each effect's name (and its kind when renamed), whether it is
+off, and the settings that differ from a new effect of its kind, with
+animated ones marked. VoiceOver reads the same as the row's hint. That
+card is built. The rest of this section is planned for the Presets tab
+(`PresetsList`) and isn't built yet: today a preset's row shows a preset
+symbol where its thumbnail would be.
+
+A preset's tile shows a thumbnail of the preset applied to **generated test
 footage**: pictures the app draws itself (colour bars, a gradient and
 moving shapes), so nothing is bundled and previews work in an empty
 project. Skimming a preset shows that footage with the preset in the
@@ -506,4 +513,7 @@ Following [accessibility.md](accessibility.md):
 6. **Timelines** as filmstrips, with skimming (built; not yet tried on
    screen), or as the tree, chosen in the view options, and dragged onto
    the timeline as clips are.
-7. **Presets** with generated test footage.
+7. **Preset previews** with generated test footage (not built). Since
+   presets moved, this belongs to the Effects Library's Presets tab
+   (`PresetsList`), not the browser; the hover card of what a preset
+   holds is built.

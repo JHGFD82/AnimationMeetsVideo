@@ -3,11 +3,11 @@
 Status: **steps 1 and 2 implemented**: package layout, `formatVersion` 2,
 stable IDs, rational times, deterministic output, media copy on import, undo
 and redo, the single-writer `.lock`, unsaved-change tracking, and autosave
-into `Backups/`. Step 3 is partly implemented: `Reference/<asset id>/
-signature.bin` holds each video's change scores, `reference.json` and
-`audio.bin` hold the metadata snapshot and audio envelope captured at import,
-and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
-`thumbs/` holds reference pictures. `beats.bin` holds detected beats (see
+into `Backups/`. Step 3 is implemented but for dense reference frames:
+`Reference/<asset id>/signature.bin` holds each video's change scores,
+`reference.json` and `audio.bin` hold the metadata snapshot and audio
+envelope captured at import, and `project.json` holds scene edits (see
+[scene-cuts.md](scene-cuts.md)). `thumbs/` holds reference pictures. `beats.bin` holds detected beats (see
 [beat-detection.md](beat-detection.md)); the beats the person confirmed
 are the person's work, so they are in `project.json`, as an asset's
 `beatMap`, written only once it has a section (see
@@ -17,6 +17,8 @@ opening; copy an older one over `project.json` by hand).
 Step 4 is implemented (see [media-replacement.md](media-replacement.md)):
 `project.json` stores each asset's alignment offset, earlier file paths, the
 file stamp accepted at the last save, and whether its original was forgotten.
+Step 5, live reload of `project.json`, is implemented (see
+[Live reload](#live-reload)).
 
 ## Goals
 
@@ -260,9 +262,9 @@ Requirements for the file:
   this version of the app can't open"), and loading rejects anything it doesn't
   recognize, naming it and where it is (see
   [effects.md](effects.md#loading-is-strict)).
-- **Stable IDs** for every asset, timeline, layer, clip, and scene, written
-  to the file. (Today IDs are regenerated on load and references use array
-  indices, which is the main obstacle to live reload and diffing.)
+- **Stable IDs** for every asset, timeline, layer and clip, written to the
+  file, and references between them are by ID. Scenes aren't saved: a
+  scene is known by its start time (see [scene-cuts.md](scene-cuts.md)).
 - **Deterministic output**: sorted keys and fixed formatting so that two saves
   of the same project are byte-identical and diffs show only real changes.
 - **Rational times** such as `"1001/24000s"`, never floating-point seconds.
@@ -336,7 +338,7 @@ lengths now, and a damaged one is left out.
 | --- | --- |
 | `Reference/` | No, only through an explicit "forget original" action, applied at the next save. It may be the only record of a replaced file, so Save As copies each asset's folder into the new package. |
 | `Cache/` | Yes. `Renders/` has a size cap and evicts oldest-first; its entries are keyed by a hash of the exact content they render, so any upstream edit invalidates them. `References/` holds one movie per Matroska file, named by a hash of the file's path, size and date; opening the project deletes those no asset uses, and remakes any missing. |
-| `Backups/` | Yes, by age and count. |
+| `Backups/` | Yes, by count: each autosave deletes all but the newest 20. |
 
 `Cache/` is marked excluded from backup and sync, and should be kept out of
 version control. Settings to move the cache elsewhere come later.
@@ -440,10 +442,10 @@ Foundation first, because the other features depend on it:
 2. Undo and redo, single-writer lock, and autosave, and define how reloads
    interact with undo. **Done.**
 3. Scene detection and the browser ([scene-cuts.md](scene-cuts.md)),
-   including the reference data capture. **Mostly done**: detection, saved
-   scores and edits, and the browser. Reference capture
-   (metadata snapshot, audio envelope, thumbnails at cuts and intervals) is
-   done.
+   including the reference data capture. **Done** but for dense reference
+   frames near used ranges: detection, saved scores and edits, the
+   browser, and reference capture (metadata snapshot, audio envelope,
+   thumbnails at cuts and intervals).
 4. Media replacement and the sync dialog
    ([media-replacement.md](media-replacement.md)). **Done**: the
    comparison, alignment suggestion, dialog, folder replacement, offset at

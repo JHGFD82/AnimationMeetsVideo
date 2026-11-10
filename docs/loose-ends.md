@@ -1,23 +1,9 @@
 # Loose ends
 
 Status: **temporary**. What is left over from the UX pass of October
-2026 (PR #24): checks not yet made and small gaps knowingly left. Tick
-items off or move them into the document they belong to; delete this
-file when it is empty.
-
-## Before merging
-
-- [ ] **CI can't run.** GitHub doesn't start the macOS job: "recent
-  account payments have failed or your spending limit needs to be
-  increased" (Settings > Billing & plans). `main` fails the same way.
-  Every commit was built and tested locally; run CI once billing is
-  fixed.
-- [x] **Accessibility review.** The `accessibility-reviewer` agent went
-  over the new and changed views against [accessibility.md](accessibility.md),
-  "Rules for new UI". Fixed: the media problems bar's button is its own
-  element again (its stand-in action ignored the button's dimming), the
-  Keyboard Shortcuts window reads keys by name, and the backup folder's
-  buttons say what they act on. The rest passed.
+2026 (PR #24, merged as c17953e) and since: things to try in the app and
+small gaps knowingly left. Tick items off or move them into the document
+they belong to; delete this file when it is empty.
 
 ## To try in the app
 
@@ -47,9 +33,11 @@ Built and tested in code, never run on screen.
   original's folder away first and check it asks where to restore;
   File > Open Backup… starts in the project's backups and opens one the
   same way.
-- [ ] **VoiceOver** over the views reviewed above (the review was made
-  from the code): the media problems bar's count and button, a row of
-  the Keyboard Shortcuts window, the start sheet's recent projects.
+- [ ] **VoiceOver** over the views the accessibility review of the PR
+  went over (it was made from the code, against
+  [accessibility.md](accessibility.md)): the media problems bar's count
+  and button, a row of the Keyboard Shortcuts window, the start sheet's
+  recent projects.
 - [ ] **Earlier in the PR**: the title bar's name, proxy icon and edited
   dot; File > Import Media and Export; Open Recent and the start sheet;
   Locate… and Check Sync…; the Export window's finished note with Show
@@ -100,6 +88,16 @@ Built and tested in code, never run on screen.
 
 ## Known gaps
 
+- **Tests that fail only sometimes on CI.** The pushes of bd7bdc6 and
+  8230f80 to `main` failed while the same commits passed on their
+  branches, each on different tests: `ScrubAudioTests`
+  (`aGrainIsTheMixUnderThePlayheadFadedAtItsEnds`) and
+  `BeatAnalysisQueueTests` in one run, `DetachAudioTests`
+  (`aNestedTimelinesSoundDetaches`) and `LoudnessMasteringTests`
+  (`aQuietMixIsRaisedToTheTarget`) in the other. They look sensitive to
+  the runner's load or timing; find what each waits on and make it
+  deterministic, so a red `main` means something again.
+
 - **Speed: the Timeline menu follows playback.** To keep every item's
   on or off state exact, `TimelineMenuStatePublisher` checks the playing
   time once a frame while a timeline plays (the menu bar is rebuilt
@@ -107,20 +105,15 @@ Built and tested in code, never run on screen.
   scrubbing or the menu bar is reported slow, suspect this first: lower
   its `playingChecksPerSecond`, or check only while a menu is open.
 
-- **Left from the UX review.** The Timeline menu's Delete Selection,
-  Nudge and Turn Clip Off or On stay enabled with nothing selected (they
-  do nothing then). Return adds a clip to the timeline in the Clips tab
-  but renames in the Timelines tab, as documented in
-  [browser.md](browser.md); one meaning for both is a design decision.
-  While the Motion Designer is open its clips are locked
-  ([motion-designer.md](motion-designer.md)): edits from elsewhere that
-  would change them are shown locked and not offered, and refused with a
-  beep if they come anyway. Still only refused, not greyed: the
-  timeline's keys (B, Delete, the nudge keys), the keyframe lanes on
-  the timeline, the browser's commands, and a drop on empty track that
-  would push a locked clip. A song moved elsewhere leaves a locked clip
-  attached to it behind, a redo refused meanwhile is lost, and an undo
-  refused clears the redo stack.
+- **Left from the UX review.** While the Motion Designer is open its
+  clips are locked ([motion-designer.md](motion-designer.md)): edits from
+  elsewhere that would change them are shown locked and not offered, and
+  refused with a beep if they come anyway. Still only refused, not
+  greyed: the timeline's keys (B, Delete, the nudge keys), the keyframe
+  lanes on the timeline, the browser's commands, and a drop on empty
+  track that would push a locked clip. A song moved elsewhere leaves a
+  locked clip attached to it behind, a redo refused meanwhile is lost,
+  and an undo refused clears the redo stack.
 
 - **Pasted media is analyzed again.** Scene detection runs anew in the
   project it is pasted into instead of taking the results the other

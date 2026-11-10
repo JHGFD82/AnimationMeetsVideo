@@ -124,7 +124,7 @@ the old package; reopening the same one keeps them pending.
 1. **Project default**, balanced (0.5). Stored in `project.json` only when
    changed. There is no screen to change it yet.
 2. **Per-asset override**, set from the media's context menu ("Cut
-   Sensitivity..."), with "Use Project Default" to clear it.
+   Sensitivity..."), with "Use project default" to clear it.
 3. **Per-selection region**, set with the scene splitter's Cut sensitivity
    slider for the scenes it shows.
 
@@ -196,9 +196,10 @@ path is still the one described. A project saved before reference capture
 existed gets its reference taken from whatever file is there when it is
 next opened, so it describes that file, not necessarily the original.
 
-New scores and reference data are written on the next save. A project that was never saved has
-nowhere to put them yet, so they are recomputed after reopening if the
-project was closed before saving.
+New scores and reference data are written into the package as soon as
+each is computed (New Project writes the package first, so there is
+always somewhere to put them). A result waits for the next save only if
+writing it fails. See [project-package.md](project-package.md).
 
 ## Replacement media: original time and the file's time
 
@@ -300,7 +301,9 @@ Implemented:
   click) places the selected scenes of an asset back to back, in source order
   with no gaps, on one new layer at the top, starting at time zero (the same
   placement as importing a whole file). Dragging selected scenes onto the
-  timeline does the same.
+  timeline places them back to back too, from the drop time: dropped on a
+  layer of the right kind they go onto it, and the clips after them move
+  right to make room; dropped elsewhere they go on a new layer at the top.
 - **Split Scenes...** (on scenes, or a video's menu) opens the scene
   splitter on them; see below. It replaces the former Preview and Adjust
   Cut Sensitivity sheets, which were the same task twice.
@@ -433,13 +436,14 @@ don't yet.
 
 - Rename a scene, and the optional name field.
 - Moving a boundary by dragging, and splitting at the timeline playhead.
-- Holding a timeline clip's trim, slip and moves to its scenes' edges, so
-  it can't reach into the next scene by accident (clips follow splits and
-  merges already).
-- The original whole file as a separate item next to its scenes.
+  (The model's `SceneEdits.moveCut` exists, but nothing on screen uses it.)
+- Holding a timeline clip's slip and moves to its scenes' edges, so it
+  can't reach into the next scene by accident (trimming already stops
+  there, and clips follow splits and merges).
+- The original whole file as a separate item next to its scenes. For
+  now the video's heading has **Add Whole Clip to Timeline** in its menu.
 - A screen for the project default sensitivity.
 - Dense reference frames near the ranges the project uses.
-- Dropping onto a specific layer or time; a drop always creates a new layer.
 
 ## How it fits the existing model
 
@@ -465,12 +469,11 @@ don't yet.
   [media-replacement.md](media-replacement.md).)
 - **Default sensitivity** is 0.5 (balanced). It is a starting point to tune
   against real footage.
-- **Reference density** will default to "balanced": thumbnails before and
-  after every cut, a frame every 2 seconds, and dense frames near used
-  ranges. Not built yet.
+- **Reference pictures** are 256x144 JPEGs, taken just before and at each
+  cut, at both ends, and every 10 seconds (see the table above). Dense
+  frames near used ranges are not built yet, and there is no setting for
+  how many pictures to keep.
 
 ## Open questions
 
 - Whether balanced (0.5) is the right default once real footage is tried.
-- The exact thumbnail size for the saved reference thumbnails (the on-screen
-  ones are 160 px wide maximum).

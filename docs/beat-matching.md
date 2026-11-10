@@ -1,8 +1,9 @@
 # Beat matching
 
 Status: **built** except where noted; the panel is compile-checked and
-was rendered offscreen, but hasn't been used on screen yet. Built in steps. Each step below says whether
-it is built yet. Automatic detection ([beat-detection.md](beat-detection.md))
+was rendered offscreen, but hasn't been used on screen yet. It was
+built in the steps under [Building it](#building-it), all done.
+Automatic detection ([beat-detection.md](beat-detection.md))
 is the starting point. It is often wrong, even on easy songs, so the
 person confirms the beats in a guided process, the **beat match** panel,
 and the beats they confirm are what the timeline uses.
@@ -243,7 +244,7 @@ start, and draws them before marking any:
   unmarked stretch under its start, or, dropped inside a section, the one
   on the nearer side of it, cut short to fit; the beats pinned in it come
   along. A filled consistent section's copy is filled at its tempo, as
-  **Paste Tempo** fills one (from its start as beat 1 when no pinned beat
+  **Paste** fills one (from its start as beat 1 when no pinned beat
   came along); any other copy waits to be filled.
 - **Option-drag a beat** to copy it: the beat stays, and a dashed line
   with a ring shows where the copy goes. The copy is pinned and takes the
@@ -272,8 +273,8 @@ start, and draws them before marking any:
 
 Then each consistent section is marked as above, one after another.
 A filled consistent section's details (its tempo, beats per measure and
-steadiness) can be copied (**Copy Tempo**, ⌘C) and pasted (**Paste
-Tempo**, ⌘V) onto another consistent section that keeps that tempo. The
+steadiness) can be copied (**Copy**, ⌘C) and pasted (**Paste**, ⌘V)
+onto another consistent section that keeps that tempo. The
 paste takes the section's start to be beat 1: it pins a downbeat there
 (snapped onto its onset like any pinned beat), drops the beats the section
 had, and fills the rest at the copied tempo, as one undo step. Ramps

@@ -2,9 +2,10 @@
 
 Status: **review notes** for existing behavior, with the tests that measure
 it (`SceneReviewTests.swift`, fixtures in `SceneFixtures.swift`). The
-review itself changed no code; fixes made since are marked below. Tests marked as known
-issues assert what should happen and are wrapped in `withKnownIssue`; the
-suite fails when a defect is fixed, as a reminder to remove the wrapper.
+review itself changed no code; fixes made since are marked below. Every
+defect found is now fixed or decided, so no test is wrapped in
+`withKnownIssue` any more; the tests that pinned the defects now check
+the fixed behavior.
 
 Scope read: `FrameScorer`, `ChangeScoreTrack`, `SceneDetector` (cuts and
 scenes), `SceneEdits`, `EditingProject.addScenes` and `scenes(ofAsset:)`,
@@ -112,10 +113,10 @@ end; the boundary properties run over 400 seeded random tracks each.
   every sensitivity, 0 included. The track's time range (0 to the asset's
   duration) includes the empty stretch, so the frame cannot be told from
   the range alone; the track's segments (`AVAssetTrackSegment.isEmpty`)
-  say where the empty stretch is. Proposed, not made: skip samples inside
-  an empty segment before scoring, so the track starts at the first
-  observed frame and the first frame scores 0. No threshold changes. See
-  `theFillerFrameDoesNotMakeACutAtTheStartOfTheFootage` (known issue).
+  say where the empty stretch is; the fix above uses them, and no
+  threshold changed. See `aFileThatStartsLateKeepsTimesOnTheAssetTimeline`
+  and, in `EmptySegmentTests.swift`,
+  `lateBrightFootageStartsAtItsFirstFrameWithNoCut`.
 - **Scene thresholds** (0.4 to 0.03 of 255) were not changed; sensitivity 0.5
   needs about 28/255.
 

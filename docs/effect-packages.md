@@ -316,8 +316,8 @@ look, and then edited by hand.
    arguments[1]") or of `kernel.metal`'s ("kernel.metal:3:24: use of
    undeclared identifier 'tnt'").
 5. Change it and save: the app reads it again (see [Changing one while
-   the app runs](#changing-one-while-the-app-runs)). A change to its
-   controls shows when the app is opened again.
+   the app runs](#changing-one-while-the-app-runs)), and its effects in
+   open projects are fitted to a change to its controls at once.
 
 What to know:
 
