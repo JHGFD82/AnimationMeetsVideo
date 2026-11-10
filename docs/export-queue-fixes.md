@@ -58,7 +58,7 @@ at a time, without the review that produced them.
 
 ### 1. Let tests run the export queue without modals
 
-- [ ] Done
+- [x] Done
 
 **Why.** None of the queue logic has a test. `run()` opens a modal
 NSSavePanel, `start(_:)` runs the real exporters, which take seconds
