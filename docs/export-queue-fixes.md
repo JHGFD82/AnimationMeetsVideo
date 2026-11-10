@@ -38,11 +38,11 @@ at a time, without the review that produced them.
 
 | Item | Question | Recommended | Alternative | Chosen |
 | --- | --- | --- | --- | --- |
-| 2 | What happens when the place picked in the save panel is already used by an export under way or waiting? | Suggest a name that is never taken, and refuse a used place with an alert after the panel. | Validate inside the panel with a save panel delegate, which this repo has never used; or let the new export replace the waiting one, which silently drops it. | |
-| 3 | Should an export that is already running when an effect package changes be fitted too? | No. Fix queued exports only, and say in effect-packages.md that a running one isn't handled yet. | Have each composition draw with the packages it was built with: a larger rendering change. | |
-| 10 | A stopped WAV Stems export keeps its folder and stems, but the alert says they are deleted. | Delete what this export wrote, and the folder only if it made it and it is left empty. | Keep the stems and say so in the alert. | |
-| 11 | Should the Export window offer a way to stop the whole queue? | A third button, Stop All, in the Stop Export… question, shown only while exports wait. | A fourth button in the window's footer; or only fix the question's wording. | |
-| 14 | Should a stopped export leave a line in the window? | Yes: record a Stopped outcome. | Change the doc to say stopped exports leave no line. | |
+| 2 | What happens when the place picked in the save panel is already used by an export under way or waiting? | Suggest a name that is never taken, and refuse a used place with an alert after the panel. | Validate inside the panel with a save panel delegate, which this repo has never used; or let the new export replace the waiting one, which silently drops it. | Recommended |
+| 3 | Should an export that is already running when an effect package changes be fitted too? | No. Fix queued exports only, and say in effect-packages.md that a running one isn't handled yet. | Have each composition draw with the packages it was built with: a larger rendering change. | Recommended |
+| 10 | A stopped WAV Stems export keeps its folder and stems, but the alert says they are deleted. | Delete what this export wrote, and the folder only if it made it and it is left empty. | Keep the stems and say so in the alert. | Recommended |
+| 11 | Should the Export window offer a way to stop the whole queue? | A third button, Stop All, in the Stop Export… question, shown only while exports wait. | A fourth button in the window's footer; or only fix the question's wording. | Recommended |
+| 14 | Should a stopped export leave a line in the window? | Yes: record a Stopped outcome. | Change the doc to say stopped exports leave no line. | Recommended |
 
 ## Checked and left alone
 
