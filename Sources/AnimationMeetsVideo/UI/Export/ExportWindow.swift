@@ -11,11 +11,11 @@ import UniformTypeIdentifiers
 /// its progress on the toolbar, and it comes back when the exports end.
 /// Export… while one runs queues the timeline the editor shows then, in
 /// the format and sound picked then, to start once those before it end;
-/// the queue is listed in the window. Stop Export… asks first and stops
-/// the one under way, and the next starts (`confirmAndCancel`); closing
-/// the project or quitting while one runs asks once (`confirmStopping`),
-/// and stops it and the queue only once the close or quit goes ahead
-/// (`stopExports`).
+/// the queue is listed in the window. Stop Export… asks first, naming the
+/// export that starts next, and stops the one under way or, with Stop
+/// All, the queue too (`confirmAndCancel`); closing the project or
+/// quitting while one runs asks once (`confirmStopping`), and stops it and
+/// the queue only once the close or quit goes ahead (`stopExports`).
 @MainActor
 @Observable
 final class ExportWindow {
@@ -163,6 +163,40 @@ final class ExportWindow {
         return alert.runModal() == .alertSecondButtonReturn
     }
 
+    /// What the person chose in the Stop Export… question.
+    enum StopChoice { case keepExporting, stopCurrent, stopAll }
+
+    /// Asks whether to stop `current`, saying which of `queue` starts next;
+    /// with exports waiting it offers to stop them all too.
+    private static func askToStopCurrent(_ current: Job, before queue: [Job]) -> StopChoice {
+        let text = stopText(for: current, queue: queue)
+        let alert = NSAlert()
+        alert.messageText = text.message
+        alert.informativeText = text.information
+        // Return keeps the export going; stopping it takes a click or Tab.
+        alert.addButton(withTitle: "Keep Exporting")
+        alert.addButton(withTitle: "Stop Export").hasDestructiveAction = true
+        if !queue.isEmpty { alert.addButton(withTitle: "Stop All").hasDestructiveAction = true }
+        switch alert.runModal() {
+        case .alertSecondButtonReturn: return .stopCurrent
+        case .alertThirdButtonReturn: return .stopAll
+        default: return .keepExporting
+        }
+    }
+
+    /// The Stop Export… question, and what it says happens next.
+    static func stopText(for current: Job, queue: [Job]) -> (message: String, information: String) {
+        let message = "Stop exporting \u{201C}\(current.destination.lastPathComponent)\u{201D}?"
+        guard let next = queue.first else {
+            return (message, "Stopping stops the export, and what is exported so far is deleted.")
+        }
+        let file = "\u{201C}\(next.destination.lastPathComponent)\u{201D}"
+        let information = queue.count == 1
+            ? "What is exported so far is deleted, and \(file), waiting in the queue, starts at once. Stop All takes it out of the queue too."
+            : "What is exported so far is deleted, and \(file), next of the \(queue.count) waiting, starts at once. Stop All takes them all out of the queue too."
+        return (message, information)
+    }
+
     enum Outcome: Equatable {
         case finished(url: URL, report: String?)
         case failed(String)
@@ -249,13 +283,18 @@ final class ExportWindow {
         task?.cancel()
     }
 
-    /// Stops the export under way once the person agrees to, unless it
-    /// ended while they were asked; the next one waiting starts.
+    /// Stops the export under way once the person agrees to, and the next
+    /// one waiting starts; or, with Stop All, the queue too.
     func confirmAndCancel() {
-        guard let asked = current, Self.askToStop([asked], because: "Stopping") else { return }
-        // The question keeps the main actor running, so `asked` may have ended
-        // while it was up and the next one started, which goes on.
-        stop(asked.id)
+        guard let asked = current else { return }
+        switch Self.askToStopCurrent(asked, before: queue) {
+        case .keepExporting: break
+        // The question keeps the main actor running: `asked` may have ended
+        // meanwhile and the next started, which goes on (`stop`).
+        case .stopCurrent: stop(asked.id)
+        // Whatever runs now, and all that waits, as the person asked.
+        case .stopAll: cancel()
+        }
     }
 
     /// Stops the export `id` if it is still the one under way; the next one

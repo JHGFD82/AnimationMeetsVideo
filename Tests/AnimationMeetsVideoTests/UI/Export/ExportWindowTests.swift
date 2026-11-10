@@ -380,6 +380,27 @@ import Testing
         #expect(export.current?.id == a.id)
     }
 
+    @Test func stopTextWithNoQueueIsUnchanged() {
+        let text = ExportWindow.stopText(for: exportJob(to: "Trailer.mov"), queue: [])
+        #expect(text.message == "Stop exporting \u{201C}Trailer.mov\u{201D}?")
+        #expect(text.information == "Stopping stops the export, and what is exported so far is deleted.")
+    }
+
+    @Test func stopTextNamesTheNextWaiting() {
+        let current = exportJob(to: "Trailer.mov")
+        let teaser = exportJob("Teaser", to: "Trailer Teaser.mov")
+        let one = ExportWindow.stopText(for: current, queue: [teaser])
+        #expect(one.message == "Stop exporting \u{201C}Trailer.mov\u{201D}?")
+        #expect(one.information
+            == "What is exported so far is deleted, and \u{201C}Trailer Teaser.mov\u{201D}, waiting in the queue, starts at once. Stop All takes it out of the queue too.")
+
+        let three = ExportWindow.stopText(
+            for: current, queue: [teaser, exportJob(to: "B.mov"), exportJob(to: "C.mov")]
+        )
+        #expect(three.information.contains("\u{201C}Trailer Teaser.mov\u{201D}, next of the 3 waiting"))
+        #expect(three.information.contains("Stop All takes them all out of the queue too."))
+    }
+
     @Test func noExportsAsksNothing() {
         let agreed = ExportWindow.confirmStopping([], because: "Quitting") { _, _ in
             Issue.record("Nothing should be asked with no exports")

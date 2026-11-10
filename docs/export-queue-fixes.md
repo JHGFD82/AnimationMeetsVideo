@@ -1411,7 +1411,7 @@ that was already there is kept.
 
 ### 11. Name what starts next and offer Stop All
 
-- [ ] Done. **Decision**: see the table.
+- [x] Done. **Decision**: see the table.
 
 **Why.** Stop Export… says only "Stopping stops the export, and what is
 exported so far is deleted." It never says that the next queued export
