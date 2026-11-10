@@ -137,9 +137,12 @@ final class ProjectWindows {
     // MARK: - Quitting
 
     /// Running exports are offered to keep going, then open draft panels
-    /// ask about their changes, then each project with
-    /// unsaved changes for saving, in turn; keeping an export or
-    /// cancelling a save keeps the app open.
+    /// ask about their changes, then each project with unsaved changes
+    /// for saving, in turn; keeping an export, Keep Editing or cancelling
+    /// a save keeps the app open. Exports are asked about first, but stop
+    /// only once the draft panels and save questions have let the app
+    /// quit, so a Keep Editing or Cancel keeps them and their queue
+    /// running; quitting waits for them to delete their partial files.
     func shouldTerminate() -> NSApplication.TerminateReply {
         guard ExportWindow.confirmStopping(ExportWindow.runningAnywhere, because: "Quitting") else { return .terminateCancel }
         // Beat Match and the motion designer ask about their drafts first.
@@ -148,7 +151,14 @@ final class ProjectWindows {
         for session in sessions { session.viewMemory.save(for: session.project) }
         let unsaved = sessions.filter { $0.hasUnsavedChanges && $0.projectURL != nil }
         isTerminating = true
-        guard !unsaved.isEmpty else { return .terminateNow }
+        guard !unsaved.isEmpty else {
+            guard ExportWindow.anyUnderWay else { return .terminateNow }
+            Task {
+                await ExportWindow.stopEverythingAndWait()
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
+        }
         Task {
             for session in unsaved {
                 let question = "Save changes to \u{201C}\(session.project.name)\u{201D} before quitting?"
@@ -158,6 +168,7 @@ final class ProjectWindows {
                     return
                 }
             }
+            await ExportWindow.stopEverythingAndWait()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

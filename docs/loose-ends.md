@@ -85,6 +85,29 @@ Built and tested in code, never run on screen.
   - Rename a clip in the browser and press Backspace and Return inside
     the field; ⌘D in a name field beeps.
   - At launch with the start sheet up, ⌘I and ⌘E are disabled.
+- [ ] **Export queue fixes (November 2026)**, each with a long export
+  running and another queued behind it:
+  - Both finish: the window comes back once with both lines and the
+    Dock bounces once. Cancel in the save panel adds nothing.
+  - Export… suggests "<Project> Main", then "<Project> Main 2" while
+    the first waits; typing a taken name, or picking the running file
+    and agreeing to replace it, gets "Couldn't Export" and queues
+    nothing. Every file shown as saved exists in Finder.
+  - Change a control of an effect package a queued timeline uses from a
+    number to a vector: the queued export starts and finishes. Replace
+    Media on a Matte Wipe's map video: the viewer shows the new map, the
+    running export the old one throughout.
+  - Leave the save panel, or the Stop Export… question, up until the
+    first ends: its line stays, and a late Stop Export leaves the next
+    one exporting.
+  - Stop Export… names the next file and offers Stop All; Stop Export
+    starts the next, Stop All empties the window and toolbar, and a
+    stopped export leaves a Stopped line without bouncing the Dock.
+    A stopped WAV Stems export leaves no folder.
+  - Close or quit with one running: Stop Export then Keep Editing or
+    Cancel leaves the export and queue going; Don't Save or Save goes
+    ahead and leaves no partial file; one window with nothing unsaved
+    quits after one alert.
 
 ## Known gaps
 
@@ -107,6 +130,21 @@ Built and tested in code, never run on screen.
   curves). The waits that failed beside them (beat analysis, Beat Match)
   were fixed by waiting on the work rather than a deadline (`waitUntil`
   in `Tests/AnimationMeetsVideoTests/Support/Waiting.swift`).
+
+- **The export queue lives in UI/.** `ExportWindow`
+  (`UI/Export/ExportWindow.swift`) holds the queue's logic (starting,
+  queuing, stopping, the destinations in use) beside the window it
+  shows. AGENTS.md would put that logic in a non-UI type such as
+  `Export/ExportQueue.swift`, with the window reading it; left until
+  the queue next changes, since it moves every reference to it.
+- **Exports in use are told apart by their exact place.**
+  `ExportDestinations.conflict` refuses a destination only when it is
+  the same path as one under way or waiting. A WAV Stems export's
+  destination is its folder, so a WAV Mix saved inside that folder
+  under the name of one of its stems ("Name - Layer.wav") is still
+  written over. Paths are compared without case, so on a case-sensitive
+  volume "a.mov" is refused while "A.mov" is in use; chosen when the
+  check was added, since the Mac's volumes ignore case by default.
 
 - **Speed: the Timeline menu follows playback.** To keep every item's
   on or off state exact, `TimelineMenuStatePublisher` checks the playing

@@ -46,6 +46,8 @@ enum EffectThumbnails {
             content = .media(MediaDraw(trackID: 1, base: base, url: URL(fileURLWithPath: "/dev/null"), sourceStart: .zero, segmentStart: .zero))
         }
 
+        // A matte wipe the moment falls in draws with its map, not noise.
+        let mattes = await MatteMaps.shared.load(for: project)
         let center = CGPoint(x: frame.width / 2, y: frame.height / 2)
         let thumbnail = CGSize(width: width, height: max(1, (width * frame.height / max(frame.width, 1)).rounded()))
         var result: [UUID: CGImage] = [:]
@@ -60,7 +62,7 @@ enum EffectThumbnails {
             )
             let instruction = LayeredInstruction(
                 timeRange: drawn.range, clips: [drawn], renderSize: frame, colorSpace: timeline.colorSpace,
-                canvasMargin: project.canvasMargin
+                canvasMargin: project.canvasMargin, mattes: mattes
             )
             let image = LayeredCompositor.compose(instruction, at: at, outputSize: thumbnail) { _ in buffer }
             if let cg = context.createCGImage(

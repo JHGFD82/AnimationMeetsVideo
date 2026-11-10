@@ -61,6 +61,61 @@ import Testing
         #expect(files.allSatisfy { $0.lastPathComponent.hasPrefix("Cut - ") && $0.pathExtension == "wav" })
     }
 
+    /// A project with two sound layers, a low tone and a high one, and the
+    /// tone files to delete afterwards.
+    private func twoLayerProject(seconds: Double) throws -> (EditingProject, [URL]) {
+        let low = try AudioMixSupport.tone(frequency: 220, amplitude: 0.2, seconds: seconds)
+        let high = try AudioMixSupport.tone(frequency: 880, amplitude: 0.4, seconds: seconds)
+        var (project, _, _) = try AudioMixSupport.project(playing: low, seconds: seconds)
+        let media = MediaClip(
+            name: "High", kind: .audio, url: high, duration: CMTime(seconds: seconds, preferredTimescale: 48_000),
+            frameRate: 0, colorSpace: .rec709, codecName: "PCM", hasAudio: true
+        )
+        let imported = project.importClip(media, intoTimeline: project.rootTimelineID)
+        _ = try #require(imported)
+        return (project, [low, high])
+    }
+
+    /// Holds the export's task, so its own progress can stop it.
+    private final class TaskBox: @unchecked Sendable {
+        var task: Task<[URL], Error>?
+    }
+
+    /// Exports stems into `folder` and stops halfway, in the second stem.
+    private func stopStemsHalfway(of project: EditingProject, in folder: URL) async {
+        let box = TaskBox()
+        box.task = Task {
+            try await AudioExport.exportStems(
+                project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder,
+                progress: { if $0 >= 0.5 { box.task?.cancel() } }
+            )
+        }
+        await #expect(throws: CancellationError.self) { try await box.task?.value }
+    }
+
+    @Test func aStoppedStemsExportLeavesNothing() async throws {
+        let (project, tones) = try twoLayerProject(seconds: 3)
+        defer { for tone in tones { try? FileManager.default.removeItem(at: tone) } }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-stems-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        await stopStemsHalfway(of: project, in: folder)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    @Test func aStoppedStemsExportKeepsWhatWasInTheFolder() async throws {
+        let (project, tones) = try twoLayerProject(seconds: 3)
+        defer { for tone in tones { try? FileManager.default.removeItem(at: tone) } }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-stems-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let notes = folder.appending(path: "notes.txt")
+        try Data("Keep me".utf8).write(to: notes)
+        await stopStemsHalfway(of: project, in: folder)
+        #expect(FileManager.default.fileExists(atPath: notes.path))
+        let left = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        #expect(!left.contains { $0.hasPrefix("Cut - ") })
+    }
+
     @Test func aTimelineWithoutSoundIsRefused() async throws {
         let project = EditingProject.empty
         let url = FileManager.default.temporaryDirectory.appending(path: "amv-silent-\(UUID().uuidString).wav")

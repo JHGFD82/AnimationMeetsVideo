@@ -14,7 +14,8 @@ struct ExportView: View {
         // the format and sound it was asked for in.
         SheetFrame(
             title: "Export",
-            subtitle: export.timelineName.isEmpty ? nil : "The timeline \u{201C}\(export.timelineName)\u{201D}, as it plays."
+            subtitle: export.timelineName.isEmpty ? nil : "The timeline \u{201C}\(export.timelineName)\u{201D}, as it plays.",
+            scrollsContent: true
         ) {
             SheetSection {
                 SheetRow("Format") {
@@ -58,9 +59,7 @@ struct ExportView: View {
                 }
                 SheetNote(soundNote)
             }
-            if export.isRunning {
-                queue
-            }
+            queue
             if export.pasteChangeCount > 0 {
                 pasteChangesNote
             }
@@ -126,7 +125,7 @@ struct ExportView: View {
                         }
                         .buttonStyle(.icon)
                         .help("Remove from the queue")
-                        .accessibilityLabel("Remove \u{201C}\(job.timelineName)\u{201D} from the queue")
+                        .accessibilityLabel(Self.removeLabel(for: job))
                     }
                 }
             }
@@ -152,15 +151,14 @@ struct ExportView: View {
     /// How one export ended; `showsTimeline` names its timeline, when
     /// several ended.
     @ViewBuilder private static func outcomeRow(_ ended: ExportWindow.Ended, showsTimeline: Bool) -> some View {
-        let prefix = showsTimeline ? "\u{201C}\(ended.timelineName)\u{201D}: " : ""
         switch ended.outcome {
-        case .finished(let url, let report):
+        case .finished(let url, _):
             HStack(alignment: .firstTextBaseline, spacing: Design.Space.group) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(Design.statusDone)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: Design.Space.step) {
-                    Text(Self.finishedMessage(url: url, report: report))
+                    Text(Self.message(for: ended, showsTimeline: showsTimeline))
                         .font(Design.Typeface.body)
                         .foregroundStyle(Design.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -171,12 +169,23 @@ struct ExportView: View {
                     .accessibilityLabel("Show \u{201C}\(url.lastPathComponent)\u{201D} in Finder")
                 }
             }
-        case .failed(let message):
+        case .failed:
             HStack(alignment: .firstTextBaseline, spacing: Design.Space.group) {
                 Image(systemName: "xmark.octagon.fill")
                     .foregroundStyle(Design.statusDanger)
                     .accessibilityHidden(true)
-                Text("\(prefix)Export failed. \(message)")
+                Text(Self.message(for: ended, showsTimeline: showsTimeline))
+                    .font(Design.Typeface.body)
+                    .foregroundStyle(Design.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        case .stopped:
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.group) {
+                Image(systemName: "stop.circle.fill")
+                    .foregroundStyle(Design.textSecondary)
+                    .accessibilityHidden(true)
+                Text(Self.message(for: ended, showsTimeline: showsTimeline))
                     .font(Design.Typeface.body)
                     .foregroundStyle(Design.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -201,6 +210,23 @@ struct ExportView: View {
         case .wavMix: "The sound alone, as one stereo file."
         case .wavStems: "A file for each layer with sound, in a new folder."
         }
+    }
+
+    /// What one ended export's row says; `showsTimeline` starts it with its
+    /// timeline's name, when several ended.
+    static func message(for ended: ExportWindow.Ended, showsTimeline: Bool) -> String {
+        let prefix = showsTimeline ? "\u{201C}\(ended.timelineName)\u{201D}: " : ""
+        switch ended.outcome {
+        case .finished(let url, let report): return prefix + finishedMessage(url: url, report: report)
+        case .failed(let message): return "\(prefix)Export failed. \(message)"
+        case .stopped(let url): return "\(prefix)Stopped exporting \u{201C}\(url.lastPathComponent)\u{201D}."
+        }
+    }
+
+    /// The remove button's name for VoiceOver: the row as it reads, since
+    /// the same timeline can wait more than once, in another format or file.
+    static func removeLabel(for job: ExportWindow.Job) -> String {
+        "Remove \u{201C}\(job.timelineName)\u{201D} as \(job.format.name), \u{201C}\(job.destination.lastPathComponent)\u{201D}, from the queue"
     }
 
     static func finishedMessage(url: URL, report: String?) -> String {

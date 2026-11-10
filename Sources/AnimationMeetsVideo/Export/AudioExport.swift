@@ -28,6 +28,16 @@ enum ExportFormat: String, CaseIterable, Identifiable, Sendable {
         case .wavMix, .wavStems: nil
         }
     }
+
+    /// The extension the save panel gives the file; nil for stems, which
+    /// are saved in a folder.
+    var fileExtension: String? {
+        switch self {
+        case .proRes422, .proRes4444: "mov"
+        case .wavMix: "wav"
+        case .wavStems: nil
+        }
+    }
 }
 
 /// The sound tracks a movie export has: the mix alone, or the mix and then
@@ -83,6 +93,7 @@ enum AudioExport {
             }
         }
         let share = loudness.lufs == nil ? 1.0 : 0.5
+        // Replacing it was confirmed, and no other export saves here (see CompositionExporter.export).
         try? FileManager.default.removeItem(at: url)
         do {
             let rendered = try await LoudnessMastering.render(
@@ -100,7 +111,9 @@ enum AudioExport {
     /// each with only that layer playing: its clips, its volume and pan,
     /// and everything in the timelines nested on it. Not mastered, so the
     /// stems add up to the mix. Named for the export and the layer; returns
-    /// the files in layer order.
+    /// the files in layer order. On an error or a stop, the stems it wrote
+    /// are deleted, and the folder too if it made it and nothing else is
+    /// in it.
     @discardableResult
     static func exportStems(
         project: EditingProject, timelineID: UUID, named name: String, in folder: URL, asWAV: Bool = true,
@@ -111,26 +124,40 @@ enum AudioExport {
         else { return [] }
         let layers = timeline.layers.filter { project.layerPlaysAudio($0) }
         guard !layers.isEmpty else { throw CompositionError.exportFailed("The timeline has no sound.") }
+        let madeFolder = !FileManager.default.fileExists(atPath: folder.path)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var used: Set<String> = []
         var files: [URL] = []
-        for (number, layer) in layers.enumerated() {
-            var solo = project
-            solo.timelines[index].layers = [layer]
-            let composed = try await CompositionExporter.buildComposedTimeline(for: solo, timelineID: timelineID)
-            guard !composed.audioTracks.isEmpty else { continue }
-            var file = "\(name) - \(project.displayName(of: layer, in: timeline))"
-                .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-            if used.contains(file) { file += " \(number + 1)" }
-            used.insert(file)
-            let url = folder.appending(path: file + (asWAV ? ".wav" : ".caf"))
-            try? FileManager.default.removeItem(at: url)
-            let done = Double(number), count = Double(layers.count)
-            try await LoudnessMastering.render(
-                composed, curves: MixCurves(MixCurves.of(solo)), limiting: false, to: url, fileSettings: asWAV ? fileSettings : nil,
-                progress: { progress((done + $0) / count) }
-            )
-            files.append(url)
+        var writing: URL?
+        do {
+            for (number, layer) in layers.enumerated() {
+                var solo = project
+                solo.timelines[index].layers = [layer]
+                let composed = try await CompositionExporter.buildComposedTimeline(for: solo, timelineID: timelineID)
+                guard !composed.audioTracks.isEmpty else { continue }
+                var file = "\(name) - \(project.displayName(of: layer, in: timeline))"
+                    .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+                if used.contains(file) { file += " \(number + 1)" }
+                used.insert(file)
+                let url = folder.appending(path: file + (asWAV ? ".wav" : ".caf"))
+                try? FileManager.default.removeItem(at: url)
+                let done = Double(number), count = Double(layers.count)
+                writing = url
+                try await LoudnessMastering.render(
+                    composed, curves: MixCurves(MixCurves.of(solo)), limiting: false, to: url, fileSettings: asWAV ? fileSettings : nil,
+                    progress: { progress((done + $0) / count) }
+                )
+                files.append(url)
+                writing = nil
+            }
+        } catch {
+            // Only what this export wrote: the folder may be one the person
+            // picked, with other files in it.
+            for url in files + [writing].compactMap(\.self) { try? FileManager.default.removeItem(at: url) }
+            if madeFolder, (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == true {
+                try? FileManager.default.removeItem(at: folder)
+            }
+            throw error
         }
         return files
     }

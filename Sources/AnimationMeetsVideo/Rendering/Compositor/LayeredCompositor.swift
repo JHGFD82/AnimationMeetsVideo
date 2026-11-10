@@ -45,13 +45,16 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
     /// that from cold where the render ends took up to a third of a second
     /// with keyframes seconds apart, and the viewer stood still.
     let decodedOnly: [CMPersistentTrackID]
+    /// The matte wipe maps of the build it is part of
+    /// (`MatteMaps.load`).
+    let mattes: MatteMapSet
 
     init(
         timeRange: CMTimeRange, clips: [DrawClip], passthrough: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
         renderSize: CGSize, colorSpace: ProjectColorSpace, canvasMargin: Double = EditingProject.defaultCanvasMargin,
         meter: RenderMeter? = nil, options: DrawingOptions? = nil, capture: SourceCapture? = nil,
         keeping: ClipPictureCache.Keeping = .trails, background: [Double]? = nil,
-        decodedOnly: [CMPersistentTrackID] = []
+        decodedOnly: [CMPersistentTrackID] = [], mattes: MatteMapSet = MatteMapSet()
     ) {
         self.timeRange = timeRange
         self.clips = clips
@@ -66,6 +69,7 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         self.capture = capture
         self.keeping = keeping
         self.decodedOnly = decodedOnly
+        self.mattes = mattes
         requiredSourceTrackIDs = Set(clips.flatMap(\.allTrackIDs) + decodedOnly).sorted().map { NSNumber(value: $0) }
     }
 
@@ -75,7 +79,8 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         LayeredInstruction(
             timeRange: timeRange, clips: clips, passthrough: passthroughTrackID, renderSize: renderSize,
             colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options, capture: capture,
-            keeping: keeping ?? self.keeping, background: background, decodedOnly: decodedOnly
+            keeping: keeping ?? self.keeping, background: background, decodedOnly: decodedOnly,
+            mattes: mattes
         )
     }
 }
@@ -289,6 +294,7 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             flows: flows,
             pictures: pictures,
             keeping: instruction.keeping,
+            mattes: instruction.mattes,
             source: frame
         )
         guard let rgb = instruction.background, rgb.count == 3 else {
@@ -357,6 +363,8 @@ struct Drawing {
     /// Where clips' finished pictures are kept, if anywhere, and which.
     var pictures: ClipPictureCache?
     var keeping: ClipPictureCache.Keeping = .trails
+    /// The maps matte wipes draw with.
+    var mattes = MatteMapSet()
     /// The decoded frame of a composition track at `time`.
     let source: (CMPersistentTrackID) -> CVPixelBuffer?
 
@@ -434,7 +442,8 @@ struct Drawing {
             transition,
             from: transition.entering ? output : together,
             to: transition.entering ? together : output,
-            in: bounds
+            in: bounds,
+            mattes: mattes
         )
     }
 

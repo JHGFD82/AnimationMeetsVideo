@@ -102,7 +102,7 @@ enum CompositionExporter {
         // stops at each stage rather than finishing for nothing.
         try Task.checkCancellation()
         // Matte wipes' maps are read before drawing starts.
-        await MatteMaps.shared.load(for: project)
+        let mattes = await MatteMaps.shared.load(for: project)
         try Task.checkCancellation()
         let window = CMTimeRange(start: .zero, duration: length)
         var hosts: [TrackHost] = []
@@ -242,7 +242,7 @@ enum CompositionExporter {
         var plan = planRanges(
             tree: tree, overallDuration: composition.duration, allowsPassthrough: !forPreview,
             frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace,
-            canvasMargin: project.canvasMargin
+            canvasMargin: project.canvasMargin, mattes: mattes
         )
         let canvasMargin = project.canvasMargin
         var cachedKeys: Set<String> = []
@@ -265,7 +265,8 @@ enum CompositionExporter {
             canvasMargin: canvasMargin,
             meter: meter,
             options: options,
-            background: timeline.previewBackground
+            background: timeline.previewBackground,
+            mattes: mattes
         )
         // The same timeline drawing every stretch from its clips, which the
         // composition still holds the tracks of, for a drag to follow
@@ -280,7 +281,8 @@ enum CompositionExporter {
             canvasMargin: canvasMargin,
             meter: meter,
             options: options,
-            background: timeline.previewBackground
+            background: timeline.previewBackground,
+            mattes: mattes
         )
         return ComposedTimeline(
             composition: composition, videoComposition: videoComposition,
@@ -427,8 +429,10 @@ enum CompositionExporter {
         // Mastered or rendered sound is already mixed, in tracks of its own.
         exportSession.audioMix = premixed ? nil : composed.audioMix(curves: curves)
 
-        // The save panel already confirmed replacing an existing file, but
-        // AVAssetExportSession refuses to write over one.
+        // The save panel confirmed replacing a file already there, and the
+        // Export window refuses a place another export under way or queued
+        // saves to (`ExportDestinations`); AVAssetExportSession refuses to
+        // write over a file, so what is there goes.
         try? FileManager.default.removeItem(at: url)
 
         let states = exportSession.states(updateInterval: 0.2)

@@ -426,14 +426,16 @@ as they are. What a read finds (`EffectRegistry.reloading`):
   - a change to the **pictures** it reads needs nothing: the renderer
     takes them from the package each time it draws.
 
-  Undo fits each step it restores the same way, as does pasting an
-  effect copied before the change, so an old value never reaches the
-  renderer. The renderer, which reads a control's numbers by position,
-  asserts that their count is the control's, naming the control, so a
-  value that missed fitting traps in a debug build rather than reading
-  its neighbor's. The viewer draws again at once: the composition's key
-  holds the content hash of each of the person's packages its clips use,
-  and render keys hold it too.
+  Undo fits each step it restores the same way, as do pasting an effect
+  copied before the change and starting an export queued before it
+  (`ExportWindow.Job.projectToExport`), so an old value never reaches
+  the renderer. An export already running when a package changes isn't
+  fitted, which isn't handled yet. The renderer, which reads a control's
+  numbers by position, asserts that their count is the control's, naming
+  the control, so a value that missed fitting traps in a debug build
+  rather than reading its neighbor's. The viewer draws again at once:
+  the composition's key holds the content hash of each of the person's
+  packages its clips use, and render keys hold it too.
 - **A package that can no longer be read** is listed under "Can't Be
   Used" with its problem, and the version installed before stays in use.
 - **A package removed, or whose ID changed**, is no longer listed, and

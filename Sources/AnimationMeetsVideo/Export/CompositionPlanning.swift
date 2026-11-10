@@ -17,7 +17,8 @@ extension CompositionExporter {
         frameSize: CGSize,
         frameRate: Double,
         colorSpace: ProjectColorSpace,
-        canvasMargin: Double
+        canvasMargin: Double,
+        mattes: MatteMapSet = MatteMapSet()
     ) -> [PlannedRange] {
         var breakpoints: [CMTime] = [.zero]
         // Wherever a picture, a nested timeline or an adjustment starts or
@@ -142,7 +143,7 @@ extension CompositionExporter {
                 keys[index] = renderKey(
                     for: piece.range, clips: piece.clips, frame: frame,
                     frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace, canvasMargin: canvasMargin,
-                    reusingStillFrames: skipsStillFrames
+                    reusingStillFrames: skipsStillFrames, mattes: mattes
                 )
             }
         }
@@ -165,7 +166,8 @@ extension CompositionExporter {
         frameRate: Double,
         colorSpace: ProjectColorSpace,
         canvasMargin: Double,
-        reusingStillFrames: Bool = true
+        reusingStillFrames: Bool = true,
+        mattes: MatteMapSet = MatteMapSet()
     ) -> String {
         func number(_ value: Double) -> String { String(format: "%.5f", value) }
         func matrix(_ t: CGAffineTransform) -> String { [t.a, t.b, t.c, t.d, t.tx, t.ty].map(number).joined(separator: " ") }
@@ -226,7 +228,7 @@ extension CompositionExporter {
                 if let drawn = clip.stack.transitionFrame(atRoot: time) {
                     text += " x \(drawn.key)"
                     if drawn.kind == .matteWipe, case .clip(let id) = drawn.options.matte {
-                        text += " \(MatteMaps.shared.stamp(for: id) ?? "noise")"
+                        text += " \(mattes.stamps[id] ?? "noise")"
                     }
                 }
                 text += "\n"
@@ -363,7 +365,8 @@ extension CompositionExporter {
         canvasMargin: Double,
         meter: RenderMeter?,
         options: DrawingOptions?,
-        background: [Double]? = nil
+        background: [Double]? = nil,
+        mattes: MatteMapSet = MatteMapSet()
     ) -> AVMutableVideoComposition? {
         guard hasPictures else { return nil }
 
@@ -377,7 +380,7 @@ extension CompositionExporter {
             LayeredInstruction(
                 timeRange: planned.range, clips: planned.clips, passthrough: planned.passthrough ?? kCMPersistentTrackID_Invalid,
                 renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options,
-                background: forPreview ? background : nil, decodedOnly: planned.decodedOnly
+                background: forPreview ? background : nil, decodedOnly: planned.decodedOnly, mattes: mattes
             )
         }
         return videoComposition

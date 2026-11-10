@@ -304,16 +304,29 @@ Export… in the window starts the export at once. Clicked again while one
 runs, it queues the timeline the editor shows then, asking where to save
 it as usual: the menus stay open for it, and each export keeps the
 format, loudness and movie tracks, and the project as it was, from when
-it was asked for. The window lists the export under way with its
+it was asked for, its package effects fitted when it starts to any
+effect package changed meanwhile. The name it suggests skips those of
+the exports under way or waiting, and a place one of them already saves
+to is refused, since each export clears its destination before writing
+(`ExportDestinations`). The window lists the export under way with its
 progress and those waiting, which run in turn and can be taken out with
-their remove buttons; the toolbar's progress is the one under way. When
-the last has ended the window comes back with how each ended.
+their remove buttons; the toolbar's progress is the one under way. Each
+export that ends adds a line saying how: saved (with Show in Finder),
+failed, or stopped. When the last has ended the window comes back with
+them, unless that last one was stopped, from the window or by closing
+the project; one taken out of the queue never started and leaves no
+line.
 
 Stopping an export, or closing its project's window or quitting while it
-runs, asks first, since what was exported so far is deleted
-(`ExportWindow.confirmStopping`). Stop Export… stops the one under way and
-starts the next waiting; closing the project or quitting stops the queue
-too.
+runs, asks first, since what was exported so far is deleted. Stop Export…
+asks about the one under way, naming the waiting export that would start
+next, and stops it, and that one starts (`ExportWindow.confirmAndCancel`);
+while exports wait, the question also offers Stop All, which stops the
+queue too; closing the project or quitting asks once about all of them
+(`ExportWindow.confirmStopping`), and stops them and the queue only once
+every other question it asks (a draft panel's, saving changes) has let
+the window or app go (`ExportWindow.stopExports`); a Cancel or Keep
+Editing there leaves them running.
 
 With a target, the sound is mastered before the pictures are exported
 (`LoudnessMastering`), taking the first tenth of the progress bar.
@@ -457,7 +470,9 @@ Beside the ProRes formats, the export format menu offers the sound alone
   layer ("Cut - Music 1.wav"). Each holds only that layer: its clips with
   their effects, volume, pan and fades, its own volume and pan, and the
   sound of timelines nested on it. Stems aren't mastered, whatever the
-  Loudness menu says, so together they add up to the mix as mixed.
+  Loudness menu says, so together they add up to the mix as mixed. A
+  stopped or failed export deletes the stems it wrote, and the folder
+  too if it made it and nothing else is in it.
 
 A movie's sound can be split the same way. The Export window's **Movie
 tracks** menu (under the loudness target) picks the movie's sound

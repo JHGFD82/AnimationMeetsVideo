@@ -337,7 +337,10 @@ struct UISnapshots {
     }
 
     /// The Export window: ready, with pasted changes still blocking it,
-    /// and after a WAV Mix export with what mastering did.
+    /// after a WAV Mix export with what mastering did, after two timelines'
+    /// exports ended, each row naming its timeline, with a short queue,
+    /// and with a queue longer than the window, which scrolls between the
+    /// title and the actions.
     @Test func exportWindow() throws {
         let blocked = ExportWindow()
         blocked.timelineName = "Main"
@@ -351,6 +354,16 @@ struct UISnapshots {
             report: "The mix measured −19.2 LUFS and was raised 5.2 dB to −14 LUFS."
         ))
         try SnapshotSupport.render(ExportView(export: finished), "export-window-finished", size: CGSize(width: 460, height: 420))
+
+        // Three exports back to back: each row names its timeline.
+        let outcomes = ExportWindow()
+        outcomes.timelineName = "Main"
+        outcomes.showOutcomesWithoutRunning([
+            ExportWindow.Ended(timelineName: "Main", outcome: .finished(url: URL(filePath: "/tmp/Trailer.mov"), report: nil)),
+            ExportWindow.Ended(timelineName: "Teaser", outcome: .failed("The disk is full.")),
+            ExportWindow.Ended(timelineName: "Main", outcome: .stopped(url: URL(filePath: "/tmp/Trailer.wav"))),
+        ])
+        try SnapshotSupport.render(ExportView(export: outcomes), "export-window-outcomes", size: CGSize(width: 460, height: 520))
 
         // Main exporting, with two more timelines queued behind it.
         let project = EditingProject.empty
@@ -368,6 +381,15 @@ struct UISnapshots {
             queue: [job("Teaser", .proRes4444, "Trailer Teaser.mov"), job("Main", .wavMix, "Trailer.wav")]
         )
         try SnapshotSupport.render(ExportView(export: queued), "export-window-queue", size: CGSize(width: 460, height: 520))
+
+        // A queue longer than the window: the content scrolls, the actions stay.
+        let long = ExportWindow()
+        long.timelineName = "Main"
+        long.showQueueWithoutRunning(
+            current: job("Main", .proRes422, "Trailer.mov"), progress: 0.42,
+            queue: (1...12).map { job("Main", .wavMix, "Trailer \($0).wav") }
+        )
+        try SnapshotSupport.render(ExportView(export: long), "export-window-long-queue", size: CGSize(width: 460, height: 560))
     }
 
     /// The Clips tab: a video under its name as five scenes (the fourth

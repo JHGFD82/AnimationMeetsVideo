@@ -76,7 +76,8 @@ final class RenderScheduler {
     @ObservationIgnored private var exportBuild: (version: Int, composed: ComposedTimeline)?
     @ObservationIgnored private var lastActivity = CACurrentMediaTime()
     @ObservationIgnored private var isPlaying = false
-    @ObservationIgnored private var isExporting = false
+    /// Set while an export runs (`setExporting`), which rendering waits for.
+    @ObservationIgnored private(set) var isExporting = false
     /// A value is being dragged with the mouse held: however long the pointer
     /// rests, nothing renders until it is let go.
     @ObservationIgnored private var isInteracting = false
