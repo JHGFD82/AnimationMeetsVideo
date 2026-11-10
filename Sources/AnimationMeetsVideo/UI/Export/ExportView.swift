@@ -59,9 +59,7 @@ struct ExportView: View {
                 }
                 SheetNote(soundNote)
             }
-            if export.isRunning {
-                queue
-            }
+            queue
             if export.pasteChangeCount > 0 {
                 pasteChangesNote
             }

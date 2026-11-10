@@ -1831,7 +1831,7 @@ timeline and format saved under one name in two folders.
 
 ### 16. Drop a redundant queue check and switch
 
-- [ ] Done
+- [x] Done
 
 **Why.** No behavior changes. ExportView's body wraps `queue` in
 `if export.isRunning`, but `queue` already checks `export.current`
