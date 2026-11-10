@@ -182,6 +182,17 @@ struct ExportView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
+        case .stopped:
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.group) {
+                Image(systemName: "stop.circle.fill")
+                    .foregroundStyle(Design.textSecondary)
+                    .accessibilityHidden(true)
+                Text(Self.message(for: ended, showsTimeline: showsTimeline))
+                    .font(Design.Typeface.body)
+                    .foregroundStyle(Design.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
         }
     }
 
@@ -210,6 +221,7 @@ struct ExportView: View {
         switch ended.outcome {
         case .finished(let url, let report): return prefix + finishedMessage(url: url, report: report)
         case .failed(let message): return "\(prefix)Export failed. \(message)"
+        case .stopped(let url): return "\(prefix)Stopped exporting \u{201C}\(url.lastPathComponent)\u{201D}."
         }
     }
 

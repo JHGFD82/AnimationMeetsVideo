@@ -355,14 +355,15 @@ struct UISnapshots {
         ))
         try SnapshotSupport.render(ExportView(export: finished), "export-window-finished", size: CGSize(width: 460, height: 420))
 
-        // Two timelines exported back to back: each row names its timeline.
+        // Three exports back to back: each row names its timeline.
         let outcomes = ExportWindow()
         outcomes.timelineName = "Main"
         outcomes.showOutcomesWithoutRunning([
             ExportWindow.Ended(timelineName: "Main", outcome: .finished(url: URL(filePath: "/tmp/Trailer.mov"), report: nil)),
             ExportWindow.Ended(timelineName: "Teaser", outcome: .failed("The disk is full.")),
+            ExportWindow.Ended(timelineName: "Main", outcome: .stopped(url: URL(filePath: "/tmp/Trailer.wav"))),
         ])
-        try SnapshotSupport.render(ExportView(export: outcomes), "export-window-outcomes", size: CGSize(width: 460, height: 460))
+        try SnapshotSupport.render(ExportView(export: outcomes), "export-window-outcomes", size: CGSize(width: 460, height: 520))
 
         // Main exporting, with two more timelines queued behind it.
         let project = EditingProject.empty

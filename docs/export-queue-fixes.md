@@ -1702,7 +1702,7 @@ export-window-finished.png, with one outcome, has no prefix.
 
 ### 14. Show a line for each stopped export
 
-- [ ] Done. **Decision**: see the table.
+- [x] Done. **Decision**: see the table.
 
 **Why.** docs/audio.md says that when the last export has ended, "the
 window comes back with how each ended". But a stop records no outcome,

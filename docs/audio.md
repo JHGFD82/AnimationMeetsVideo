@@ -310,8 +310,12 @@ the exports under way or waiting, and a place one of them already saves
 to is refused, since each export clears its destination before writing
 (`ExportDestinations`). The window lists the export under way with its
 progress and those waiting, which run in turn and can be taken out with
-their remove buttons; the toolbar's progress is the one under way. When
-the last has ended the window comes back with how each ended.
+their remove buttons; the toolbar's progress is the one under way. Each
+export that ends adds a line saying how: saved (with Show in Finder),
+failed, or stopped. When the last has ended the window comes back with
+them, unless that last one was stopped, from the window or by closing
+the project; one taken out of the queue never started and leaves no
+line.
 
 Stopping an export, or closing its project's window or quitting while it
 runs, asks first, since what was exported so far is deleted. Stop Export…

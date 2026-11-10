@@ -200,6 +200,8 @@ final class ExportWindow {
     enum Outcome: Equatable {
         case finished(url: URL, report: String?)
         case failed(String)
+        /// Stopped by the person, or by its project closing or the app quitting.
+        case stopped(url: URL)
     }
 
     /// One export as it was asked for, with the project as it was then,
@@ -400,12 +402,12 @@ final class ExportWindow {
             let progress: @Sendable (Double) -> Void = { fraction in
                 Task { @MainActor in self.setProgress(fraction, of: id) }
             }
-            var outcome: Outcome?
+            let outcome: Outcome
             do {
                 let report = try await perform(job, cache, progress)
                 outcome = .finished(url: job.destination, report: report)
             } catch is CancellationError {
-                // Stopped by the person; nothing to report.
+                outcome = .stopped(url: job.destination)
             } catch {
                 outcome = .failed(ErrorAdvice.sentence(for: error))
             }
@@ -444,10 +446,10 @@ final class ExportWindow {
 
     /// Notes how `job` ended and starts the next one waiting, or, with
     /// none, lets rendering go on and shows how they all ended.
-    private func ended(_ job: Job, _ outcome: Outcome?) {
+    private func ended(_ job: Job, _ outcome: Outcome) {
         task = nil
         isStopping = false
-        if let outcome { outcomes.append(Ended(timelineName: job.timelineName, outcome: outcome)) }
+        outcomes.append(Ended(timelineName: job.timelineName, outcome: outcome))
         if !queue.isEmpty {
             start(queue.removeFirst())
             return
@@ -456,7 +458,7 @@ final class ExportWindow {
         renderer?.setExporting(false)
         // Not when the last was stopped: by the person, in the window, or
         // by its project closing, which closed the window too.
-        guard outcome != nil else { return }
+        if case .stopped = outcome { return }
         announceEnd(self)
     }
 

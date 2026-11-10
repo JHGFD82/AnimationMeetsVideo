@@ -85,7 +85,7 @@ import Testing
 
         try await h.settle { !h.export.isRunning }
         #expect(h.exports.started.map(\.id) == [a.id])
-        #expect(h.export.outcomes.isEmpty)
+        #expect(h.export.outcomes.map(\.outcome) == [.stopped(url: a.destination)])
         #expect(h.announced == 0)
         #expect(!h.renderer.isExporting)
     }
@@ -101,7 +101,7 @@ import Testing
 
         try await h.settle { h.exports.hasStarted(b.id) }
         #expect(h.exports.started.map(\.id) == [a.id, b.id])
-        #expect(h.export.outcomes.isEmpty)
+        #expect(h.export.outcomes.map(\.outcome) == [.stopped(url: a.destination)])
         #expect(h.renderer.isExporting)
         #expect(h.announced == 0)
 
@@ -184,7 +184,24 @@ import Testing
         #expect(h.export.outcomes.map(\.outcome) == [.finished(url: b.destination, report: nil)])
 
         try await h.stopAll()
-        #expect(h.export.outcomes.count == 1)
+        #expect(h.export.outcomes.map(\.outcome) == [
+            .finished(url: b.destination, report: nil),
+            .stopped(url: c.destination),
+        ])
+    }
+
+    @Test func aStoppedExportLeavesALineAndTheNextStarts() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "A.mov")
+        let b = exportJob(to: "B.mov")
+        h.add(a)
+        h.add(b)
+        try await h.settle { h.exports.hasStarted(a.id) }
+        #expect(h.export.stop(a.id))
+
+        try await h.settle { h.exports.hasStarted(b.id) }
+        #expect(h.export.outcomes.map(\.outcome) == [.stopped(url: a.destination)])
+        try await h.stopAll()
     }
 
     // Whether Export… clears the outcomes is decided by what ran when it

@@ -43,4 +43,12 @@ struct ExportViewTests {
         #expect(ExportView.message(for: failed, showsTimeline: true) == "\u{201C}Teaser\u{201D}: Export failed. The disk is full.")
         #expect(ExportView.message(for: saved, showsTimeline: false) == "\u{201C}Trailer.mov\u{201D} was saved.")
     }
+
+    @Test func aStoppedExportSaysSo() {
+        let stopped = ExportWindow.Ended(timelineName: "Teaser", outcome: .stopped(url: URL(filePath: "/tmp/Trailer Teaser.mov")))
+        #expect(
+            ExportView.message(for: stopped, showsTimeline: true)
+                == "\u{201C}Teaser\u{201D}: Stopped exporting \u{201C}Trailer Teaser.mov\u{201D}."
+        )
+    }
 }
