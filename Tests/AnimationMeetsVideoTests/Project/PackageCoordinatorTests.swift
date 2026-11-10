@@ -49,12 +49,8 @@ import Testing
         return analysis
     }
 
-    private func settle(_ condition: @MainActor () -> Bool) async throws {
-        for _ in 0..<2000 {
-            if condition() { return }
-            try await Task.sleep(for: .milliseconds(2))
-        }
-        Issue.record("condition never held")
+    private func settle(sourceLocation: SourceLocation = #_sourceLocation, _ condition: @MainActor () -> Bool) async throws {
+        try await waitUntil("the condition", every: .milliseconds(2), sourceLocation: sourceLocation, condition)
     }
 
     private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }

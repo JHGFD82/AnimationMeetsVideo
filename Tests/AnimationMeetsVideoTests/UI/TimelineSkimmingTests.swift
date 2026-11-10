@@ -43,12 +43,12 @@ import Testing
         NSApplication.shared.setActivationPolicy(.accessory)
         window.makeKeyAndOrderFront(nil)
         defer { window.orderOut(nil) }
-        // Long enough for the editor to build its player.
-        for _ in 0..<300 where playback.player.currentItem == nil {
-            try await Task.sleep(for: .milliseconds(10))
+        // Until the editor has built its player.
+        try await waitUntil("the editor's player", every: .milliseconds(10)) {
             runLoopPass()
             host.layoutSubtreeIfNeeded()
             host.displayIfNeeded()
+            return playback.player.currentItem != nil
         }
         func monitors(in view: NSView) -> [NSView] {
             (view is TimelineInputMonitor.MonitorView ? [view] : []) + view.subviews.flatMap(monitors)

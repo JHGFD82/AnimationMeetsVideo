@@ -136,7 +136,7 @@ import Testing
     @Test func aFillAfterNudgesIsAStepOfItsOwn() async throws {
         let session = try session("beat-match-session-nudge-fill")
         defer { session.end() }
-        for _ in 0..<1200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the song's sound to load") { session.audio != nil }
         session.undoManager.groupsByEvent = false
         step(session) { session.chooseOneTempo() }
         step(session) { session.addBeat(at: 8.25, position: 1) }
@@ -148,7 +148,7 @@ import Testing
         // The fill lands in an event of its own, after the nudges.
         session.undoManager.beginUndoGrouping()
         session.fillSelected()
-        for _ in 0..<1200 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the fill") { !session.isFilling }
         session.undoManager.endUndoGrouping()
         #expect(session.map.sections.first?.isConfirmed == true)
 
@@ -198,7 +198,7 @@ import Testing
     @Test func aLoopPastTheSongsEndJumpsBackJustShortOfIt() async throws {
         let session = try session("beat-match-session-loop-end")
         defer { session.end() }
-        for _ in 0..<1200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the song's sound to load") { session.audio != nil }
         session.chooseOneTempo()
         session.addBeat(at: 39.5, position: 1)
         session.playingChanged(true)
@@ -215,7 +215,7 @@ import Testing
     @Test func confirmWaitsForAFilledSectionAndFillingLeavesTheView() async throws {
         let session = try session("beat-match-session-confirm")
         defer { session.end() }
-        for _ in 0..<1200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the song's sound to load") { session.audio != nil }
         session.chooseSections()
         session.drawSection(from: 0, to: 20, snap: 0)
         session.drawSection(from: 20, to: 40, snap: 0)
@@ -230,7 +230,7 @@ import Testing
         session.addBeat(at: 16.25, position: 1)
         #expect(!session.canConfirm)
         session.fillSelected()
-        for _ in 0..<1200 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the fill") { !session.isFilling }
         #expect(session.canConfirm)
         // The next section to mark is selected, but the view stays put.
         #expect(session.selectedSectionID == sections[1])
@@ -263,7 +263,7 @@ import Testing
     @Test func fillingIsOfferedOnceASectionHasWhatItNeeds() async throws {
         let session = try session("beat-match-session-can-fill")
         defer { session.end() }
-        for _ in 0..<1200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the song's sound to load") { session.audio != nil }
         session.chooseSections()
         session.drawSection(from: 0, to: 20, snap: 0)
         session.drawKind = .ramp
@@ -283,7 +283,7 @@ import Testing
         // …and not again until the fill is done.
         session.fillSelected()
         #expect(!session.canFillSelected)
-        for _ in 0..<1200 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the fill") { !session.isFilling }
         #expect(session.canFillSelected)
         // A ramp needs none of its own.
         session.selectSection(sections[1])
@@ -335,7 +335,7 @@ import Testing
         let session = try session("beat-match-session-can-play")
         defer { session.end() }
         #expect(!session.canPlay)
-        for _ in 0..<1200 where !session.canPlay { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the song to be playable") { session.canPlay }
         #expect(session.canPlay)
     }
 

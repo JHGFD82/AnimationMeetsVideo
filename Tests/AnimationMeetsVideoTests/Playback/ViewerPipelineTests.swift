@@ -150,13 +150,9 @@ import Testing
         var key: StructureKey { StructureKey(project: project) }
     }
 
-    /// Waits until `condition` holds, for at most two seconds.
-    private func eventually(_ what: String = "", _ condition: () -> Bool) async throws {
-        for _ in 0..<2000 {
-            if condition() { return }
-            try await Task.sleep(for: .milliseconds(1))
-        }
-        Issue.record("Timed out waiting: \(what)")
+    /// Waits until `condition` holds, however long the machine takes.
+    private func eventually(_ what: String = "the condition", sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool) async throws {
+        try await waitUntil(what, every: .milliseconds(1), sourceLocation: sourceLocation, condition)
     }
 
     /// Lets the pipeline handle every event sent, then do whatever it

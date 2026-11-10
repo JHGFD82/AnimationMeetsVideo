@@ -25,12 +25,10 @@ import Testing
     }
 
     /// Waits for the player to get to `time`, as a seek finishes.
-    private func playerReaches(_ skim: BrowserSkim, _ time: Double) async -> Bool {
-        for _ in 0..<200 {
-            if abs(skim.player.currentTime().seconds - time) < 0.001 { return true }
-            try? await Task.sleep(for: .milliseconds(10))
+    private func waitForPlayer(_ skim: BrowserSkim, at time: Double, sourceLocation: SourceLocation = #_sourceLocation) async throws {
+        try await waitUntil("the player to reach \(time) s", every: .milliseconds(10), sourceLocation: sourceLocation) {
+            abs(skim.player.currentTime().seconds - time) < 0.001
         }
-        return false
     }
 
     @Test func showsTheFrameSkimmedToInTheFile() async throws {
@@ -45,7 +43,7 @@ import Testing
         #expect(skim.seconds == 1)
         #expect(skim.sourceTime == seconds(1))
         // Original time 1 s is 1.5 s into the file.
-        #expect(await playerReaches(skim, 1.5))
+        try await waitForPlayer(skim, at: 1.5)
         #expect(skim.player.isMuted)
     }
 
@@ -58,7 +56,7 @@ import Testing
         skim.skim(target(clip, from: 2, length: 2), at: 0.5)
 
         #expect(skim.sourceTime == seconds(2.5))
-        #expect(await playerReaches(skim, 2.5))
+        try await waitForPlayer(skim, at: 2.5)
     }
 
     @Test func staysInsideTheClipAndStepsByFrames() async throws {
@@ -77,7 +75,7 @@ import Testing
         skim.step(frames: -10)
         #expect(skim.seconds == 0)
         skim.step(frames: 10)
-        #expect(await playerReaches(skim, 10.0 / 24))
+        try await waitForPlayer(skim, at: 10.0 / 24)
     }
 
     @Test func spacePlaysToTheClipsEndAndSkimmingStopsIt() async throws {
@@ -88,11 +86,11 @@ import Testing
         let short = target(clip, from: 1, length: 0.5)
 
         skim.skim(short, at: 0)
-        #expect(await playerReaches(skim, 1))
+        try await waitForPlayer(skim, at: 1)
         skim.togglePlay()
         #expect(skim.isPlaying)
         #expect(!skim.player.isMuted)
-        for _ in 0..<300 where skim.isPlaying { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitUntil("the clip to play to its end", every: .milliseconds(10)) { !skim.isPlaying }
         #expect(!skim.isPlaying)
         #expect(abs(skim.seconds - 0.5) < 0.1)
 
@@ -149,12 +147,7 @@ import Testing
 
         skim.skim(target(clip, length: 3), at: 2)
 
-        var grain: (left: [Float], right: [Float])?
-        for _ in 0..<200 where grain == nil {
-            grain = await skim.scrubAudio.samples(at: 2)
-            if grain == nil { try? await Task.sleep(for: .milliseconds(10)) }
-        }
-        let read = try #require(grain)
+        let read = try await waitFor("a grain at 2 s", every: .milliseconds(10)) { await skim.scrubAudio.samples(at: 2) }
         #expect(read.left.count == Int(ScrubAudio.grain * ScrubAudio.sampleRate))
         let middle = read.left.count / 2
         #expect(abs(read.left[middle] - 0.25) < 0.01)

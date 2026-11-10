@@ -170,11 +170,7 @@ struct TapeScrubEngineTests {
             Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
         }
         tape.setRate(-2)
-        let asked = clock.now
-        while tape.position > 2.95, clock.now - asked < .seconds(5) {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(tape.position <= 2.95, "The tape didn't get going")
+        try await waitUntil("the tape to get going", every: .milliseconds(10)) { tape.position <= 2.95 }
         let from = tape.position, started = clock.now
         try await Task.sleep(for: .milliseconds(500))
         let speed = (tape.position - from) / seconds(clock.now - started)

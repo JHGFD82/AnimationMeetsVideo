@@ -11,16 +11,8 @@ import Testing
 @Suite(.serialized) struct ViewerReturnTests {
     private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600) }
 
-    private func eventually(_ what: String, within limit: Duration = .seconds(5), _ condition: () -> Bool) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now + limit
-        while !condition() {
-            guard clock.now < deadline else {
-                Issue.record("Timed out waiting: \(what)")
-                return
-            }
-            try await Task.sleep(for: .milliseconds(5))
-        }
+    private func eventually(_ what: String, sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool) async throws {
+        try await waitUntil(what, sourceLocation: sourceLocation, condition)
     }
 
     /// The bytes of the pixel at the middle of `buffer`.

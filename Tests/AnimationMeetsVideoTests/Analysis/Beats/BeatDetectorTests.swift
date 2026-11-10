@@ -666,16 +666,12 @@ func writeClickFile(seconds: Double = 12, interval: Double = 0.5, first: Double 
         return project
     }
 
-    /// Waits for a beat result or failure, however long the analysis takes:
-    /// it runs at utility priority, and on a busy machine (the whole suite,
-    /// or CI) 10 s wasn't always enough.
+    /// Waits for a beat result or failure, however long the analysis takes
+    /// (see `Waiting`): 10 s and then 60 s weren't always enough on CI.
     private func waitForBeats(_ analysis: AssetAnalysis) async throws {
-        let deadline = ContinuousClock.now + .seconds(60)
-        while ContinuousClock.now < deadline {
-            if analysis.progress.isEmpty && analysis.beats.count + analysis.beatFailures.count >= 1 { return }
-            try await Task.sleep(for: .milliseconds(5))
+        try await waitUntil("beat analysis") {
+            analysis.progress.isEmpty && analysis.beats.count + analysis.beatFailures.count >= 1
         }
-        Issue.record("beat analysis did not finish: progress \(analysis.progress.values.sorted())")
     }
 
     @Test func clipsWithAudioGetBeatsAndTheyAreUnsavedUntilMarked() async throws {
@@ -703,7 +699,7 @@ func writeClickFile(seconds: Double = 12, interval: Double = 0.5, first: Double 
         let analysis = AssetAnalysis()
 
         analysis.update(with: silent)
-        for _ in 0..<2000 where !analysis.progress.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        try await waitUntil("analysis") { analysis.progress.isEmpty }
 
         #expect(analysis.beats.isEmpty)
         #expect(analysis.beatFailures.isEmpty)
@@ -719,7 +715,7 @@ func writeClickFile(seconds: Double = 12, interval: Double = 0.5, first: Double 
         analysis.update(with: project)
         project.placeAsset(id, intoTimeline: project.rootTimelineID)
         analysis.update(with: project)
-        for _ in 0..<2000 where !analysis.progress.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        try await waitUntil("analysis") { analysis.progress.isEmpty }
         #expect(analysis.beats.isEmpty)
 
         project.timelines[0].layers[0].kind = .music
@@ -739,7 +735,7 @@ func writeClickFile(seconds: Double = 12, interval: Double = 0.5, first: Double 
 
         analysis.update(with: project)
 
-        for _ in 0..<2000 where !analysis.progress.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        try await waitUntil("analysis") { analysis.progress.isEmpty }
         #expect(analysis.beats[id] == BeatTrack.none())
         #expect(analysis.unsavedBeats.isEmpty)
     }

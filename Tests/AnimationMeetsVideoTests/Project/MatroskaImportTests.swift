@@ -75,11 +75,9 @@ import Testing
 
         let item = try #require(skim.player.currentItem)
         #expect((item.asset as? AVURLAsset)?.url == MediaFile.readableURL(for: mkv))
-        for _ in 0..<200 where abs(skim.player.currentTime().seconds - 1) > 0.001 {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil("the player to reach 1 s", every: .milliseconds(10)) { abs(skim.player.currentTime().seconds - 1) <= 0.001 }
         #expect(abs(skim.player.currentTime().seconds - 1) < 0.001)
-        for _ in 0..<300 where item.status == .unknown { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitUntil("the item to load", every: .milliseconds(10)) { item.status != .unknown }
         #expect(item.status == .readyToPlay, "\(String(describing: item.error))")
     }
 

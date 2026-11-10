@@ -337,9 +337,7 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         #expect(scheduler.finishedCount == 0)
 
         scheduler.setPlaying(false)
-        for _ in 0..<400 where scheduler.finishedCount == 0 {
-            try await Task.sleep(for: .milliseconds(25))
-        }
+        try await waitUntil("a render to finish", every: .milliseconds(25)) { scheduler.finishedCount != 0 }
         #expect(scheduler.finishedCount == 1)
         #expect(scheduler.pending.isEmpty)
         #expect(scheduler.progress(forClip: top.clipID) == nil)
@@ -368,9 +366,7 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
 
         // The quiet counts from the release.
         scheduler.setInteracting(false)
-        for _ in 0..<400 where scheduler.finishedCount == 0 {
-            try await Task.sleep(for: .milliseconds(25))
-        }
+        try await waitUntil("a render to finish", every: .milliseconds(25)) { scheduler.finishedCount != 0 }
         #expect(scheduler.finishedCount == 1)
     }
 
@@ -388,16 +384,11 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t, forPreview: true)
 
         scheduler.update(project: project, timelineID: t, segments: composed.segments)
-        for _ in 0..<400 where scheduler.active == nil {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        try #require(scheduler.active != nil, "A render should have started")
+        try await waitUntil("a render to start") { scheduler.active != nil }
 
         scheduler.setInteracting(true)
         // Cancelled, not finished: the segment is still to do.
-        for _ in 0..<200 where scheduler.active != nil {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil("the render to stop", every: .milliseconds(10)) { scheduler.active == nil }
         #expect(scheduler.active == nil)
         #expect(scheduler.finishedCount == 0)
         #expect(!scheduler.pending.isEmpty)
