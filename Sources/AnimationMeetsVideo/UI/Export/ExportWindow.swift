@@ -250,9 +250,10 @@ final class ExportWindow {
         window.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: ExportView(export: self))
         // The window follows the content's height, which grows by a
-        // finished export's report, a blocking note or the queue;
-        // preferred size alone left it at its first height with the rest
-        // cut off.
+        // finished export's report, a blocking note or the queue, up to
+        // what the screen leaves; past that the content scrolls
+        // (`SheetFrame.scrollsContent`). Preferred size alone left it at
+        // its first height with the rest cut off.
         host.sizingOptions = [.minSize, .intrinsicContentSize, .maxSize]
         window.contentView = host
         closeObserver = NotificationCenter.default.addObserver(

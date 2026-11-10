@@ -14,7 +14,8 @@ struct ExportView: View {
         // the format and sound it was asked for in.
         SheetFrame(
             title: "Export",
-            subtitle: export.timelineName.isEmpty ? nil : "The timeline \u{201C}\(export.timelineName)\u{201D}, as it plays."
+            subtitle: export.timelineName.isEmpty ? nil : "The timeline \u{201C}\(export.timelineName)\u{201D}, as it plays.",
+            scrollsContent: true
         ) {
             SheetSection {
                 SheetRow("Format") {

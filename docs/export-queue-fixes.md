@@ -1525,7 +1525,7 @@ in the window.
 
 ### 12. Let the Export window's content scroll
 
-- [ ] Done
+- [x] Done
 
 **Why.** ExportView builds its `SheetFrame` without
 `scrollsContent: true`. The window sizes itself to its content and
