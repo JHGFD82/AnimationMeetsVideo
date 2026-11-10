@@ -127,7 +127,7 @@ struct ExportView: View {
                         }
                         .buttonStyle(.icon)
                         .help("Remove from the queue")
-                        .accessibilityLabel("Remove \u{201C}\(job.timelineName)\u{201D} from the queue")
+                        .accessibilityLabel(Self.removeLabel(for: job))
                     }
                 }
             }
@@ -223,6 +223,12 @@ struct ExportView: View {
         case .failed(let message): return "\(prefix)Export failed. \(message)"
         case .stopped(let url): return "\(prefix)Stopped exporting \u{201C}\(url.lastPathComponent)\u{201D}."
         }
+    }
+
+    /// The remove button's name for VoiceOver: the row as it reads, since
+    /// the same timeline can wait more than once, in another format or file.
+    static func removeLabel(for job: ExportWindow.Job) -> String {
+        "Remove \u{201C}\(job.timelineName)\u{201D} as \(job.format.name), \u{201C}\(job.destination.lastPathComponent)\u{201D}, from the queue"
     }
 
     static func finishedMessage(url: URL, report: String?) -> String {

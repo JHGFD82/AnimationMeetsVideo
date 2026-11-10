@@ -1790,7 +1790,7 @@ the list left stopped ones out.
 
 ### 15. Tell queue remove buttons apart
 
-- [ ] Done
+- [x] Done
 
 **Why.** Each queued row's remove button is labelled
 "Remove “Main” from the queue" for VoiceOver. The same timeline is

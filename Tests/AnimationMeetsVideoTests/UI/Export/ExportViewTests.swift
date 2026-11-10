@@ -51,4 +51,11 @@ struct ExportViewTests {
                 == "\u{201C}Teaser\u{201D}: Stopped exporting \u{201C}Trailer Teaser.mov\u{201D}."
         )
     }
+
+    @Test func removeButtonsOfTheSameTimelineReadApart() {
+        let movie = ExportView.removeLabel(for: exportJob("Main", as: .proRes422, to: "Trailer.mov"))
+        let mix = ExportView.removeLabel(for: exportJob("Main", as: .wavMix, to: "Trailer.wav"))
+        #expect(movie != mix)
+        #expect(mix == "Remove \u{201C}Main\u{201D} as WAV Mix, \u{201C}Trailer.wav\u{201D}, from the queue")
+    }
 }
