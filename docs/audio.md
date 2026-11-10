@@ -314,10 +314,11 @@ their remove buttons; the toolbar's progress is the one under way. When
 the last has ended the window comes back with how each ended.
 
 Stopping an export, or closing its project's window or quitting while it
-runs, asks first, since what was exported so far is deleted
-(`ExportWindow.confirmStopping`). Stop Export… stops the one under way and
-starts the next waiting; closing the project or quitting stops the queue
-too.
+runs, asks first, since what was exported so far is deleted. Stop Export…
+asks about the one under way and stops it, and the next waiting starts
+(`ExportWindow.confirmAndCancel`); closing the project or quitting asks
+once about all of them and stops the queue too
+(`ExportWindow.confirmStopping`).
 
 With a target, the sound is mastered before the pictures are exported
 (`LoudnessMastering`), taking the first tenth of the progress bar.

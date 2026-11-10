@@ -1078,7 +1078,7 @@ short to see in the app, so there is no check there.
 
 ### 8. Name what asks before Stop Export in the docs
 
-- [ ] Done
+- [x] Done
 
 **Why.** docs/audio.md (about lines 312-316) and the ExportWindow type
 comment (about lines 12-15) say `confirmStopping` confirms Stop

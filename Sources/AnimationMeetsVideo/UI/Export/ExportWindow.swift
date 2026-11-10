@@ -11,8 +11,10 @@ import UniformTypeIdentifiers
 /// its progress on the toolbar, and it comes back when the exports end.
 /// Export… while one runs queues the timeline the editor shows then, in
 /// the format and sound picked then, to start once those before it end;
-/// the queue is listed in the window. Stopping an export, or closing the
-/// project or quitting while one runs, asks first (`confirmStopping`).
+/// the queue is listed in the window. Stop Export… asks first and stops
+/// the one under way, and the next starts (`confirmAndCancel`); closing
+/// the project or quitting while one runs asks once and stops the queue
+/// too (`confirmStopping`).
 @MainActor
 @Observable
 final class ExportWindow {
