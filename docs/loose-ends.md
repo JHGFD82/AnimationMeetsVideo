@@ -88,15 +88,25 @@ Built and tested in code, never run on screen.
 
 ## Known gaps
 
-- **Tests that fail only sometimes on CI.** The pushes of bd7bdc6 and
-  8230f80 to `main` failed while the same commits passed on their
-  branches, each on different tests: `ScrubAudioTests`
-  (`aGrainIsTheMixUnderThePlayheadFadedAtItsEnds`) and
-  `BeatAnalysisQueueTests` in one run, `DetachAudioTests`
-  (`aNestedTimelinesSoundDetaches`) and `LoudnessMasteringTests`
-  (`aQuietMixIsRaisedToTheTarget`) in the other. They look sensitive to
-  the runner's load or timing; find what each waits on and make it
-  deterministic, so a red `main` means something again.
+- **Sound renders that come out wrong only on CI.** Three tests that
+  read the mix offline failed once each on a loaded runner, while the
+  same commits passed elsewhere: `ScrubAudioTests`
+  (`aGrainIsTheMixUnderThePlayheadFadedAtItsEnds`, the middle of a grain
+  read as silence or doubled), `DetachAudioTests`
+  (`aNestedTimelinesSoundDetaches`, levels before and after differed)
+  and `LoudnessMasteringTests` (`aQuietMixIsRaisedToTheTarget`, a 3 s
+  render came out 3.072 s and 0.3 dB off). A voice isolation render was
+  once 2.048 s for 2 s, too. Both lengths are whole slices of 4096
+  frames, so the reader seems to hand over extra or silent slices under
+  load; all of these read through `AVAssetReaderAudioMixOutput` and the
+  taps of `AudioLevelTap`. Not reproduced locally in six runs of the
+  whole suite under load, and logging in the tap showed no failed or
+  short source reads, so the cause is unproven. If it is the taps, an
+  export on a busy Mac could get gaps too; the fix then is to mix offline
+  reads without taps (track readers through each track's effects and
+  curves). The waits that failed beside them (beat analysis, Beat Match)
+  were fixed by waiting on the work rather than a deadline (`waitUntil`
+  in `Tests/AnimationMeetsVideoTests/Support/Waiting.swift`).
 
 - **Speed: the Timeline menu follows playback.** To keep every item's
   on or off state exact, `TimelineMenuStatePublisher` checks the playing

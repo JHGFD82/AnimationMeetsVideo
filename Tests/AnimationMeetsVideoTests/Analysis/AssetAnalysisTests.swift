@@ -29,19 +29,15 @@ import Testing
     }
 
     private func waitUntilIdle(_ analysis: AssetAnalysis, expecting count: Int) async throws {
-        for _ in 0..<2000 {
-            if analysis.progress.isEmpty && analysis.tracks.count + analysis.failures.count >= count { return }
-            try await Task.sleep(for: .milliseconds(5))
+        try await waitUntil("analysis") {
+            analysis.progress.isEmpty && analysis.tracks.count + analysis.failures.count >= count
         }
-        Issue.record("analysis did not finish")
     }
 
     private func waitForReferences(_ analysis: AssetAnalysis, expecting count: Int) async throws {
-        for _ in 0..<2000 {
-            if analysis.progress.isEmpty && analysis.references.count + analysis.referenceFailures.count >= count { return }
-            try await Task.sleep(for: .milliseconds(5))
+        try await waitUntil("reference capture") {
+            analysis.progress.isEmpty && analysis.references.count + analysis.referenceFailures.count >= count
         }
-        Issue.record("reference capture did not finish")
     }
 
     @Test func analyzesVideoAssetsAndMarksThemUnsaved() async throws {
@@ -107,7 +103,7 @@ import Testing
         again.reset(packageURL: package)
         again.update(with: video)
         #expect(again.isLoadingSaved)
-        for _ in 0..<2000 where again.isLoadingSaved || !again.progress.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        try await waitUntil("saved results to load") { !again.isLoadingSaved && again.progress.isEmpty }
         try await Task.sleep(for: .milliseconds(50))
 
         #expect(again.progress.isEmpty)
@@ -345,12 +341,8 @@ final class Gate: @unchecked Sendable {
         )
     }
 
-    private func settle(_ condition: @MainActor () -> Bool) async throws {
-        for _ in 0..<2000 {
-            if condition() { return }
-            try await Task.sleep(for: .milliseconds(2))
-        }
-        Issue.record("condition never held")
+    private func settle(sourceLocation: SourceLocation = #_sourceLocation, _ condition: @MainActor () -> Bool) async throws {
+        try await waitUntil("the condition", every: .milliseconds(2), sourceLocation: sourceLocation, condition)
     }
 
     private func makePackage() throws -> URL {

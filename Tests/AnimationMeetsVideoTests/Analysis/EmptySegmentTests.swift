@@ -289,7 +289,7 @@ import Testing
         analysis.backend.observeFile = { _ in AssetAnalysis.FileObservation(exists: true, stamp: FileStamp(byteCount: 100, modified: 1)) }
         analysis.reset(packageURL: package)
         analysis.update(with: project)
-        for _ in 0..<2000 where analysis.isLoadingSaved { try await Task.sleep(for: .milliseconds(2)) }
+        try await waitUntil("saved results to load", every: .milliseconds(2)) { !analysis.isLoadingSaved }
 
         #expect(analysis.resolveOriginalScores(for: clip) == .failure(.damaged))
     }

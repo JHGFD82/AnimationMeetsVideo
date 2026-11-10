@@ -38,9 +38,7 @@ import Testing
         // The picture changed as the drag went, not only once it stopped.
         #expect(shownDuringDrag >= 2)
         // Black was read along the way; the white the drag ended on is shown.
-        for _ in 0..<400 where (brightness(model.firstFrame) ?? 0) < 200 {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil("the white frame", every: .milliseconds(10)) { (brightness(model.firstFrame) ?? 0) >= 200 }
         #expect((brightness(model.firstFrame) ?? 0) > 200)
         #expect(model.firstTime == CMTime(value: 39, timescale: 24))
     }
@@ -67,9 +65,7 @@ import Testing
         let last = CMTime(value: 36, timescale: 24)
         model.show(.timeline(preview), first: first, last: last, labelFirst: first, labelLast: last, labelFrameRate: 25)
         #expect(model.isActive && model.labelFrameRate == 25)
-        for _ in 0..<500 where model.firstFrame == nil || model.lastFrame == nil {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil("both frames", every: .milliseconds(10)) { model.firstFrame != nil && model.lastFrame != nil }
         #expect((brightness(model.firstFrame) ?? 255) < 100)
         #expect((brightness(model.lastFrame) ?? 0) > 180)
 

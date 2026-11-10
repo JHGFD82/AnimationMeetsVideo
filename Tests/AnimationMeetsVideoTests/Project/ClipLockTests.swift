@@ -112,7 +112,6 @@ struct ClipLockTests {
         #expect(refused == 1)
         #expect(clip(locked.id, in: state)?.startOffset == CMTime(value: 1, timescale: 1))
         // The step goes back on the stack, for after the designer closes.
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(undoManager.canUndo)
+        try await waitUntil("the step back on the undo stack") { undoManager.canUndo }
     }
 }

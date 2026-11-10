@@ -125,7 +125,7 @@ struct UISnapshots {
         let song = try SnapshotSupport.clickSong(named: "beat-match-song")
         let session = BeatMatchSession(asset: song, url: try #require(song.url))
         defer { session.end() }
-        for _ in 0..<200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the song's sound to load", every: .milliseconds(50)) { session.audio != nil }
         let size = CGSize(width: 1300, height: 520)
         func render(_ name: String) throws {
             try SnapshotSupport.render(BeatMatchView(session: session, onConfirm: {}, onCancel: {}), name, size: size)
@@ -141,11 +141,11 @@ struct UISnapshots {
         try render("beat-match-3-mark")
         // Placed by ear a little late, so the fill snaps it.
         session.addBeat(at: 8.256, position: 1)
-        for _ in 0..<100 where session.provisionalTempo == nil { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("a provisional tempo", every: .milliseconds(50)) { session.provisionalTempo != nil }
         try render("beat-match-3-anchor")
         session.addBeat(at: 16.25, position: 1)
         session.fillSelected()
-        for _ in 0..<100 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
+        try await waitUntil("the fill", every: .milliseconds(50)) { !session.isFilling }
         session.selectBeat(step: 1)
         try render("beat-match-4-filled")
         // The anchor the fill snapped: how far, and Undo Snap.

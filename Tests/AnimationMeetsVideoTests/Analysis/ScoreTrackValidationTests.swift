@@ -77,8 +77,8 @@ import Testing
         analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
         analysis.backend.capturePictures = { _, _, _ in ReferenceThumbnails(frames: []) }
         analysis.update(with: project)
-        for _ in 0..<2000 where analysis.failure(.scenes, for: clip.id) == nil || !analysis.progress.isEmpty {
-            try await Task.sleep(for: .milliseconds(2))
+        try await waitUntil("the scene failure", every: .milliseconds(2)) {
+            analysis.failure(.scenes, for: clip.id) != nil && analysis.progress.isEmpty
         }
 
         #expect(analysis.tracks[clip.id] == nil)

@@ -151,7 +151,7 @@ struct MotionDesignLanesInteractionTests {
         // Its time jumps to zero as it becomes ready, and the playhead
         // follows the player's jumps; the editor's player is ready long
         // before anyone skims, so the playhead is placed only after that.
-        for _ in 0..<200 where player.currentItem?.status != .readyToPlay { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitUntil("the player to be ready", every: .milliseconds(10)) { player.currentItem?.status == .readyToPlay }
         session.seek(to: 2)
         session.skims = true
         let harness = EventHarness(MotionDesignLanes(session: session), size: Self.size)

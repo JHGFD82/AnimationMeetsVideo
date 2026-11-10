@@ -6,12 +6,6 @@ import Testing
 
 @MainActor
 @Suite(.serialized) struct MotionDesignSessionTests {
-    /// Waits for `condition`, up to `seconds`.
-    private func wait(_ seconds: Double = 15, until condition: () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(seconds)
-        while !condition(), Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
-    }
-
     /// The mean of a picture's middle pixel's channels, 0 to 1.
     private static func brightness(of image: CGImage) -> Double {
         var pixel = [UInt8](repeating: 0, count: 4)
