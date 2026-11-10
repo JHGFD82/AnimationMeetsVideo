@@ -137,6 +137,14 @@ Built and tested in code, never run on screen.
   shows. AGENTS.md would put that logic in a non-UI type such as
   `Export/ExportQueue.swift`, with the window reading it; left until
   the queue next changes, since it moves every reference to it.
+- **Exports in use are told apart by their exact place.**
+  `ExportDestinations.conflict` refuses a destination only when it is
+  the same path as one under way or waiting. A WAV Stems export's
+  destination is its folder, so a WAV Mix saved inside that folder
+  under the name of one of its stems ("Name - Layer.wav") is still
+  written over. Paths are compared without case, so on a case-sensitive
+  volume "a.mov" is refused while "A.mov" is in use; chosen when the
+  check was added, since the Mac's volumes ignore case by default.
 
 - **Speed: the Timeline menu follows playback.** To keep every item's
   on or off state exact, `TimelineMenuStatePublisher` checks the playing
