@@ -144,6 +144,17 @@ final class ExportWindow {
         let loudness: LoudnessTarget
         let audioTracks: ExportAudioTracks
         let destination: URL
+
+        /// The project to export: as it was asked for, its package effects
+        /// fitted to their packages as they are now
+        /// (`EditingProject.fitPackageEffects`). A package changed while the
+        /// job waited fitted the open project (`ProjectSession.fitPackageEffects`)
+        /// but not this copy, and the renderer reads the package as it is.
+        var projectToExport: EditingProject {
+            var project = project
+            project.fitPackageEffects()
+            return project
+        }
     }
 
     /// How one export ended.
@@ -305,24 +316,25 @@ final class ExportWindow {
     nonisolated private static func write(
         _ job: Job, cache: RenderCache?, progress: @escaping @Sendable (Double) -> Void
     ) async throws -> String? {
+        let project = job.projectToExport
         // Only shown once the export is done.
         let report = ReportBox()
         let url = job.destination
         switch job.format {
         case .proRes422, .proRes4444:
             try await CompositionExporter.export(
-                project: job.project, timelineID: job.timelineID, preset: job.format.movie ?? .proRes422,
+                project: project, timelineID: job.timelineID, preset: job.format.movie ?? .proRes422,
                 loudness: job.loudness, audioTracks: job.audioTracks, to: url, cache: cache,
                 progress: progress, onMastered: { report.value = $0 }
             )
         case .wavMix:
             report.value = try await AudioExport.exportMix(
-                project: job.project, timelineID: job.timelineID, loudness: job.loudness, to: url,
+                project: project, timelineID: job.timelineID, loudness: job.loudness, to: url,
                 progress: progress
             )
         case .wavStems:
             try await AudioExport.exportStems(
-                project: job.project, timelineID: job.timelineID, named: job.project.name, in: url,
+                project: project, timelineID: job.timelineID, named: project.name, in: url,
                 progress: progress
             )
         }

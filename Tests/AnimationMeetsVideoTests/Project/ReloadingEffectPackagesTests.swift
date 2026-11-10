@@ -120,6 +120,43 @@ import Testing
         }
     }
 
+    /// A queued export holds its own copy of the project, which a reload
+    /// doesn't fit; it's fitted when the export starts. The unfitted copy
+    /// isn't drawn: in a debug build the renderer's assert would stop the run.
+    @Test @MainActor func aQueuedExportIsFittedWhenItStarts() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = try write()
+        let installed = try EffectPackageStore.read(url)
+        let running = EffectRegistry.withBuiltIns([installed])
+        let strength = ControlKind(package: "com.example.tint", control: "strength")
+        var project = EditingProject.empty
+        let created = project.addShapeLayer(.rectangle, to: project.rootTimelineID)
+        let shape = try #require(created)
+        EffectRegistry.$override.withValue(running) {
+            project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects.append(Effect(kind: installed.kind)) }
+        }
+        let job = ExportWindow.Job(
+            project: project, timelineID: project.rootTimelineID, timelineName: "Main", format: .proRes422,
+            loudness: .asMixed, audioTracks: .mix, destination: URL(filePath: "/tmp/queued.mov")
+        )
+        // While it waits, Strength becomes two numbers.
+        let pair: [[String: Any]] = [["id": "strength", "name": "Strength", "type": "vector", "components": ["A", "B"], "default": [1, 2]]]
+        try write(controls: pair, kernel: kernel().replacingOccurrences(of: "float strength", with: "float2 strength"))
+        let (reloaded, _) = running.reloading(url, as: read(url))
+        try EffectRegistry.$override.withValue(reloaded) {
+            let exported = job.projectToExport
+            let effect = try #require(exported.clipAndLayer(shape.clipID, in: exported.rootTimelineID)?.clip.effects.last)
+            #expect(effect.control(strength)?.values(at: .zero) == [1, 2])
+            let step = try #require(LookStep(effect, at: .zero))
+            #expect(step.numbers[strength] == [1, 2])
+            let frame = CGRect(x: 0, y: 0, width: 4, height: 4)
+            _ = LookRenderer.apply(step, to: CIImage(color: .red).cropped(to: frame), over: frame, canvas: frame, frame: frame, scale: 1, space: .rec709)
+            // The queued copy itself is left as it was asked for.
+            let queued = try #require(job.project.clipAndLayer(shape.clipID, in: job.project.rootTimelineID)?.clip.effects.last)
+            #expect(queued.control(strength)?.values(at: .zero).count == 1)
+        }
+    }
+
     @Test func aChoiceKeepsAnOptionStillOffered() throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         func choice(_ options: [String], default value: String) -> [[String: Any]] {

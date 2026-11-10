@@ -600,7 +600,7 @@ so a shared destination deleted an earlier export's file.
 
 ### 3. Refit a queued export's package effects on start
 
-- [ ] Done. **Decision**: see the table.
+- [x] Done. **Decision**: see the table.
 
 **Why.** A release build can crash. Each queued `Job` holds a copy of
 the project. When an effect package changes on disk,
