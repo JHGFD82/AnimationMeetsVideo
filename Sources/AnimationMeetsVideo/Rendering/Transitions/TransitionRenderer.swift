@@ -10,7 +10,10 @@ import Foundation
 /// a direction) are turned over to match. Like the compositor, it works on
 /// the frames' encoded values.
 enum TransitionRenderer {
-    static func draw(_ frame: TransitionFrame, from before: CIImage, to after: CIImage, in bounds: CGRect) -> CIImage {
+    static func draw(
+        _ frame: TransitionFrame, from before: CIImage, to after: CIImage, in bounds: CGRect,
+        mattes: MatteMapSet = MatteMapSet()
+    ) -> CIImage {
         let a = before.cropped(to: bounds)
         let b = after.cropped(to: bounds)
         let p = frame.progress.clamped(between: 0, and: 1)
@@ -48,7 +51,7 @@ enum TransitionRenderer {
             // the picture itself. The ends are exact even where the map is
             // at full brightness.
             guard p > 0, p < 1 else { return p <= 0 ? a : b }
-            let map = matteMap(options.matte, in: bounds)
+            let map = matteMap(options.matte, in: bounds, mattes: mattes)
             return reveal(b, over: a, mask: LayeredCompositor.revealMask(of: map, LumaReveal(progress: p, keysIncoming: true)))
         case .push:
             // Both move together, the next picture pushing the other off.
@@ -262,10 +265,10 @@ enum TransitionRenderer {
             .cropped(to: bounds)
     }
 
-    /// A matte wipe's map, filling the output: a video's frame stretched to
-    /// it, or fixed noise in small blocks, gray in every channel.
-    static func matteMap(_ source: MatteSource, in bounds: CGRect) -> CIImage {
-        if case .clip(let id) = source, let frame = MatteMaps.shared.image(for: id), frame.extent.width > 0, frame.extent.height > 0 {
+    /// A matte wipe's map, filling the output: a video's frame from
+    /// `mattes` stretched to it, or fixed noise in small blocks, gray in every channel.
+    static func matteMap(_ source: MatteSource, in bounds: CGRect, mattes: MatteMapSet) -> CIImage {
+        if case .clip(let id) = source, let frame = mattes.images[id], frame.extent.width > 0, frame.extent.height > 0 {
             let extent = frame.extent
             return frame
                 .transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)

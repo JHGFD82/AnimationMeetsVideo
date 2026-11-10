@@ -730,7 +730,7 @@ reads the live package.
 
 ### 4. Keep each composition's matte wipe maps its own
 
-- [ ] Done
+- [x] Done
 
 **Why.** `MatteMaps.shared` is one table for the whole app, holding one
 frame per asset ID. Every composition build reloads it from the project

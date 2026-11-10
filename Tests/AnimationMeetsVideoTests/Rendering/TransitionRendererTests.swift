@@ -31,10 +31,11 @@ struct RenderProbe {
         from a: CIImage,
         to b: CIImage,
         options: TransitionOptions? = nil,
-        entering: Bool = true
+        entering: Bool = true,
+        mattes: MatteMapSet = MatteMapSet()
     ) -> CIImage {
         let frame = TransitionFrame(kind: kind, options: options ?? kind.defaultOptions, progress: progress, entering: entering)
-        return TransitionRenderer.draw(frame, from: a, to: b, in: bounds)
+        return TransitionRenderer.draw(frame, from: a, to: b, in: bounds, mattes: mattes)
     }
 
     /// The red, green and blue at a point given as fractions of the frame
@@ -165,8 +166,10 @@ struct RenderProbe {
 
     @Test func aMatteWipeRevealsTheBrightPartsOfItsMapFirst() throws {
         let id = UUID()
-        MatteMaps.shared.store(probe.halves, for: id)
-        let early = wipe(.matteWipe, 0.3) { $0.matte = .clip(id) }
+        var options = TransitionKind.matteWipe.defaultOptions
+        options.matte = .clip(id)
+        let early = probe.draw(.matteWipe, 0.3, from: probe.solid(1, 0, 0), to: probe.solid(0, 0, 1), options: options,
+                               mattes: MatteMapSet(images: [id: probe.halves]))
         #expect(try showsAfter(early, x: 0.2, y: 0.5))
         #expect(try !showsAfter(early, x: 0.8, y: 0.5))
     }
