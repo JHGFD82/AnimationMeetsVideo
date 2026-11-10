@@ -967,7 +967,7 @@ is left alone.
 
 ### 6. Stop only the export the question was about
 
-- [ ] Done
+- [x] Done
 
 **Why.** `confirmAndCancel()` words its alert from `current`, then
 cancels whatever `task` holds once the alert closes. The modal alert

@@ -89,6 +89,44 @@ import Testing
         #expect(!h.renderer.isExporting)
     }
 
+    @Test func stoppingTheExportUnderWayStartsTheNext() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "A.mov")
+        let b = exportJob(to: "B.mov")
+        h.add(a)
+        h.add(b)
+        try await h.settle { h.exports.hasStarted(a.id) }
+        #expect(h.export.stop(a.id))
+
+        try await h.settle { h.exports.hasStarted(b.id) }
+        #expect(h.exports.started.map(\.id) == [a.id, b.id])
+        #expect(h.export.outcomes.isEmpty)
+        #expect(h.renderer.isExporting)
+        #expect(h.announced == 0)
+
+        h.exports.finish(b.id)
+        try await h.settle { !h.export.isRunning }
+        #expect(h.announced == 1)
+    }
+
+    // What Stop Export… does once its question closes: by then the export
+    // asked about may have ended and the next started, which goes on.
+    @Test func stoppingAnExportThatHasEndedLeavesTheNextGoing() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "A.mov")
+        let b = exportJob(to: "B.mov")
+        h.add(a)
+        h.add(b)
+        h.exports.finish(a.id)
+        try await h.settle { h.exports.hasStarted(b.id) }
+        #expect(!h.export.stop(a.id))
+
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(h.export.current?.id == b.id)
+        #expect(h.exports.started.count == 2)
+        try await h.stopAll()
+    }
+
     @Test func aFailedExportIsNotedAndTheNextStarts() async throws {
         let h = ExportQueueHarness()
         let a = exportJob(to: "A.mov")

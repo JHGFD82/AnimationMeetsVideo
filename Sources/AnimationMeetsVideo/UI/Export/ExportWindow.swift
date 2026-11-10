@@ -213,11 +213,21 @@ final class ExportWindow {
         task?.cancel()
     }
 
-    /// Stops the export under way once the person agrees to; the next
-    /// one waiting starts.
+    /// Stops the export under way once the person agrees to, unless it
+    /// ended while they were asked; the next one waiting starts.
     func confirmAndCancel() {
-        guard let current, Self.askToStop([current], because: "Stopping") else { return }
+        guard let asked = current, Self.askToStop([asked], because: "Stopping") else { return }
+        // The question keeps the main actor running, so `asked` may have ended
+        // while it was up and the next one started, which goes on.
+        stop(asked.id)
+    }
+
+    /// Stops the export `id` if it is still the one under way; the next one
+    /// waiting starts. False when it has already ended.
+    @discardableResult func stop(_ id: Job.ID) -> Bool {
+        guard current?.id == id else { return false }
         task?.cancel()
+        return true
     }
 
     /// Takes a waiting export out of the queue.
