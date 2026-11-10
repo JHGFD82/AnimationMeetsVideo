@@ -47,9 +47,9 @@ final class StandInExports {
     }
 }
 
-/// An Export window whose exporters, save panel and end announcement
-/// are stood in for, so its queue runs in a test with no window, panel,
-/// alert or file.
+/// An Export window whose exporters, save panel, alerts and end
+/// announcement are stood in for, so its queue runs in a test with no
+/// window, panel, alert or file.
 @MainActor
 final class ExportQueueHarness {
     let export = ExportWindow()
@@ -60,6 +60,8 @@ final class ExportQueueHarness {
     private(set) var announced = 0
     /// The names the save panel was offered, in order.
     private(set) var suggestedNames: [String] = []
+    /// The messages of the alerts Export… would have shown, in order.
+    private(set) var told: [String] = []
     /// What the save panel answers, given the name it suggests; nil is Cancel.
     var answerSavePanel: (String) -> URL? = { _ in
         Issue.record("A save panel was not expected")
@@ -71,6 +73,7 @@ final class ExportQueueHarness {
         export.packageURL = URL(filePath: "/tmp/amv-export-tests-\(UUID().uuidString).amv")
         export.perform = { [exports] job, _, progress in try await exports.run(job, progress: progress) }
         export.announceEnd = { [weak self] _ in self?.announced += 1 }
+        export.tell = { [weak self] _, message in self?.told.append(message) }
         export.chooseDestination = { [weak self] name, _ in
             guard let self else { return nil }
             suggestedNames.append(name)

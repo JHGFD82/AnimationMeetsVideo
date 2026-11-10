@@ -28,6 +28,16 @@ enum ExportFormat: String, CaseIterable, Identifiable, Sendable {
         case .wavMix, .wavStems: nil
         }
     }
+
+    /// The extension the save panel gives the file; nil for stems, which
+    /// are saved in a folder.
+    var fileExtension: String? {
+        switch self {
+        case .proRes422, .proRes4444: "mov"
+        case .wavMix: "wav"
+        case .wavStems: nil
+        }
+    }
 }
 
 /// The sound tracks a movie export has: the mix alone, or the mix and then
@@ -83,6 +93,7 @@ enum AudioExport {
             }
         }
         let share = loudness.lufs == nil ? 1.0 : 0.5
+        // Replacing it was confirmed, and no other export saves here (see CompositionExporter.export).
         try? FileManager.default.removeItem(at: url)
         do {
             let rendered = try await LoudnessMastering.render(

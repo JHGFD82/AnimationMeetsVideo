@@ -59,6 +59,10 @@ final class ExportWindow {
     @ObservationIgnored var chooseDestination: @MainActor (_ suggestedName: String, _ format: ExportFormat) -> URL? = { name, format in
         ExportWindow.askWhereToSave(suggesting: name, format: format)
     }
+    /// Tells the person why Export… did nothing: an alert, which a test reads.
+    @ObservationIgnored var tell: @MainActor (_ title: String, _ message: String) -> Void = {
+        ProjectSession.showAlert(title: $0, message: $1)
+    }
     /// Tells the person the exports have ended: the window comes back if it
     /// was closed, and the Dock icon bounces, since a long export may finish
     /// with the app behind another. A test counts the calls instead.
@@ -87,6 +91,12 @@ final class ExportWindow {
     /// Every export running in the app.
     static var runningAnywhere: [ExportWindow] {
         all.allObjects.filter(\.isRunning)
+    }
+
+    /// Where every export in the app under way or waiting saves, which a
+    /// new one mustn't (`ExportDestinations`).
+    static var takenDestinations: [URL] {
+        all.allObjects.flatMap { [$0.current].compactMap { $0 } + $0.queue }.map(\.destination)
     }
 
     /// Asks whether to stop `exports`, which `reason` (\"Closing the
@@ -212,7 +222,19 @@ final class ExportWindow {
         let timelineName = project.timeline(id: timelineID)?.name ?? timelineName
         // A second export of the project is told apart by its timeline.
         let baseName = isRunning && !timelineName.isEmpty ? "\(project.name) \(timelineName)" : project.name
-        guard let url = chooseDestination(format == .wavStems ? "\(baseName) Stems" : baseName, format) else { return }
+        let suggested = format == .wavStems ? "\(baseName) Stems" : baseName
+        // Never the name of one under way or waiting, which this one would
+        // delete (`ExportDestinations`).
+        let name = ExportDestinations.freeName(suggested, fileExtension: format.fileExtension, avoiding: Self.takenDestinations)
+        guard let url = chooseDestination(name, format) else { return }
+        // Read after the panel: exports may have ended while it was open.
+        if ExportDestinations.conflict(for: url, among: Self.takenDestinations) != nil {
+            tell(
+                "Couldn't Export",
+                "An export under way or waiting already saves to \u{201C}\(url.lastPathComponent)\u{201D}, and this one would replace it. Choose another name or place, or take that export out of the queue first."
+            )
+            return
+        }
 
         // As the window's menus (`ExportView`) keep them.
         let defaults = UserDefaults.standard

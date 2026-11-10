@@ -405,7 +405,7 @@ suites. Don't try to run a modal's nested run loop in a test.
 
 ### 2. Keep queued exports from saving over each other
 
-- [ ] Done. **Decision**: see the table.
+- [x] Done. **Decision**: see the table.
 
 **Why.** This is the most serious defect: silent loss of a finished
 file. Nothing checks the place picked in the save panel against the

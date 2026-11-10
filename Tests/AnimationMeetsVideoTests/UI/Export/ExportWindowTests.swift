@@ -197,4 +197,44 @@ import Testing
         #expect(h.export.current?.id == a.id)
         try await h.stopAll()
     }
+
+    @Test func takenDestinationsListEveryExportUnderWayOrWaiting() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "\(UUID().uuidString).mov")
+        let b = exportJob(to: "\(UUID().uuidString).mov")
+        h.add(a)
+        h.add(b)
+        #expect(ExportWindow.takenDestinations.contains(a.destination))
+        #expect(ExportWindow.takenDestinations.contains(b.destination))
+
+        try await h.stopAll()
+        #expect(!ExportWindow.takenDestinations.contains(a.destination))
+        #expect(!ExportWindow.takenDestinations.contains(b.destination))
+    }
+
+    @Test func theSuggestedNameSkipsOnesUnderWayOrWaiting() async throws {
+        let h = ExportQueueHarness()
+        var project = EditingProject.empty
+        project.name = "Trailer \(UUID().uuidString)"
+        h.add(exportJob(to: "\(project.name).mov", project: project))
+        h.add(exportJob(to: "\(project.name) Main.mov", project: project))
+        h.answerSavePanel = { _ in nil }
+        h.run(project)
+
+        #expect(h.suggestedNames.last == "\(project.name) Main 2")
+        try await h.stopAll()
+    }
+
+    @Test func aPlaceInUseIsRefused() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "\(UUID().uuidString).mov")
+        h.add(a)
+        h.answerSavePanel = { _ in a.destination }
+        h.run()
+
+        #expect(h.export.queue.isEmpty)
+        #expect(h.export.current?.id == a.id)
+        #expect(h.told.count == 1)
+        try await h.stopAll()
+    }
 }

@@ -304,7 +304,10 @@ Export… in the window starts the export at once. Clicked again while one
 runs, it queues the timeline the editor shows then, asking where to save
 it as usual: the menus stay open for it, and each export keeps the
 format, loudness and movie tracks, and the project as it was, from when
-it was asked for. The window lists the export under way with its
+it was asked for. The name it suggests skips those of the exports under
+way or waiting, and a place one of them already saves to is refused,
+since each export clears its destination before writing
+(`ExportDestinations`). The window lists the export under way with its
 progress and those waiting, which run in turn and can be taken out with
 their remove buttons; the toolbar's progress is the one under way. When
 the last has ended the window comes back with how each ended.
