@@ -3,8 +3,10 @@
 Status: **implemented**: zooming and scrolling, the ruler, the playhead,
 and moving and trimming clips on the frame grid. The placement rules, the
 viewport math and the ruler and beat grouping are unit tested. The view
-itself has been checked in offscreen renders, not yet driven on screen
-with a trackpad. What is not built is listed under
+itself has been checked in offscreen renders, and a clip block's clicks,
+drags and Escape with real events in a test window
+(`ClipBlockInteractionTests`); it has not been driven on screen with a
+trackpad. What is not built is listed under
 [Not implemented yet](#not-implemented-yet).
 
 The timeline sits under the browser, viewer and inspector and spans the
@@ -81,11 +83,9 @@ payload until the drop.
 Every layer has a kind (`TimelineLayer.kind`, saved as `kind`), which is
 the area it sits in. Clips with pictures only go on video layers, and clips
 of sound alone (audio files and detached sound) only on sound or music
-layers; moves and drops onto the wrong kind are refused. Projects saved
-before layers had kinds get one from their clips when opened
-(`inferredKind(of:)`): video if any clip has pictures or the layer is
-empty, sound if it holds sound detached from video, music otherwise.
-Audio clips on music layers are drawn in a greener tone than sound.
+layers; moves and drops onto the wrong kind are refused. A project
+whose layers have no kind won't open. Audio clips on music layers are
+drawn in a greener tone than sound.
 
 A layer is named after its kind and numbered among layers of that kind
 from the top ("Video 2", "Music 1"), so the names follow the stack as it is
@@ -811,10 +811,11 @@ shows it is retimed. A clip block no longer shows its duration. Instead a
 retimed one reads its speed along the second line of the bar: a `|`, a
 space and the speed at the start and at each speed keyframe, where the
 keyframe plays. Between two points whose speeds differ (a ramp) a stretched
-arrow runs from one to the next; between equal speeds there is none. (A
-hard change, with no ramp, would show no arrow either, but speed keyframes
-always ramp for now.) Badges (effects, sound, time, shutter) sit at the end
-of the name line. Dragging its end trims the source, never stretching the
+arrow runs from one to the next; between equal speeds there is none. A
+speed keyframe can hold, which makes a hard step to the next speed with
+no ramp, but the strip doesn't look at holds yet: it still draws an
+arrow between two different speeds across a hold. Badges (effects,
+sound, time, shutter) sit at the end of the name line. Dragging its end trims the source, never stretching the
 clip; changing the speed moves the clips after it on the layer by as much as
 its end moved, as trimming does. Speed, frame blending, echo and the sound
 choice are in the clip's menu and the effects panel's Time rows; motion blur

@@ -47,9 +47,9 @@ blend mode or mix slider beyond Amount:
 
 "Built in" names a Core Image filter that already does the work. "Color
 kernel", "warp kernel" and "kernel" are the three kinds of custom Core
-Image kernels, written in Metal and compiled once at first use the way
-`MorphFlow` compiles its warp (see [Efficiency](#efficiency) for why the
-choice matters).
+Image kernels, written in Metal and compiled once, in the background
+just after launch (see [Efficiency](#efficiency) for why the choice
+matters).
 
 ### Noise: grain, snow and procedural fields
 
@@ -85,7 +85,7 @@ footage is replaced with a PQ or HLG version.
 | Kind | What it does | Settings | Made with |
 | --- | --- | --- | --- |
 | Displace | Moves each pixel by a map's red and green. | Map: an input, or against an earlier step (see above); amount (2% of the width), gray is still (on) | Built in: `CIDisplacementDistortion`. |
-| Liquid | Flowing, melting motion: the picture is pushed along a noise field that evolves, twice through itself (domain warping). | Amount (5%), scale, warps (2), evolution, seed | Warp kernel: the Fractal Noise function evaluated for the offset, so it needs no map image. |
+| Liquid | Flowing, melting motion: the picture is pushed along a noise field that evolves, twice through itself (domain warping). | Amount (2%), scale, warps (2), evolution, seed | Warp kernel: the Fractal Noise function evaluated for the offset, so it needs no map image. |
 | Twirl | Turns, sucks in or bulges out around a center. | Shape: twirl, vortex, pinch or bulge; center; radius; amount | Built in: `CITwirlDistortion`, `CIVortexDistortion`, `CIPinchDistortion`, `CIBumpDistortion`. |
 | Wave | Sine waves bend the picture along x, y or out from a center. | Direction: horizontal, vertical or radial; wavelength; height; speed | Warp kernel. |
 | Kaleidoscope | Mirrors a wedge of the picture around a center into N segments, turning. | Segments (6), center, angle, spin speed, style: wedges or triangles | Built in `CIKaleidoscope` and `CITriangleKaleidoscope`; a warp kernel for even, seamless mirroring (the built-in repeats rather than mirrors). |
@@ -146,7 +146,7 @@ the cheapest rung of this ladder that can do them:
    Glitch and Chromatic Aberration (three reads in one pass, rather than
    three filtered copies composited).
 5. **Neighborhood filters** (Neon Edges, the Bloom inside it): draw an
-   intermediate image, as Blur does today (see
+   intermediate image, as the blurs do (see
    [Keeping it sharp and cheap](effects.md#keeping-it-sharp-and-cheap)).
 6. **Several moments** (Slit-Scan, Feedback, Flow Smear): cost a draw of
    everything above per copy, or optical flow per frame. Like Motion Blur,
@@ -168,9 +168,10 @@ Rules every kind follows:
   `CIStripesGenerator` and the noise kernels are infinite; each is
   cropped to the timeline frame plus the
   [canvas margin](effects.md#keeping-it-sharp-and-cheap) as it is made.
-- **Sizes are fractions of the frame.** Block sizes, wavelengths and
-  offsets are stored as fractions of the frame's width (shown in pixels),
-  so a look is the same at quarter-size preview and full-size export.
+- **Sizes are the timeline's.** Block sizes, wavelengths and offsets
+  are stored in the timeline's pixels, or as a percent of the frame's
+  width, and scaled to the output, so a look is the same at quarter-size
+  preview and full-size export.
 - **Compiled once.** Kernels are Metal source compiled by
   `CIKernel.kernels(withMetalString:)` and kept: in the background just
   after launch, now that they are packages (see
@@ -201,7 +202,9 @@ dangerous flashing is listed under [Not yet](#not-yet).
   (determinism).
 - Feedback and Slit-Scan drawn at a frame on their own match the same
   frame drawn during playback.
-- A UI snapshot of the effects panel showing each new category.
+- A UI snapshot of the Effects Library's Effects tab, which lists the
+  effects by category (`UISnapshots.effectsLibraryEffects`); there is
+  none of each new category on its own.
 
 ## Not yet
 

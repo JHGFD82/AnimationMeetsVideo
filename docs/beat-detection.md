@@ -2,8 +2,10 @@
 
 Status: **implemented**: detection, saving, and showing the beats of one
 audio layer as markers on the timeline, with an optional click on each
-beat during playback. It is unit tested; the timeline picker, markers and
-clicks are compile-checked but have not been exercised on screen.
+beat during playback. It is unit tested, the tick's tone included, and
+the view options popover (with no beats to pick) and the Settings
+window's Beat tick section have UI snapshots; the picker, markers and
+ticks have not been exercised on screen.
 What is not built is listed under [Not implemented yet](#not-implemented-yet).
 
 Only music is analyzed: an asset is analyzed for beats once a clip of it
@@ -157,13 +159,15 @@ shown layer's beats (see [timeline.md](timeline.md#snapping)).
 
 Below the picker, **Tick on beats** plays a short tone on each marker of
 the chosen layer while the timeline plays, so the markers can be checked
-by ear. It is off, and can't be turned on, while the picker is at None.
+by ear. It can't be changed there while the picker is at None, when
+there is nothing to tick.
 When on, a **Pitch** slider (200–2000 Hz, 1000 by default) sets the tone
 and a **Volume** slider (80% by default) its level; letting go of either
 slider, or the speaker button beside them, plays one tone as a preview.
 The settings are remembered across launches in user defaults, not saved
 with the project, and are shared with the beat match panel
-(`ClickToneControls`); both places call the tone a tick. A beat marked as
+(`ClickToneControls`) and the Settings window's Timeline tab, under
+**Beat tick**; all three places call the tone a tick. A beat marked as
 a downbeat ticks an octave higher; detected beats have no measures, so
 they all tick at the set pitch.
 
@@ -234,7 +238,9 @@ keep up for a few beats ("92–140 BPM") when it varies by more than 4%.
   8-second stretches, so rubato or a change that lasts only a bar or two
   is smoothed over. Only click tracks have been tested; tune the constants
   in `BeatTracker` against real music.
-- **Editing markers** by hand, nudging, or adding missing beats.
+- **Editing detected markers** on the timeline. Beats are nudged, added
+  and removed in the beat match panel instead, and its confirmed beats
+  replace the detected ones (see [beat-matching.md](beat-matching.md)).
 - **Re-detect** from the browser, or a choice of tempo range.
 - Markers for audio inside **nested timelines**; only clips placed directly
   on a layer are considered.

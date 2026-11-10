@@ -4,11 +4,10 @@ Status: **implemented**: viewer quality, the render cache, export
 reusing renders, clips' pictures kept between frames and drawn ahead of
 the playhead.
 
-Transitions, effect stacks, and soon more effects and
-adjustment layers make some stretches of a timeline too expensive to draw
-live at full size. The approach has two halves: draw live at a reduced size
-when needed, and render full-size frames in the background when the
-timeline is idle.
+Transitions, effect stacks and adjustment layers make some stretches of
+a timeline too expensive to draw live at full size. The approach has two
+halves: draw live at a reduced size when needed, and render full-size
+frames in the background when the timeline is idle.
 
 ## Viewer quality (implemented)
 
@@ -212,7 +211,8 @@ emptied timeline or a slow frame never shows black in between.
   renders, and old renders stay until evicted, so undo finds them again.
   `RenderSegment.formatVersion` is bumped when drawing changes in a way the
   key can't see. Effects add their settings to the key through the resolved
-  steps.
+  steps. An adjustment clip's key holds the clips it reaches, nested under
+  it, as a nested timeline's holds its own.
 - **Keying is quick.** A clip is drawn the same way throughout each gap
   between the spans where a keyframed value changes
   (`ClipStack.changingRanges`, which leaves out keyframes that hold one
@@ -349,12 +349,11 @@ emptied timeline or a slow frame never shows black in between.
   rendered (green) or failed (red); stretches that need no render show nothing. Each clip
   that takes part in a piece still to render has a progress bar along its
   bottom edge until all of its pieces are done. Clips inside a nested
-  timeline count toward the nested timeline's clip.
+  timeline count toward the nested timeline's clip, and clips an
+  adjustment layer reaches count toward the adjustment clip.
 
 Not yet done:
 
 - Only the timeline in the main window is rendered; the external display's
   own editing mode doesn't render.
 - A render stopped partway starts over rather than resuming.
-- Adjustment layers and effects don't exist yet; their settings will need to
-  join the key, and their progress bar will go on the adjustment layer.

@@ -5,8 +5,10 @@ are **built** (steps 1, 2a and 2b, not yet tried in the running app), as
 is text (step 3: Illustrator's character, paragraph and OpenType
 settings, styled runs, kerning by hand and optical kerning, hyphenation,
 variable axes, animators and text on a path, set in the inspector);
-gradients, free paths and path operations are **planned** (see
-[Building it](#building-it)).
+gradients, free paths, path operations, text on a path of its own,
+[editing in the viewer](#editing-in-the-viewer) (handles, typing text
+in place, ink turned into a shape) and stills as effect inputs are
+**planned** (see [Building it](#building-it)).
 Pictures that don't come from footage:
 still images imported from files, and shapes and text made in the app,
 drawn as vectors.
@@ -112,11 +114,11 @@ and saving all work on shapes as they are.
 - **Shape clips.** `ClipSource.graphic` is a clip with no picture of its
   own: it starts from transparency, so its picture is what its shapes
   draw. Like an adjustment clip it has no length to run out of. The
-  timeline's toolbar makes one at the playhead on a new video layer
-  (New Shape Layer: Rectangle, Ellipse, Polygon or Star), five seconds
-  long, holding one shape sized to the frame; so does the browser's
-  Generators tab, and a shape added to a shape clip is sized the same
-  way. It is drawn in its own tone.
+  shape button in the timeline's header makes one at the playhead on a
+  new video layer (New Shape Layer: Rectangle, Ellipse, Polygon, Star or
+  Text), five seconds long, holding one shape sized to the frame; so
+  does the browser's Generators tab, and a shape added to a shape clip
+  is sized the same way. It is drawn in its own tone.
 - **Generators, not effects.** Shapes and text make clips of their own
   and go only into a shape or text clip's stack
   (`EditingProject.stack(of:takes:)`): adding one to footage is refused,
@@ -298,8 +300,9 @@ Built (step 3a):
   Dash. With more than one shape, each group is titled with its effect's
   name. Every control is an `InspectorControlRow` (a name and fields, or
   in a grid a field with its icon); the shared buttons, fields and point
-  grid are `PanelControls` in the design system. Leading reads "Auto" at
-  0, a size has its link.
+  grid are the design system's (`PanelSegmentButton`, `PanelField`,
+  `PanelPointGrid` and the rest, in `PanelControls.swift`). Leading reads
+  "Auto" at 0, a size has its link.
   - **No keyframing.** The inspector sets values outright; keyframes are
     the effects panel's. A control (or variable axis) animated there
     shows its value at the playhead read-only, dimmed, with an amber
@@ -370,8 +373,7 @@ Built (step 3a):
     block's value at the playhead. The layout gets each run's values at
     its moment (`TextStyleRun`). Run keyframes count as animation for
     the render cache, F9's eases reach them, and they are saved as a
-    control's are (`{"value": …}` or `{"keyframes": […]}`). Not yet: they
-    show in neither the effects panel's lanes nor the graph editor.
+    control's are (`{"value": …}` or `{"keyframes": […]}`).
   - **Colors.** A run's own fill or stroke color paints its letters
     whether or not the block's fill or stroke is on, and letters without
     one take the block's, or nothing while it is off. A run's stroke is
@@ -384,8 +386,8 @@ Built (step 3a):
     neighbouring letter's fill as in Illustrator.
   - **Layout.** Each letter's scale is its font's matrix, so Core Text
     measures, wraps and draws it scaled; a run's positions come back
-    without that scale and are scaled from where the line puts the run
-    (`CTLineGetOffsetForStringIndex`). Auto leading is 120% of the
+    without that scale, so each run is scaled and set where the runs
+    before it end (`CTRunGetTextMatrix`). Auto leading is 120% of the
     largest size in each line, and a line is as tall as its tallest font.
     Letters whose styles differ only in color, tracking, rules or kerning
     share one font, so Core Text still kerns pairs across them.
@@ -519,12 +521,14 @@ Still to come:
 
 ## Editing in the viewer
 
-Shapes and text are moved and reshaped by handles drawn over the viewer:
-vertices and tangents, a primitive's size and corners, a text box's
-width. The freehand ink of the external display (`Annotations.swift`) can
-be turned into a shape. Following [accessibility.md](accessibility.md),
-every handle is an accessibility element with actions, and the selected
-vertex can be nudged by the arrow keys (ten pixels with Shift).
+Planned: none of this is built yet (see step 4 of
+[Building it](#building-it)). Shapes and text are moved and reshaped by
+handles drawn over the viewer: vertices and tangents, a primitive's size
+and corners, a text box's width. The freehand ink of the external
+display (`Annotations.swift`) can be turned into a shape. Following
+[accessibility.md](accessibility.md), every handle is an accessibility
+element with actions, and the selected vertex can be nudged by the
+arrow keys (ten pixels with Shift).
 
 ## Saving
 

@@ -1,8 +1,10 @@
 # Matroska (MKV) media
 
 Status: **implemented**: MKV files (and other Matroska files, such as
-`.mka` sound and `.webm`, when their codecs are usable) import like any
-other media. FLAC files need nothing: AVFoundation reads them already.
+`.mka` sound, when their codecs are usable) import like any other media.
+WebM files are read too, but WebM allows only VP8, VP9 or AV1 video and
+Vorbis or Opus sound, none of which is usable yet, so they are refused.
+FLAC files need nothing: AVFoundation reads them already.
 
 AVFoundation can't open Matroska files, and everything in the app that
 reads media (the browser, the viewer, waveforms, analysis, compositions,

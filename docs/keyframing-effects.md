@@ -22,21 +22,23 @@ What makes them effects rather than one-off commands is that each keeps
 its settings and what it was made from, so its keyframes can be made
 again:
 
-- **Live while editing.** Changing a setting regenerates at once (in a
-  background task, replacing the target's keyframes when done), so the
+- **Live while editing.** Changing a setting makes the keyframes again
+  at once, on the main thread (a clip is a few thousand samples), so the
   sliders feel like a live link.
 - **Out of date** when what it read changes (the sound's media is
   replaced, the source clip is moved or its volume changed, the beat map
-  edited): the effect's row says so, and regenerates by itself unless the
-  generated keyframes were edited by hand, in which case it asks first
-  (**Regenerate** or **Keep Edits**).
-- **Bake** in its ⋯ menu removes the effect and leaves the keyframes as
-  plain keyframes.
+  edited): it regenerates by itself unless the generated keyframes were
+  edited by hand. Then the control's [badge](#the-badge) turns to a
+  warning and the Keyframe Designer asks first (**Regenerate** or
+  **Keep Edits**).
+- **Bake Keyframes**, in the Keyframe Designer, removes the effect and
+  leaves the keyframes as plain keyframes.
 
 Generated keyframes are marked with the effect's ID in the target's
 keyframes, so regenerating replaces only its own, between the effect's
-**start and end** (the clip by default; set from the panel's ruler like a
-range). Keyframes outside that range are kept.
+**start and end** (the clip by default; set in the Keyframe Designer's
+Range menu, Start at Playhead and End at Playhead). Keyframes outside
+that range are kept.
 
 ## Where they sit: hidden in the stack
 
@@ -74,14 +76,15 @@ elsewhere.
 
 ### How many keyframes
 
-Generators that follow a signal (Audio Keys, Wiggler at high rates)
-evaluate it once per frame of the clip's timeline, then **reduce**: the
-Ramer–Douglas–Peucker algorithm drops every keyframe the line through its
-neighbors passes within **Tolerance** (0.5% of the output range by
-default) of, and the kept keyframes get linear or Auto Bézier eases. A
-three-minute song typically keeps a tenth of its frames. Generators with
-a natural rate (Beat Keys, Oscillator, Wiggler at low rates) write one
-keyframe per event with eases, as an animator would.
+Every kind evaluates its signal once per frame of the clip's timeline,
+then **reduces** it: the Ramer–Douglas–Peucker algorithm drops every
+keyframe the line through its neighbors passes within **Tolerance**
+(0.5% of the output range by default) of, and the kept keyframes are
+linear. A three-minute song typically keeps a tenth of its frames.
+Time Step has no Tolerance: it keeps both sides of each jump, so its
+holds stay flat. Over a target that holds still, the kinds with a
+natural rate (Beat Keys, Oscillator) instead write one keyframe per
+event with eases, as an animator would.
 
 Keyframes are in the clip's source time; a retimed clip's frames are
 mapped through its speed curve (`ClipTime`) so a pulse lands on the beat
@@ -94,7 +97,7 @@ as heard, not as stored.
 | **Audio Keys** | Follows how loud a range of frequencies is in a sound: kicks, hi-hats, a vocal. | Source, frequency range, amplitude range, attack and release, output range, see below |
 | **Beat Keys** | A pulse on each beat of a beat map: up at the beat, back over a decay. | Beat map (from a Sound or Music layer), every N beats (1), offset, downbeats only, accent on the one (+50%), shape: pulse, step, ramp or alternate; peak; decay |
 | **Wiggler** | Random, organic movement around the current value. | Frequency (wiggles per second, 2), magnitude, type: smooth (Perlin) or jagged, octaves (1), dimensions: independent or together, seed |
-| **Oscillator** | A regular wave. | Wave: sine, triangle, square or sawtooth; frequency in Hz or beats; amplitude; phase; ease in and out over the range |
+| **Oscillator** | A regular wave. | Wave: sine, triangle, square or sawtooth; frequency (Hz, 1); amplitude; phase; fade, in seconds, at each end of the range |
 | **Smoother** | Smooths the target's existing keyframes, and thins them. | Strength (frames of averaging), tolerance |
 | **Looper** | Repeats the target's keyframes past their end (or before their start). | Mode: cycle, ping-pong, offset (each cycle continues from the last), continue (at the last speed) |
 | **Time Step** | Holds each value for N frames, for a stop-motion or "on twos" look. | Hold (2 frames) |
@@ -105,9 +108,10 @@ Smoother, Looper, Time Step and Overshoot read the target's own keyframes
 
 ## Audio Keys in detail
 
-The panel shows the sound's **spectrum** at the playhead, frequency on a
-log scale across and level up, and a **box** on it: its left and right
-edges are the frequency range, its bottom and top the amplitude range.
+The Keyframe Designer shows the sound's **spectrum** at the playhead,
+frequency on a log scale across and level up, and a **box** on it: its
+left and right edges are the frequency range, its bottom and top the
+amplitude range.
 Drag the box or its edges, as in Sound Keys. An effect has one box and
 one target; to drive kick, snare and hats onto three targets, use three
 Audio Keys effects.
@@ -214,12 +218,15 @@ Volume row has one too.
 ## Saving
 
 The effect is saved with its kind, settings, target (by control ID),
-combine mode, range, the base curve for Add and Multiply, and a
-fingerprint of what it read (the asset's signature, the source clips'
-placements and volume and EQ, or the beat map's revision). The generated
-keyframes are saved on the target as usual, with `"generatedBy"` holding
-the effect's ID. A project opened by an app that ignores Keyframing
-effects still plays the same.
+component, combine mode, range, the base curve for Add and Multiply, the
+layer or sound it reads, and two fingerprints: of what it read (the
+clip's placement, speed and range, plus, for Audio Keys, the heard files'
+spectrograms and their clips' volume and EQ, or, for Beat Keys, the
+layer's beats) and of the target as it left it (see step 3 of
+[Building it](#building-it)). The generated keyframes are saved on the
+target as usual, with `"generatedBy"` holding the effect's ID. A
+project opened by an app that ignores Keyframing effects still plays
+the same.
 
 ## Testing
 
@@ -261,14 +268,17 @@ In order, each step usable on its own:
    control, or `volume`), one component or all, Combine, the range (source
    time, nil for the clip) and the base curve, saved as the effect's
    `keyframing`. Generated keyframes carry `generatedBy`.
-   - **Targets** are the numeric controls of the effects below it, except
-     other Keyframing effects', then those of the clip's sound effects
-     (all of them, not only the EQ's) and its volume. A new one goes at the
-     top of the stack and takes the first target no other Keyframing effect
-     writes to. A duplicate has none until it's pointed somewhere. A pasted
-     one follows its target when that was pasted with it, and otherwise
-     waits for one (a Volume target is kept). Pointing one elsewhere leaves
-     what it wrote on the old target as plain keyframes.
+   - **Targets** were at first the numeric controls of the effects below
+     it, except other Keyframing effects', then those of the clip's sound
+     effects (all of them, not only the EQ's) and its volume; step 6 let
+     it reach every effect of the clip. A new one went at the top of the
+     stack and took the first target no other Keyframing effect wrote to;
+     now the designer places it (see
+     [The Keyframe Designer](#the-keyframe-designer)). A duplicate has
+     none until it's pointed somewhere. A pasted one follows its target
+     when that was pasted with it, and otherwise waits for one (a Volume
+     target is kept). Pointing one elsewhere leaves what it wrote on the
+     old target as plain keyframes.
    - **Making keyframes** happens at once whenever the effect is edited
      (`EditingProject.editEffect`), on the main thread. Every kind samples
      each timeline frame of the range as heard (`KeyframeSampling`) and is
@@ -310,25 +320,30 @@ In order, each step usable on its own:
    - Keyframing effects are no-ops to the compositor and the sound taps,
      and have no animated ranges. They go only in the picture's stack, so
      a clip with no pictures can't have one yet.
-2. **Library and panel** (done; the library no longer lists the
-   category, see step 5). In the panel a Keyframing effect has Target (None, each
-   target by effect and control name, and Unavailable for one that's gone
-   or above), Component (All or each of the target's, when it has more
-   than one), Combine (not for the kinds that reshape) and, for Beat Keys,
-   Beats From (the timeline's Sound and Music layers) above its settings,
-   under a **Bake Keyframes** button, which is too important to live only
-   in the ⋯ menu. Its ⋯ menu has Bake Keyframes too, and a Range menu (Start at Playhead, End at
-   Playhead, Whole Clip), with a note under the effect while a range is
-   set. While a Keyframing effect is selected, its range is a band over
-   the panel's ruler (`KeyframingRangeBar`; the whole clip, fainter, with
-   none set) with a handle at each end, dragged on the timeline's frames
-   as one undo step (Escape during the drag puts the end back), or
-   adjusted a frame at a time by VoiceOver. It is dimmed only when
-   off or with a note: no target, one it can't reach, Beat Keys with no
-   layer, or a reshaper whose target has fewer than two keyframes. A curve
-   stands in for its thumbnail (none is drawn), keyframes it wrote are
-   drawn in the accent color in every lane and read as "Generated keyframe"
-   by VoiceOver, and its name reads as the summary above.
+2. **Library and panel** (done, then replaced: the library no longer
+   lists the category, see step 5, and the panel no longer shows the
+   rows, see step 6). This is how it was. In the panel a Keyframing
+   effect had Target (None, each target by effect and control name, and
+   Unavailable for one that's gone or above), Component (All or each of
+   the target's, when it has more than one), Combine (not for the kinds
+   that reshape) and, for Beat Keys, Beats From (the timeline's Sound and
+   Music layers) above its settings, under a **Bake Keyframes** button,
+   which was too important to live only in the ⋯ menu. Its ⋯ menu had
+   Bake Keyframes too, and a Range menu (Start at Playhead, End at
+   Playhead, Whole Clip), with a note under the effect while a range was
+   set. While a Keyframing effect was selected, its range was a band over
+   the panel's ruler (`KeyframingRangeBar`, since removed; the whole
+   clip, fainter, with none set) with a handle at each end, dragged on
+   the timeline's frames as one undo step (Escape during the drag put the
+   end back), or adjusted a frame at a time by VoiceOver. It was dimmed
+   only when off or with a note: no target, one it can't reach, Beat Keys
+   with no layer, or a reshaper whose target has fewer than two
+   keyframes. A curve stood in for its thumbnail (none is drawn), and its
+   name read as the summary above. Keyframes it wrote are still drawn in
+   the accent color in every lane and read as "Generated keyframe" by
+   VoiceOver. Today the Keyframe Designer holds Applies To (whose Range
+   menu names a range that is set), the note when it can't write, and
+   Bake Keyframes, and the badge stands in for the row.
 3. **Out of date** (done). When it writes, the effect saves two
    fingerprints (`KeyframingPrint`, FNV-1a, so they are the same in every
    run, written as hexadecimal): `readPrint`, of what it read (the clip's
@@ -342,8 +357,9 @@ In order, each step usable on its own:
    timeline (`refreshKeyframing()`). Making the same keyframes again
    writes nothing, so it doesn't count as an edit. An effect whose read print no
    longer matches makes its keyframes again by itself, unless the target no
-   longer matches its written print. Then it was edited by hand, and the
-   panel shows Regenerate (losing the edits) and Keep Edits (taking what it
+   longer matches its written print. Then it was edited by hand: the
+   control's badge turns to a warning, and the Keyframe Designer shows
+   Regenerate (losing the edits) and Keep Edits (taking what it
    reads now as its source, so it asks again at the next change). Off
    effects and ones that can't reach their target are never out of date.
    Making keyframes stays on the main thread: a clip is a few thousand
@@ -354,11 +370,10 @@ In order, each step usable on its own:
    Attack and Release (0 and 200 ms, time constants of the envelope),
    Output (from and to), Curve and Tolerance, and its setup's
    `audioSource` (saved as `listensToMix`, `listensToLayer` or
-   `listensToClip`). The effects panel has a Listen To row and draws the
-   box small under the header, as every effect's graph is there
-   (`EffectGraphPreview`); the spectrum isn't drawn in the panel, so a
-   stack of them costs nothing to show. Clicking it opens the Keyframe
-   Designer on the control it drives (see
+   `listensToClip`). At first the effects panel had a Listen To row and
+   drew the box small under the effect's header (`EffectGraphPreview`);
+   those went with steps 5 and 6. Listen To is now under Applies To in
+   the Keyframe Designer (see
    [The Keyframe Designer](#the-keyframe-designer)), with `AudioKeysGraph`
    over the control's graph and every setting as fields beside them, set
    at the playhead. The spectrum shows the
@@ -383,4 +398,4 @@ In order, each step usable on its own:
    so their rows, ⋯ menu and range bar over the ruler are gone (the range
    is set in the designer); they reach any control of the clip, go with
    the control they drive, and come along when its effect is copied.
-   Steps 2 and 3 describe the rows as they were.
+   Step 2 describes the rows as they were.

@@ -31,8 +31,8 @@ it mixes its alpha in.
 
 A typical green screen stack, top to bottom: Corner Mask (Keep
 Inside, around the subject, to cut away rigs and the screen's edges),
-Chroma Key, Matte Choker (a pixel or two in, feathered), and Spill
-Suppressor if Chroma Key's own spill suppression isn't enough.
+Chroma Key, Matte Choker (a pixel or two in, feathered), and Despill
+if Chroma Key's own Spill Suppression isn't enough.
 
 ## How they work
 

@@ -234,16 +234,21 @@ the snap line's arrival.
 - **Transition curves** can only be shaped by dragging their points.
 - **Keyframe graph editor** handles (the bezier ease) can only be shaped
   by dragging; the presets are the keyboard's and VoiceOver's way to ease.
-- **Sections and keyframes** can't be moved or resized from the keyboard,
-  only selected, renamed, eased and deleted.
+- **Sections and volume-row keyframes** in the timeline can't be moved
+  or resized from the keyboard: sections can only be selected, renamed
+  and deleted, and volume-row keyframes only eased and deleted.
+  Keyframes in the effects panel's lanes and the graph editor can be
+  moved a frame at a time.
 - **Times read as timecode**, which can be wordy ("00:00:05:12"); a choice
   of seconds may read better.
-- **Announcements**: VoiceOver isn't told when an edit lands (a split, a
-  nudge refused at a neighbor), so the result must be found by reading.
+- **Announcements**: VoiceOver isn't told when a timeline edit lands (a
+  split, a nudge refused at a neighbor), so the result must be found by
+  reading.
 - **Annotations** on the external display are drawn with the pointer only;
   VoiceOver can remove the last stroke or clear them (Remove last stroke
-  and Clear annotations actions, also buttons over the viewer) but not
-  draw. ⌘Z and ⇧⌘Z undo and redo strokes while the window shows them.
+  and Clear annotations actions, also the Remove last stroke and Clear
+  markup buttons in the window's top bar) but not draw. ⌘Z and ⇧⌘Z undo
+  and redo strokes while the window shows them.
 - **Dialogs and alerts** use standard controls and should work, but have
   not been checked with VoiceOver.
 - Nothing here has been tested with VoiceOver on a real machine yet; the
