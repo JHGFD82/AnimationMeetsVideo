@@ -937,6 +937,36 @@ struct UISnapshots {
         )
     }
 
+    /// The effects panel for a clip whose Transform Position a Wiggler
+    /// drives and whose Rotation Beat Keys would, with no layer of beats:
+    /// no row for either, but a badge on each control, Rotation's in the
+    /// warning tone.
+    @Test func effectsPanelMethodBadges() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let video = MediaClip(
+            name: "Walk", kind: .video, url: nil, duration: CMTime(value: 10, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let imported = project.importClip(video, intoTimeline: timelineID)
+        let placed = try #require(imported)
+        let added = project.addEffect(.transform, toClip: placed.clipID, in: timelineID)
+        let transformID = try #require(added)
+        let transform = try #require(project.clipAndLayer(placed.clipID, in: timelineID)?.clip.effect(id: transformID))
+        for (kind, method) in [(ControlKind.position, EffectKind.wiggler), (.rotation, .beatKeys)] {
+            let control = try #require(transform.control(kind))
+            project.setKeyframing(method, driving: .control(effectID: transformID, controlID: control.id), onClip: placed.clipID, in: timelineID)
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: placed.layerID, timelineClipID: placed.clipID),
+                playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "effects-panel-method-badges", size: CGSize(width: 560, height: 520)
+        )
+    }
+
     /// The EQ's graph: a 24 dB low cut, a low shelf down, a narrow bell up
     /// and a high shelf, over the frequency and gain grid.
     @Test func equalizerGraph() throws {

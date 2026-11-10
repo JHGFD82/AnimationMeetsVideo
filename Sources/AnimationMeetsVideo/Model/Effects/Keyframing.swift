@@ -298,17 +298,19 @@ extension TimelineClip {
 }
 
 extension EditingProject {
-    /// What the Keyframing effect at `index` of a clip's stack can write
-    /// to: each numeric control of the effects below it (not other
-    /// Keyframing effects), then the clip's sound effects' and its volume,
-    /// when it plays sound.
-    func keyframingTargets(forEffectAt index: Int, in clip: TimelineClip) -> [KeyframingTarget] {
+    /// What a Keyframing effect of a clip can write to: each numeric
+    /// control of its picture effects (not other Keyframing effects),
+    /// wherever they are in the stack, then the clip's sound effects' and
+    /// its volume, when it plays sound. Keyframing effects aren't shown in
+    /// the stack (see `TimelineClip.stackEffects`), so where they sit in
+    /// it can't decide what they reach.
+    func keyframingTargets(in clip: TimelineClip) -> [KeyframingTarget] {
         func numeric(_ effects: ArraySlice<Effect>) -> [KeyframingTarget] {
             effects.filter { !$0.kind.isKeyframing }.flatMap { effect in
                 effect.controls.filter { !$0.kind.isChoice && !$0.kind.isCurve }.map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
             }
         }
-        var targets = numeric(clip.effects.dropFirst(index + 1))
+        var targets = numeric(clip.effects[...])
         if playsAudio(clip) {
             targets += numeric(clip.audioEffects[...])
             targets.append(.volume)
@@ -317,9 +319,9 @@ extension EditingProject {
     }
 
     /// Whether a Keyframing effect can write to its target: the target is
-    /// still there and below it, one of `keyframingTargets`.
+    /// still there, one of `keyframingTargets`.
     func keyframingTargetIsReachable(_ effect: Effect, in clip: TimelineClip) -> Bool {
-        guard let target = effect.keyframing?.target, let index = clip.effects.index(of: effect.id) else { return false }
+        guard let target = effect.keyframing?.target, clip.effects.index(of: effect.id) != nil else { return false }
         switch target {
         case .volume:
             return playsAudio(clip)
@@ -330,7 +332,7 @@ extension EditingProject {
                         && effect.controls.contains { $0.id == controlID && !$0.kind.isChoice && !$0.kind.isCurve }
                 }
             }
-            return holds(clip.effects[(index + 1)...]) || (playsAudio(clip) && holds(clip.audioEffects[...]))
+            return holds(clip.effects[...]) || (playsAudio(clip) && holds(clip.audioEffects[...]))
         }
     }
 
@@ -363,7 +365,7 @@ extension EditingProject {
             return EffectNote(text: "Choose a control below it to write keyframes to.", dims: true)
         }
         if !keyframingTargetIsReachable(effect, in: clip) {
-            return EffectNote(text: "The control it writes to is gone or above it, so its keyframes stay as they are until it is pointed elsewhere.", dims: true)
+            return EffectNote(text: "The control it writes to is gone, so its keyframes stay as they are.", dims: true)
         }
         if effect.kind == .audioKeys {
             guard let source = setup.audioSource else {

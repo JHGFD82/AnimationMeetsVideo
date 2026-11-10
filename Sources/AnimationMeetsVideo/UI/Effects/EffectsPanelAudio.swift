@@ -70,7 +70,9 @@ extension EffectsPanel {
         let keyPath: WritableKeyPath<TimelineClip, AnimatedValue<Double>> = property == .volume ? \.volume : \.pan
         let parameter: AnimatedParameter = property == .volume ? .clipVolume(clipID: clip.id) : .clipPan(clipID: clip.id)
         let key = ParameterKey(timelineID: timelineID, parameter: parameter)
+        let method = property == .volume ? methodBadge(.volume, c) : nil
         return labelled(
+            HStack(spacing: 4) {
             AudioPropertyRow(
                 property: property,
                 value: value,
@@ -80,6 +82,10 @@ extension EffectsPanel {
                 onShowGraph: graphs.map { graphs in { graphs.show(key) } },
                 held: { projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] }
             )
+                if let method {
+                    KeyframeMethodBadge(info: method) { openDesigner(on: .volume, of: clip) }
+                }
+            }
             .padding(.horizontal, 8),
             lane: ParameterLane(
                 id: key, marks: (projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] ?? value).marks,

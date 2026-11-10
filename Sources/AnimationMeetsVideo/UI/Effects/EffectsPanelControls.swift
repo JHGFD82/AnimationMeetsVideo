@@ -20,6 +20,9 @@ extension EffectsPanel {
         var showsLanes: Bool
         var lane: LaneKey
         var frameSize: CGSize
+        /// The method making the control's keyframes, kept in another
+        /// effect, which the row's badge shows.
+        var method: KeyframeMethodBadgeInfo?
     }
 
     /// `movable` gives the row a handle to drag it within the effect by.
@@ -27,7 +30,8 @@ extension EffectsPanel {
         let key = ControlRowKey(
             timelineID: timelineID, clipID: c.clip.id, effect: effect, effectDimmed: effectDimmed,
             isSelected: state.isPicked(control.id), showsLanes: showsKeyframeLanes,
-            lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize
+            lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize,
+            method: methodBadge(.control(effectID: effect.id, controlID: control.id), c)
         )
         return StackRow(key: key) { controlRowContent(control, of: effect, c, effectDimmed: effectDimmed, movable: movable) }
             .equatable()
@@ -128,6 +132,8 @@ extension EffectsPanel {
                     onShowGraph: control.kind.isCurve ? nil : graphs.map { graphs in { graphs.show(key) } },
                     color: control.kind.isColor ? colorBinding(control, of: effect, c) : nil,
                     summary: control.kind.isCurve ? curveSummary(shown, at: c.sourceNow(animated: control.isAnimated)) : nil,
+                    method: methodBadge(.control(effectID: effect.id, controlID: control.id), c),
+                    onOpenMethod: { openDesigner(on: .control(effectID: effect.id, controlID: control.id), of: clip) },
                     menu: menu
                 ),
                 lane: ParameterLane(

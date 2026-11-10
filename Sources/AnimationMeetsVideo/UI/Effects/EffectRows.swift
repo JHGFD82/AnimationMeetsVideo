@@ -115,6 +115,10 @@ struct ParameterRow<MenuContent: View>: View {
     /// Shown instead of the values, for a control edited elsewhere: a
     /// curve, on its effect's graph.
     var summary: String?
+    /// The method making its keyframes, if one does, as a badge that opens
+    /// the Keyframe Designer.
+    var method: KeyframeMethodBadgeInfo?
+    var onOpenMethod: () -> Void = {}
     @ViewBuilder let menu: () -> MenuContent
 
     var body: some View {
@@ -193,6 +197,7 @@ struct ParameterRow<MenuContent: View>: View {
 
             Spacer(minLength: 2)
 
+            if let method { KeyframeMethodBadge(info: method, onOpen: onOpenMethod) }
             if isAnimated { keyframeNavigation }
             if isAnimated, let onShowGraph {
                 Button(action: onShowGraph) {
@@ -335,9 +340,6 @@ struct EffectHeaderRow<MenuContent: View>: View {
     /// The clip's picture after this effect, at the playhead.
     var thumbnail: CGImage?
     var isDrawing = false
-    /// For an effect that draws nothing and writes keyframes: a curve in
-    /// place of the thumbnail.
-    var showsCurve = false
     /// What VoiceOver reads for the name, when there is more to say.
     var accessibilitySummary: String?
     var isDimmed = false
@@ -419,14 +421,7 @@ struct EffectHeaderRow<MenuContent: View>: View {
                     .accessibilityAddTraits(isDrawing ? .isHeader : [])
             }
             Spacer(minLength: 2)
-            if showsCurve {
-                Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
-                    .font(Design.Typeface.glyphSmall)
-                    .foregroundStyle(Design.generatedKeyframe)
-                    .frame(width: 32, height: 18)
-                    .help("Writes keyframes onto another control, and draws nothing itself")
-                    .accessibilityHidden(true)
-            } else if let thumbnail {
+            if let thumbnail {
                 Image(decorative: thumbnail, scale: 2)
                     .resizable()
                     .interpolation(.medium)

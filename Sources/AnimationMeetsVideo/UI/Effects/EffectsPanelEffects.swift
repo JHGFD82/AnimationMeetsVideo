@@ -77,10 +77,9 @@ extension EffectsPanel {
         // The whole effect, its controls included, is outlined while it is
         // selected: it is what Delete and Copy take. A selected control is
         // outlined on its own instead, as Delete takes only the control.
-        let summary = effect.kind.isKeyframing ? project.keyframingSummary(of: effect, in: clip) : nil
         let headerKey = EffectHeaderKey(
             timelineID: timelineID, clip: clip, effect: effect, note: note, collapsed: collapsed, dimmed: dimmed,
-            thumbnail: isDrawing ? nil : thumbnails[effect.id].map(ObjectIdentifier.init), summary: summary,
+            thumbnail: isDrawing ? nil : thumbnails[effect.id].map(ObjectIdentifier.init),
             isRenaming: renamingEffectID == effect.id, showUpTo: state.showUpTo,
             canPaste: EditorClipboard.shared.hasEffects,
             showsLanes: showsKeyframeLanes, lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize
@@ -95,8 +94,7 @@ extension EffectsPanel {
                         clipID: clip.id,
                         thumbnail: isDrawing ? nil : thumbnails[effect.id],
                         isDrawing: isDrawing,
-                        showsCurve: effect.kind.isKeyframing,
-                        accessibilitySummary: summary,
+                        accessibilitySummary: nil,
                         isDimmed: dimmed,
                         isFlagged: !effect.pasteChanges.isEmpty,
                         onToggleCollapsed: { state.toggleCollapsed(effect.id) },
@@ -142,12 +140,6 @@ extension EffectsPanel {
                             .padding(.horizontal, 8)
                         )
                     }
-                }
-                if effect.kind == .audioKeys {
-                    audioKeysPreview(effect, c, dimmed: dimmed)
-                }
-                if effect.kind.isKeyframing {
-                    keyframingRows(effect, c, effectDimmed: dimmed)
                 }
                 controlSections(effect, c, effectDimmed: dimmed)
                 if effect.kind.readsAgainst {
@@ -251,9 +243,7 @@ extension EffectsPanel {
         }
         Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
         keyframeDesignerItem(effect, in: clip)
-        if effect.kind.isKeyframing {
-            keyframingMenu(effect, clip)
-        } else if !effect.kind.isAudio, effect.missing == nil {
+        if !effect.kind.isAudio, effect.missing == nil {
             Toggle("Show Up to Here", isOn: Binding(
                 get: { state.showUpTo == EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) },
                 set: { state.showUpTo = $0 ? EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) : nil }
@@ -287,9 +277,8 @@ extension EffectsPanel {
 
     /// Keyframe Designer…, which opens the clip's designer on `control`, or
     /// else this effect's first control a method drives, or its first
-    /// numeric one. Not for a Keyframing effect, which has its own item,
-    /// nor one with no numeric controls, nor a clip with no picture stack
-    /// to hold the method.
+    /// numeric one. Not for one with no numeric controls, nor a clip with
+    /// no picture stack to hold the method.
     @ViewBuilder
     func keyframeDesignerItem(_ effect: Effect, in clip: TimelineClip, control: EffectControl? = nil) -> some View {
         let controls = EditingProject.designableControls(of: effect)
@@ -302,6 +291,16 @@ extension EffectsPanel {
             }
             .help("Make this control's keyframes from a sound, the beats, a wiggle, a wave and more, against its graph")
         }
+    }
+
+    /// The badge for the method making a control's keyframes, if one does.
+    func methodBadge(_ target: KeyframingTarget, _ c: RowContext) -> KeyframeMethodBadgeInfo? {
+        KeyframeMethodBadgeInfo(driving: target, in: c.clip, of: c.timeline, project: project)
+    }
+
+    /// Opens the clip's Keyframe Designer on a control.
+    func openDesigner(on target: KeyframingTarget, of clip: TimelineClip) {
+        graphs?.showDesigner(KeyframeDesignerKey(timelineID: timelineID, clipID: clip.id), target: target)
     }
 
     /// The ⋯ menu of a graphic clip's drawing: what changes its settings,
@@ -324,8 +323,7 @@ extension EffectsPanel {
     // MARK: Effect headers
 
     /// What an effect's header row and its ⋯ menu show, so they are redrawn
-    /// only when that changes (see `StackRow`). The Keyframing range items
-    /// read the playhead themselves (`keyframingMenu`).
+    /// only when that changes (see `StackRow`).
     private struct EffectHeaderKey: Equatable {
         var timelineID: UUID
         var clip: TimelineClip
@@ -334,7 +332,6 @@ extension EffectsPanel {
         var collapsed: Bool
         var dimmed: Bool
         var thumbnail: ObjectIdentifier?
-        var summary: String?
         var isRenaming: Bool
         var showUpTo: EffectsPanelState.ShowUpTo?
         var canPaste: Bool

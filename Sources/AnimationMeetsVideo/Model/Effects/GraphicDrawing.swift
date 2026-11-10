@@ -18,10 +18,13 @@ extension TimelineClip {
         drawingEffects.contains { $0.id == effectID }
     }
 
-    /// The clip's picture effects other than its drawing: its stack, as
-    /// the effects panel lists it.
+    /// The clip's picture effects other than its drawing and its
+    /// Keyframing effects: its stack, as the effects panel lists it. A
+    /// Keyframing effect shows instead as a badge on the control it drives,
+    /// and is made and changed in the Keyframe Designer
+    /// (docs/keyframing-effects.md).
     var stackEffects: [Effect] {
         let drawing = Set(drawingEffects.map(\.id))
-        return effects.filter { !drawing.contains($0.id) }
+        return effects.filter { !drawing.contains($0.id) && !$0.kind.isKeyframing }
     }
 }

@@ -43,7 +43,7 @@ struct KeyframeDesigner: View {
     var body: some View {
         if let found = hud.project.clipAndLayer(key.clipID, in: key.timelineID), let timeline = hud.project.timeline(id: key.timelineID) {
             let clip = found.clip
-            let targets = hud.project.keyframingTargets(forEffectAt: -1, in: clip)
+            let targets = hud.project.keyframingTargets(in: clip)
             if let target = focus.target.flatMap({ targets.contains($0) ? $0 : nil }) ?? targets.first {
                 let driver = hud.project.keyframingEffect(driving: target, in: clip)
                 VStack(spacing: 0) {

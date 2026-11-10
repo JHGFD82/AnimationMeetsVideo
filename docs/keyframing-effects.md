@@ -38,23 +38,29 @@ keyframes, so regenerating replaces only its own, between the effect's
 **start and end** (the clip by default; set from the panel's ruler like a
 range). Keyframes outside that range are kept.
 
-## Where they sit: gravity again
+## Where they sit: hidden in the stack
 
-Following [effects.md](effects.md#guiding-principle-gravity), a Keyframing
-effect acts on what is below it: its **Target** lists every numeric
-control of the effects below it in the same stack, plus the clip's Volume
-and [EQ](equalizer.md) bands, as Blending's Against lists the effects
-above. Dragging the effect below its target, or deleting the target,
-dims it with a note until it's pointed somewhere else, and leaves the
-keyframes it made.
+A Keyframing effect is kept in its clip's picture stack, but the effects
+panel doesn't list it (`TimelineClip.stackEffects`): it shows as a
+**badge** on the row of the control it drives, and is made, changed and
+taken away in the [Keyframe Designer](#the-keyframe-designer). So where it
+sits in the stack means nothing, unlike the
+[gravity](effects.md#guiding-principle-gravity) of the effects shown: its
+**Target** can be any numeric control of the clip's other picture
+effects, above or below it, plus its Volume and its sound effects'
+controls ([EQ](equalizer.md) bands and the rest). Deleting the control,
+or its effect, takes the Keyframing effect away with it
+(`removeOrphanedKeyframing`), since nothing would be left to point it
+elsewhere.
 
 - **One component or all**: a Position or Scale target can take x, y or
   both (with Wiggler, both move apart).
 - **To animate several clips together**, put the effects on an
   adjustment clip or a nested clip, as for any effect.
 - **Compositing**: Keyframing effects are skipped by the compositor and
-  the taps (they have no picture or sound); in the panel they show a small
-  curve icon instead of a thumbnail.
+  the taps (they have no picture or sound).
+- **Copying** an effect (Copy, Save as Preset, Duplicate) brings along
+  the Keyframing effects driving its controls, driving the copy's.
 
 ### How the result meets the target
 
@@ -157,8 +163,8 @@ A Keyframing effect is about one control, so it is made from that
 control rather than dragged from the Effects Library, which doesn't list
 the category (`EffectsListPanel.kinds`). Every effect's ⋯ menu with a
 numeric control has **Keyframe Designer…**, as does a numeric control's
-own ⋯ menu; a Keyframing effect's has **Open in Keyframe Designer…**, and
-its row a **Keyframe Designer…** button. The menus never list the methods
+own ⋯ menu, and the badge on a driven control (see [The badge](#the-badge))
+opens it too. The menus never list the methods
 themselves: they open the designer, a floating panel beside the graph
 editors, one per clip (`KeyframeDesigner`,
 `KeyframeGraphHUDs.showDesigner`), turned to the control it was opened
@@ -193,18 +199,17 @@ control back. Picking the one already driving it changes nothing. A clip
 with no picture stack can't hold one, so there the chips are off with a
 note.
 
-The effects stay in the stack, where they can be turned off, moved,
-copied and deleted like any effect.
+## The badge
 
-## The panel
-
-In the panel a Keyframing effect's row has the Target picker, Combine, and the kind's
-settings (Audio Keys' under Listen and Keyframes headers, Beat Keys'
-under Beats and Keyframes), choices included: unlike a shape's, which
-the panel leaves to the inspector, they are set nowhere else, and the target's keyframe lane highlights the keyframes it made
-in its own color. VoiceOver reads the row as "Wiggler, driving Transform
-Position, 48 keyframes", and every setting, the Audio Keys box included,
-has fields as well as drags (the box as four frequency and level fields).
+In the effects panel, a control a method drives has a small badge after
+its values (`KeyframeMethodBadge`): the method's glyph in the generated
+keyframes' color, and its lane draws the keyframes it made in that
+color. A click opens the Keyframe Designer on the control. When the
+method can't write (no beats yet, the sound gone) or waits on the person
+(out of date after hand edits, for Regenerate or Keep Edits), the badge
+turns to a warning triangle in the warning tone, and its help and
+VoiceOver say why. VoiceOver reads it as "Keyframes made by Wiggler"; the
+Volume row has one too.
 
 ## Saving
 
@@ -372,3 +377,10 @@ In order, each step usable on its own:
    of the Effects Library into a panel opened from an effect's ⋯ menu,
    which drives one control at a time against its graph, and replaces
    Audio Keys' own editor. Effects already in a project are untouched.
+6. **Hidden from the stack** (done), as described in
+   [Where they sit](#where-they-sit-hidden-in-the-stack) and
+   [The badge](#the-badge): the stack no longer lists Keyframing effects,
+   so their rows, ⋯ menu and range bar over the ruler are gone (the range
+   is set in the designer); they reach any control of the clip, go with
+   the control they drive, and come along when its effect is copied.
+   Steps 2 and 3 describe the rows as they were.

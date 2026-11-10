@@ -158,15 +158,16 @@ private struct KeyframingFixture {
         #expect(f.value(.position, at: 1.3) != f.value(.position, at: 1.3, component: 1))
     }
 
-    @Test func aTargetMovedAboveTheEffectKeepsItsKeyframes() {
+    @Test func aTargetAboveTheEffectIsStillDriven() {
         var f = KeyframingFixture()
         let id = f.add(.oscillator)
         f.point(id, at: .rotation)
         let made = f.control(.rotation).number
+        // The stack doesn't show it, so where it sits doesn't matter.
         f.project.moveEffect(id, ofClip: f.clipID, in: f.timelineID, toIndex: 1)
-        #expect(!f.project.keyframingTargetIsReachable(f.effect(id), in: f.clip))
+        #expect(f.project.keyframingTargetIsReachable(f.effect(id), in: f.clip))
         f.set(id, .amplitude, to: 40)
-        #expect(f.control(.rotation).number == made)
+        #expect(f.control(.rotation).number != made)
     }
 
     @Test func deletingTheEffectPutsTheTargetBack() {
@@ -256,9 +257,10 @@ private struct KeyframingFixture {
         let timeline = f.project.timeline(id: f.timelineID)!
         // No layer to take beats from yet.
         #expect(f.project.note(forEffectAt: 0, in: clip, on: layer, of: timeline)?.dims == true)
+        // One left driving nothing is taken away: it isn't in the stack to
+        // point anywhere else.
         f.edit(id) { $0.keyframing?.target = nil }
-        let none = f.project.note(forEffectAt: 0, in: f.clip, on: layer, of: timeline)
-        #expect(none?.text.hasPrefix("Choose a control") == true)
+        #expect(f.clip.effect(id: id) == nil)
         let wiggler = f.add(.wiggler)
         #expect(f.project.note(forEffectAt: 0, in: f.clip, on: layer, of: timeline) == nil)
         #expect(f.project.keyframingSummary(of: f.effect(wiggler), in: f.clip).hasPrefix("Wiggler, driving Transform · Position, "))

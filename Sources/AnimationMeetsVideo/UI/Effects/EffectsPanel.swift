@@ -228,7 +228,6 @@ struct EffectsPanel: View {
                     if showsKeyframeLanes {
                         LaneWindow {
                             PanelRuler(geometry: geometry, onSeek: onSeek)
-                                .overlay(alignment: .topLeading) { rangeBar(clip, geometry: geometry) }
                         }
                         .padding(.horizontal, EffectsPanelMetrics.laneInset)
                         .accessibilityElement(children: .ignore)
@@ -308,16 +307,6 @@ struct EffectsPanel: View {
             )
             .frame(width: width)
             .padding(.leading, lanes.labelWidth + EffectsPanelMetrics.laneInset)
-        }
-    }
-
-    /// The selected Keyframing effect's range, over the ruler.
-    @ViewBuilder
-    private func rangeBar(_ clip: TimelineClip, geometry: ClipLaneGeometry) -> some View {
-        if let id = state.selectedEffectID, let effect = clip.effect(id: id), let setup = effect.keyframing {
-            KeyframingRangeBar(geometry: geometry, range: setup.range) { start, end in
-                editEffect(effect.id, in: clip) { $0.keyframing?.setRange(start: start, end: end, in: clip) }
-            }
         }
     }
 
@@ -510,7 +499,7 @@ struct EffectsPanel: View {
             else { return nil }
             return clip[keyPath: stack].index(of: effect.id).map { $0 + 1 }
         }
-        if let last = project.paste(bundle, ontoClip: clip.id, in: timelineID, at: index).last {
+        if let last = shownLast(project.paste(bundle, ontoClip: clip.id, in: timelineID, at: index), of: clip) {
             state.select(effect: last)
         }
     }
@@ -573,9 +562,16 @@ struct EffectsPanel: View {
         return clip.effects.index(of: listed[shown].id) ?? clip.effects.count
     }
 
+    /// The last of the pasted effects the stack shows, to select: not one
+    /// of the Keyframing effects that came along with them.
+    private func shownLast(_ ids: [UUID], of clip: TimelineClip) -> UUID? {
+        let pasted = project.clipAndLayer(clip.id, in: timelineID)?.clip
+        return ids.last { pasted?.effect(id: $0)?.kind.isKeyframing == false }
+    }
+
     private func applyPreset(_ id: String, to clip: TimelineClip, at index: Int?) -> Bool {
         guard let preset = try? PresetStore.read(PresetStore.fileURL(id)) else { return false }
-        guard let last = project.paste(preset.bundle, ontoClip: clip.id, in: timelineID, at: index).last else { return false }
+        guard let last = shownLast(project.paste(preset.bundle, ontoClip: clip.id, in: timelineID, at: index), of: clip) else { return false }
         state.select(effect: last)
         return true
     }
@@ -606,7 +602,7 @@ struct EffectsPanel: View {
     /// The panel's effects and their listed controls, top to bottom, which
     /// Shift-click picks a run of.
     func rowOrder(_ clip: TimelineClip) -> [UUID] {
-        (clip.effects + clip.audioEffects).flatMap { effect in
+        (clip.effects + clip.audioEffects).filter { !$0.kind.isKeyframing }.flatMap { effect in
             [effect.id] + effect.panelSections().flatMap(\.controls).map(\.id)
         }
     }

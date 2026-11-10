@@ -109,4 +109,75 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(!EffectsListPanel.kinds.contains { $0.isKeyframing })
         #expect(EffectsListPanel.kinds.contains(.transform))
     }
+
+    @Test func theStackDoesntListMethods() throws {
+        var f = Fixture()
+        let made = f.set(.wiggler)
+        let id = try #require(made)
+        #expect(f.clip.effects.contains { $0.id == id })
+        #expect(f.clip.stackEffects.map(\.id) == [f.colorID, f.transformID])
+    }
+
+    @Test func deletingTheControlsEffectTakesItsMethodAway() throws {
+        var f = Fixture()
+        let made = f.set(.oscillator)
+        let id = try #require(made)
+        f.project.removeEffect(f.transformID, fromClip: f.clipID, in: f.timelineID)
+        #expect(f.clip.effect(id: id) == nil)
+        #expect(f.clip.effects.map(\.id) == [f.colorID])
+    }
+
+    @Test func removingTheControlTakesItsMethodAway() throws {
+        var f = Fixture()
+        let made = f.set(.oscillator)
+        let id = try #require(made)
+        let controlID = try #require(f.transform.control(.position)).id
+        f.project.editEffect(f.transformID, ofClip: f.clipID, in: f.timelineID) { $0.removeControl(controlID) }
+        #expect(f.clip.effect(id: id) == nil)
+    }
+
+    @Test func copyingAnEffectBringsItsMethodsAlong() throws {
+        var f = Fixture()
+        let made = f.set(.wiggler)
+        let id = try #require(made)
+        let bundle = try #require(f.project.bundle(ofEffects: [f.transformID], fromClip: f.clipID, in: f.timelineID))
+        #expect(bundle.effects.map(\.effect.id).contains(id))
+        // Pasted onto a second clip, the copy drives the copied Position.
+        let media = MediaClip(
+            name: "B.mov", kind: .video, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "H.264"
+        )
+        let imported = f.project.importClip(media, intoTimeline: f.timelineID)
+        let other = try #require(imported).clipID
+        let pasted = f.project.paste(bundle, ontoClip: other, in: f.timelineID)
+        let clip = try #require(f.project.clipAndLayer(other, in: f.timelineID)?.clip)
+        let transform = try #require(clip.effects.first { $0.kind == .transform && pasted.contains($0.id) })
+        let wiggler = try #require(clip.effects.first { $0.kind == .wiggler })
+        let position = try #require(transform.control(.position))
+        #expect(wiggler.keyframing?.target == .control(effectID: transform.id, controlID: position.id))
+        #expect(position.number.keyframes.contains { $0.generatedBy == wiggler.id })
+    }
+
+    @Test func duplicatingAnEffectBringsItsMethodsAlong() throws {
+        var f = Fixture()
+        let made = f.set(.wiggler)
+        let id = try #require(made)
+        let duplicated = f.project.duplicateEffect(f.transformID, ofClip: f.clipID, in: f.timelineID)
+        let copyID = try #require(duplicated)
+        let copy = try #require(f.clip.effect(id: copyID))
+        let position = try #require(copy.control(.position))
+        let drivers = f.clip.effects.filter { $0.kind == .wiggler }
+        #expect(drivers.count == 2)
+        let driver = try #require(drivers.first { $0.id != id })
+        #expect(driver.keyframing?.target == .control(effectID: copyID, controlID: position.id))
+        #expect(position.number.keyframes.allSatisfy { $0.generatedBy == driver.id })
+        // The original still drives its own.
+        #expect(f.project.keyframingEffect(driving: f.position, in: f.clip)?.id == id)
+        // Changing the copy's method leaves the original's keyframes alone.
+        let before = try #require(f.transform.control(.position)).number
+        f.project.editEffect(driver.id, ofClip: f.clipID, in: f.timelineID) { effect in
+            effect.changeControl(.seed) { $0.setComponent(0, to: 7, at: .zero) }
+        }
+        #expect(try #require(f.transform.control(.position)).number == before)
+    }
 }

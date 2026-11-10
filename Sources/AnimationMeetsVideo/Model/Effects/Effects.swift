@@ -844,7 +844,7 @@ extension EditingProject {
             // The first that no other Keyframing effect writes to, since two
             // on one control would undo each other.
             let taken = Set(placed.effects.compactMap { $0.keyframing?.target })
-            let targets = keyframingTargets(forEffectAt: at, in: placed)
+            let targets = keyframingTargets(in: placed)
             effect.keyframing?.target = targets.first { !taken.contains($0) } ?? targets.first
         }
         editClip(clipID, in: timelineID) { clip in
@@ -875,6 +875,7 @@ extension EditingProject {
         if changedKeyframing {
             regenerateKeyframes(ofEffect: effectID, onClip: clipID, in: timelineID)
         }
+        removeOrphanedKeyframing(onClip: clipID, in: timelineID)
     }
 
     /// Removes an effect. A Keyframing effect takes what it wrote with it,
@@ -885,6 +886,23 @@ extension EditingProject {
             guard let stack = clip.stack(holding: effectID) else { return }
             clip[keyPath: stack].removeAll { $0.id == effectID }
         }
+        removeOrphanedKeyframing(onClip: clipID, in: timelineID)
+    }
+
+    /// Takes away the clip's Keyframing effects that drive nothing: those
+    /// whose control is gone with its effect, or was removed from it, and
+    /// any pasted without one. They aren't shown in the stack, so nothing
+    /// would ever point them anywhere else. The keyframes such an effect
+    /// wrote went with the control.
+    mutating func removeOrphanedKeyframing(onClip clipID: UUID, in timelineID: UUID) {
+        guard let clip = clipAndLayer(clipID, in: timelineID)?.clip else { return }
+        let orphans = Set(clip.effects.filter { effect in
+            guard let setup = effect.keyframing else { return false }
+            guard let target = setup.target else { return true }
+            return clip.number(of: target) == nil
+        }.map(\.id))
+        guard !orphans.isEmpty else { return }
+        editClip(clipID, in: timelineID) { $0.effects.removeAll { orphans.contains($0.id) } }
     }
 
     /// Moves an effect to `index` in its stack (0 is the top).
@@ -906,7 +924,30 @@ extension EditingProject {
             var copy = original.duplicated(named: Effect.make(original.kind, among: clip[keyPath: stack]).name)
             // Two effects writing to one control would undo each other.
             copy.keyframing?.target = nil
+            // The methods driving its controls come along, driving the
+            // copy's, and what they wrote there is marked as theirs.
+            var drivers: [Effect] = []
+            for driver in clip.effects where driver.kind.isKeyframing {
+                guard case .control(let effectID, let controlID)? = driver.keyframing?.target, effectID == original.id,
+                      let c = original.controlIndex(controlID)
+                else { continue }
+                var made = driver.duplicated()
+                made.keyframing?.target = .control(effectID: copy.id, controlID: copy.controls[c].id)
+                made.keyframing?.base = driver.keyframing?.base
+                copy.controls[c].number = AnimatedValue(copy.controls[c].number.value, keyframes: copy.controls[c].number.keyframes.map { keyframe in
+                    var marked = keyframe
+                    if marked.generatedBy == driver.id { marked.generatedBy = made.id }
+                    return marked
+                })
+                if let writtenPrint = driver.keyframing?.writtenPrint, writtenPrint == Self.fingerprint(of: original.controls[c].number) {
+                    made.keyframing?.writtenPrint = Self.fingerprint(of: copy.controls[c].number)
+                }
+                drivers.append(made)
+            }
             clip[keyPath: stack].insert(copy, at: index + 1)
+            if !drivers.isEmpty, let at = clip.effects.index(of: copy.id) {
+                clip.effects.insert(contentsOf: drivers, at: at)
+            }
             copyID = copy.id
         }
         return copyID

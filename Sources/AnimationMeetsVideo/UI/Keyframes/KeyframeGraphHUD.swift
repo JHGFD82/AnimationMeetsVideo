@@ -90,11 +90,6 @@ final class KeyframeGraphHUDs {
         open(.designer(key), content: host, size: NSSize(width: 900, height: 520), minimum: NSSize(width: 700, height: 400))
     }
 
-    /// Opens the designer on the control a Keyframing effect drives.
-    func showDesigner(drivenBy effect: Effect, onClip clipID: UUID, in timelineID: UUID) {
-        showDesigner(KeyframeDesignerKey(timelineID: timelineID, clipID: clipID), target: effect.keyframing?.target)
-    }
-
     private func openGraphs(_ link: KeyframeGraphLink) {
         links[link.id] = link
         let input = GraphInput()

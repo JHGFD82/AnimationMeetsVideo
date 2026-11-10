@@ -64,10 +64,16 @@ struct EffectBundle: Equatable, Sendable {
 extension EditingProject {
     /// The effects with these IDs in a clip's stacks, in the order of the
     /// stacks (the picture's, then the sound's), or both whole stacks for
-    /// nil. Nil if there is nothing to copy.
+    /// nil. The Keyframing effects driving their controls come along, as
+    /// they aren't in the stack to be picked. Nil if there is nothing to
+    /// copy.
     func bundle(ofEffects ids: Set<UUID>?, fromClip clipID: UUID, in timelineID: UUID) -> EffectBundle? {
         guard let clip = clipAndLayer(clipID, in: timelineID)?.clip else { return nil }
-        let chosen = (clip.effects + clip.audioEffects).filter { ids?.contains($0.id) ?? true }
+        let drives = { (effect: Effect) -> Bool in
+            guard let ids, case .control(let effectID, _)? = effect.keyframing?.target else { return false }
+            return ids.contains(effectID)
+        }
+        let chosen = (clip.effects + clip.audioEffects).filter { ids?.contains($0.id) ?? true || drives($0) }
         guard !chosen.isEmpty else { return nil }
         let names = Dictionary(clip.effects.map { ($0.id, $0.displayName) }, uniquingKeysWith: { first, _ in first })
         return EffectBundle(
@@ -114,7 +120,10 @@ extension EditingProject {
                 regenerateKeyframes(ofEffect: effect.id, onClip: clipID, in: timelineID)
             }
         }
-        return pastedIDs
+        // One that came without the control it drove has nothing to drive.
+        removeOrphanedKeyframing(onClip: clipID, in: timelineID)
+        let kept = clipAndLayer(clipID, in: timelineID)?.clip
+        return pastedIDs.filter { id in kept?.effect(id: id) != nil }
     }
 
     /// Brings over how `source` is retimed and how its finished picture is
