@@ -151,14 +151,20 @@ struct ProjectWindow: View {
     /// unsaved changes for saving, before the window closes; either answer
     /// can keep it open. The save question needs the window kept on
     /// screen, so it is asked after saying no, and the window closed again
-    /// once settled.
+    /// once settled. Exports stop only once the window is sure to close,
+    /// so cancelling the save question keeps them and their queue going.
     private func shouldClose(_ window: NSWindow) -> Bool {
         let exports = ExportWindow.running(in: window, packageURL: session.projectURL)
         guard ExportWindow.confirmStopping(exports, because: "Closing the project") else { return false }
-        guard session.hasUnsavedChanges, session.projectURL != nil, !session.closeConfirmed else { return true }
+        guard session.hasUnsavedChanges, session.projectURL != nil, !session.closeConfirmed else {
+            ExportWindow.stopExports(exports)
+            return true
+        }
         Task {
             let question = "Save changes to \u{201C}\(session.project.name)\u{201D} before closing?"
             guard await session.settleUnsavedChanges(asking: question) else { return }
+            // Those running now, which may have moved on since the question.
+            ExportWindow.stopExports(ExportWindow.running(in: window, packageURL: session.projectURL))
             session.closeConfirmed = true
             window.close()
         }

@@ -42,7 +42,10 @@ struct TimelineWindow: View {
             .focusedSceneValue(\.projectSession, session)
             .background(SharedUndoWindow(source: { session.editorWindow }))
             .background(WindowCloseGuard { window in
-                ExportWindow.confirmStopping(ExportWindow.running(in: window), because: "Closing the window")
+                let exports = ExportWindow.running(in: window)
+                guard ExportWindow.confirmStopping(exports, because: "Closing the window") else { return false }
+                ExportWindow.stopExports(exports)
+                return true
             })
             .navigationTitle(title(in: session, ref: ref))
             .onChange(of: session.isClosed) { _, closed in

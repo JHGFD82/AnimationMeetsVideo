@@ -1127,7 +1127,7 @@ bd7bdc6 moved the button to `confirmAndCancel` and the doc still named
 
 ### 9. Stop exports only once a close or quit goes ahead
 
-- [ ] Done
+- [x] Done
 
 **Why.** `confirmStopping` asks, then at once cancels every export and
 empties every queue. Quitting and closing a project ask more questions

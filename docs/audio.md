@@ -317,8 +317,11 @@ Stopping an export, or closing its project's window or quitting while it
 runs, asks first, since what was exported so far is deleted. Stop Export…
 asks about the one under way and stops it, and the next waiting starts
 (`ExportWindow.confirmAndCancel`); closing the project or quitting asks
-once about all of them and stops the queue too
-(`ExportWindow.confirmStopping`).
+once about all of them (`ExportWindow.confirmStopping`), and stops them
+and the queue only once every other question it asks (a draft panel's,
+saving changes) has let the window or app go
+(`ExportWindow.stopExports`); a Cancel or Keep Editing there leaves them
+running.
 
 With a target, the sound is mastered before the pictures are exported
 (`LoudnessMastering`), taking the first tenth of the progress bar.

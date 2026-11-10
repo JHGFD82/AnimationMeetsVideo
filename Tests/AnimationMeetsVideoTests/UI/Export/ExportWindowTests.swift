@@ -11,8 +11,9 @@ import Testing
 // - End every test with `try await h.stopAll()`, or with the last export
 //   finished and `!h.export.isRunning` settled.
 // - Never call `confirmAndCancel()`, `show()`, `askWhereToSave` or
-//   `askToStop`, and never call `h.run()` without setting
-//   `answerSavePanel`. Each opens a real modal.
+//   `askToStop`, never call `confirmStopping` without `ask:`, and never
+//   call `h.run()` without setting `answerSavePanel`. Each opens a real
+//   modal.
 // - Give each job its own file name. A place already used is refused.
 // - Never count `ExportWindow.runningAnywhere` or `takenDestinations`
 //   exactly. They are app-wide, and other suites leave windows in them.
@@ -344,6 +345,96 @@ import Testing
         #expect(h.export.queue.isEmpty)
         #expect(h.export.current?.id == a.id)
         #expect(h.told.count == 1)
+        try await h.stopAll()
+    }
+
+    // Closing a project or quitting asks about every job first, and stops
+    // them only once the close or quit can no longer be called off
+    // (`stopExports`). `ask` stands in for the alert.
+
+    @Test func agreeingToStopStopsNothingYet() {
+        let export = ExportWindow()
+        let a = exportJob(to: "A.mov")
+        let b = exportJob(to: "B.mov")
+        let c = exportJob(to: "C.mov")
+        export.showQueueWithoutRunning(current: a, progress: 0, queue: [b, c])
+        var asked: [ExportWindow.Job] = []
+        let agreed = ExportWindow.confirmStopping([export], because: "Quitting") { jobs, _ in
+            asked = jobs
+            return true
+        }
+        #expect(agreed)
+        #expect(asked.map(\.id) == [a.id, b.id, c.id])
+        #expect(export.queue.count == 2)
+        #expect(export.isRunning)
+    }
+
+    @Test func keepingExportsAnswersNo() {
+        let export = ExportWindow()
+        let a = exportJob(to: "A.mov")
+        let b = exportJob(to: "B.mov")
+        export.showQueueWithoutRunning(current: a, progress: 0, queue: [b])
+        let agreed = ExportWindow.confirmStopping([export], because: "Quitting") { _, _ in false }
+        #expect(!agreed)
+        #expect(export.queue.map(\.id) == [b.id])
+        #expect(export.current?.id == a.id)
+    }
+
+    @Test func noExportsAsksNothing() {
+        let agreed = ExportWindow.confirmStopping([], because: "Quitting") { _, _ in
+            Issue.record("Nothing should be asked with no exports")
+            return false
+        }
+        #expect(agreed)
+    }
+
+    @Test func stoppingDropsTheQueueAndIsNotAskedAboutAgain() {
+        let export = ExportWindow()
+        let packageURL = URL(filePath: "/tmp/amv-export-tests-\(UUID().uuidString).amv")
+        export.packageURL = packageURL
+        export.showQueueWithoutRunning(
+            current: exportJob(to: "A.mov"), progress: 0, queue: [exportJob(to: "B.mov")]
+        )
+        #expect(ExportWindow.running(packageURL: packageURL).map(ObjectIdentifier.init) == [ObjectIdentifier(export)])
+
+        ExportWindow.stopExports([export])
+        #expect(export.queue.isEmpty)
+        #expect(ExportWindow.running(packageURL: packageURL).isEmpty)
+        #expect(!ExportWindow.runningAnywhere.contains { $0 === export })
+    }
+
+    @Test func cancellingAnIdleWindowLeavesItFindable() {
+        let export = ExportWindow()
+        let packageURL = URL(filePath: "/tmp/amv-export-tests-\(UUID().uuidString).amv")
+        export.packageURL = packageURL
+        export.cancel()
+        export.showQueueWithoutRunning(current: exportJob(to: "A.mov"), progress: 0, queue: [])
+        #expect(ExportWindow.running(packageURL: packageURL).map(ObjectIdentifier.init) == [ObjectIdentifier(export)])
+    }
+
+    @Test func agreeingToQuitStopsNothingUntilItGoesAhead() async throws {
+        let h = ExportQueueHarness()
+        let a = exportJob(to: "A.mov")
+        let b = exportJob(to: "B.mov")
+        h.add(a)
+        h.add(b)
+        try await h.settle { h.exports.hasStarted(a.id) }
+        #expect(ExportWindow.confirmStopping([h.export], because: "Quitting") { _, _ in true })
+
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(h.export.current?.id == a.id)
+        #expect(h.export.queue.map(\.id) == [b.id])
+
+        ExportWindow.stopExports([h.export])
+        // Winding down, it isn't asked about again.
+        #expect(ExportWindow.running(packageURL: h.export.packageURL).isEmpty)
+        try await h.settle { !h.export.isRunning }
+        #expect(h.exports.started.map(\.id) == [a.id])
+
+        let c = exportJob(to: "C.mov")
+        h.add(c)
+        #expect(ExportWindow.running(packageURL: h.export.packageURL).map(ObjectIdentifier.init)
+            == [ObjectIdentifier(h.export)])
         try await h.stopAll()
     }
 }

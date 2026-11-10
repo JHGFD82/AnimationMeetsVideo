@@ -13,8 +13,9 @@ import UniformTypeIdentifiers
 /// the format and sound picked then, to start once those before it end;
 /// the queue is listed in the window. Stop Export… asks first and stops
 /// the one under way, and the next starts (`confirmAndCancel`); closing
-/// the project or quitting while one runs asks once and stops the queue
-/// too (`confirmStopping`).
+/// the project or quitting while one runs asks once (`confirmStopping`),
+/// and stops it and the queue only once the close or quit goes ahead
+/// (`stopExports`).
 @MainActor
 @Observable
 final class ExportWindow {
@@ -47,6 +48,10 @@ final class ExportWindow {
     @ObservationIgnored private weak var renderer: RenderScheduler?
     @ObservationIgnored private var window: NSWindow?
     @ObservationIgnored private var task: Task<Void, Never>?
+    /// Set once the export under way and those queued behind it are told to
+    /// stop (`cancel`), until it has ended, so one winding down isn't asked
+    /// about again, as when closing the last window quits the app.
+    @ObservationIgnored private var isStopping = false
     @ObservationIgnored private var closeObserver: NSObjectProtocol?
 
     typealias Perform = @Sendable (Job, RenderCache?, @escaping @Sendable (Double) -> Void) async throws -> String?
@@ -85,15 +90,15 @@ final class ExportWindow {
     /// project at `packageURL`.
     static func running(in editor: NSWindow? = nil, packageURL: URL? = nil) -> [ExportWindow] {
         all.allObjects.filter { export in
-            export.isRunning
+            export.isRunning && !export.isStopping
                 && ((editor != nil && export.editorWindow === editor)
                     || (packageURL != nil && export.packageURL == packageURL))
         }
     }
 
-    /// Every export running in the app.
+    /// Every export running in the app, but those already stopping.
     static var runningAnywhere: [ExportWindow] {
-        all.allObjects.filter(\.isRunning)
+        all.allObjects.filter { $0.isRunning && !$0.isStopping }
     }
 
     /// Where every export in the app under way or waiting saves, which a
@@ -102,20 +107,47 @@ final class ExportWindow {
         all.allObjects.flatMap { [$0.current].compactMap { $0 } + $0.queue }.map(\.destination)
     }
 
-    /// Asks whether to stop `exports`, which `reason` (\"Closing the
-    /// project\") would, and stops them, and those queued behind them, on
-    /// yes. True when there are none or they were stopped; false to keep
-    /// them going, and the window or app open.
-    static func confirmStopping(_ exports: [ExportWindow], because reason: String) -> Bool {
-        guard !exports.isEmpty else { return true }
-        let jobs = exports.flatMap { export in [export.current].compactMap { $0 } + export.queue }
-        guard askToStop(jobs, because: reason) else { return false }
-        for export in exports { export.cancel() }
-        return true
+    /// The jobs `exports` have under way and queued, in the order they
+    /// run, as the question about stopping them counts them.
+    static func jobs(of exports: [ExportWindow]) -> [Job] {
+        exports.flatMap { export in [export.current].compactMap { $0 } + export.queue }
     }
 
+    /// Asks whether to stop `exports`, which `reason` ("Closing the
+    /// project") would, counting each one's export under way and those
+    /// queued behind it. Stops nothing: the caller stops them
+    /// (`stopExports`) once no later question can keep the window or app
+    /// open. True when there are none or the person agrees; false to keep
+    /// them going.
+    static func confirmStopping(
+        _ exports: [ExportWindow], because reason: String,
+        ask: ([Job], String) -> Bool = { ExportWindow.askToStop($0, because: $1) }
+    ) -> Bool {
+        let jobs = jobs(of: exports)
+        guard !jobs.isEmpty else { return true }
+        return ask(jobs, reason)
+    }
+
+    /// Stops `exports` and drops those queued behind them, once closing
+    /// can no longer be called off.
+    static func stopExports(_ exports: [ExportWindow]) {
+        for export in exports { export.cancel() }
+    }
+
+    /// Stops every export in the app, those already stopping too, and
+    /// returns once each has ended and deleted its partial file, for
+    /// quitting to wait on.
+    static func stopEverythingAndWait() async {
+        let tasks = all.allObjects.compactMap(\.task)
+        for export in all.allObjects { export.cancel() }
+        for task in tasks { await task.value }
+    }
+
+    /// Whether any export in the app has yet to end, stopping or not.
+    static var anyUnderWay: Bool { all.allObjects.contains { $0.task != nil } }
+
     /// Asks whether to stop `jobs`; true on yes.
-    private static func askToStop(_ jobs: [Job], because reason: String) -> Bool {
+    static func askToStop(_ jobs: [Job], because reason: String) -> Bool {
         let alert = NSAlert()
         if jobs.count == 1 {
             alert.messageText = "Stop exporting \u{201C}\(jobs[0].destination.lastPathComponent)\u{201D}?"
@@ -211,6 +243,8 @@ final class ExportWindow {
 
     /// Stops the export under way and drops those waiting.
     func cancel() {
+        guard isRunning else { return }
+        isStopping = true
         queue.removeAll()
         task?.cancel()
     }
@@ -372,6 +406,7 @@ final class ExportWindow {
     /// none, lets rendering go on and shows how they all ended.
     private func ended(_ job: Job, _ outcome: Outcome?) {
         task = nil
+        isStopping = false
         if let outcome { outcomes.append(Ended(timelineName: job.timelineName, outcome: outcome)) }
         if !queue.isEmpty {
             start(queue.removeFirst())
