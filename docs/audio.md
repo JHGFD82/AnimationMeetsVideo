@@ -465,7 +465,9 @@ Beside the ProRes formats, the export format menu offers the sound alone
   layer ("Cut - Music 1.wav"). Each holds only that layer: its clips with
   their effects, volume, pan and fades, its own volume and pan, and the
   sound of timelines nested on it. Stems aren't mastered, whatever the
-  Loudness menu says, so together they add up to the mix as mixed.
+  Loudness menu says, so together they add up to the mix as mixed. A
+  stopped or failed export deletes the stems it wrote, and the folder
+  too if it made it and nothing else is in it.
 
 A movie's sound can be split the same way. The Export window's **Movie
 tracks** menu (under the loudness target) picks the movie's sound

@@ -1362,7 +1362,7 @@ to the point of no return, and why `isStopping` exists.
 
 ### 10. Delete what a stopped stems export wrote
 
-- [ ] Done. **Decision**: see the table.
+- [x] Done. **Decision**: see the table.
 
 **Why.** Every stop question says "what is exported so far is deleted"
 (`askToStop`). That holds for movies and WAV mixes, which delete their
