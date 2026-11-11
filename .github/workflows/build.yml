@@ -40,8 +40,14 @@ jobs:
           swift --version
       - name: Build
         run: swift build
+      # At most eight tests at a time. Uncapped, Swift Testing starts
+      # nearly the whole suite at once, and on this runner's few cores
+      # almost every test then took over 100 s: utility-priority work
+      # (beat and scene analysis) was starved past its waits, and offline
+      # audio renders came back silent or a slice long. Capped, the suite
+      # passes under the same load and finishes no slower.
       - name: Test
-        run: swift test
+        run: swift test --experimental-maximum-parallelization-width 8
       # Only for main: the release build compiles the whole app in one
       # optimized step, about four minutes, which branches can do without.
       - name: Build the app bundle
