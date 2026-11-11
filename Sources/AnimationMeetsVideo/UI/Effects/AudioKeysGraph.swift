@@ -69,6 +69,7 @@ struct AudioKeysGraph: View {
             .contentShape(Rectangle())
             .gesture(dragGesture(plot: plot))
         }
+        .onDisappear(perform: endDrag)
         .background(Color.black.opacity(0.25))
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         .opacity(isDimmed ? 0.5 : 1)
@@ -187,21 +188,25 @@ struct AudioKeysGraph: View {
                     move(drag, to: value, plot: plot)
                 }
             }
-            .onEnded { _ in
-                guard let started = drag else { return }
-                let last = dragged
-                projectState?.endHold()
-                dragged = nil
-                drag = nil
-                // The drag's last box goes to the project once; a drag let
-                // go (see `ProjectState.letGo`) has written it already.
-                if let last {
-                    if last.frequencies != started.frequencies { onSetFrequencies(last.frequencies.low, last.frequencies.high) }
-                    if last.levels != started.levels { onSetLevels(last.levels.floor, last.levels.ceiling) }
-                }
-                // After the last edit has reached the project.
-                Task { @MainActor in history?.endGesture() }
-            }
+            .onEnded { _ in endDrag() }
+    }
+
+    /// A method or clip removed mid-drag must release the held project
+    /// and its undo group even when the graph never gets mouse-up.
+    private func endDrag() {
+        guard let started = drag else { return }
+        let last = dragged
+        projectState?.endHold()
+        dragged = nil
+        drag = nil
+        // The drag's last box goes to the project once; a drag let go
+        // (see `ProjectState.letGo`) has written it already.
+        if let last {
+            if last.frequencies != started.frequencies { onSetFrequencies(last.frequencies.low, last.frequencies.high) }
+            if last.levels != started.levels { onSetLevels(last.levels.floor, last.levels.ceiling) }
+        }
+        // After the last edit has reached the project.
+        Task { @MainActor in history?.endGesture() }
     }
 
     private func move(_ drag: DragState, to value: DragGesture.Value, plot: CGRect) {

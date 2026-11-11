@@ -191,6 +191,10 @@ its first.
   its box over it (`AudioKeysGraph`), at the playhead or, while it plays,
   the player's time.
 
+Dragging a setting or the Audio Keys box shares the editor's held
+edits and gesture history: intermediate values preview without
+autosaving, and the whole drag is one undo step even after a pause.
+
 Picking a method (`EditingProject.setKeyframing`) is one undo step: with
 none driving the control, a Keyframing effect of that kind goes just
 above the control's effect, so it reaches it (at the top for the volume

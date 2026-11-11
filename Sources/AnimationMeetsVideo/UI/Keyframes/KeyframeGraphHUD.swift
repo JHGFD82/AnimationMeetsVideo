@@ -20,6 +20,10 @@ final class KeyframeGraphHUDs {
     /// graphs edit the editor's project, and a panel of its own would have
     /// nothing to undo.
     @ObservationIgnored weak var undoManager: UndoManager?
+    /// Floating hosts don't inherit the editor's SwiftUI environment.
+    /// Their fields and sliders need the same held edits and undo groups.
+    @ObservationIgnored var projectState: ProjectState?
+    @ObservationIgnored var history: ProjectHistory?
 
     @ObservationIgnored var onEdit: ((inout EditingProject) -> Void) -> Void = { _ in }
     @ObservationIgnored var onSeek: (CMTime) -> Void = { _ in }
@@ -85,7 +89,9 @@ final class KeyframeGraphHUDs {
         let focus = KeyframeDesignerFocus(target: target)
         designerFocus[key] = focus
         let input = GraphInput()
-        let host = GraphHostingView(rootView: KeyframeDesigner(hud: self, key: key, focus: focus, input: input))
+        let host = GraphHostingView(rootView: KeyframeDesigner(hud: self, key: key, focus: focus, input: input)
+            .environment(projectState)
+            .environment(\.projectHistory, history))
         host.input = input
         open(.designer(key), content: host, size: NSSize(width: 900, height: 520), minimum: NSSize(width: 700, height: 400))
     }
@@ -93,7 +99,9 @@ final class KeyframeGraphHUDs {
     private func openGraphs(_ link: KeyframeGraphLink) {
         links[link.id] = link
         let input = GraphInput()
-        let host = GraphHostingView(rootView: KeyframeGraphStack(hud: self, link: link, input: input))
+        let host = GraphHostingView(rootView: KeyframeGraphStack(hud: self, link: link, input: input)
+            .environment(projectState)
+            .environment(\.projectHistory, history))
         host.input = input
         let count = CGFloat(link.keys.count)
         open(

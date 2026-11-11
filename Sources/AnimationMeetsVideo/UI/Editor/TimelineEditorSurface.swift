@@ -36,6 +36,7 @@ struct TimelineEditorSurface<Library: View>: View {
     /// Holds value drags to one side of the project, for the viewer to
     /// follow (see `HeldDragFollower`); absent in previews and tests.
     @Environment(ProjectState.self) private var projectState: ProjectState?
+    @Environment(\.projectHistory) private var history
 
     /// Where the playhead is parked. Not read as the body is built (see
     /// `PlayheadState`), so `playheadTime` is for actions and closures.
@@ -420,6 +421,8 @@ struct TimelineEditorSurface<Library: View>: View {
             graphs.onTogglePlayback = { playback.togglePlayback() }
             graphs.playback = playback
             graphs.undoManager = undoManager
+            graphs.projectState = projectState
+            graphs.history = history
         }
         .onChange(of: undoManager) { _, manager in graphs.undoManager = manager }
         .onDisappear {
@@ -431,6 +434,8 @@ struct TimelineEditorSurface<Library: View>: View {
             graphs.onEdit = { _ in }
             graphs.onSeek = { _ in }
             graphs.onTogglePlayback = {}
+            graphs.projectState = nil
+            graphs.history = nil
         }
         .onChange(of: timelineID, initial: true) { _, id in shownTimelineID = id }
         .onChange(of: timelineID) { oldValue, newValue in
