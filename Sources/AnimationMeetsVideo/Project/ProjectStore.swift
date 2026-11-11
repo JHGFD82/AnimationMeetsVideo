@@ -76,6 +76,23 @@ enum ProjectStore {
 
     // MARK: Package layout
 
+    /// Gets `packageURL` ready to be saved into, once `ask` has answered
+    /// every question about the save: nothing on disk changes before it
+    /// returns, so a cancel (nil) leaves the destination exactly as it
+    /// was. Then an existing package being replaced goes to the Trash and
+    /// the package is prepared. Returns `ask`'s answer.
+    @MainActor
+    static func prepareSaveDestination<Answer: Sendable>(
+        at packageURL: URL, replacingExisting: Bool, after ask: () -> Answer?
+    ) async throws -> Answer? {
+        guard let answer = ask() else { return nil }
+        if replacingExisting {
+            try await trashPackage(at: packageURL, checkingLock: true)
+        }
+        try preparePackage(at: packageURL)
+        return answer
+    }
+
     /// Creates the package directory and its standard subfolders. Safe to
     /// call on an existing package.
     static func preparePackage(at packageURL: URL) throws {

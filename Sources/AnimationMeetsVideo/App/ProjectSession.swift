@@ -319,17 +319,18 @@ final class ProjectSession {
         isBusy = true
         defer { isBusy = false }
         do {
-            // Otherwise the old package's media, backups and render
-            // cache would be mixed into this one.
-            if replacesExisting {
-                try await ProjectStore.trashPackage(at: url, checkingLock: true)
-            }
-            try ProjectStore.preparePackage(at: url)
-            let lock = try lockForProject(at: url)
             // Imports are copied as they come in, so only Save As copies,
-            // carrying along what the previous package holds.
+            // carrying along what the previous package holds. Every
+            // question is asked before the destination is touched, so a
+            // cancel leaves it as it was. Then an old package there goes
+            // to the Trash, as otherwise its media, backups and render
+            // cache would be mixed into this one.
             let isNewLocation = projectURL.map { !Self.isSamePackage($0, url) } ?? true
-            guard var copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return false }
+            guard var copying = try await ProjectStore.prepareSaveDestination(
+                at: url, replacingExisting: replacesExisting,
+                after: { isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] }
+            ) else { return false }
+            let lock = try lockForProject(at: url)
             // Media pasted from another project comes into this one's
             // package, so this project doesn't depend on the other's.
             let pasted = isNewLocation ? [] : pastedMedia()
