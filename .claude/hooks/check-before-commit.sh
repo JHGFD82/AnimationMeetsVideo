@@ -17,6 +17,13 @@ cd "$root" || exit 0
 # Nothing Swift changed (docs, scripts, plist): no build needed.
 git status --porcelain | grep -Eq '\.swift"?$' || exit 0
 
+# No Swift toolchain here (a Linux container, say): nothing can be built,
+# so CI is the first build. Say so rather than block every commit.
+if ! command -v swift >/dev/null 2>&1; then
+    echo "swift isn't installed here, so the commit wasn't built or tested; CI builds and tests it on push." >&2
+    exit 0
+fi
+
 # A build started while the app or lldb runs hangs with no output.
 if pgrep -f '\.build/.*/AnimationMeetsVideo( |$)' >/dev/null || pgrep -x lldb >/dev/null; then
     echo "Not committing yet: the debug app or lldb is still running, and swift build hangs while it does. Quit it (or kill the one this session launched), then commit again." >&2
