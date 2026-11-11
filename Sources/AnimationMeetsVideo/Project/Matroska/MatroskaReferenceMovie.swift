@@ -116,18 +116,21 @@ enum MatroskaReferenceMovie {
         guard let (codec, atom) = videoCodec(track), let configuration = track.codecPrivate else {
             throw MatroskaError.unsupported("its video has no decoder configuration")
         }
+        guard let width = Int32(exactly: track.pixelWidth), let height = Int32(exactly: track.pixelHeight) else {
+            throw MatroskaError.unsupported("its video's size is out of range")
+        }
         var format: CMVideoFormatDescription?
         let extensions = [
             kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: [atom: configuration],
         ] as CFDictionary
         let status = CMVideoFormatDescriptionCreate(
-            allocator: nil, codecType: codec, width: Int32(track.pixelWidth), height: Int32(track.pixelHeight),
+            allocator: nil, codecType: codec, width: width, height: height,
             extensions: extensions, formatDescriptionOut: &format
         )
         guard status == noErr, let format else { throw MatroskaError.unsupported("its video's configuration can't be read") }
 
         let timing = VideoTiming(track: track, scale: scale, origin: track.frames.map(\.time).min() ?? 0)
-        let times = track.frames.map { timing.value(for: $0.time) }
+        let times = try track.frames.map { try timing.value(for: $0.time) }
         // Matroska stores only when frames are shown. Frames are stored in
         // decode order, so the n-th decode time is the n-th earliest show
         // time, moved back by the most any frame was reordered so no frame
@@ -193,14 +196,36 @@ enum MatroskaReferenceMovie {
             }
         }
 
-        func value(for time: Int64) -> Int64 {
+        /// `time` in `timescale`. Throws when it is out of
+        /// `MatroskaReferenceMovie.timeLimit`, which a file can claim.
+        func value(for time: Int64) throws -> Int64 {
             let nanoseconds = Double(time) * nanosecondsPerUnit
             guard let frameNanoseconds, let frameDuration else {
-                return Int64((nanoseconds * Double(timescale) / 1e9).rounded())
+                return try MatroskaReferenceMovie.checkedTime(nanoseconds * Double(timescale) / 1e9)
             }
-            let origin = Int64((originNanoseconds * Double(timescale) / 1e9).rounded())
-            return origin + Int64(((nanoseconds - originNanoseconds) / frameNanoseconds).rounded()) * frameDuration
+            let origin = try MatroskaReferenceMovie.checkedTime(originNanoseconds * Double(timescale) / 1e9)
+            let frames = try MatroskaReferenceMovie.checkedTime((nanoseconds - originNanoseconds) / frameNanoseconds)
+            let (offset, overflowed) = frames.multipliedReportingOverflow(by: frameDuration)
+            let (value, sumOverflowed) = origin.addingReportingOverflow(offset)
+            guard !overflowed, !sumOverflowed, value.magnitude <= MatroskaReferenceMovie.timeLimit.magnitude else {
+                throw MatroskaError.malformed("a frame's time is out of range")
+            }
+            return value
         }
+    }
+
+    /// The largest time, either way, the movie takes in a track's
+    /// timescale: millions of years at any of them, and far enough inside
+    /// Int64 that the differences and sums made of times can't overflow.
+    static let timeLimit: Int64 = 1 << 60
+
+    /// `value` rounded, when it is a time within `timeLimit`; a file whose
+    /// times make it anything else (too large, infinite or not a number)
+    /// is malformed.
+    static func checkedTime(_ value: Double) throws -> Int64 {
+        let rounded = value.rounded()
+        guard rounded.magnitude <= Double(timeLimit) else { throw MatroskaError.malformed("a time is out of range") }
+        return Int64(rounded)
     }
 
     // MARK: Audio
@@ -210,11 +235,18 @@ enum MatroskaReferenceMovie {
             throw MatroskaError.unsupported("its sound's format can't be read")
         }
         let rate = track.sampleRate
-        let timescale = CMTimeScale(rate.rounded())
+        // The rate is the track's timescale, so it must be a whole number of
+        // samples a second that one can hold (not infinite or enormous).
+        guard rate.isFinite, let timescale = CMTimeScale(exactly: rate.rounded()), timescale > 0 else {
+            throw MatroskaError.unsupported("its sound's sample rate is out of range")
+        }
+        guard track.channels > 0, let channels = UInt32(exactly: track.channels) else {
+            throw MatroskaError.unsupported("its sound has no channels")
+        }
         var description = AudioStreamBasicDescription()
         description.mSampleRate = rate
         description.mFormatID = formatID
-        description.mChannelsPerFrame = UInt32(track.channels)
+        description.mChannelsPerFrame = channels
         var cookie: Data?
         let packetFrames: (Data.SubSequence) -> Int64
 
@@ -233,9 +265,17 @@ enum MatroskaReferenceMovie {
             cookie = flac.cookie
             packetFrames = { frame in Int64(FLACConfiguration.blockSize(of: frame) ?? Int(flac.maximumBlockSize)) }
         default:
-            let bytesPerFrame = UInt32(max(track.bitDepth, 8) / 8) * UInt32(track.channels)
+            // A frame of every channel's sample, which each packet's
+            // length is divided by, so it can't be nothing or overflow.
+            guard let bits = UInt32(exactly: track.bitDepth) else {
+                throw MatroskaError.unsupported("its sound's sample size is out of range")
+            }
+            let (bytesPerFrame, overflowed) = UInt32(max(bits, 8) / 8).multipliedReportingOverflow(by: channels)
+            guard !overflowed, bytesPerFrame > 0 else {
+                throw MatroskaError.unsupported("its sound's sample size is out of range")
+            }
             description.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
-            description.mBitsPerChannel = UInt32(track.bitDepth)
+            description.mBitsPerChannel = bits
             description.mBytesPerFrame = bytesPerFrame
             description.mBytesPerPacket = bytesPerFrame
             description.mFramesPerPacket = 1
@@ -255,7 +295,7 @@ enum MatroskaReferenceMovie {
         // starts where the one before ended, counted in samples, so the
         // millisecond times of the blocks don't round the sound's timing.
         let firstTime = track.frames.first.map { Double($0.time) * Double(scale) / 1e9 } ?? 0
-        let start = Int64((firstTime * rate).rounded())
+        let start = try checkedTime(firstTime * rate)
         var time = start
         var samples: [TrackPlan.Sample] = []
         samples.reserveCapacity(track.frames.count)
@@ -269,12 +309,13 @@ enum MatroskaReferenceMovie {
                 decodeTime: time, presentationTime: time, duration: isPCM ? 1 : frames, isKey: true
             ))
             time += frames
+            guard time <= timeLimit else { throw MatroskaError.malformed("its sound runs out of range") }
         }
         // The first block's time is when its first sound after the priming
         // is heard; the priming is what the file says its codec delays by.
         // Core Media takes AAC without a say to be primed by 2112 samples,
         // more than many encoders' 1024, so it is always said.
-        let priming = Int64((Double(track.codecDelay) * rate / 1e9).rounded())
+        let priming = try checkedTime(Double(track.codecDelay) * rate / 1e9)
         return TrackPlan(
             kind: .audio, format: format, timescale: timescale, samples: samples,
             start: CMTime(value: start, timescale: timescale), priming: priming
@@ -413,7 +454,8 @@ struct FLACConfiguration {
 
     init?(codecPrivate data: Data) {
         let bytes = [UInt8](data)
-        guard bytes.count >= 4 + 4 + 34, bytes[0...3] == [0x66, 0x4C, 0x61, 0x43] else { return nil }
+        // The cookie's box gives its size in 32 bits.
+        guard bytes.count >= 4 + 4 + 34, bytes.count < Int(UInt32.max / 2), bytes[0...3] == [0x66, 0x4C, 0x61, 0x43] else { return nil }
         var position = 4
         var blocks = Data()
         var streamInfo: [UInt8]?
@@ -467,9 +509,13 @@ struct FLACConfiguration {
         case 2...5: return 576 << (code - 2)
         case 8...15: return 256 << (code - 8)
         case 6, 7:
-            // The frame or sample number, UTF-8 coded, comes first.
+            // The frame or sample number, UTF-8 coded, comes first: one
+            // byte below 0x80, otherwise as many bytes as the lead byte has
+            // leading one bits (2 to 7). A continuation byte (10xxxxxx) or
+            // 0xFF can't lead, so the header can't be read.
             let lead = bytes[4]
-            let numberLength = lead < 0x80 ? 1 : lead.leadingZeroBitCount == 0 ? 1 : (~lead).leadingZeroBitCount
+            let numberLength = lead < 0x80 ? 1 : (~lead).leadingZeroBitCount
+            guard lead < 0x80 || (2...7).contains(numberLength) else { return nil }
             let at = 4 + numberLength
             guard at + (code == 6 ? 1 : 2) <= bytes.count else { return nil }
             return code == 6 ? Int(bytes[at]) + 1 : (Int(bytes[at]) << 8 | Int(bytes[at + 1])) + 1

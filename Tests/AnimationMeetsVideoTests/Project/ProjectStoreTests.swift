@@ -1242,6 +1242,70 @@ private struct Sandbox {
     }
 }
 
+/// Save As asks every question (which media to copy) before the
+/// destination is touched, so cancelling leaves it as it was.
+@MainActor @Suite struct SaveDestinationTests {
+    @Test func cancellingLeavesAnExistingPackageAsItWas() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        let destination = sandbox.root.appending(path: "Replace-\(UUID().uuidString).amv", directoryHint: .isDirectory)
+        try await ProjectStore.save(project, to: destination)
+        let projectFile = destination.appending(path: ProjectStore.projectFileName)
+        let before = try Data(contentsOf: projectFile)
+
+        let answer: Set<UUID>? = try await ProjectStore.prepareSaveDestination(at: destination, replacingExisting: true) {
+            // Still there while the question is asked.
+            #expect(FileManager.default.fileExists(atPath: projectFile.path))
+            return nil
+        }
+
+        #expect(answer == nil)
+        #expect(try Data(contentsOf: projectFile) == before)
+    }
+
+    @Test func cancellingLeavesANewDestinationUnmade() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        let destination = sandbox.root.appending(path: "New.amv", directoryHint: .isDirectory)
+
+        let answer: Set<UUID>? = try await ProjectStore.prepareSaveDestination(at: destination, replacingExisting: false) {
+            // The media to copy can be worked out before the package exists.
+            let candidates = ProjectStore.mediaToCopy(in: project, into: destination)
+            #expect(candidates.map(\.clipID) == [assetID])
+            #expect(!FileManager.default.fileExists(atPath: destination.path))
+            return nil
+        }
+
+        #expect(answer == nil)
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    @Test func confirmingReplacesTheOldPackage() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        let destination = sandbox.root.appending(path: "Replace-\(UUID().uuidString).amv", directoryHint: .isDirectory)
+        try await ProjectStore.save(project, to: destination)
+        defer {
+            // Leave the Trash as it was found.
+            let trash = try? FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+            for item in trash.flatMap({ try? FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }) ?? []
+            where item.lastPathComponent == destination.lastPathComponent {
+                try? FileManager.default.removeItem(at: item)
+            }
+        }
+
+        let answer: Set<UUID>? = try await ProjectStore.prepareSaveDestination(at: destination, replacingExisting: true) { [] }
+
+        #expect(answer == [])
+        // The old package went to the Trash, and an empty one is ready.
+        #expect(!FileManager.default.fileExists(atPath: destination.appending(path: ProjectStore.projectFileName).path))
+        #expect(FileManager.default.fileExists(atPath: destination.appending(path: ProjectStore.mediaFolderName).path))
+    }
+}
+
 @Suite struct SceneDetectionFlagTests {
     @Test func dontDetectScenesSurvivesSaveAndLoadAndIsOmittedWhenOff() async throws {
         let sandbox = try Sandbox()

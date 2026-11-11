@@ -627,7 +627,12 @@ enum EffectPackageStore {
             guard builtIn || id.contains(".") else {
                 throw JSONShapeError(message: "The ID \"\(id)\" needs a dot, as in \"com.example.\(id)\"", path: "id")
             }
-            let version = json["version"] as! Int
+            // Numbers are read through StrictJSON, never cast: a cast fails
+            // on a number that isn't exactly the type, which the shape lets
+            // through as a number, and `as!` would crash the app at launch.
+            guard let version = StrictJSON.integer(json["version"]) else {
+                throw JSONShapeError(message: "Expected a whole number", path: "version")
+            }
             guard version >= 1 else { throw JSONShapeError(message: "The version starts at 1", path: "version") }
 
             let kernel = json["kernel"] as! [String: Any]
@@ -917,9 +922,15 @@ enum EffectPackageStore {
             let owner = EffectKind(package: package)
             let unit = (entry["unit"] as? String).flatMap { EffectPackageStore.units[$0] } ?? ""
             var range: ClosedRange<Double>?
-            if let bounds = entry["range"] as? [Double] {
+            if let bounds = StrictJSON.numbers(entry["range"]), bounds.count == 2 {
                 guard bounds[0] < bounds[1] else { throw JSONShapeError(message: "The range's start must be below its end", path: path + ".range") }
                 range = bounds[0]...bounds[1]
+            }
+            func defaults() throws -> [Double] {
+                guard let values = StrictJSON.numbers(entry["default"]) else {
+                    throw JSONShapeError(message: "Expected a list of numbers", path: path + ".default")
+                }
+                return values
             }
             func checkDefaults(_ values: [Double], whole: Bool = false) throws {
                 for value in values {
@@ -935,32 +946,39 @@ enum EffectPackageStore {
             switch entry["type"] as! String {
             case "number":
                 let whole = entry["whole"] as? Bool ?? false
-                let value = entry["default"] as! Double
+                guard let value = StrictJSON.number(entry["default"]) else {
+                    throw JSONShapeError(message: "Expected a number", path: path + ".default")
+                }
                 try checkDefaults([value], whole: whole)
                 return ControlDefinition(
                     kind, name, owner, defaults: [value], unit: unit,
-                    dragStep: entry["step"] as? Double ?? (whole ? 1 : Self.dragStep(unit)), range: range, isWhole: whole
+                    dragStep: StrictJSON.number(entry["step"]) ?? (whole ? 1 : Self.dragStep(unit)), range: range, isWhole: whole
                 )
             case "vector":
                 let components = entry["components"] as! [String]
                 guard (2...4).contains(components.count) else {
                     throw JSONShapeError(message: "A vector has 2, 3 or 4 components", path: path + ".components")
                 }
-                let values = entry["default"] as! [Double]
+                let values = try defaults()
                 guard values.count == components.count else {
                     throw JSONShapeError(message: "Expected a list of \(components.count) numbers, one per component", path: path + ".default")
                 }
                 try checkDefaults(values)
                 return ControlDefinition(
-                    kind, name, owner, defaults: values, unit: unit, dragStep: entry["step"] as? Double ?? Self.dragStep(unit),
+                    kind, name, owner, defaults: values, unit: unit, dragStep: StrictJSON.number(entry["step"]) ?? Self.dragStep(unit),
                     range: range, componentNames: components
                 )
             case "point":
                 return ControlDefinition(
-                    kind, name, owner, defaults: entry["default"] as? [Double] ?? [0, 0], unit: " px", componentNames: ["Δx", "Δy"]
+                    kind, name, owner, defaults: StrictJSON.numbers(entry["default"]) ?? [0, 0], unit: " px", componentNames: ["Δx", "Δy"]
                 )
             case "curve":
-                let points = (entry["default"] as? [[Double]])?.map { ToneCurve.Point(x: $0[0], y: $0[1]) }
+                let points = try (entry["default"] as? [Any])?.map { item in
+                    guard let pair = StrictJSON.numbers(item), pair.count == 2 else {
+                        throw JSONShapeError(message: "Expected a list of 2 numbers", path: path + ".default")
+                    }
+                    return ToneCurve.Point(x: pair[0], y: pair[1])
+                }
                 let curve = points.map(ToneCurve.init(points:)) ?? .identity
                 if let points, curve.points != points {
                     throw JSONShapeError(
@@ -971,7 +989,7 @@ enum EffectPackageStore {
                 let tint = (entry["tint"] as? String).flatMap(CurveTint.init(rawValue:)) ?? .white
                 return ControlDefinition(kind, name, owner, curve: curve, tint: tint)
             case "color":
-                var values = entry["default"] as! [Double]
+                var values = try defaults()
                 guard values.count == 3 || values.count == 4 else {
                     throw JSONShapeError(message: "Expected red, green and blue, and alpha if not 1", path: path + ".default")
                 }

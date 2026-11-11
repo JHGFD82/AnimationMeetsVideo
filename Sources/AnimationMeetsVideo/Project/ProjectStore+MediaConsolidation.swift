@@ -4,8 +4,8 @@ import Foundation
 extension ProjectStore {
     /// Media that saving into `packageURL` would copy in: anything with a file
     /// outside the package, or with `sourcePackageURL` (Save As) only what is
-    /// inside that package. `preparePackage` must have run first so the
-    /// package's volume can be compared.
+    /// inside that package. The package needn't exist yet: its volume is
+    /// the nearest existing folder's above it.
     static func mediaToCopy(in project: EditingProject, into packageURL: URL, from sourcePackageURL: URL? = nil) -> [MediaCopyCandidate] {
         project.clips.compactMap { clip in
             guard let url = clip.url, !isInside(url, package: packageURL),
@@ -84,8 +84,14 @@ extension ProjectStore {
         return destination
     }
 
+    /// The volume `url` is on, or would be on once made: that of the
+    /// nearest of it and the folders above it that exists.
     private static func volumeInfo(for url: URL) -> (identifier: (any NSObjectProtocol)?, supportsCloning: Bool) {
-        let values = try? url.resourceValues(forKeys: [.volumeIdentifierKey, .volumeSupportsFileCloningKey])
+        var existing = url.standardizedFileURL
+        while !FileManager.default.fileExists(atPath: existing.path), existing.pathComponents.count > 1 {
+            existing = existing.deletingLastPathComponent()
+        }
+        let values = try? existing.resourceValues(forKeys: [.volumeIdentifierKey, .volumeSupportsFileCloningKey])
         return (values?.volumeIdentifier, values?.volumeSupportsFileCloning ?? false)
     }
 

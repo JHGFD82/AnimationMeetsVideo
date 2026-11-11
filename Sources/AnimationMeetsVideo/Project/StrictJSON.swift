@@ -94,9 +94,7 @@ enum StrictJSON {
         case .number:
             guard isNumber(value) else { throw expected("a number", path) }
         case .integer:
-            guard let number = value as? NSNumber, !isBool(value), number.doubleValue == number.doubleValue.rounded() else {
-                throw expected("a whole number", path)
-            }
+            guard integer(value) != nil else { throw expected("a whole number", path) }
         case .bool:
             guard isBool(value) else { throw expected("true or false", path) }
         case .uuid:
@@ -171,6 +169,32 @@ enum StrictJSON {
 
     private static func expected(_ what: String, _ path: String) -> JSONShapeError {
         JSONShapeError(message: "Expected \(what)", path: path)
+    }
+
+    /// `value` as an Int, when it is a whole number that fits one, as an
+    /// `.integer` must; nil otherwise, true and false included. A number
+    /// such as 1e30 is whole but no Int, and the decoder, or a cast, would
+    /// fail on it after it had passed.
+    static func integer(_ value: Any?) -> Int? {
+        guard let number = value as? NSNumber, !isBool(number) else { return nil }
+        if let exact = number as? Int { return exact }
+        return Int(exactly: number.doubleValue)
+    }
+
+    /// `value` as a Double, when it is a number (not true or false), as a
+    /// `.number` must. Bridging it `as Double` fails, and `as!` traps, for
+    /// an integer too large to be exactly a Double; this rounds it as the
+    /// decoder does.
+    static func number(_ value: Any?) -> Double? {
+        guard let number = value as? NSNumber, !isBool(number) else { return nil }
+        return number.doubleValue
+    }
+
+    /// `value` as Doubles, when it is a list of numbers, as `.numbers` must.
+    static func numbers(_ value: Any?) -> [Double]? {
+        guard let list = value as? [Any] else { return nil }
+        let numbers = list.compactMap { number($0) }
+        return numbers.count == list.count ? numbers : nil
     }
 
     private static func isBool(_ value: Any) -> Bool {
