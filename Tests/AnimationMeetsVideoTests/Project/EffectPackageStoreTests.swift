@@ -190,6 +190,31 @@ import Testing
         #expect(try problem(changed { $0["id"] = "glow" }, builtIn: true) == nil)
     }
 
+    /// A manifest's numbers are read whatever their size, and one that
+    /// is whole but no Int is a problem with the package, not a crash at
+    /// launch.
+    @Test func numbersOfAnySizeAreReadOrReported() throws {
+        var huge = glow
+        huge["version"] = 1e30
+        #expect(try problem(huge) == "The package can't be used. Expected a whole number at version.")
+
+        // An integer a Double can't hold exactly, where a number goes.
+        let inexact = 9_007_199_254_740_993
+        var manifest = glow
+        var controls = manifest["controls"] as! [[String: Any]]
+        controls[0]["default"] = inexact
+        controls[0]["range"] = nil
+        controls[0]["step"] = inexact
+        controls[3]["default"] = [inexact, 0]
+        manifest["controls"] = controls
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let package = try EffectPackageStore.read(try write(manifest))
+        let read = Dictionary(uniqueKeysWithValues: package.controls.map { ($0.kind.savedName, $0) })
+        #expect(read["radius"]?.defaultValues == [Double(inexact)] && read["radius"]?.dragStep == Double(inexact))
+        // A point's default, which a cast used to drop for [0, 0].
+        #expect(read["middle"]?.defaultValues == [Double(inexact), 0])
+    }
+
     @Test func loadingListsThePackagesAndWhatCouldntBeRead() throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         try write(glow)
