@@ -77,6 +77,9 @@ struct KeyframeGraphView: View {
     /// Time's scroll edge: past the clip's ends the plot slides on and
     /// springs back. Values scroll without end, so they have none.
     @State private var timeScrollBand = RubberBandScroll()
+    /// The keyframes and what is worked out from them, kept while
+    /// scrolling and zooming redraw the graph.
+    @State private var cache = KeyframeGraphCache()
 
     private enum Target: Equatable {
         case keyframe(CMTime, component: Int)
@@ -135,6 +138,8 @@ struct KeyframeGraphView: View {
         var fit: ClosedRange<Double>
         /// The link's shared time in the parameter's, while linked.
         var sharedTimes: ClosedRange<Double>?
+        /// The values' fit for a set of components, kept between redraws.
+        var fitValues: (_ components: [Int]) -> ClosedRange<Double>
     }
 
     /// The link when the graph shares its time with others in it.
@@ -158,8 +163,8 @@ struct KeyframeGraphView: View {
     private var showsTimeRow: Bool { shared?.keys.first.map { $0 == key } ?? true }
 
     var body: some View {
-        if let timeline = hud.project.timeline(id: key.timelineID), let stored = hud.project.components(of: key),
-           let axis = hud.project.timeAxis(of: key) {
+        let source = cache.source(of: key, in: hud.project)
+        if let timeline = hud.project.timeline(id: key.timelineID), let stored = source.stored, let axis = source.axis {
             let c = context(draft ?? committed ?? stored, timeline: timeline, axis: axis)
             VStack(spacing: 0) {
                 toolbar(c)
@@ -223,18 +228,21 @@ struct KeyframeGraphView: View {
 
     private func context(_ value: AnimatedValue<ComponentValue>, timeline: Timeline, axis: ParameterTimeAxis) -> Context {
         let padded = KeyframeGraphLayout.padded(axis.span)
+        let offset = key.parameter.displayOffset(frameSize: timeline.frameSize)
+        let cache = cache
         return Context(
-            value: value, offset: key.parameter.displayOffset(frameSize: timeline.frameSize), timeline: timeline, axis: axis,
-            segments: KeyframeGraphLayout.segments(of: value), padded: padded,
-            fit: KeyframeGraphLayout.fitTimes(value, span: padded, frame: timeline.frameDuration.seconds),
-            sharedTimes: shared?.keyTimes(for: axis, in: hud.project)
+            value: value, offset: offset, timeline: timeline, axis: axis,
+            segments: cache.segments(of: value), padded: padded,
+            fit: cache.fitTimes(value, span: padded, frame: timeline.frameDuration.seconds),
+            sharedTimes: shared?.keyTimes(for: axis, in: hud.project),
+            fitValues: { cache.fitValues(value, offset: offset, components: $0) }
         )
     }
 
     private func layout(_ c: Context, size: CGSize) -> KeyframeGraphLayout {
         KeyframeGraphLayout(
             c.value, offset: c.offset, size: size, viewport: viewport, span: c.axis.span, frame: c.timeline.frameDuration.seconds,
-            times: c.sharedTimes ?? viewport.shownTimes(fit: c.fit, span: c.padded)
+            times: c.sharedTimes ?? viewport.shownTimes(fit: c.fit, span: c.padded), fitValues: c.fitValues
         )
     }
 
@@ -594,10 +602,14 @@ struct KeyframeGraphView: View {
     static func presetTargets(
         selected: SelectionSet<CMTime>, value: AnimatedValue<ComponentValue>, axis: ParameterTimeAxis, timeline: Timeline, playhead: CMTime
     ) -> [CMTime] {
-        let existing = value.keyframes.map(\.time).filter(selected.contains)
-        if !existing.isEmpty { return existing }
-        let now = axis.keyTime(atTimeline: timeline.snappedToFrame(playhead))
-        return value.keyframes.first { abs($0.time.seconds - now.seconds) < timeline.frameDuration.seconds / 2 }.map { [$0.time] } ?? []
+        if !selected.isEmpty {
+            let existing = value.keyframes.map(\.time).filter(selected.contains)
+            if !existing.isEmpty { return existing }
+        }
+        let now = axis.keyTime(atTimeline: timeline.snappedToFrame(playhead)).seconds
+        let half = timeline.frameDuration.seconds / 2
+        let near = KeyframeGraphLayout.indices(of: value.keyframes, from: now - half, through: now + half)
+        return near.lazy.map { value.keyframes[$0] }.first { abs($0.time.seconds - now) < half }.map { [$0.time] } ?? []
     }
 
     /// The values at the playhead, Separate Scales, and the presets with
@@ -752,16 +764,19 @@ struct KeyframeGraphView: View {
     /// has none to show, nor does either side of a held segment.
     private func handles(_ c: Context, layout: KeyframeGraphLayout, selected: CMTime?, shown: [Int]) -> [Handle] {
         guard let selected else { return [] }
+        // Segment `i` runs from keyframe `i` to the next, so the selected
+        // keyframe's are the one before it and its own.
+        let keyframes = c.value.keyframes
+        let index = keyframes.lowerBound(of: selected) { $0.time }
+        guard index < keyframes.count, keyframes[index].time == selected else { return [] }
         var result: [Handle] = []
-        for (index, segment) in c.segments.enumerated() where !segment.from.hold {
-            if segment.from.time == selected, segment.from.easeOut != nil,
-               let handle = handle(segment: index, outgoing: true, of: c.segments, shown: shown, c, layout: layout) {
-                result.append(handle)
-            }
-            if segment.to.time == selected, segment.to.easeIn != nil,
-               let handle = handle(segment: index, outgoing: false, of: c.segments, shown: shown, c, layout: layout) {
-                result.append(handle)
-            }
+        if index > 0, !c.segments[index - 1].from.hold, keyframes[index].easeIn != nil,
+           let handle = handle(segment: index - 1, outgoing: false, of: c.segments, shown: shown, c, layout: layout) {
+            result.append(handle)
+        }
+        if index < c.segments.count, !keyframes[index].hold, keyframes[index].easeOut != nil,
+           let handle = handle(segment: index, outgoing: true, of: c.segments, shown: shown, c, layout: layout) {
+            result.append(handle)
         }
         return result
     }
@@ -811,7 +826,9 @@ struct KeyframeGraphView: View {
             if d < Self.reach, d < handle?.distance ?? .infinity { handle = (candidate, d) }
         }
         var nearest: (target: Target, point: CGPoint, distance: CGFloat)?
-        for keyframe in c.value.keyframes {
+        // Only those within reach across can be within reach.
+        for index in layout.keyframeIndices(c.value.keyframes, fromX: point.x - Self.reach, toX: point.x + Self.reach) {
+            let keyframe = c.value.keyframes[index]
             let x = layout.x(keyframe.time.seconds)
             for component in shown {
                 let at = CGPoint(x: x, y: layout.y(keyframe.value.values[component] + c.offset[component], component: component))
@@ -937,7 +954,9 @@ struct KeyframeGraphView: View {
     /// The keyframes with a point inside `rect`, on any component shown.
     private func lassoHits(_ rect: CGRect, _ c: Context, layout: KeyframeGraphLayout) -> Set<CMTime> {
         let shown = visible(c.value.value.values.count)
-        return Set(c.value.keyframes.filter { keyframe in
+        let keyframes = c.value.keyframes
+        let across = layout.keyframeIndices(keyframes, fromX: rect.minX, toX: rect.maxX)
+        return Set(keyframes[across].filter { keyframe in
             let x = layout.x(keyframe.time.seconds)
             return shown.contains { component in
                 rect.contains(CGPoint(x: x, y: layout.y(keyframe.value.values[component] + c.offset[component], component: component)))
@@ -1188,44 +1207,65 @@ extension KeyframeGraphView {
 
         /// A line per shown component, read once per point across for them
         /// all: sampled between keyframes, every two points or so; straight
-        /// where the value holds, before the first and after the last.
+        /// where the value holds or blends linearly, before the first and
+        /// after the last. Only the segments in view are drawn, each read
+        /// along its own two keyframes as `AnimatedValue.value(atSeconds:)`
+        /// would read it.
         private func curves() -> [Path] {
             var lines = shown.map { _ in Path() }
-            func add(_ seconds: Double, _ values: [Double]) {
+            func add(_ seconds: Double, _ read: (Int) -> Double) {
                 let x = layout.x(seconds)
                 for (line, component) in shown.enumerated() {
-                    let point = CGPoint(x: x, y: layout.y(values[component] + offset[component], component: component))
+                    let point = CGPoint(x: x, y: layout.y(read(component) + offset[component], component: component))
                     if lines[line].isEmpty { lines[line].move(to: point) } else { lines[line].addLine(to: point) }
                 }
             }
             let start = layout.times.lowerBound, end = layout.times.upperBound
-            guard let first = value.keyframes.first, let last = value.keyframes.last else {
-                add(start, value.value.values)
-                add(end, value.value.values)
+            let keyframes = value.keyframes
+            guard let first = keyframes.first, let last = keyframes.last else {
+                add(start) { value.value.values[$0] }
+                add(end) { value.value.values[$0] }
                 return lines
             }
             // Fewer samples on a very wide plot.
             let step = Double(max(2, layout.plot.width / 400)) * layout.secondsPerPoint
-            if start < first.time.seconds { add(start, first.value.values) }
-            for (from, to) in KeyframeGraphLayout.segments(of: value) {
+            if start < first.time.seconds { add(start) { first.value.values[$0] } }
+            // Segment `i` runs from keyframe `i` to the next: those in view
+            // are from the one before the first keyframe in view to the
+            // last keyframe in view, and a segment across the whole view
+            // when none is.
+            let inView = KeyframeGraphLayout.indices(of: keyframes, from: start, through: end)
+            for index in max(inView.lowerBound - 1, 0)..<min(inView.upperBound, keyframes.count - 1) {
+                let from = keyframes[index], to = keyframes[index + 1]
                 let a = max(from.time.seconds, start), b = min(to.time.seconds, end)
                 guard a <= b else { continue }
                 if from.hold {
                     // Flat to the next keyframe, which then starts its own.
-                    add(a, from.value.values)
-                    add(b, from.value.values)
+                    add(a) { from.value.values[$0] }
+                    add(b) { from.value.values[$0] }
                     continue
                 }
-                var seconds = a
-                while step > 0, seconds < b {
-                    add(seconds, value.value(atSeconds: seconds).values)
-                    seconds += step
+                let t0 = from.time.seconds, length = to.time.seconds - t0
+                func blended(_ seconds: Double) -> (Int) -> Double {
+                    let progress = length > 0
+                        ? KeyframeEase.progress((seconds - t0) / length, leaving: from.easeOut, arriving: to.easeIn) : 1
+                    return { from.value.values[$0] + (to.value.values[$0] - from.value.values[$0]) * progress }
                 }
-                add(b, value.value(atSeconds: b).values)
+                // A linear blend is straight between its ends.
+                if from.easeOut != nil || to.easeIn != nil {
+                    var seconds = a
+                    while step > 0, seconds < b {
+                        add(seconds, blended(seconds))
+                        seconds += step
+                    }
+                } else {
+                    add(a, blended(a))
+                }
+                add(b, blended(b))
             }
             if end > last.time.seconds {
-                add(max(last.time.seconds, start), last.value.values)
-                add(end, last.value.values)
+                add(max(last.time.seconds, start)) { last.value.values[$0] }
+                add(end) { last.value.values[$0] }
             }
             return lines
         }
@@ -1254,9 +1294,13 @@ extension KeyframeGraphView {
                 context.stroke(stem, with: .color(.white.opacity(0.6)), lineWidth: 1)
                 context.fill(Path(ellipseIn: CGRect(x: handle.point.x - 3.5, y: handle.point.y - 3.5, width: 7, height: 7)), with: .color(.white))
             }
-            // A mark of each kind, made once and moved to each point.
+            // A mark of each kind, made once and moved to each point; only
+            // for the keyframes whose marks reach into the clip (its six
+            // points past the plot, and a mark's five).
             var marks: [Int: Path] = [:]
-            for keyframe in value.keyframes {
+            let margin: CGFloat = 12
+            let inView = layout.keyframeIndices(value.keyframes, fromX: layout.plot.minX - margin, toX: layout.plot.maxX + margin)
+            for keyframe in value.keyframes[inView] {
                 let kind = (keyframe.easeIn != nil ? 1 : 0) | (keyframe.easeOut != nil ? 2 : 0) | (keyframe.hold ? 4 : 0)
                 let mark = marks[kind] ?? KeyframeMarkShape(easedIn: keyframe.easeIn != nil, easedOut: keyframe.easeOut != nil, holds: keyframe.hold)
                     .path(in: CGRect(x: -5, y: -5, width: 10, height: 10))

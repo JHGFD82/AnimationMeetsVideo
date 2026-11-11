@@ -110,8 +110,11 @@ struct KeyframeGraphLayout: Equatable {
     /// Given `times`, it shows those instead: a graph linked with others
     /// shows their shared times, which may reach past its span, and a
     /// graph that already has its shown times saves working them out.
+    /// `fitValues`, given, fits the values to a set of components in place
+    /// of `Self.fitValues`, so a graph can keep the fits between redraws.
     init(_ value: AnimatedValue<ComponentValue>, offset: [Double], size: CGSize, viewport: KeyframeGraphViewport,
-         span: ClosedRange<Double>, frame: Double, times shownTimes: ClosedRange<Double>? = nil) {
+         span: ClosedRange<Double>, frame: Double, times shownTimes: ClosedRange<Double>? = nil,
+         fitValues: ((_ components: [Int]) -> ClosedRange<Double>)? = nil) {
         let insets = Self.insets
         plot = CGRect(
             x: insets.leading, y: insets.top,
@@ -126,10 +129,11 @@ struct KeyframeGraphLayout: Equatable {
         }
         let count = value.value.values.count
         let shown = (0..<count).filter { !viewport.hidden.contains($0) }
+        let fitValues = fitValues ?? { Self.fitValues(value, offset: offset, components: $0) }
         if viewport.separateScales {
-            values = (0..<count).map { viewport.shownValues(fit: Self.fitValues(value, offset: offset, components: [$0])) }
+            values = (0..<count).map { viewport.shownValues(fit: fitValues([$0])) }
         } else {
-            let fit = Self.fitValues(value, offset: offset, components: shown.isEmpty ? Array(0..<count) : shown)
+            let fit = fitValues(shown.isEmpty ? Array(0..<count) : shown)
             values = Array(repeating: viewport.shownValues(fit: fit), count: count)
         }
     }
@@ -193,6 +197,32 @@ struct KeyframeGraphLayout: Equatable {
 
     static func segments(of value: AnimatedValue<ComponentValue>) -> [Segment] {
         zip(value.keyframes, value.keyframes.dropFirst()).map { ($0, $1) }
+    }
+
+    /// The indices of the keyframes, sorted by time as `AnimatedValue`
+    /// keeps them, from `start` through `end` seconds: found by halving, so
+    /// what draws or hit-tests a stretch of the graph looks at the
+    /// keyframes there and not at every one.
+    static func indices(of keyframes: [Keyframe<ComponentValue>], from start: Double, through end: Double) -> Range<Int> {
+        guard start <= end else { return 0..<0 }
+        // The first index whose keyframe is past `limit` (`orAt`, at it).
+        func boundary(_ limit: Double, orAt: Bool) -> Int {
+            var low = 0, high = keyframes.count
+            while low < high {
+                let middle = (low + high) / 2
+                let seconds = keyframes[middle].time.seconds
+                let past = orAt ? seconds >= limit : seconds > limit
+                if past { high = middle } else { low = middle + 1 }
+            }
+            return low
+        }
+        let first = boundary(start, orAt: true)
+        return first..<max(first, boundary(end, orAt: false))
+    }
+
+    /// The indices of the keyframes drawn between `minX` and `maxX` across.
+    func keyframeIndices(_ keyframes: [Keyframe<ComponentValue>], fromX minX: CGFloat, toX maxX: CGFloat) -> Range<Int> {
+        Self.indices(of: keyframes, from: seconds(atX: minX), through: seconds(atX: maxX))
     }
 
     /// Round values to label `range` at, about four steps apart, each step
