@@ -1697,16 +1697,25 @@ struct UISnapshots {
         let clip = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip)
         let position = try #require(clip.effect(id: transformID)?.control(.position))
         let target = KeyframingTarget.control(effectID: transformID, controlID: position.id)
-        project.setKeyframing(.wiggler, driving: target, onClip: shape.clipID, in: timelineID)
         let hud = KeyframeGraphHUDs()
         hud.update(project: project)
         hud.playhead = CMTime(value: 1, timescale: 1)
+        func designer() -> some View {
+            KeyframeDesigner(
+                hud: hud, key: KeyframeDesignerKey(timelineID: timelineID, clipID: shape.clipID),
+                focus: KeyframeDesignerFocus(target: target), input: GraphInput()
+            )
+        }
+        try SnapshotSupport.render(designer(), "keyframe-designer-empty", size: CGSize(width: 900, height: 520))
+        project.setKeyframing(.wiggler, driving: target, onClip: shape.clipID, in: timelineID)
+        hud.update(project: project)
+        try SnapshotSupport.render(designer(), "keyframe-designer-minimum", size: CGSize(width: 700, height: 400))
         try SnapshotSupport.render(
             KeyframeDesigner(
                 hud: hud, key: KeyframeDesignerKey(timelineID: timelineID, clipID: shape.clipID),
                 focus: KeyframeDesignerFocus(target: target), input: GraphInput()
             ),
-            "keyframe-designer", size: CGSize(width: 900, height: 560)
+            "keyframe-designer", size: CGSize(width: 900, height: 520)
         )
         let graph = try #require(KeyframeDesigner.parameterKey(of: target, in: clip, timelineID: timelineID))
         let time = try #require(project.components(of: graph)?.keyframes.dropFirst().first?.time)
@@ -1750,6 +1759,13 @@ struct UISnapshots {
                 focus: KeyframeDesignerFocus(target: target), input: GraphInput()
             ),
             "keyframe-designer-audio-keys", size: CGSize(width: 900, height: 620)
+        )
+        try SnapshotSupport.render(
+            KeyframeDesigner(
+                hud: hud, key: KeyframeDesignerKey(timelineID: timelineID, clipID: shape.clipID),
+                focus: KeyframeDesignerFocus(target: target), input: GraphInput()
+            ),
+            "keyframe-designer-audio-minimum", size: CGSize(width: 700, height: 400)
         )
     }
 

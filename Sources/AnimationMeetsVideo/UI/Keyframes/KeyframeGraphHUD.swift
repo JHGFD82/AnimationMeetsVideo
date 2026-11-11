@@ -226,7 +226,7 @@ final class KeyframeGraphHUDs {
         guard spaceMonitor == nil else { return }
         spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 49, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
-                  let window = event.window, !(window.firstResponder is NSText)
+                  let window = event.window, !(window.firstResponder is NSText), !event.isForFocusedControl
             else { return event }
             let handled = MainActor.assumeIsolated { () -> Bool in
                 guard let self, self.panels.values.contains(where: { $0 === window }) else { return false }

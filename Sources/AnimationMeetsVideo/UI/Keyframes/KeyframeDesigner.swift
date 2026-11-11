@@ -47,6 +47,7 @@ struct KeyframeDesigner: View {
             if let target = focus.target.flatMap({ targets.contains($0) ? $0 : nil }) ?? targets.first {
                 let driver = hud.project.keyframingEffect(driving: target, in: clip)
                 VStack(spacing: 0) {
+                    KeyframeDesignerTransport(hud: hud, frameRate: timeline.frameRate)
                     toolbar(target, targets: targets, driver: driver, clip: clip)
                     Divider()
                     HStack(spacing: 0) {
@@ -59,27 +60,32 @@ struct KeyframeDesigner: View {
                         .frame(width: Self.sidebarWidth)
                         .background(Design.Surface.raised.color)
                         Groove(axis: .vertical)
-                        VStack(spacing: 0) {
-                            if let driver, driver.kind == .audioKeys {
-                                LiveSpectrum(hud: hud, effect: driver, clip: clip, timeline: timeline, at: sourceTime(clip, timeline)) { kind, a, b in
-                                    editControl(driver.id, kind) { control in
-                                        let now = sourceTime(clip, timeline)
-                                        control.setComponent(0, to: a, at: now)
-                                        control.setComponent(1, to: b, at: now)
+                        GeometryReader { geometry in
+                            VStack(spacing: 0) {
+                                if let driver, driver.kind == .audioKeys {
+                                    LiveSpectrum(hud: hud, effect: driver, clip: clip, timeline: timeline, at: sourceTime(clip, timeline)) { kind, a, b in
+                                        editControl(driver.id, kind) { control in
+                                            let now = sourceTime(clip, timeline)
+                                            control.setComponent(0, to: a, at: now)
+                                            control.setComponent(1, to: b, at: now)
+                                        }
                                     }
+                                    // Leave 200 points for the graph and room for the spectrum's padding.
+                                    .frame(height: min(170, max(80, geometry.size.height - 220)))
+                                    .padding(Design.Space.step)
+                                    Divider()
                                 }
-                                .frame(height: 170)
-                                .padding(Design.Space.step)
-                                Divider()
-                            }
-                            if let graph = Self.parameterKey(of: target, in: clip, timelineID: key.timelineID) {
-                                KeyframeGraphView(hud: hud, key: graph, input: input)
-                                    .id(KeyframingTargetID(target))
+                                if let graph = Self.parameterKey(of: target, in: clip, timelineID: key.timelineID) {
+                                    KeyframeGraphView(hud: hud, key: graph, input: input, isInDesigner: true)
+                                        .id(KeyframingTargetID(target))
+                                        .frame(minHeight: 200)
+                                }
                             }
                         }
                         .toolEdge(.keyframeDesigner)
                     }
                 }
+                .frame(minWidth: 700, minHeight: 400)
                 .background(Color.black.opacity(0.2))
             } else {
                 message("This clip has no controls to keyframe. Add an effect to it first.")
@@ -108,7 +114,6 @@ struct KeyframeDesigner: View {
     /// driving it, if one is), skimming, and Bake.
     private func toolbar(_ target: KeyframingTarget, targets: [KeyframingTarget], driver: Effect?, clip: TimelineClip) -> some View {
         HStack(spacing: Design.Space.step) {
-            ToolGlyph(tone: .keyframeDesigner)
             Text("Control").foregroundStyle(Design.textSecondary)
             Picker("Control", selection: Binding(
                 get: { KeyframingTargetID(target).rawValue },
@@ -123,7 +128,6 @@ struct KeyframeDesigner: View {
             .labelsHidden()
             .frame(maxWidth: 280)
             .help("The control whose keyframes are made: any of the clip's effects', or its volume")
-            GraphSkimToggle(hud: hud)
             Spacer(minLength: Design.Space.step)
             Button("Bake Keyframes") {
                 guard let driver else { return }
@@ -484,11 +488,11 @@ struct KeyframingSettingField: View {
                     }
                     NumericField(
                         value: values[index], unit: control.kind.unit, fractionDigits: control.kind.dragStep < 1 ? 2 : 1,
-                        dragStep: control.kind.dragStep, dragRange: control.kind.range
+                        dragStep: control.kind.dragStep, dragRange: control.kind.range,
+                        accessibilityName: values.count > 1 && names.indices.contains(index) ? "\(control.kind.name) \(names[index])" : control.kind.name
                     ) { newValue in
                         onChange { $0.setComponent(index, to: newValue, at: time) }
                     }
-                    .accessibilityLabel(values.count > 1 && names.indices.contains(index) ? "\(control.kind.name) \(names[index])" : control.kind.name)
                 }
                 if control.isAnimated {
                     Image(systemName: "stopwatch.fill")

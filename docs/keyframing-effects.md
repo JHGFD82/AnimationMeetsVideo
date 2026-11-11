@@ -175,10 +175,14 @@ editors, one per clip (`KeyframeDesigner`,
 from: the one asked for, else the effect's first a method drives, else
 its first.
 
-- **Along the top**: Control, a picker of every control of the clip a
+- **Along the top**: Play/Pause, the playhead's timecode and skimming,
+  as in the other designers. Space plays unless a focused field or
+  control uses it. A note says **Changes apply immediately**: closing
+  keeps the edits, and Undo reverts them; there is no draft to accept or
+  cancel. Below, Control is a picker of every control of the clip a
   method can drive (each effect's numeric controls, its sound effects'
   and its volume, those driven named with their method: "Transform ·
-  Position (Wiggler)"), the graphs' skimming, and **Bake Keyframes**.
+  Position (Wiggler)"), beside **Bake Keyframes**.
 - **Down the left**: the **Method**, a chip for None and each kind, the
   one driving the control lit, with a line on what it does; under it, for
   a method, its note when it can't write, Regenerate and Keep Edits when

@@ -12,6 +12,16 @@ final class EventHarness {
 
     let window: NSWindow
 
+    /// Drives a tool's real panel, including its hosting environment and
+    /// window event monitors, instead of wrapping its view in a new host.
+    init(window: NSWindow) {
+        self.window = window
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.accessory)
+        window.makeKeyAndOrderFront(nil)
+        window.contentView?.layoutSubtreeIfNeeded()
+    }
+
     init(_ view: some View, size: CGSize) {
         let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height, alignment: .topLeading))
         host.frame = CGRect(origin: .zero, size: size)
@@ -31,7 +41,8 @@ final class EventHarness {
     /// Sends a mouse event at `point`, in the view's top-left coordinates;
     /// `clickCount` 2 for a double-click's second press and release.
     func mouse(_ type: NSEvent.EventType, at point: CGPoint, flags: NSEvent.ModifierFlags = [], clickCount: Int = 1) {
-        let location = CGPoint(x: point.x, y: window.frame.height - point.y)
+        guard let content = window.contentView else { return }
+        let location = content.convert(CGPoint(x: point.x, y: content.isFlipped ? point.y : content.bounds.height - point.y), to: nil)
         guard let event = NSEvent.mouseEvent(
             with: type, location: location, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: clickCount, pressure: type == .leftMouseUp ? 0 : 1
