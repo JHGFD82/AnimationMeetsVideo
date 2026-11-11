@@ -239,4 +239,25 @@ private func decodedFrames(_ url: URL) async throws -> [(time: Double, hash: Str
         #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x79, 0x08, 0x05, 0x01, 0x2B])[...]) == 300)
         #expect(FLACConfiguration.blockSize(of: Data([0x00, 0x00, 0x00, 0x00, 0x00])[...]) == nil)
     }
+
+    /// Codes 6 and 7 put the size after the frame number, whose length
+    /// is its lead byte's count of leading one bits once it is 128 or more.
+    @Test func readsTheSizeAfterMultiByteFrameNumbers() {
+        // Frame 200, two bytes (0xC3 0x88).
+        #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x69, 0x08, 0xC3, 0x88, 0x2B])[...]) == 44)
+        #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x79, 0x08, 0xC3, 0x88, 0x01, 0x2B])[...]) == 300)
+        // Frame 5000, three bytes (0xE1 0x8E 0x88).
+        #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x69, 0x08, 0xE1, 0x8E, 0x88, 0x2B])[...]) == 44)
+        #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x79, 0x08, 0xE1, 0x8E, 0x88, 0x01, 0x2B])[...]) == 300)
+        // Frame 127 is still one byte.
+        #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x69, 0x08, 0x7F, 0x2B])[...]) == 44)
+    }
+
+    @Test func refusesFrameNumbersThatCantLead() {
+        // A continuation byte, and 0xFF, can't start a UTF-8 coded number.
+        #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x69, 0x08, 0x88, 0x2B, 0x00])[...]) == nil)
+        #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x69, 0x08, 0xFF, 0x2B, 0x00])[...]) == nil)
+        // The size runs past what's there.
+        #expect(FLACConfiguration.blockSize(of: Data([0xFF, 0xF8, 0x79, 0x08, 0xE1, 0x8E, 0x88, 0x01])[...]) == nil)
+    }
 }

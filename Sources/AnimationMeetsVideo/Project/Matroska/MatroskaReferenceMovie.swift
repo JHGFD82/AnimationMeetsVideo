@@ -467,9 +467,13 @@ struct FLACConfiguration {
         case 2...5: return 576 << (code - 2)
         case 8...15: return 256 << (code - 8)
         case 6, 7:
-            // The frame or sample number, UTF-8 coded, comes first.
+            // The frame or sample number, UTF-8 coded, comes first: one
+            // byte below 0x80, otherwise as many bytes as the lead byte has
+            // leading one bits (2 to 7). A continuation byte (10xxxxxx) or
+            // 0xFF can't lead, so the header can't be read.
             let lead = bytes[4]
-            let numberLength = lead < 0x80 ? 1 : lead.leadingZeroBitCount == 0 ? 1 : (~lead).leadingZeroBitCount
+            let numberLength = lead < 0x80 ? 1 : (~lead).leadingZeroBitCount
+            guard lead < 0x80 || (2...7).contains(numberLength) else { return nil }
             let at = 4 + numberLength
             guard at + (code == 6 ? 1 : 2) <= bytes.count else { return nil }
             return code == 6 ? Int(bytes[at]) + 1 : (Int(bytes[at]) << 8 | Int(bytes[at + 1])) + 1
