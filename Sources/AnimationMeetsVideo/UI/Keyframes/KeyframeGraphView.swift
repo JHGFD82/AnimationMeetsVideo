@@ -77,6 +77,9 @@ struct KeyframeGraphView: View {
     /// Time's scroll edge: past the clip's ends the plot slides on and
     /// springs back. Values scroll without end, so they have none.
     @State private var timeScrollBand = RubberBandScroll()
+    /// The keyframes and what is worked out from them, kept while
+    /// scrolling and zooming redraw the graph.
+    @State private var cache = KeyframeGraphCache()
 
     private enum Target: Equatable {
         case keyframe(CMTime, component: Int)
@@ -135,6 +138,8 @@ struct KeyframeGraphView: View {
         var fit: ClosedRange<Double>
         /// The link's shared time in the parameter's, while linked.
         var sharedTimes: ClosedRange<Double>?
+        /// The values' fit for a set of components, kept between redraws.
+        var fitValues: (_ components: [Int]) -> ClosedRange<Double>
     }
 
     /// The link when the graph shares its time with others in it.
@@ -158,8 +163,8 @@ struct KeyframeGraphView: View {
     private var showsTimeRow: Bool { shared?.keys.first.map { $0 == key } ?? true }
 
     var body: some View {
-        if let timeline = hud.project.timeline(id: key.timelineID), let stored = hud.project.components(of: key),
-           let axis = hud.project.timeAxis(of: key) {
+        let source = cache.source(of: key, in: hud.project)
+        if let timeline = hud.project.timeline(id: key.timelineID), let stored = source.stored, let axis = source.axis {
             let c = context(draft ?? committed ?? stored, timeline: timeline, axis: axis)
             VStack(spacing: 0) {
                 toolbar(c)
@@ -223,18 +228,21 @@ struct KeyframeGraphView: View {
 
     private func context(_ value: AnimatedValue<ComponentValue>, timeline: Timeline, axis: ParameterTimeAxis) -> Context {
         let padded = KeyframeGraphLayout.padded(axis.span)
+        let offset = key.parameter.displayOffset(frameSize: timeline.frameSize)
+        let cache = cache
         return Context(
-            value: value, offset: key.parameter.displayOffset(frameSize: timeline.frameSize), timeline: timeline, axis: axis,
-            segments: KeyframeGraphLayout.segments(of: value), padded: padded,
-            fit: KeyframeGraphLayout.fitTimes(value, span: padded, frame: timeline.frameDuration.seconds),
-            sharedTimes: shared?.keyTimes(for: axis, in: hud.project)
+            value: value, offset: offset, timeline: timeline, axis: axis,
+            segments: cache.segments(of: value), padded: padded,
+            fit: cache.fitTimes(value, span: padded, frame: timeline.frameDuration.seconds),
+            sharedTimes: shared?.keyTimes(for: axis, in: hud.project),
+            fitValues: { cache.fitValues(value, offset: offset, components: $0) }
         )
     }
 
     private func layout(_ c: Context, size: CGSize) -> KeyframeGraphLayout {
         KeyframeGraphLayout(
             c.value, offset: c.offset, size: size, viewport: viewport, span: c.axis.span, frame: c.timeline.frameDuration.seconds,
-            times: c.sharedTimes ?? viewport.shownTimes(fit: c.fit, span: c.padded)
+            times: c.sharedTimes ?? viewport.shownTimes(fit: c.fit, span: c.padded), fitValues: c.fitValues
         )
     }
 

@@ -27,6 +27,13 @@ final class KeyframeGraphLink: Identifiable {
     /// Counts the shared Fit button's presses, which each graph answers by
     /// fitting its values.
     var fits = 0
+    /// `bounds(in:)` for the project edit and graphs it was worked out for,
+    /// which reads every graph's keyframes: each graph's redraw, and each
+    /// step of a scroll or zoom, asks for it. Written as bodies read it, so
+    /// not watched.
+    @ObservationIgnored private var boundsCache: (editCount: UInt64, keys: [ParameterKey], bounds: Bounds?)?
+
+    typealias Bounds = (fit: ClosedRange<Double>, span: ClosedRange<Double>, frame: Double)
 
     init(_ keys: [ParameterKey]) {
         self.keys = keys
@@ -55,7 +62,16 @@ final class KeyframeGraphLink: Identifiable {
 
     /// Where the graphs' time may go, and where their keyframes are, in
     /// timeline seconds: the spans of all of them, and their fits.
-    func bounds(in project: EditingProject) -> (fit: ClosedRange<Double>, span: ClosedRange<Double>, frame: Double)? {
+    func bounds(in project: EditingProject) -> Bounds? {
+        // A project never stamped says nothing by its count.
+        let count = project.editCount
+        if count != 0, let boundsCache, boundsCache.editCount == count, boundsCache.keys == keys { return boundsCache.bounds }
+        let bounds = workOutBounds(in: project)
+        boundsCache = (count, keys, bounds)
+        return bounds
+    }
+
+    private func workOutBounds(in project: EditingProject) -> Bounds? {
         var fit: ClosedRange<Double>?, span: ClosedRange<Double>?, frame = 1.0 / 24
         func onTimeline(_ range: ClosedRange<Double>, _ axis: ParameterTimeAxis) -> ClosedRange<Double> {
             let a = axis.timelineTime(atKey: CMTime(seconds: range.lowerBound, preferredTimescale: ParameterTimeAxis.timescale)).seconds

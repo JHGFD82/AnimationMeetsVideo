@@ -110,8 +110,11 @@ struct KeyframeGraphLayout: Equatable {
     /// Given `times`, it shows those instead: a graph linked with others
     /// shows their shared times, which may reach past its span, and a
     /// graph that already has its shown times saves working them out.
+    /// `fitValues`, given, fits the values to a set of components in place
+    /// of `Self.fitValues`, so a graph can keep the fits between redraws.
     init(_ value: AnimatedValue<ComponentValue>, offset: [Double], size: CGSize, viewport: KeyframeGraphViewport,
-         span: ClosedRange<Double>, frame: Double, times shownTimes: ClosedRange<Double>? = nil) {
+         span: ClosedRange<Double>, frame: Double, times shownTimes: ClosedRange<Double>? = nil,
+         fitValues: ((_ components: [Int]) -> ClosedRange<Double>)? = nil) {
         let insets = Self.insets
         plot = CGRect(
             x: insets.leading, y: insets.top,
@@ -126,10 +129,11 @@ struct KeyframeGraphLayout: Equatable {
         }
         let count = value.value.values.count
         let shown = (0..<count).filter { !viewport.hidden.contains($0) }
+        let fitValues = fitValues ?? { Self.fitValues(value, offset: offset, components: $0) }
         if viewport.separateScales {
-            values = (0..<count).map { viewport.shownValues(fit: Self.fitValues(value, offset: offset, components: [$0])) }
+            values = (0..<count).map { viewport.shownValues(fit: fitValues([$0])) }
         } else {
-            let fit = Self.fitValues(value, offset: offset, components: shown.isEmpty ? Array(0..<count) : shown)
+            let fit = fitValues(shown.isEmpty ? Array(0..<count) : shown)
             values = Array(repeating: viewport.shownValues(fit: fit), count: count)
         }
     }
