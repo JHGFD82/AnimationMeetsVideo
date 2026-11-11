@@ -195,6 +195,32 @@ struct KeyframeGraphLayout: Equatable {
         zip(value.keyframes, value.keyframes.dropFirst()).map { ($0, $1) }
     }
 
+    /// The indices of the keyframes, sorted by time as `AnimatedValue`
+    /// keeps them, from `start` through `end` seconds: found by halving, so
+    /// what draws or hit-tests a stretch of the graph looks at the
+    /// keyframes there and not at every one.
+    static func indices(of keyframes: [Keyframe<ComponentValue>], from start: Double, through end: Double) -> Range<Int> {
+        guard start <= end else { return 0..<0 }
+        // The first index whose keyframe is past `limit` (`orAt`, at it).
+        func boundary(_ limit: Double, orAt: Bool) -> Int {
+            var low = 0, high = keyframes.count
+            while low < high {
+                let middle = (low + high) / 2
+                let seconds = keyframes[middle].time.seconds
+                let past = orAt ? seconds >= limit : seconds > limit
+                if past { high = middle } else { low = middle + 1 }
+            }
+            return low
+        }
+        let first = boundary(start, orAt: true)
+        return first..<max(first, boundary(end, orAt: false))
+    }
+
+    /// The indices of the keyframes drawn between `minX` and `maxX` across.
+    func keyframeIndices(_ keyframes: [Keyframe<ComponentValue>], fromX minX: CGFloat, toX maxX: CGFloat) -> Range<Int> {
+        Self.indices(of: keyframes, from: seconds(atX: minX), through: seconds(atX: maxX))
+    }
+
     /// Round values to label `range` at, about four steps apart, each step
     /// 1, 2, 2.5 or 5 times a power of ten: never fewer than 2 nor more
     /// than 6 (a range of no length has just its one value).
