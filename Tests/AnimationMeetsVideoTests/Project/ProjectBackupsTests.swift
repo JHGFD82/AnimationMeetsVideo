@@ -4,21 +4,20 @@ import Testing
 @testable import AnimationMeetsVideo
 
 /// A saved project whose media was copied into its package, with some
-/// reference data beside it, and a folder for backups.
+/// reference data beside it. `folder` is where in `root` the package goes.
 private struct BackupSandbox {
     let root: URL
     let packageURL: URL
-    let location: URL
     let project: EditingProject
     let assetID: UUID
 
-    init() async throws {
+    init(folder: String? = nil) async throws {
         root = FileManager.default.temporaryDirectory.appending(path: "amv-backup-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let footage = root.appending(path: "footage.mov")
         try Data("not really video".utf8).write(to: footage)
-        packageURL = root.appending(path: "Test.amv", directoryHint: .isDirectory)
-        location = root.appending(path: "Backups", directoryHint: .isDirectory)
+        let parent = folder.map { root.appending(path: $0, directoryHint: .isDirectory) } ?? root
+        packageURL = parent.appending(path: "Test.amv", directoryHint: .isDirectory)
 
         var project = EditingProject.empty
         project.name = "Test"
@@ -45,10 +44,13 @@ private struct BackupSandbox {
     @Test func aBackupHoldsWhatTheProjectNeedsToOpenOnItsOwn() async throws {
         let sandbox = try await BackupSandbox()
         defer { sandbox.cleanUp() }
-        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL, to: sandbox.location)
+        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL)
 
         #expect(backup.pathExtension == ProjectBackups.fileExtension)
+        // In a folder named for the package, in the backups folder beside it.
         #expect(backup.deletingLastPathComponent().lastPathComponent == "Test")
+        #expect(backup.deletingLastPathComponent().deletingLastPathComponent().standardizedFileURL
+            == sandbox.root.appending(path: ProjectBackups.folderName, directoryHint: .isDirectory).standardizedFileURL)
         let fileManager = FileManager.default
         #expect(fileManager.fileExists(atPath: backup.appending(path: ProjectStore.projectFileName).path))
         #expect(fileManager.fileExists(atPath: backup.appending(path: "Media/footage.mov").path))
@@ -65,7 +67,7 @@ private struct BackupSandbox {
             let media = package.appending(path: ProjectStore.mediaFolderName, directoryHint: .isDirectory)
             return try #require(media.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup)
         }
-        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL, to: sandbox.location)
+        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL)
         #expect(try isExcluded(backup))
         #expect(try !isExcluded(sandbox.packageURL))
         // The rest of the backup is still backed up.
@@ -79,15 +81,15 @@ private struct BackupSandbox {
     @Test func browsingStartsInTheProjectsFolderOnceItHasOne() async throws {
         let sandbox = try await BackupSandbox()
         defer { sandbox.cleanUp() }
-        let before = ProjectBackups.folderToBrowse(forProjectNamed: "Test", in: sandbox.location)
-        #expect(before == sandbox.location)
+        let before = ProjectBackups.folderToBrowse(forPackage: sandbox.packageURL)
+        #expect(before.standardizedFileURL == sandbox.root.standardizedFileURL)
 
-        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL, to: sandbox.location)
-        let after = ProjectBackups.folderToBrowse(forProjectNamed: "Test", in: sandbox.location)
+        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL)
+        let after = ProjectBackups.folderToBrowse(forPackage: sandbox.packageURL)
         #expect(after.standardizedFileURL == backup.deletingLastPathComponent().standardizedFileURL)
         // Another project's backups aren't where this one's are looked for.
-        let other = ProjectBackups.folderToBrowse(forProjectNamed: "Other", in: sandbox.location)
-        #expect(other == sandbox.location)
+        let other = ProjectBackups.folderToBrowse(forPackage: sandbox.root.appending(path: "Other.amv", directoryHint: .isDirectory))
+        #expect(other.standardizedFileURL == ProjectBackups.location(forPackage: sandbox.packageURL).standardizedFileURL)
     }
 
     @Test func onlyTheNewestAreKept() async throws {
@@ -96,23 +98,43 @@ private struct BackupSandbox {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         for minute in 0..<(ProjectBackups.kept + 2) {
             try ProjectBackups.write(
-                sandbox.project, packageURL: sandbox.packageURL, to: sandbox.location,
+                sandbox.project, packageURL: sandbox.packageURL,
                 now: start.addingTimeInterval(Double(minute) * 60)
             )
         }
-        let folder = ProjectBackups.folder(forProjectNamed: "Test", in: sandbox.location)
-        let kept = ProjectBackups.backups(in: folder)
+        let kept = ProjectBackups.backups(in: ProjectBackups.folder(forPackage: sandbox.packageURL))
         #expect(kept.count == ProjectBackups.kept)
         // The two oldest went.
         let newestFirstMinute = try ProjectBackups.readInfo(of: try #require(kept.first)).createdAt
         #expect(newestFirstMinute == start.addingTimeInterval(120))
     }
 
+    /// Projects of the same name in different folders keep their backups
+    /// apart, so the busier one can't push out the other's.
+    @Test func sameNamedProjectsElsewhereKeepTheirOwnBackups() async throws {
+        let first = try await BackupSandbox(folder: "A")
+        defer { first.cleanUp() }
+        let second = try await BackupSandbox(folder: "B")
+        defer { second.cleanUp() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        try ProjectBackups.write(first.project, packageURL: first.packageURL, now: start)
+        for minute in 1...(ProjectBackups.kept + 2) {
+            try ProjectBackups.write(
+                second.project, packageURL: second.packageURL, now: start.addingTimeInterval(Double(minute) * 60)
+            )
+        }
+
+        let firsts = ProjectBackups.backups(in: ProjectBackups.folder(forPackage: first.packageURL))
+        #expect(firsts.count == 1)
+        #expect(try firsts.first.map(ProjectBackups.readInfo(of:))?.originalProject == first.packageURL.path)
+        #expect(ProjectBackups.backups(in: ProjectBackups.folder(forPackage: second.packageURL)).count == ProjectBackups.kept)
+    }
+
     @Test func restoringMakesANewProjectAndLeavesTheOriginal() async throws {
         let sandbox = try await BackupSandbox()
         defer { sandbox.cleanUp() }
         let originalJSON = try Data(contentsOf: sandbox.packageURL.appending(path: ProjectStore.projectFileName))
-        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL, to: sandbox.location)
+        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL)
         let info = try ProjectBackups.readInfo(of: backup)
         #expect(ProjectBackups.defaultRestoreFolder(for: info)?.standardizedFileURL.path == sandbox.root.standardizedFileURL.path)
 

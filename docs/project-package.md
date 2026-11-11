@@ -175,10 +175,16 @@ before the save's) so they aren't offered again; the files stay.
 
 **Backups outside the project** (Settings > Projects > Backups, on
 unless turned off; `ProjectBackups`). While a project changes, every 15
-minutes (or 5, 30, 60) a backup of it goes to a folder of the person's
-choosing, by default `~/Movies/Animation Meets Video Backups/`, in a
-folder per project; the newest 10 are kept. A backup is an
-`.amvbackup` package:
+minutes (or 5, 30, 60) a backup of it goes into an `Animation Meets Video
+Backups` folder beside the project's package, as After Effects keeps its
+auto-saves, in a folder named for the package (`Trailer.amv`'s go in
+`Animation Meets Video Backups/Trailer/`); the newest 10 there are kept.
+The folder is what identifies a project's backups: two projects can only
+share it by having had the same file name in the same folder, as when one
+is renamed to a name another used before, and then they prune each
+other's. Backups written to the folder of the person's choosing that
+earlier versions used stay where they are and still open from File >
+Open. A backup is an `.amvbackup` package:
 
 ```
 Name 2026-10-24 14.30.05.amvbackup/
@@ -192,9 +198,9 @@ so it opens on its own even if the project's package is gone. Media the
 project refers to in place isn't copied, and the cache and the package's
 own autosaves are left out. Each file is copied from the previous backup
 when it is the same file (size and modification date), which on APFS is
-a clone taking no space, so only the first backup on a disk copies the
-media for real. A backup on the project's own disk costs nothing but
-doesn't survive that disk failing. A backup's `Media/` is excluded from Time
+a clone taking no space, so only the first backup copies the media for
+real. Being on the project's own disk, backups cost nothing but don't
+survive that disk failing. A backup's `Media/` is excluded from Time
 Machine and other backup tools, which don't keep clones shared and so
 would store the footage again with every backup; they already back up
 the same files in the project's package. Restoring a backup clears the
@@ -205,7 +211,7 @@ header above the viewer and is tried again at the next interval.
 
 Opening a backup (double-clicking it, choosing it in File > Open, or
 File > Open Backup…, which starts in the front project's folder of
-backups, listed by date) never touches the project it came from: it is copied beside that project
+backups beside it, listed by date) never touches the project it came from: it is copied beside that project
 as a new one, "Name from backup 2026-10-24 14.30.amv" (with " 2" if
 taken), its `backup.json` dropped, its name set to match and a project
 ID of its own given, so it is never taken for the original, and opened.

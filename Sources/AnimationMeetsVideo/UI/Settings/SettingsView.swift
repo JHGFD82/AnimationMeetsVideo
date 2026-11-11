@@ -248,19 +248,7 @@ private struct LibrarySettings: View {
 private struct ProjectsSettings: View {
     @AppStorage(Preferences.savesAutomatically) private var savesAutomatically = true
     @AppStorage(Preferences.backsUpProjects) private var backsUp = true
-    @AppStorage(Preferences.backupLocation) private var backupPath = ""
     @AppStorage(Preferences.backupInterval) private var backupMinutes = 15
-
-    private var backupLocation: URL {
-        backupPath.isEmpty ? ProjectBackups.defaultLocation : URL(fileURLWithPath: backupPath, isDirectory: true)
-    }
-
-    /// The folder as people read paths: the home folder as ~.
-    private var backupLocationText: String {
-        let path = backupLocation.path
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
-    }
 
     var body: some View {
         SettingsPane {
@@ -277,31 +265,8 @@ private struct ProjectsSettings: View {
             SheetSection("Backups") {
                 SheetRow("Backups", alignment: .center) {
                     Toggle("Back up projects", isOn: $backsUp)
-                        .accessibilityHint("Keeps copies of each open project in the backup folder")
+                        .accessibilityHint("Keeps copies of each open project in a folder beside it")
                 }
-                SheetRow("Folder", alignment: .top) {
-                    VStack(alignment: .leading, spacing: Design.Space.close) {
-                        Text(backupLocationText)
-                            .font(Design.Typeface.body)
-                            .foregroundStyle(Design.textPrimary)
-                            .lineLimit(2)
-                            .truncationMode(.middle)
-                            .help(backupLocation.path)
-                            .accessibilityLabel("Backup folder, \(backupLocationText)")
-                        HStack(spacing: Design.Space.step) {
-                            // Named in full for VoiceOver, which reads them
-                            // without the row's label.
-                            Button("Choose…", action: chooseBackupLocation)
-                                .accessibilityLabel("Choose backup folder")
-                            Button("Show in Finder") {
-                                try? FileManager.default.createDirectory(at: backupLocation, withIntermediateDirectories: true)
-                                NSWorkspace.shared.activateFileViewerSelecting([backupLocation])
-                            }
-                            .accessibilityLabel("Show backup folder in Finder")
-                        }
-                    }
-                }
-                .disabled(!backsUp)
                 SheetRow("Every", alignment: .center) {
                     Picker("Back up every", selection: $backupMinutes) {
                         ForEach(Preferences.backupIntervals, id: \.self) { minutes in
@@ -313,21 +278,9 @@ private struct ProjectsSettings: View {
                     .accessibilityLabel("Back up every")
                 }
                 .disabled(!backsUp)
-                SheetNote("While a project changes, a backup of it (its edits, the media copied into it and what was learned about each file) goes to its own folder here, and the newest \(ProjectBackups.kept) are kept. Unchanged files are cloned from the backup before, so after the first one each costs only what changed. A folder on another disk survives that disk failing; one on the project's disk costs nothing. Double-click a backup to make a new project from it, beside the original, which is left as it is.")
+                SheetNote("While a project changes, a backup of it (its edits, the media copied into it and what was learned about each file) goes into \u{201C}\(ProjectBackups.folderName)\u{201D} beside it, in a folder named for the project, and the newest \(ProjectBackups.kept) are kept. Unchanged files are cloned from the backup before, so after the first one each costs only what changed, but backups don't survive the project's disk failing. Double-click a backup to make a new project from it, beside the original, which is left as it is.")
             }
         }
-    }
-
-    private func chooseBackupLocation() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.directoryURL = backupLocation
-        panel.prompt = "Choose"
-        panel.message = "Choose where project backups go."
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        backupPath = url.path
     }
 }
 

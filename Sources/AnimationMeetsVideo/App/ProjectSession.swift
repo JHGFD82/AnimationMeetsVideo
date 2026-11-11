@@ -170,8 +170,8 @@ final class ProjectSession {
         return ProjectStore.packageURL(forSelection: selection)
     }
 
-    /// Asks for one of this project's backups, starting in its folder in
-    /// the backup location, so they are a step away and listed by date
+    /// Asks for one of this project's backups, starting in its folder
+    /// beside the project, so they are a step away and listed by date
     /// (their names end in it). Returns the backup, which opening makes a
     /// new project of (`ProjectWindows.open`).
     func chooseBackupToOpen() -> URL? {
@@ -180,7 +180,9 @@ final class ProjectSession {
         panel.allowsMultipleSelection = false
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
-        panel.directoryURL = ProjectBackups.folderToBrowse(forProjectNamed: project.name, in: Preferences.backupFolder)
+        if let projectURL {
+            panel.directoryURL = ProjectBackups.folderToBrowse(forPackage: projectURL)
+        }
         panel.prompt = "Open Backup"
         panel.message = "Choose a backup of \u{201C}\(project.name)\u{201D} to make a new project from, beside the original, which is left as it is."
         guard panel.runModal() == .OK else { return nil }
@@ -429,27 +431,27 @@ final class ProjectSession {
         !savingAutomatically || inGesture || automaticSaveFailed
     }
 
-    /// The project as last backed up to the backup folder, and when; set
+    /// The project as last backed up beside its package, and when; set
     /// on opening, so the first backup comes an interval after the first
     /// change.
     @ObservationIgnored private var lastBackedUp: EditingProject?
     @ObservationIgnored private var lastBackupAt = ContinuousClock.now
     @ObservationIgnored private var isBackingUp = false
 
-    /// Writes a backup to the backup folder (`ProjectBackups`) when backups
+    /// Writes a backup beside the package (`ProjectBackups`) when backups
     /// are on, the project changed since the last one, and the interval
     /// has passed. The copying runs off the main thread, queued with the
     /// package's other writes, so the editor doesn't wait for it.
     func backUpIfDue() async {
-        guard let settings = Preferences.backups, let url = projectURL, !isBackingUp,
-              project != lastBackedUp, ContinuousClock.now - lastBackupAt >= settings.interval
+        guard let interval = Preferences.backupSpacing, let url = projectURL, !isBackingUp,
+              project != lastBackedUp, ContinuousClock.now - lastBackupAt >= interval
         else { return }
         let snapshot = project
         isBackingUp = true
         defer { isBackingUp = false }
         do {
             _ = try await PackageCoordinator.shared.run(on: [url]) {
-                try ProjectBackups.write(snapshot, packageURL: url, to: settings.location)
+                try ProjectBackups.write(snapshot, packageURL: url)
             }
             lastBackedUp = snapshot
             lastBackupAt = .now

@@ -117,30 +117,20 @@ enum Preferences {
         UserDefaults.standard.object(forKey: savesAutomatically) as? Bool ?? true
     }
 
-    /// Whether projects are backed up to `backupLocation` (`ProjectBackups`).
-    /// On unless turned off.
+    /// Whether projects are backed up into the folder beside them
+    /// (`ProjectBackups`). On unless turned off.
     static let backsUpProjects = "backsUpProjects"
-    /// The folder backups go to, as a path; empty for
-    /// `ProjectBackups.defaultLocation`.
-    static let backupLocation = "backupLocation"
     /// Minutes between a project's backups, while it changes.
     static let backupInterval = "backupIntervalMinutes"
     static let backupIntervals = [5, 15, 30, 60]
 
-    /// The backup settings as they are set, for code outside a view; nil
-    /// when backups are off.
-    static var backups: (location: URL, interval: Duration)? {
+    /// The time between backups as it is set, for code outside a view;
+    /// nil when backups are off.
+    static var backupSpacing: Duration? {
         let defaults = UserDefaults.standard
         guard defaults.object(forKey: backsUpProjects) as? Bool ?? true else { return nil }
         let minutes = defaults.object(forKey: backupInterval) as? Int ?? 15
-        return (backupFolder, .seconds(max(minutes, 1) * 60))
-    }
-
-    /// The folder backups go to as it is set, whether or not they are on,
-    /// for finding the backups already there.
-    static var backupFolder: URL {
-        let path = UserDefaults.standard.string(forKey: backupLocation) ?? ""
-        return path.isEmpty ? ProjectBackups.defaultLocation : URL(fileURLWithPath: path, isDirectory: true)
+        return .seconds(max(minutes, 1) * 60)
     }
 
     /// Everything about where the panels are and how big: their sizes,

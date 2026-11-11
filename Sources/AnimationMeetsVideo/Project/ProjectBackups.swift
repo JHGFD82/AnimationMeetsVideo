@@ -1,10 +1,11 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// Backups of projects kept outside them, in a folder of the person's
-/// choosing, as Final Cut Pro keeps library backups: if a project's
-/// package is deleted, damaged, or on a disk that fails, a backup brings
-/// it back.
+/// Backups of projects kept outside them, in a folder beside the
+/// project's package, as After Effects keeps its auto-saves: if a
+/// project's package is deleted or damaged, a backup brings it back.
+/// Each project's backups have a folder of their own there, named for its
+/// package, which no other project in the same folder can share.
 ///
 /// A backup is an `.amvbackup` package holding what a project needs to be
 /// opened on its own: its `project.json`, its `Media/` and its
@@ -17,8 +18,8 @@ import UniformTypeIdentifiers
 /// Each file is copied from the previous backup when it is unchanged, so
 /// on an APFS volume it is a clone that takes no space: only the first
 /// backup on a disk copies the project's media for real, and later ones
-/// cost what changed. A backup on the project's own volume costs nothing,
-/// but doesn't survive that disk failing.
+/// cost what changed. Being on the project's own volume, backups cost
+/// nothing, but don't survive that disk failing.
 ///
 /// A backup's `Media/` is excluded from Time Machine and other backup
 /// tools: they don't keep clones shared, so each backup's footage would
@@ -37,6 +38,8 @@ enum ProjectBackups {
     static let infoFileName = "backup.json"
     /// Backups kept per project; the oldest go first.
     static let kept = 10
+    /// The folder beside a project's package that its backups go in.
+    static let folderName = "Animation Meets Video Backups"
 
     /// What a backup says about itself.
     struct Info: Codable, Equatable {
@@ -58,37 +61,43 @@ enum ProjectBackups {
         }
     }
 
-    /// Where backups go unless the person chose a folder.
-    static var defaultLocation: URL {
-        FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
-            .appending(path: "Animation Meets Video Backups", directoryHint: .isDirectory)
+    /// The folder of backups beside the package at `packageURL`, shared
+    /// by the projects in the same folder.
+    static func location(forPackage packageURL: URL) -> URL {
+        packageURL.standardizedFileURL.deletingLastPathComponent()
+            .appending(path: folderName, directoryHint: .isDirectory)
     }
 
-    /// The folder in `location` a project's backups are kept in, one per
-    /// project name.
-    static func folder(forProjectNamed name: String, in location: URL) -> URL {
-        location.appending(path: name.isEmpty ? "Untitled" : name, directoryHint: .isDirectory)
+    /// The folder the package's own backups are kept in: one in
+    /// `location(forPackage:)` named for the package, so two projects can
+    /// only share it by having had the same file name in the same folder.
+    static func folder(forPackage packageURL: URL) -> URL {
+        let name = packageURL.standardizedFileURL.deletingPathExtension().lastPathComponent
+        return location(forPackage: packageURL).appending(path: name.isEmpty ? "Untitled" : name, directoryHint: .isDirectory)
     }
 
-    /// Where to look for a project's backups: its folder in `location`,
-    /// or `location` itself before the project has one (or after it was
-    /// renamed, when its backups are under the old name).
-    static func folderToBrowse(forProjectNamed name: String, in location: URL) -> URL {
-        let folder = folder(forProjectNamed: name, in: location)
-        var isFolder: ObjCBool = false
-        return FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder) && isFolder.boolValue ? folder : location
+    /// Where to look for a project's backups: its own folder, or the
+    /// backups folder beside it before it has one (or after it was renamed,
+    /// when its backups are under the old name), or the project's folder
+    /// before there are any.
+    static func folderToBrowse(forPackage packageURL: URL) -> URL {
+        func isFolder(_ url: URL) -> Bool {
+            var isFolder: ObjCBool = false
+            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder) && isFolder.boolValue
+        }
+        let own = folder(forPackage: packageURL), shared = location(forPackage: packageURL)
+        return isFolder(own) ? own : isFolder(shared) ? shared : packageURL.standardizedFileURL.deletingLastPathComponent()
     }
 
     // MARK: - Writing
 
     /// Writes a backup of `project`, saved in `packageURL`, into its folder
-    /// in `location`, and deletes the oldest past `kept`. Returns the backup.
+    /// beside the package, and deletes the oldest there past `kept`.
+    /// Returns the backup.
     @discardableResult
-    static func write(
-        _ project: EditingProject, packageURL: URL, to location: URL, now: Date = Date()
-    ) throws -> URL {
+    static func write(_ project: EditingProject, packageURL: URL, now: Date = Date()) throws -> URL {
         let fileManager = FileManager.default
-        let folder = folder(forProjectNamed: project.name, in: location)
+        let folder = folder(forPackage: packageURL)
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         let previous = backups(in: folder).last
 
