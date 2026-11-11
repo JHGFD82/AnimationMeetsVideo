@@ -205,28 +205,153 @@ private func decodedFrames(_ url: URL) async throws -> [(time: Double, hash: Str
         MatroskaIndex.Track(number: 1, kind: .video, codecID: "V_MPEG4/ISO/AVC", defaultDuration: frameNanoseconds)
     }
 
-    @Test func millisecondTimesSnapToTheFramesOfACommonRate() {
+    @Test func millisecondTimesSnapToTheFramesOfACommonRate() throws {
         let timing = MatroskaReferenceMovie.VideoTiming(track: track(frameNanoseconds: 33_366_666), scale: 1_000_000, origin: 0)
         #expect(timing.timescale == 30_000_000)
         // Frame 100 of 29.97 fps is at 3336.67 ms, kept as 3337.
-        #expect(CMTime(value: timing.value(for: 3_337), timescale: timing.timescale) == CMTime(value: 100_100, timescale: 30_000))
+        #expect(CMTime(value: try timing.value(for: 3_337), timescale: timing.timescale) == CMTime(value: 100_100, timescale: 30_000))
     }
 
-    @Test func thirtyIsntTakenForTwentyNineNineSeven() {
+    @Test func thirtyIsntTakenForTwentyNineNineSeven() throws {
         let timing = MatroskaReferenceMovie.VideoTiming(track: track(frameNanoseconds: 33_333_333), scale: 1_000_000, origin: 0)
-        #expect(CMTime(value: timing.value(for: 3_333), timescale: timing.timescale) == CMTime(value: 100, timescale: 30))
+        #expect(CMTime(value: try timing.value(for: 3_333), timescale: timing.timescale) == CMTime(value: 100, timescale: 30))
     }
 
-    @Test func aTrackThatStartsBetweenFramesKeepsItsStart() {
+    @Test func aTrackThatStartsBetweenFramesKeepsItsStart() throws {
         let timing = MatroskaReferenceMovie.VideoTiming(track: track(frameNanoseconds: 40_000_000), scale: 1_000_000, origin: 21)
-        #expect(CMTime(value: timing.value(for: 21), timescale: timing.timescale) == CMTime(value: 21, timescale: 1_000))
-        #expect(CMTime(value: timing.value(for: 61), timescale: timing.timescale) == CMTime(value: 61, timescale: 1_000))
+        #expect(CMTime(value: try timing.value(for: 21), timescale: timing.timescale) == CMTime(value: 21, timescale: 1_000))
+        #expect(CMTime(value: try timing.value(for: 61), timescale: timing.timescale) == CMTime(value: 61, timescale: 1_000))
     }
 
-    @Test func otherRatesKeepTheFilesTimes() {
+    @Test func otherRatesKeepTheFilesTimes() throws {
         let timing = MatroskaReferenceMovie.VideoTiming(track: track(frameNanoseconds: nil), scale: 1_000_000, origin: 0)
         #expect(timing.timescale == 1_000)
-        #expect(timing.value(for: 1_234) == 1_234)
+        #expect(try timing.value(for: 1_234) == 1_234)
+    }
+}
+
+/// Matroska files come from outside, so numbers a file makes up (sizes,
+/// counts, times) that don't fit fail the import instead of trapping.
+@Suite struct MatroskaMalformedFileTests {
+    /// A file with `entries` as its tracks and `clusters` after them.
+    private func file(tracks entries: [[Data]], clusters: [Data] = []) -> Data {
+        var file = EBMLWriter.element(0x1A45DFA3, [EBMLWriter.string(0x4282, "matroska")])
+        var segment = [EBMLWriter.element(0x1654AE6B, entries.map { EBMLWriter.element(0xAE, $0) })]
+        segment.append(contentsOf: clusters)
+        file.append(EBMLWriter.element(0x18538067, segment))
+        return file
+    }
+
+    private let videoTrack = [
+        EBMLWriter.unsigned(0xD7, 1), EBMLWriter.unsigned(0x83, 1), EBMLWriter.string(0x86, "V_MPEG4/ISO/AVC"),
+    ]
+
+    /// A cluster at `time` holding one SimpleBlock of track 1 with `body`
+    /// after its relative time and flags.
+    private func cluster(time: UInt64, relative: Int16 = 0, flags: UInt8 = 0x80, body: [UInt8] = [0]) -> Data {
+        let relativeBytes = withUnsafeBytes(of: relative.bigEndian) { Array($0) }
+        let block = Data([0x81] + relativeBytes + [flags] + body)
+        return EBMLWriter.element(0x1F43B675, [EBMLWriter.unsigned(0xE7, time), EBMLWriter.element(0xA3, block)])
+    }
+
+    @Test func aFileThatReadsIsReadAsBefore() throws {
+        let index = try MatroskaIndex.read(file(tracks: [videoTrack], clusters: [cluster(time: 1_000, relative: -5)]))
+        #expect(index.tracks.first?.frames.map(\.time) == [995])
+    }
+
+    @Test(arguments: [
+        (UInt32(0xE0), UInt32(0xB0)), (0xE0, 0xBA), (0xE1, 0x9F), (0xE1, 0x6264),
+    ])
+    func sizesAndCountsBeyondTheSignedRangeAreMalformed(parent: UInt32, field: UInt32) {
+        let track = videoTrack + [EBMLWriter.element(parent, [EBMLWriter.unsigned(field, UInt64.max)])]
+        #expect(throws: MatroskaError.self) { try MatroskaIndex.read(file(tracks: [track])) }
+    }
+
+    @Test func aClusterTimeBeyondTheSignedRangeIsMalformed() {
+        #expect(throws: MatroskaError.self) {
+            try MatroskaIndex.read(file(tracks: [videoTrack], clusters: [cluster(time: UInt64(Int64.max) + 1)]))
+        }
+    }
+
+    @Test func aBlockTimeThatOverflowsIsMalformed() {
+        #expect(throws: MatroskaError.self) {
+            try MatroskaIndex.read(file(tracks: [videoTrack], clusters: [cluster(time: UInt64(Int64.max) - 10, relative: 100)]))
+        }
+    }
+
+    /// EBML lacing: 255 frames, the first of an enormous size and each
+    /// next larger still, which added up would pass Int.max.
+    @Test func laceSizesThatWouldOverflowAreMalformed() {
+        let largest: [UInt8] = [0x01] + Array(repeating: 0xFF, count: 6) + [0xFE]
+        var body: [UInt8] = [0xFE] + largest
+        for _ in 0..<253 { body += largest }
+        body += [0, 0, 0, 0]
+        #expect(throws: MatroskaError.self) {
+            try MatroskaIndex.read(file(tracks: [videoTrack], clusters: [cluster(time: 0, flags: 0x80 | 0x06, body: body)]))
+        }
+    }
+
+    // MARK: The movie's tracks
+
+    private func pcm(channels: Int = 2, bitDepth: Int = 16, sampleRate: Double = 48_000) -> MatroskaIndex.Track {
+        var track = MatroskaIndex.Track(number: 1, kind: .audio, codecID: "A_PCM/INT/LIT")
+        track.channels = channels
+        track.bitDepth = bitDepth
+        track.sampleRate = sampleRate
+        track.frames = [.init(offset: 0, size: 64, time: 0, isKey: true)]
+        return track
+    }
+
+    private func plan(_ track: MatroskaIndex.Track) throws -> [MatroskaReferenceMovie.TrackPlan] {
+        var index = MatroskaIndex()
+        index.tracks = [track]
+        return try MatroskaReferenceMovie.usableTracks(in: index, bytes: Data(count: 64))
+    }
+
+    @Test func aPCMTrackThatPlansIsPlannedAsBefore() throws {
+        let plans = try plan(pcm())
+        #expect(plans.first?.samples.first?.count == 16)
+    }
+
+    @Test func pcmWithNoChannelsIsRefused() {
+        #expect(throws: MatroskaError.self) { try plan(pcm(channels: 0)) }
+    }
+
+    @Test func pcmWhoseFrameSizeOverflowsIsRefused() {
+        #expect(throws: MatroskaError.self) { try plan(pcm(channels: Int(Int32.max), bitDepth: 32)) }
+        #expect(throws: MatroskaError.self) { try plan(pcm(bitDepth: Int(UInt32.max) + 1)) }
+    }
+
+    @Test(arguments: [Double.infinity, 1e300, 0.25])
+    func sampleRatesNoTimescaleHoldsAreRefused(rate: Double) {
+        #expect(throws: MatroskaError.self) { try plan(pcm(sampleRate: rate)) }
+    }
+
+    @Test func soundTimesOutOfRangeAreMalformed() {
+        var late = pcm()
+        late.frames[0].time = Int64.max
+        #expect(throws: MatroskaError.self) { try plan(late) }
+        // A priming of centuries, at a rate high enough that in samples it
+        // passes Int64.
+        var primed = pcm(sampleRate: 1e9)
+        primed.codecDelay = UInt64.max
+        #expect(throws: MatroskaError.self) { try plan(primed) }
+    }
+
+    @Test func videoSizesBeyondThirtyTwoBitsAreRefused() {
+        var track = MatroskaIndex.Track(number: 1, kind: .video, codecID: "V_MPEG4/ISO/AVC", codecPrivate: Data([1]))
+        track.pixelWidth = Int(Int32.max) + 1
+        track.pixelHeight = 72
+        #expect(throws: MatroskaError.self) { try plan(track) }
+    }
+
+    @Test func videoTimesOutOfRangeAreMalformed() {
+        for duration: UInt64? in [nil, 40_000_000] {
+            let track = MatroskaIndex.Track(number: 1, kind: .video, codecID: "V_MPEG4/ISO/AVC", defaultDuration: duration)
+            let timing = MatroskaReferenceMovie.VideoTiming(track: track, scale: 1_000_000, origin: 0)
+            #expect(throws: MatroskaError.self) { try timing.value(for: Int64.max) }
+            #expect(throws: MatroskaError.self) { try timing.value(for: Int64.min) }
+        }
     }
 }
 

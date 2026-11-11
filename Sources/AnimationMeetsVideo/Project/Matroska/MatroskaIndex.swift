@@ -209,8 +209,8 @@ private struct Parser {
                 case ID.video:
                     for field in try children(of: child) {
                         switch field.id {
-                        case ID.pixelWidth: track.pixelWidth = Int(try unsigned(field))
-                        case ID.pixelHeight: track.pixelHeight = Int(try unsigned(field))
+                        case ID.pixelWidth: track.pixelWidth = Int(try unsigned(field, as: Int32.self))
+                        case ID.pixelHeight: track.pixelHeight = Int(try unsigned(field, as: Int32.self))
                         default: break
                         }
                     }
@@ -218,8 +218,8 @@ private struct Parser {
                     for field in try children(of: child) {
                         switch field.id {
                         case ID.samplingFrequency: track.sampleRate = try float(field)
-                        case ID.channels: track.channels = Int(try unsigned(field))
-                        case ID.bitDepth: track.bitDepth = Int(try unsigned(field))
+                        case ID.channels: track.channels = Int(try unsigned(field, as: Int32.self))
+                        case ID.bitDepth: track.bitDepth = Int(try unsigned(field, as: Int32.self))
                         default: break
                         }
                     }
@@ -239,7 +239,7 @@ private struct Parser {
             // A cluster of unknown size ends where the next one starts.
             if cluster.end == nil, ID.topLevel.contains(child.id) { return position }
             switch child.id {
-            case ID.timestamp: clusterTime = Int64(try unsigned(child))
+            case ID.timestamp: clusterTime = try unsigned(child, as: Int64.self)
             case ID.simpleBlock:
                 try parseBlock(child, clusterTime: clusterTime, simple: true, hasReference: false)
             case ID.blockGroup:
@@ -268,7 +268,8 @@ private struct Parser {
         position += 3
         guard let trackIndex = index.tracks.firstIndex(where: { $0.number == trackNumber }) else { return }
 
-        let time = clusterTime + Int64(relative)
+        let (time, overflow) = clusterTime.addingReportingOverflow(Int64(relative))
+        guard !overflow else { throw MatroskaError.malformed("a block's time is out of range") }
         let isKey = simple ? flags & 0x80 != 0 : !hasReference
         let sizes = try laceSizes(lacing: (flags >> 1) & 0x3, position: &position, end: end)
         for (laceIndex, size) in sizes.enumerated() {
@@ -314,14 +315,25 @@ private struct Parser {
                 }
                 position += length
                 let bias = (Int64(1) << (7 * length - 1)) - 1
+                // Each size is checked against the block as it comes, so
+                // neither the differences nor the sum can overflow.
+                guard (0...(end - position)).contains(sizes[sizes.count - 1]) else {
+                    throw MatroskaError.malformed("a laced block's sizes don't add up")
+                }
                 sizes.append(sizes[sizes.count - 1] + Int(Int64(raw) - bias))
             }
         default: // Fixed: equal sizes.
             let each = (end - position) / count
             return Array(repeating: each, count: count)
         }
+        // Each size is at most the block's length and there are at most
+        // 255, so the sum can't overflow once they are checked.
+        let room = end - position
+        guard sizes.allSatisfy({ (0...room).contains($0) }) else {
+            throw MatroskaError.malformed("a laced block's sizes don't add up")
+        }
         let used = sizes.reduce(0, +)
-        sizes.append(end - position - used)
+        sizes.append(room - used)
         guard sizes.allSatisfy({ $0 >= 0 }) else { throw MatroskaError.malformed("a laced block's sizes don't add up") }
         return sizes
     }
@@ -384,6 +396,13 @@ private struct Parser {
     private func unsigned(_ element: Element) throws -> UInt64 {
         guard let end = element.end, end - element.start <= 8 else { throw MatroskaError.malformed("a number is too long") }
         return try bytes.data(in: element.start..<end).reduce(0) { $0 << 8 | UInt64($1) }
+    }
+
+    /// An unsigned value that must fit `T`, such as a count or a time kept
+    /// as a signed number; one that doesn't is malformed rather than trapping.
+    private func unsigned<T: FixedWidthInteger>(_ element: Element, as type: T.Type) throws -> T {
+        guard let value = T(exactly: try unsigned(element)) else { throw MatroskaError.malformed("a number is out of range") }
+        return value
     }
 
     private func float(_ element: Element) throws -> Double {
