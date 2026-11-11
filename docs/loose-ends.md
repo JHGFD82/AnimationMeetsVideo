@@ -85,6 +85,12 @@ Built and tested in code, never run on screen.
   - Rename a clip in the browser and press Backspace and Return inside
     the field; ⌘D in a name field beeps.
   - At launch with the start sheet up, ⌘I and ⌘E are disabled.
+- [ ] **Keyframe Designer ease fields**: in Handles…, Tab between the
+  reach sliders and speed fields; enter arithmetic such as `100+150`,
+  commit with Return and by clicking away, and cancel with Escape.
+  Check VoiceOver reads the side, reach and speed and can change each.
+  The snapshots cover the controls; native field editing needs a running
+  app because AppKit can end the event-test process while tracking it.
 - [ ] **Export queue fixes (November 2026)**, each with a long export
   running and another queued behind it:
   - Both finish: the window comes back once with both lines and the

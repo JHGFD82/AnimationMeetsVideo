@@ -160,6 +160,11 @@ playhead to the middle of the view when it lands out of view.
   adjusting it moves the playhead a frame. Clicked, ← → move the playhead
   a frame (ten with Shift), and it is outlined in the accent while it has
   the keys.
+- **Add keyframe at playhead** and the ruler remain available before any
+  keyframes exist. **Ease** offers presets; **Handles…** for a single
+  keyframe opens native sliders for reach and text fields for speed,
+  with a checkbox to add or remove each side independently. Held
+  stretches and sides with no neighbor explain why no handle is available.
 - Its **keys** (arrows, Delete, Escape) are listed in
   [layer-transforms.md](layer-transforms.md#graph-editor).
 - The component chips, zoom sliders and Fit button read as controls. In a
@@ -232,8 +237,6 @@ the snap line's arrival.
 - **Applying transitions** from the panel without a pointer: tiles are
   dragged onto clips, with no action to apply one to the selected clip.
 - **Transition curves** can only be shaped by dragging their points.
-- **Keyframe graph editor** handles (the bezier ease) can only be shaped
-  by dragging; the presets are the keyboard's and VoiceOver's way to ease.
 - **Sections and volume-row keyframes** in the timeline can't be moved
   or resized from the keyboard: sections can only be selected, renamed
   and deleted, and volume-row keyframes only eased and deleted.

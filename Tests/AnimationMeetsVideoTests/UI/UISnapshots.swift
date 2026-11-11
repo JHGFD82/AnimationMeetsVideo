@@ -1708,6 +1708,12 @@ struct UISnapshots {
             ),
             "keyframe-designer", size: CGSize(width: 900, height: 560)
         )
+        let graph = try #require(KeyframeDesigner.parameterKey(of: target, in: clip, timelineID: timelineID))
+        let time = try #require(project.components(of: graph)?.keyframes.dropFirst().first?.time)
+        project.editComponents(of: graph) { $0.applyEase(.easyEase, at: time) }
+        hud.update(project: project)
+        try SnapshotSupport.render(KeyframeEaseControls(hud: hud, key: graph, time: time),
+                                   "keyframe-ease-controls", size: CGSize(width: 300, height: 310))
     }
 
     /// The Keyframe Designer with Audio Keys driving a shape's Scale from a

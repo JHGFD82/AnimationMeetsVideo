@@ -190,10 +190,15 @@ its first.
   the keyframes are made again. Audio Keys puts the sound's spectrum and
   its box over it (`AudioKeysGraph`), at the playhead or, while it plays,
   the player's time.
+  The ruler and **Add keyframe at playhead** remain available with zero
+  or one keyframe. A separate selection row shows the keyframe's time,
+  a compact **Ease** menu and **Handles…**. Handles opens reach sliders
+  and speed fields for each side of a single keyframe, usable with the
+  keyboard and VoiceOver; sides can be added or removed independently.
 
-Dragging a setting or the Audio Keys box shares the editor's held
-edits and gesture history: intermediate values preview without
-autosaving, and the whole drag is one undo step even after a pause.
+Dragging a setting, handle-reach slider or Audio Keys box shares the
+editor's held edits and gesture history: intermediate values preview
+without autosaving, and the whole drag is one undo step even after a pause.
 
 Picking a method (`EditingProject.setKeyframing`) is one undo step: with
 none driving the control, a Keyframing effect of that kind goes just

@@ -148,7 +148,9 @@ head on it. Clicking or dragging along it moves the playhead to the frame
 under the pointer, so the playhead can be moved from the panel with
 skimming off, where a drag on the plot would draw a lasso. Once clicked,
 ← and → move the playhead a frame (ten with Shift), and VoiceOver adjusts
-it a frame at a time. A linked panel has one, over its top graph.
+it a frame at a time. A linked panel has one, over its top graph. The
+ruler and graph remain available with zero or one keyframe; **Add
+keyframe at playhead** in the toolbar starts or extends the animation.
 
 - **Click a keyframe** to select it. The handles of its eased sides
   appear, drawn against the component that changes most over that
@@ -202,11 +204,17 @@ it a frame at a time. A linked panel has one, over its top graph.
   keyframes a frame (ten with Shift), as a drag would; ↑ and ↓ move their
   first shown component's value a point on screen (ten with Shift);
   **Delete** deletes the selected keyframes, or the one at the playhead.
-- The **preset buttons** along the top act on the selected keyframes, or
+- The **Ease menu** in the selection row acts on the selected keyframes, or
   else the one at the playhead. The right-click menu (with **Delete
   Keyframe**) acts on the keyframe under the pointer, with the others
   picked when it is one of them, or else the same; with no keyframe to act
   on it offers **Add Keyframe at Playhead**.
+- **Handles…**, for a single keyframe, opens each side's reach slider and
+  speed field. These are the keyboard's and VoiceOver's way to shape a
+  custom ease. A side can be added or removed with its checkbox; each
+  side changes independently. A held stretch or a missing neighbor has
+  no handle. Speed is a percent of the steady speed between keyframes,
+  from -1000% to 1000%; reach is from 1% to 100% of the stretch.
 
 The graph starts fitted to the keyframes, their curves and their handles
 (`KeyframeGraphLayout`), and keeps its scale while a drag is in progress,
@@ -258,8 +266,9 @@ of time in any graph moves them all; values stay each graph's own.
 A linked panel isn't the graphs' panels stacked: what they would repeat
 it shows once.
 
-- **One row of presets** along the top, with the link button. It acts on
-  the graph last clicked (the top one until another is), named in front
+- **One selection row** along the top, with Ease, Handles and the link
+  button. It acts on the graph last clicked (the top one until another
+  is), named in front
   of its keyframe's time, as a single graph's presets do on its own.
   Each graph's name, at the start of its row, is in full tone while the
   presets act on it; clicking the name picks it too.

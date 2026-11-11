@@ -42,6 +42,8 @@ struct KeyframeGraphView: View {
     /// The panel's graphs, which hold this one's selection; with others,
     /// this one shares its time with them.
     var link: KeyframeGraphLink?
+    /// The designer supplies its own glyph and skimming control.
+    var isInDesigner = false
 
     /// The keyframes as a drag in progress leaves them, drawn instead of
     /// the project's and saved when the drag ends.
@@ -162,44 +164,45 @@ struct KeyframeGraphView: View {
             VStack(spacing: 0) {
                 toolbar(c)
                 Divider()
-                if c.value.keyframes.count < 2 {
-                    Text(c.value.isAnimated
-                         ? "Add a second keyframe to shape the curve between them."
-                         : "\(key.parameter.name) isn't animated. Turn on its stopwatch to add keyframes.")
-                        .font(Design.Typeface.label)
-                        .foregroundStyle(Design.textTertiary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    GeometryReader { geometry in
-                        // The time row over the first graph of a panel, to
-                        // drag the playhead along whether or not it skims.
-                        let row = showsTimeRow ? GraphTimeRow.height : 0
-                        let size = CGSize(width: geometry.size.width, height: max(1, geometry.size.height - row))
-                        let layout = drag?.layout ?? layout(c, size: size)
-                        VStack(spacing: 0) {
-                            if showsTimeRow {
-                                GraphTimeRow(hud: hud, axis: c.axis, timeline: c.timeline, layout: layout)
-                            }
-                            graph(c, layout: layout)
-                                .rubberBand(timeBandBinding, axis: .horizontal)
-                                .rubberBand($valueBand, axis: .vertical)
-                                .rubberBandScroll(shared?.timeScrollBand ?? timeScrollBand, length: layout.plot.width)
-                                .rubberBandSettling(timeScrollBandBinding)
-                                .clipped()
-                                .frame(height: size.height)
-                        }
-                        .onChange(of: input.scroll) { _, scroll in
-                            guard let scroll else { return }
-                            // Linked graphs share the panel's input: the one
-                            // under the pointer takes the scroll.
-                            if shared != nil, let at = scroll.location, !geometry.frame(in: .global).contains(at) { return }
-                            scrolled(scroll, c, layout: layout)
-                        }
+                if shared == nil {
+                    HStack(spacing: Design.Space.step) {
+                        KeyframeEasePresets(hud: hud, key: key, targets: presetTargets(c), axis: c.axis, timeline: c.timeline)
                     }
-                    if shared == nil {
-                        Divider()
-                        zoomBar(c)
+                    .font(Design.Typeface.label)
+                    .controlSize(.small)
+                    .padding(.horizontal, Design.Space.step)
+                    .padding(.vertical, Design.Space.close)
+                    Divider()
+                }
+                GeometryReader { geometry in
+                    // The time row over the first graph of a panel, to
+                    // drag the playhead along whether or not it skims.
+                    let row = showsTimeRow ? GraphTimeRow.height : 0
+                    let size = CGSize(width: geometry.size.width, height: max(1, geometry.size.height - row))
+                    let layout = drag?.layout ?? layout(c, size: size)
+                    VStack(spacing: 0) {
+                        if showsTimeRow {
+                            GraphTimeRow(hud: hud, axis: c.axis, timeline: c.timeline, layout: layout)
+                        }
+                        graph(c, layout: layout)
+                            .rubberBand(timeBandBinding, axis: .horizontal)
+                            .rubberBand($valueBand, axis: .vertical)
+                            .rubberBandScroll(shared?.timeScrollBand ?? timeScrollBand, length: layout.plot.width)
+                            .rubberBandSettling(timeScrollBandBinding)
+                            .clipped()
+                            .frame(height: size.height)
                     }
+                    .onChange(of: input.scroll) { _, scroll in
+                        guard let scroll else { return }
+                        // Linked graphs share the panel's input: the one
+                        // under the pointer takes the scroll.
+                        if shared != nil, let at = scroll.location, !geometry.frame(in: .global).contains(at) { return }
+                        scrolled(scroll, c, layout: layout)
+                    }
+                }
+                if shared == nil {
+                    Divider()
+                    zoomBar(c)
                 }
             }
             .background(Color.black.opacity(0.2))
@@ -375,8 +378,8 @@ struct KeyframeGraphView: View {
         .accessibilityLabel("\(key.parameter.name) graph")
         .accessibilityValue("\(c.value.keyframes.count) keyframes")
         .accessibilityHint(shared == nil
-                           ? "The sliders below zoom; the buttons above ease the selected keyframe or the one at the playhead"
-                           : "The sliders zoom; the buttons at the top of the panel ease its selected keyframe or the one at the playhead")
+                           ? "The sliders below zoom; Ease and Handles above shape the selected keyframe or the one at the playhead"
+                           : "The sliders zoom; Ease and Handles at the top shape the selected keyframe or the one at the playhead")
         .accessibilityChildren {
             ForEach(Array(c.value.keyframes.enumerated()), id: \.offset) { _, keyframe in
                 keyframeElement(keyframe, c, layout: layout, shown: shown)
@@ -605,7 +608,7 @@ struct KeyframeGraphView: View {
         let shown = zip(c.value.value(at: now).values, c.offset).map { $0 + $1 }
         let names = key.parameter.componentNames
         return HStack(spacing: Design.Space.step) {
-            if let shared { nameButton(shared) } else { ToolGlyph(tone: .graphEditor) }
+            if let shared { nameButton(shared) } else if !isInDesigner { ToolGlyph(tone: .graphEditor) }
             ForEach(shown.indices, id: \.self) { index in
                 if names.count > 1 {
                     componentChip(index, name: names[index], shown: shown[index])
@@ -616,7 +619,7 @@ struct KeyframeGraphView: View {
                 }
             }
             // Linked, the panel's top row has it, for every graph.
-            if shared == nil { GraphSkimToggle(hud: hud) }
+            if shared == nil && !isInDesigner { GraphSkimToggle(hud: hud) }
             if names.count > 1 {
                 Toggle(isOn: $viewport.separateScales) { Image(systemName: "arrow.up.and.down.text.horizontal") }
                     .toggleStyle(.icon)
@@ -626,13 +629,17 @@ struct KeyframeGraphView: View {
                     .accessibilityLabel("Separate scales")
             }
             Spacer(minLength: Design.Space.step)
+            Button { addKeyframeAtPlayhead(c) } label: {
+                Image(systemName: "plus.diamond")
+            }
+            .help("Add a keyframe at the playhead")
+            .accessibilityLabel("Add keyframe at playhead")
             if let shared {
                 valueZoomSlider
                 Button("Unlink") { hud.unlink(key, from: shared.id) }
                     .help("Take this graph out into a panel of its own")
                     .accessibilityLabel("Unlink \(hud.project.parameterTitle(of: key))")
             } else {
-                KeyframeEasePresets(hud: hud, key: key, targets: presetTargets(c), axis: c.axis, timeline: c.timeline)
                 if let link { KeyframeGraphLinkMenu(hud: hud, link: link) }
             }
         }
@@ -1342,6 +1349,7 @@ struct KeyframeEasePresets: View {
     let axis: ParameterTimeAxis
     let timeline: Timeline
     var named = false
+    @State private var showsHandles = false
 
     private var description: String {
         switch targets.count {
@@ -1357,15 +1365,30 @@ struct KeyframeEasePresets: View {
             .foregroundStyle(Design.textTertiary)
             .lineLimit(1)
             .truncationMode(named ? .middle : .tail)
-        ForEach(KeyframeEase.Preset.allCases) { preset in
-            Button(preset.name) {
-                let key = key, targets = targets
-                hud.onEdit { $0.editComponents(of: key) { value in for time in targets { value.applyEase(preset, at: time) } } }
+            .help(title + description)
+            .accessibilityLabel(title + description)
+            .layoutPriority(1)
+        Spacer(minLength: 0)
+        Menu("Ease") {
+            ForEach(KeyframeEase.Preset.allCases) { preset in
+                Button(preset.name) {
+                    let key = key, targets = targets
+                    hud.onEdit { $0.editComponents(of: key) { value in for time in targets { value.applyEase(preset, at: time) } } }
+                }
+                .help(preset.detail)
             }
-            .help(preset.detail + (preset.shortcutHint.map { " (\($0) on the timeline)" } ?? ""))
-            .fixedSize()
         }
+        .fixedSize()
         .disabled(targets.isEmpty)
+        Button("Handles…") { showsHandles = true }
+            .fixedSize()
+            .disabled(targets.count != 1)
+            .help("Set one keyframe's ease reach and speed with the keyboard or VoiceOver")
+            .popover(isPresented: $showsHandles) {
+                if targets.count == 1, let time = targets.first {
+                    KeyframeEaseControls(hud: hud, key: key, time: time)
+                }
+            }
     }
 }
 
