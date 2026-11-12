@@ -12,7 +12,8 @@ private struct BackupSandbox {
     let assetID: UUID
 
     init(folder: String? = nil) async throws {
-        root = FileManager.default.temporaryDirectory.appending(path: "amv-backup-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let root = FileManager.default.temporaryDirectory.appending(path: "amv-backup-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        self.root = root
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let footage = root.appending(path: "footage.mov")
         try Data("not really video".utf8).write(to: footage)
