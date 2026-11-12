@@ -1,13 +1,12 @@
 name: Build and test
 
-# Every push and pull request is built and tested on macOS with full
-# Xcode: the app can't be built anywhere else (SwiftUI's macro plugins
-# aren't in the standalone Command Line Tools), so this is the only place
-# changes made off a Mac get compiled.
+# Builds and tests on macOS with full Xcode: the app can't be built
+# anywhere else (SwiftUI's macro plugins aren't in the standalone Command
+# Line Tools), so this is the only place changes made off a Mac get
+# compiled. It runs only when started by hand (Actions > Build and test >
+# Run workflow, or `gh workflow run build.yml --ref <branch>`), not on
+# every push or pull request.
 on:
-  push:
-    branches: ["**"]
-  pull_request:
   workflow_dispatch:
 
 concurrency:

@@ -47,8 +47,10 @@ Follow Google's change-description conventions for every commit.
   buttons need labels, and anything a drag does needs a keyboard path.
 - Design docs live in `docs/` (start at `docs/README.md`). Each states whether
   it describes existing or planned behavior; keep them in sync with the code.
-- CI (`.github/workflows/build.yml`) builds and tests every push on a
-  macOS runner; check it when a change couldn't be built locally.
+- CI (`.github/workflows/build.yml`) builds and tests on a macOS runner,
+  but only when started by hand (`workflow_dispatch`); pushes and pull
+  requests don't trigger it. When a change couldn't be built locally, say
+  so rather than assuming CI will check it.
 - `scripts/build-app.sh` wraps the executable into `AnimationMeetsVideo.app`
   with `Packaging/Info.plist`, which declares the `.amv` project type,
   the `.amveffect` effect package type and the `.amvbackup` project backup
