@@ -177,6 +177,14 @@ final class DraftPanelPresentation {
     }
 
     /// Closes the panel and gives the editor its input back.
+    ///
+    /// The panel closes and the editor becomes key on the next turn of the
+    /// run loop: Confirm and Cancel call this from inside the click on the
+    /// panel's button, and closing the window that click belongs to, and
+    /// making another key, before AppKit had finished with it left the
+    /// editor taking clicks only now and then, until the app was switched
+    /// away and back. The input block ends at once, so a panel opened
+    /// straight after (Beat Match on another song) keeps its own.
     func end() {
         Self.open.removeAll { $0 === self }
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
@@ -184,8 +192,14 @@ final class DraftPanelPresentation {
         inputBlock?.end()
         inputBlock = nil
         panel.delegate = nil
-        panel.close()
-        editorWindow?.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.async { [self] in
+            MainActor.assumeIsolated {
+                panel.close()
+                // Not over a panel opened since, which keeps the key.
+                guard !(NSApp.keyWindow is DraftPanel) else { return }
+                editorWindow?.makeKeyAndOrderFront(nil)
+            }
+        }
     }
 }
 

@@ -276,7 +276,18 @@ struct BrowserPanel: View {
     /// dragged there or added from their menu. When the project copies
     /// imports, each file is copied into its `Media/` folder first and the
     /// copy is what's imported.
+    ///
+    /// The panel runs on the next turn of the run loop, not inside the
+    /// click that asked for it: a double-click on the list calls this from
+    /// a tap gesture still taking the press, and a modal panel run there
+    /// left the editor's gestures mid-press, so clicks in the panel and on
+    /// the editor after it went astray until the app was switched away and
+    /// back.
     private func importMedia() {
+        DispatchQueue.main.async { chooseAndImport() }
+    }
+
+    private func chooseAndImport() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = MediaImportFlow.contentTypes
         panel.allowsMultipleSelection = true
