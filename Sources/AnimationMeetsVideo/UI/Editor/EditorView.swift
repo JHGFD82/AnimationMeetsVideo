@@ -100,6 +100,22 @@ struct EditorView: View {
         return access
     }
 
+    /// The project as it is now, for the callbacks set up once (in
+    /// `onAppear` and `connectHistory`) that run long after. The `project`
+    /// binding such a callback keeps can read the project from when the
+    /// binding was made, not the current one, and an edit through it then
+    /// writes that old project back: the motion designer's first edit in
+    /// a window opened at launch put back the empty project the window
+    /// starts with. The project state always holds the current project;
+    /// without one (a test hosting the editor) the binding is all there is.
+    private var liveProject: LiveProject {
+        if let projectState {
+            return LiveProject(read: { projectState.value }, write: { projectState.value = $0 })
+        }
+        let project = $project
+        return LiveProject(read: { project.wrappedValue }, write: { project.wrappedValue = $0 })
+    }
+
     var body: some View {
         // No split view: the library sits beside the viewer inside the
         // surface, so the timeline under them spans the whole window.
@@ -226,9 +242,10 @@ struct EditorView: View {
         // Closing it, or its project, asks before stopping an export.
         .background(WindowReader { [exportWindow] in exportWindow.editorWindow = $0 })
         .onAppear {
-            beatMatch.onEdit = { change in change(&project) }
+            let live = liveProject
+            beatMatch.onEdit = live.edit
             beatMatch.onOpen = { [playback] in playback.player.pause() }
-            motionDesign.onEdit = { change in change(&project) }
+            motionDesign.onEdit = live.edit
             motionDesign.projectState = projectState
             // An edit refused because it would change a clip the motion
             // designer has open, from this window or another.
@@ -238,7 +255,7 @@ struct EditorView: View {
             motionDesign.onOpen = { [playback] in playback.player.pause() }
             motionDesign.sceneTracks = { [analysis] in analysis.tracks }
             sceneSplitter.sceneTracks = { [analysis] in analysis.tracks }
-            sceneSplitter.onEdit = { change in change(&project) }
+            sceneSplitter.onEdit = live.edit
             sceneSplitter.update(project: project)
             // A use picked in Find All opens its timeline on its clip,
             // zoomed to fit it, centered and lit up.
@@ -249,7 +266,7 @@ struct EditorView: View {
             }
             usesFinder.update(project: project)
             connectHistory()
-            analysis.projectSource = { project }
+            analysis.projectSource = live.read
             analysis.update(with: project)
         }
         .onChange(of: undoManager) { _, _ in connectHistory() }
@@ -321,8 +338,9 @@ struct EditorView: View {
     private func connectHistory() {
         guard !sharesHistory else { return }
         history.undoManager = undoManager
-        history.restore = { project = $0 }
-        history.current = { project }
+        let live = liveProject
+        history.restore = live.write
+        history.current = live.read
         // Undo and redo can't take back clips the motion designer has open.
         history.canRestore = { [projectState] in projectState?.allows($0) ?? true }
         history.onRefused = ClipLockRefusal.signal
@@ -356,6 +374,21 @@ extension EditorView: Equatable {
             lhs.history === rhs.history && lhs.analysis === rhs.analysis && lhs.viewMemory === rhs.viewMemory
                 && lhs.replacement === rhs.replacement && lhs.packageURL == rhs.packageURL
         }
+    }
+}
+
+/// Reads and edits a project where it is kept, rather than through a
+/// binding's copy of it (see `EditorView.liveProject`).
+@MainActor
+struct LiveProject {
+    let read: @MainActor @Sendable () -> EditingProject
+    let write: @MainActor @Sendable (EditingProject) -> Void
+
+    /// Applies an edit to the project as it is now.
+    func edit(_ change: (inout EditingProject) -> Void) {
+        var project = read()
+        change(&project)
+        write(project)
     }
 }
 
