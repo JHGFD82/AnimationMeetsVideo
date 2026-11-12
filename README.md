@@ -52,8 +52,8 @@ scripts/build-app.sh
 ```
 
 It writes `build/AnimationMeetsVideo.app`, ad-hoc signed for the Mac that
-built it. CI builds the same bundle on every push and keeps it as a
-downloadable artifact for 14 days.
+built it. CI, when run by hand on `main`, builds the same bundle and
+keeps it as a downloadable artifact for 14 days.
 
 ## Milestones
 
