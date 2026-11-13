@@ -133,7 +133,7 @@ struct TextEditEndingPanelTests {
         #expect(record.words.string == "Hello0123")
         // Whether the clicks still land where aimed isn't checked here:
         // the harness's clicks reach no plain SwiftUI view, edited or not.
-        // `TextEditEnding` hands every press on; see docs/loose-ends.md.
+        // `TextEditEnding` hands every press on.
     }
 
     @Test func clickingAnywhereElseEntersTheName() async throws {
