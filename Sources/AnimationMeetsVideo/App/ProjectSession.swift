@@ -219,8 +219,9 @@ final class ProjectSession {
             history.reset(to: saved.project)
             savedProject = saved.project
             // Restoring is an ordinary edit on top of the saved version, so
-            // it shows as unsaved and can be undone.
-            project = result.project
+            // it shows as unsaved and can be undone. Taken whole, as the
+            // file has it: not an edit by hand of keyframes a method made.
+            projectState.writeRestored { project = result.project }
             lastAutosaved = restored?.project
             lastBackedUp = result.project
             lastBackupAt = .now
@@ -491,7 +492,9 @@ final class ProjectSession {
                         return
                     }
                 }
-                project = result.project
+                // The file's version whole, whatever it changed: not an
+                // edit by hand of keyframes a method made.
+                projectState.writeRestored { project = result.project }
                 savedProject = result.project
                 lastAutosaved = nil
                 fileMonitor.acknowledge(change)

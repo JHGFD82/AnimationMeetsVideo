@@ -27,12 +27,17 @@ again:
   sliders feel like a live link.
 - **Out of date** when what it read changes (the sound's media is
   replaced, the source clip is moved or its volume changed, the beat map
-  edited): it regenerates by itself unless the generated keyframes were
-  edited by hand. Then the control's [badge](#the-badge) turns to a
-  warning and the Keyframe Designer asks first (**Regenerate** or
-  **Keep Edits**).
+  edited): it regenerates by itself unless the keyframes on the control
+  are no longer the ones it wrote. Then the control's
+  [badge](#the-badge) turns to a warning and the Keyframe Designer asks
+  first (**Regenerate** or **Keep Edits**).
+- **Not edited by hand** while the effect drives the control: the editor
+  refuses the change and says to bake first (see
+  [Editing by hand](#editing-by-hand)).
 - **Bake Keyframes**, in the Keyframe Designer, removes the effect and
-  leaves the keyframes as plain keyframes.
+  leaves the keyframes as plain keyframes. What the control was before
+  the effect goes with it: a method picked afterwards starts from the
+  baked keyframes.
 
 Generated keyframes are marked with the effect's ID in the target's
 keyframes, so regenerating replaces only its own, between the effect's
@@ -73,6 +78,47 @@ elsewhere.
   the original rather than to the last result.
 - **Multiply**: for scales, opacities and gains, where a pulse should
   scale what's there.
+
+### Editing by hand
+
+The effect starts from the control as it was before it first wrote (the
+base), every time it makes its keyframes. A keyframe added, moved, eased
+or deleted by hand on the control would therefore be gone the next time
+a setting changed, and deleting them all would leave the method, and the
+base, in place: opening the Keyframe Designer again brought the old
+curve back. So while a method drives a control, its keyframes can't be
+changed by hand, in the Keyframe Designer's graph or anywhere else (the
+effects panel's fields, lanes and stopwatch, a graph editor, the
+viewer's handles, the easing keys, the volume line on the timeline).
+
+- The edit is **refused** where every edit lands, in the project's state
+  (`ProjectState.Refusal.drivenKeyframes`), so no control needs to know
+  about it. Nothing changes, and an alert says which method makes the
+  control's keyframes and how to get out: **Bake Keyframes**, which the
+  alert offers, or None in the Keyframe Designer, which puts the control
+  back as it was (`DrivenKeyframesWarning`). A drag is refused at each
+  step and shows the alert once, after the mouse is up. The designer
+  says the same under the method's blurb.
+- **By hand** means the control's numbers changed while the effect
+  driving it didn't (`EditingProject.drivenKeyframesEdit(since:)`). The
+  effect's own writes change its fingerprints, so they pass, as do
+  picking, changing and removing a method and Bake. Undo and redo pass
+  (`ProjectState.writeRestored`), and so does what follows from an edit
+  (`writeDerived`).
+- **Not by hand**: an edit that also moves, trims, retimes or re-sources
+  the clip. Joining two clips at a scene cut or nesting one rewrites
+  every keyframe on the clip; the effect then finds what it reads
+  changed and, since the control no longer holds what it wrote, asks
+  (Regenerate or Keep Edits). A project saved with hand edits by an
+  earlier version asks the same way.
+- Every component is covered, and keyframes outside the effect's Range
+  too: they are kept from the base, so an edit there would be lost just
+  the same.
+- The other controls of the effect, the method's own settings and
+  everything else about the clip are edited as ever.
+
+After Bake the keyframes are plain and the base is forgotten, so they
+are edited freely, and deleting them leaves nothing behind.
 
 ### How many keyframes
 
@@ -185,7 +231,8 @@ its first.
   Position (Wiggler)"), beside **Bake Keyframes**.
 - **Down the left**: the **Method**, a chip for None and each kind, the
   one driving the control lit, with a line on what it does; under it, for
-  a method, its note when it can't write, Regenerate and Keep Edits when
+  a method, a line saying its keyframes are baked before they are edited
+  by hand, its note when it can't write, Regenerate and Keep Edits when
   it is out of date with hand edits, **Applies To** (Component, Combine,
   Listen To or Beats From, and the Range, from the playhead), and its
   **Settings** as fields and pop-ups, set at the playhead.
@@ -255,6 +302,11 @@ the same.
   attack and release asked for.
 - Regenerating after an Add keeps the original base; after hand edits it
   asks first; a removed target leaves its keyframes.
+- A hand edit of a driven control is told from the method's own writes,
+  from Bake and None, and from keyframes rewritten with the clip; the
+  project's state refuses it, also in a held drag, and takes it from
+  undo. Baked, the control is edited by hand, and a method picked then
+  starts from the baked keyframes.
 - A clip at 50% speed gets its beat pulses on the beats as heard.
 
 ## Not yet
@@ -312,11 +364,12 @@ In order, each step usable on its own:
      scales by the signal as a percent more (30 makes 130%). Smoother,
      Looper, Time Step and Overshoot reshape the base and ignore it.
    - **The base** is taken the first time the effect writes, and every
-     regeneration starts from it, so hand edits to the target are lost when
-     the effect's own settings are edited (only a change to what it reads
-     asks first; see step 3). Deleting the effect
-     puts the base back; Bake (`bakeKeyframing`) removes the effect and
-     keeps its keyframes, unmarked.
+     regeneration starts from it, so hand edits to the target would be
+     lost when the effect's own settings are edited (only a change to
+     what it reads asks first; see step 3). The editor therefore refuses
+     them until the keyframes are baked (step 7). Deleting the effect
+     puts the base back; Bake (`bakeKeyframing`) removes the effect, and
+     the base with it, and keeps its keyframes, unmarked.
    - **Beat Keys** reads a layer's beats as the timeline's beat markers
      do: a song's confirmed beat map where it has one, otherwise the beats
      analysis detected, which the editor mirrors into `DetectedBeats` for
@@ -412,3 +465,11 @@ In order, each step usable on its own:
    is set in the designer); they reach any control of the clip, go with
    the control they drive, and come along when its effect is copied.
    Step 2 describes the rows as they were.
+7. **No hand edits while driven** (done), as described in
+   [Editing by hand](#editing-by-hand). Before, a driven control's
+   keyframes could be edited or deleted by hand: the edits lasted until
+   the next setting change, and keyframes deleted in the effects panel
+   came back, with the curve from before the method, when the designer
+   was opened again, because the hidden effect and its base were still
+   there. Regenerate and Keep Edits (step 3) stay for keyframes changed
+   along with the clip, and for projects saved with hand edits.

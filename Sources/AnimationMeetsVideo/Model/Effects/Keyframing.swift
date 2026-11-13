@@ -638,6 +638,47 @@ extension EditingProject {
         }
     }
 
+    /// The first control a Keyframing effect drives that going from `old`
+    /// to this project changes by hand, if one does. The method starts
+    /// from the control as it was before it first wrote, so a keyframe
+    /// added, moved or deleted since would be written over the next time
+    /// it made its keyframes; the editor refuses such an edit and asks for
+    /// the keyframes to be baked first (`ProjectState.Refusal`).
+    ///
+    /// By hand is: the control's numbers differ while the effect driving
+    /// it is as it was, which rules out the effect's own writes (they
+    /// change its fingerprints), a method picked, changed or taken away,
+    /// and Bake. An edit that also moves, trims, retimes or re-sources
+    /// the clip isn't one: joining two clips or nesting one rewrites
+    /// every keyframe on it, and the method then makes its own again or
+    /// asks (`KeyframingFreshness`).
+    func drivenKeyframesEdit(since old: EditingProject) -> DrivenKeyframesEdit? {
+        guard old.id == id else { return nil }
+        // Run for every write to the project, so clips are read in place
+        // and only those holding a Keyframing effect are looked at.
+        for t in timelines.indices {
+            for l in timelines[t].layers.indices {
+                for c in timelines[t].layers[l].clips.indices where timelines[t].layers[l].clips[c].hasKeyframingEffect {
+                    let clip = timelines[t].layers[l].clips[c]
+                    guard let before = old.clipAndLayer(clip.id, in: timelines[t].id)?.clip,
+                          before.source == clip.source, before.startOffset == clip.startOffset,
+                          before.trimStart == clip.trimStart, before.trimEnd == clip.trimEnd, before.time == clip.time
+                    else { continue }
+                    for effect in clip.effects {
+                        guard let target = effect.keyframing?.target, before.effect(id: effect.id) == effect,
+                              let number = clip.number(of: target), let was = before.number(of: target), number != was
+                        else { continue }
+                        return DrivenKeyframesEdit(
+                            timelineID: timelines[t].id, clipID: clip.id, effectID: effect.id,
+                            controlName: name(of: target, in: clip), methodName: effect.kind.name
+                        )
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
     /// The span a Keyframing effect writes to: its range within the clip,
     /// or the whole clip.
     static func writtenRange(_ setup: KeyframingSetup, of clip: TimelineClip) -> CMTimeRange {
@@ -731,7 +772,26 @@ extension EditingProject {
     }
 }
 
+/// A change by hand to the keyframes of a control a Keyframing effect
+/// drives (see `EditingProject.drivenKeyframesEdit(since:)`).
+struct DrivenKeyframesEdit: Equatable, Sendable {
+    var timelineID: UUID
+    var clipID: UUID
+    /// The Keyframing effect driving the control.
+    var effectID: UUID
+    /// The control, as the effects panel names it: "Transform · Position".
+    var controlName: String
+    /// The method driving it: "Audio Keys".
+    var methodName: String
+}
+
 extension TimelineClip {
+    /// Whether a Keyframing effect is in the clip's stack, read without
+    /// copying the effects.
+    var hasKeyframingEffect: Bool {
+        effects.indices.contains { effects[$0].keyframing != nil }
+    }
+
     /// Unmarks the keyframes `effectID` wrote on `target`, so they are
     /// plain keyframes no effect will replace.
     mutating func releaseKeyframes(of effectID: UUID, on target: KeyframingTarget) {

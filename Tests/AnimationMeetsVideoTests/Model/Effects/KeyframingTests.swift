@@ -418,6 +418,78 @@ private struct KeyframingFixture {
         #expect(f.control(.position).number == made)
     }
 
+    /// Sets a keyframe by hand on the Transform's Position.
+    private func keyPositionByHand(_ f: inout KeyframingFixture) {
+        let transformID = f.transformID
+        f.project.editClip(f.clipID, in: f.timelineID) { clip in
+            clip.effects[clip.effects.index(of: transformID)!].controls[0].number.set(ComponentValue(values: [500, 0]), at: seconds(1))
+        }
+    }
+
+    @Test func aHandEditOfADrivenControlIsToldApart() {
+        var f = KeyframingFixture()
+        let id = f.add(.oscillator)
+        let made = f.project
+        keyPositionByHand(&f)
+        let edit = f.project.drivenKeyframesEdit(since: made)
+        #expect(edit?.effectID == id)
+        #expect(edit?.clipID == f.clipID)
+        #expect(edit?.timelineID == f.timelineID)
+        #expect(edit?.controlName == f.project.name(of: f.target(.position), in: f.clip))
+        #expect(edit?.methodName == EffectKind.oscillator.name)
+        // Deleting what it made is one too.
+        var cleared = made
+        let transformID = f.transformID
+        cleared.editClip(f.clipID, in: f.timelineID) { clip in
+            clip.effects[clip.effects.index(of: transformID)!].controls[0].number = AnimatedValue(ComponentValue(values: [0, 0]))
+        }
+        #expect(cleared.drivenKeyframesEdit(since: made)?.effectID == id)
+        // A project opened in its place isn't an edit of this one.
+        #expect(EditingProject.empty.drivenKeyframesEdit(since: made) == nil)
+    }
+
+    @Test func theMethodsOwnWritesAreNotHandEdits() {
+        var f = KeyframingFixture()
+        let id = f.add(.oscillator)
+        let made = f.project
+        // A setting changed, so its keyframes are made again.
+        f.set(id, .amplitude, to: 20)
+        #expect(f.control(.position).number != made.clipAndLayer(f.clipID, in: f.timelineID)?.clip.effect(id: f.transformID)?.control(.position)?.number)
+        #expect(f.project.drivenKeyframesEdit(since: made) == nil)
+        // A control nothing drives is edited as ever.
+        var other = made
+        let transformID = f.transformID
+        other.editClip(f.clipID, in: f.timelineID) { clip in
+            let e = clip.effects.index(of: transformID)!
+            let c = clip.effects[e].controls.firstIndex { $0.kind == .rotation }!
+            clip.effects[e].controls[c].setComponent(0, to: 45, at: seconds(1))
+        }
+        #expect(other.drivenKeyframesEdit(since: made) == nil)
+        // Baking and taking the method away change the control, not by hand.
+        var baked = made
+        baked.bakeKeyframing(id, ofClip: f.clipID, in: f.timelineID)
+        #expect(baked.drivenKeyframesEdit(since: made) == nil)
+        var removed = made
+        removed.removeEffect(id, fromClip: f.clipID, in: f.timelineID)
+        #expect(removed.drivenKeyframesEdit(since: made) == nil)
+        // And so does undoing its adoption, or adopting it.
+        #expect(made.drivenKeyframesEdit(since: removed) == nil)
+    }
+
+    @Test func keyframesRewrittenWithTheClipAreNotHandEdits() {
+        var f = KeyframingFixture()
+        _ = f.add(.oscillator)
+        let made = f.project
+        // As joining two clips or nesting one does: the clip's extent and
+        // every keyframe on it change together.
+        f.project.editClip(f.clipID, in: f.timelineID) { clip in
+            clip.trimEnd = seconds(3)
+            clip.shiftKeyframes(by: seconds(0.5))
+        }
+        #expect(f.control(.position).number != made.clipAndLayer(f.clipID, in: f.timelineID)?.clip.effect(id: f.transformID)?.control(.position)?.number)
+        #expect(f.project.drivenKeyframesEdit(since: made) == nil)
+    }
+
     @Test func editingTheBeatMapMakesBeatKeysAgain() throws {
         var f = KeyframingFixture()
         var song = MediaClip(

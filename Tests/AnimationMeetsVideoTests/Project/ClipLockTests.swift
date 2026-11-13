@@ -15,7 +15,7 @@ struct ClipLockTests {
         project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [locked, other])]
         let state = ProjectState(project)
         var count = 0
-        state.onRefused = { count += 1 }
+        state.onRefused = { _ in count += 1 }
         let key = state.lock([locked.id], in: project.rootTimelineID)
         return (state, locked, other, key, { count })
     }

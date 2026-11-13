@@ -87,6 +87,25 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(try #require(f.transform.control(.position)).number == before)
     }
 
+    @Test func bakingForgetsWhatTheControlWasBefore() throws {
+        var f = Fixture()
+        let before = try #require(f.transform.control(.position)).number
+        let made = f.set(.wiggler)
+        let wiggler = try #require(made)
+        f.project.bakeKeyframing(wiggler, ofClip: f.clipID, in: f.timelineID)
+        let baked = try #require(f.transform.control(.position)).number
+        #expect(baked != before)
+        #expect(baked.keyframes.allSatisfy { $0.generatedBy == nil })
+        // A method picked now starts from the baked keyframes, not from
+        // the control as it was before the first one, and None puts the
+        // baked ones back.
+        let madeAgain = f.set(.oscillator)
+        let oscillator = try #require(madeAgain)
+        #expect(f.clip.effect(id: oscillator)?.keyframing?.base == baked)
+        _ = f.set(nil)
+        #expect(try #require(f.transform.control(.position)).number == baked)
+    }
+
     @Test func pickingTheSameMethodChangesNothing() throws {
         var f = Fixture()
         let made = f.set(.smoother)

@@ -30,8 +30,11 @@ final class KeyframeDesignerFocus {
 /// the graph. Picking a method puts a Keyframing effect of that kind in
 /// the stack, just above the control's effect; None takes it away, putting
 /// the control back as it was, and Bake keeps the keyframes and takes the
-/// effect away. Settings are set at the playhead, as in the effects panel,
-/// so a keyframed one gets a keyframe there.
+/// effect away, with what the control was before. While a method drives
+/// the control its keyframes can't be changed by hand, here or anywhere
+/// else (`ProjectState.Refusal.drivenKeyframes`). Settings are set at the
+/// playhead, as in the effects panel, so a keyframed one gets a keyframe
+/// there.
 struct KeyframeDesigner: View {
     let hud: KeyframeGraphHUDs
     let key: KeyframeDesignerKey
@@ -223,6 +226,14 @@ private struct KeyframeDesignerSidebar: View {
                     .font(Design.Typeface.micro)
                     .foregroundStyle(Design.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
+                if driver != nil {
+                    // Said here before the alert that refuses the edit
+                    // does (`DrivenKeyframesWarning`).
+                    Text("While it makes them, the keyframes can't be changed by hand. Bake Keyframes to edit them.")
+                        .font(Design.Typeface.micro)
+                        .foregroundStyle(Design.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             if let driver, let setup = driver.keyframing {
                 if let note = hud.project.keyframingNote(for: driver, in: clip, of: timeline) {

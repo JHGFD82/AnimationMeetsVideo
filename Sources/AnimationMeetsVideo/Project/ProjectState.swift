@@ -54,11 +54,12 @@ final class ProjectState {
 
     /// The project. Read during a drag, it is the project from before it.
     /// A write that would change a locked clip, by anyone but the clip's
-    /// owner, is refused (`lock(_:in:)`).
+    /// owner, is refused (`lock(_:in:)`), and so is one that changes by
+    /// hand the keyframes a Keyframing effect made (`Refusal`).
     var value: EditingProject {
         get { isCapturing ? stepResult ?? committed : committed }
         set {
-            guard admits(newValue) else { return refuse() }
+            if let refusal = reasonToRefuse(newValue) { return onRefused(refusal) }
             // Every write is an edit, which views tell by its stamp
             // rather than by comparing projects (see `EditStamp`).
             var stamped = newValue
@@ -128,20 +129,34 @@ final class ProjectState {
         }
     }
 
-    /// Who is writing: anyone, a lock's owner, or the editor bringing what
-    /// follows from an edit up to date (`writeDerived`).
+    /// Who is writing: anyone, a lock's owner, the editor bringing what
+    /// follows from an edit up to date (`writeDerived`), or undo, redo or
+    /// a load putting a whole project in place (`writeRestored`).
     private enum Writer {
         case anyone
         case owner(UUID)
         case derived
+        case restoring
+    }
+
+    /// Why a write was refused.
+    enum Refusal: Equatable {
+        /// It would change a clip a tool has locked.
+        case lockedClip
+        /// It would change by hand the keyframes of a control a Keyframing
+        /// effect drives, which the effect would write over the next time
+        /// it made them: they are baked first, or the method taken away
+        /// (see docs/keyframing-effects.md, "Editing by hand").
+        case drivenKeyframes(DrivenKeyframesEdit)
     }
 
     @ObservationIgnored private var locks: [UUID: ClipLock] = [:]
     @ObservationIgnored private var writer = Writer.anyone
     /// The clips locked now, for views to show them as such.
     private(set) var lockedClipIDs: Set<UUID> = []
-    /// Called when a write is refused; the app beeps.
-    @ObservationIgnored var onRefused: () -> Void = {}
+    /// Called when a write is refused, with why; the app beeps for a
+    /// locked clip and explains a driven control's keyframes.
+    @ObservationIgnored var onRefused: (Refusal) -> Void = { _ in }
 
     /// Locks clips of a timeline against every write but their owner's,
     /// and gives the key that owns them.
@@ -175,26 +190,42 @@ final class ProjectState {
         body()
     }
 
+    /// Runs `body`, whose writes put a whole project in place: as it was
+    /// at an earlier step (undo and redo), or as its file has it (opened,
+    /// or changed outside the app). Locked clips refuse them as they do
+    /// anyone's, but one that changes a driven control's keyframes is
+    /// taken: nobody edited them by hand just now, and refusing it would
+    /// leave the history, or what was saved, apart from the project.
+    func writeRestored(_ body: () -> Void) {
+        let outer = writer
+        writer = .restoring
+        defer { writer = outer }
+        body()
+    }
+
     /// Whether anyone may make the project `project`, as undo would.
     func allows(_ project: EditingProject) -> Bool {
         !locks.values.contains { $0.isChanged(from: value, to: project) }
     }
 
-    /// Whether the writer now may make the project `project`.
-    private func admits(_ project: EditingProject) -> Bool {
-        guard !locks.isEmpty else { return true }
+    /// Why the writer now may not make the project `project`, if it may
+    /// not.
+    private func reasonToRefuse(_ project: EditingProject) -> Refusal? {
+        if case .derived = writer { return nil }
         let current = value
-        switch writer {
-        case .derived:
-            return true
-        case .owner(let key):
-            return !locks.contains { $0.key != key && $0.value.isChanged(from: current, to: project) }
-        case .anyone:
-            return !locks.values.contains { $0.isChanged(from: current, to: project) }
+        if !locks.isEmpty {
+            let locked: Bool
+            if case .owner(let key) = writer {
+                locked = locks.contains { $0.key != key && $0.value.isChanged(from: current, to: project) }
+            } else {
+                locked = locks.values.contains { $0.isChanged(from: current, to: project) }
+            }
+            if locked { return .lockedClip }
         }
-    }
-
-    private func refuse() {
-        onRefused()
+        // A tool writing its own clips, undo and a load aren't edits by hand.
+        if case .anyone = writer, let edit = project.drivenKeyframesEdit(since: current) {
+            return .drivenKeyframes(edit)
+        }
+        return nil
     }
 }
