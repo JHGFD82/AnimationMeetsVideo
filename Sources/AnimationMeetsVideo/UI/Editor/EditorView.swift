@@ -247,9 +247,20 @@ struct EditorView: View {
             beatMatch.onOpen = { [playback] in playback.player.pause() }
             motionDesign.onEdit = live.edit
             motionDesign.projectState = projectState
-            // An edit refused because it would change a clip the motion
-            // designer has open, from this window or another.
-            projectState?.onRefused = ClipLockRefusal.signal
+            // An edit refused, from this window or another: because it
+            // would change a clip the motion designer has open, or, by
+            // hand, keyframes a Keyframe Designer method made, which are
+            // baked first.
+            projectState?.onRefused = { refusal in
+                switch refusal {
+                case .lockedClip:
+                    ClipLockRefusal.signal()
+                case .drivenKeyframes(let edit):
+                    DrivenKeyframesWarning.show(edit) {
+                        live.edit { $0.bakeKeyframing(edit.effectID, ofClip: edit.clipID, in: edit.timelineID) }
+                    }
+                }
+            }
             motionDesign.history = history
             motionDesign.playback = playback
             motionDesign.onOpen = { [playback] in playback.player.pause() }
@@ -339,7 +350,15 @@ struct EditorView: View {
         guard !sharesHistory else { return }
         history.undoManager = undoManager
         let live = liveProject
-        history.restore = live.write
+        // Undo and redo put back what was made before, so a step that
+        // changes a driven control's keyframes isn't an edit by hand.
+        history.restore = { [projectState] snapshot in
+            if let projectState {
+                projectState.writeRestored { live.write(snapshot) }
+            } else {
+                live.write(snapshot)
+            }
+        }
         history.current = live.read
         // Undo and redo can't take back clips the motion designer has open.
         history.canRestore = { [projectState] in projectState?.allows($0) ?? true }
