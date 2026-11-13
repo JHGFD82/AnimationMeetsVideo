@@ -1036,3 +1036,8 @@ as it would before it was rendered.
 - Thumbnails of the frames in the transition footage lane.
 - Trimming at a joined cut from the clips themselves (the transition box
   covers the edges; roll the cut instead).
+- A loop region: a bar under the ruler to draw a stretch that playback
+  repeats. Planned in [loop-region.md](loop-region.md).
+- Colors for clips, sections and a whole layer's clips from their
+  right-click menus, and Clear Layer. Planned in
+  [bar-colors.md](bar-colors.md).
