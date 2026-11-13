@@ -48,6 +48,8 @@ struct UISnapshots {
         var run = try MotionRun.opening([first.id, second.id], in: timelineID, of: project) { clip in
             clip.id == first.id ? CMTimeRange(start: .zero, end: seconds(3.5)) : nil
         }.get()
+        run.setEdgeLocked(.end, ofPiece: first.id, to: false)
+        run.setEdgeLocked(.end, ofPiece: second.id, to: false)
         let hitAdded = run.addMarker(toPiece: first.id, atSource: seconds(0.25))
         let hit = try #require(hitAdded)
         run.movePoint(hit, to: seconds(1.25))
@@ -111,6 +113,16 @@ struct UISnapshots {
         edgeSession.setSelectedEdgeHandle(KeyframeEase(influence: 0.5, speed: 0.2))
         edgeSession.seek(to: 2.25)
         try SnapshotSupport.render(MotionDesignView(session: edgeSession, onDone: {}, onCancel: {}), "motion-designer-edge", size: size)
+        // One edge locked, the other unlocked, with the start bracket
+        // at its scene boundary and both sidebar checkboxes visible.
+        var lockRun = try MotionRun.opening([first.id, second.id], in: timelineID, of: project) { clip in
+            clip.id == first.id ? CMTimeRange(start: .zero, end: seconds(3)) : nil
+        }.get()
+        lockRun.setEdgeLocked(.end, ofPiece: first.id, to: false)
+        let lockSession = MotionDesignSession(run: lockRun, project: project, playback: PlaybackModel())
+        defer { lockSession.end() }
+        lockSession.selectedPieceID = first.id
+        try SnapshotSupport.render(MotionDesignView(session: lockSession, onDone: {}, onCancel: {}), "motion-designer-edge-locks", size: size)
         // The first shot, held by its hit, dragged: the notice saying why.
         session.select(point: nil)
         session.selectedPieceID = first.id

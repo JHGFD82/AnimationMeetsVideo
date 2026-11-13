@@ -212,6 +212,10 @@ struct MotionDesignLanesInteractionTests {
         let session = try session()
         defer { session.end() }
         let piece = session.run.pieces[0].id
+        // This test moves the footage with its points; locked cuts on a
+        // whole-source clip would instead stop at its footage limits.
+        session.setEdgeLocked(.start, ofPiece: piece, to: false)
+        session.setEdgeLocked(.end, ofPiece: piece, to: false)
         let a = try #require(session.addMarker(toPiece: piece, atTime: 3))
         let b = try #require(session.addMarker(toPiece: piece, atTime: 5))
         let before = session.run
@@ -238,4 +242,46 @@ struct MotionDesignLanesInteractionTests {
         #expect(abs(time(b) - (5 + moved)) <= 2 * session.secondsPerPoint)
         #expect(session.pickedPointIDs == [a, b])
     }
+    @Test func stripEdgeLocksTakeClicksAndNeverMoveTheClip() async throws {
+        let session = try session()
+        defer { session.end() }
+        let piece = session.run.pieces[0]
+        let harness = EventHarness(MotionDesignLanes(session: session), size: Self.size)
+        try await harness.settle()
+        let lock = CGPoint(x: session.x(of: piece.span.start.seconds) + 18,
+                           y: MotionDesignLanes.rulerHeight + MotionDesignLanes.filmHeight - 12)
+        try await harness.click(at: lock)
+        #expect(!session.run.pieces[0].isEdgeLocked(.start))
+        #expect(session.run.pieces[0].isEdgeLocked(.end))
+        #expect(session.selectedPieceID == piece.id)
+        #expect(session.run.pieces[0].span == piece.span)
+        #expect(!session.isChanged)
+        let to = CGPoint(x: lock.x + 80, y: lock.y)
+        try await harness.press(at: lock, dragTo: to)
+        harness.mouse(.leftMouseUp, at: to)
+        try await harness.settle(250)
+        #expect(session.run.pieces[0].span == piece.span)
+        #expect(!session.isDragging)
+    }
+
+    @Test func lTogglesTheSelectedClipOrEdge() async throws {
+        let session = try session()
+        defer { session.end() }
+        let piece = session.run.pieces[0]
+        session.selectedPieceID = piece.id
+        let harness = EventHarness(MotionDesignView(session: session, onDone: {}, onCancel: {}), size: CGSize(width: 1100, height: 600))
+        try await harness.settle()
+        harness.key(code: 37, characters: "l")
+        try await harness.settle()
+        #expect(!session.run.pieces[0].isEdgeLocked(.start))
+        #expect(!session.run.pieces[0].isEdgeLocked(.end))
+        #expect(session.undoTitle == "Undo Unlock Edges")
+        session.select(edge: .init(piece: piece.id, edge: .end))
+        harness.key(code: 37, characters: "l")
+        try await harness.settle()
+        #expect(!session.run.pieces[0].isEdgeLocked(.start))
+        #expect(session.run.pieces[0].isEdgeLocked(.end))
+        #expect(session.undoTitle == "Undo Lock End")
+    }
+
 }

@@ -125,7 +125,8 @@ struct MotionDesignView: View {
 
     /// Space plays, M adds a marker under the playhead, H makes the
     /// selected point a hit, P edits its pace, E eases it, Delete removes
-    /// it, ← → move it (or else the playhead) a frame, ⇧ ten, N snaps,
+    /// it, ← → move it (or else the playhead) a frame, ⇧ ten, L toggles
+    /// the selected edge locks, N snaps,
     /// Escape lets go, ⌘= ⌘- ⌘0 zoom, and ⌘Z undoes and ⇧⌘Z redoes in the
     /// draft. Not while typing in a field.
     private func handleKey(_ event: NSEvent) -> Bool {
@@ -179,6 +180,7 @@ struct MotionDesignView: View {
         case " ": session.togglePlayback()
         case "m": session.addMarkerAtPlayhead()
         case "n": session.snaps.toggle()
+        case "l": session.toggleSelectedEdgeLocks()
         case "h": session.setKindOfPicked(.hit)
         case "p": if session.selectedPoint != nil { session.focusesPace = true }
         case "e":

@@ -95,6 +95,7 @@ struct MotionDesignSidebar: View {
         return VStack(alignment: .leading, spacing: Design.Space.step) {
             heading(key.edge == .start ? "Clip's first frame" : "Clip's last frame")
             reading("Frame", session.timecode(frame))
+            if let piece = session.run.pieces.first(id: key.piece) { edgeLockToggle(piece, edge: key.edge) }
             Text(key.edge == .start
                  ? "Stays at the clip's start. Its handle eases the footage out into the clip."
                  : "Stays at the clip's end. Its handle eases the footage in to it.")
@@ -371,6 +372,8 @@ struct MotionDesignSidebar: View {
             heading(session.project.resolvedInfo(for: piece.clip.source)?.name ?? "Clip")
             reading("Starts", session.timecode(drafted.startOffset))
             reading("Ends", session.timecode(drafted.endOffset))
+            edgeLockToggle(piece, edge: .start)
+            edgeLockToggle(piece, edge: .end)
             trimRow("Start", piece: piece, edge: .start)
             trimRow("End", piece: piece, edge: .end)
             footageNote(piece)
@@ -396,6 +399,16 @@ struct MotionDesignSidebar: View {
         }
     }
 
+    private func edgeLockToggle(_ piece: MotionRun.Piece, edge: MotionRun.Edge) -> some View {
+        Toggle(edge == .start ? "Lock start" : "Lock end", isOn: Binding(
+            get: { piece.isEdgeLocked(edge) },
+            set: { session.setEdgeLocked(edge, ofPiece: piece.id, to: $0) }
+        ))
+        .toggleStyle(.checkbox)
+        .help(MotionDesignSession.edgeLockHelp(edge, locked: piece.isEdgeLocked(edge)))
+        .accessibilityHint(MotionDesignSession.edgeLockHelp(edge, locked: piece.isEdgeLocked(edge)))
+    }
+
     /// A frame either way for one edge of a clip, as dragging it does.
     private func trimRow(_ label: String, piece: MotionRun.Piece, edge: MotionRun.Edge) -> some View {
         HStack(spacing: Design.Space.close) {
@@ -418,7 +431,8 @@ struct MotionDesignSidebar: View {
         let start = piece.isAtFootageEdge(.start), end = piece.isAtFootageEdge(.end)
         if start || end {
             let side = start && end ? "either side" : start ? "before its start" : "after its end"
-            Text("No more of its scene \(side). Merge scenes in the browser to give it more footage.")
+            let locked = (start && piece.isEdgeLocked(.start)) || (end && piece.isEdgeLocked(.end))
+            Text("No more of its scene \(side). Merge scenes in the browser to give it more footage.\(locked ? " Or unlock that edge to let it move." : "")")
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)

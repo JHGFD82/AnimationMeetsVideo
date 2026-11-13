@@ -137,6 +137,8 @@ import Testing
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
         let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
+        session.setEdgeLocked(.start, ofPiece: clip.id, to: false)
+        session.setEdgeLocked(.end, ofPiece: clip.id, to: false)
         let pinned = session.addMarker(toPiece: clip.id, atTime: 1)
         session.setKind(.hit, ofPoint: try #require(pinned))
         let added = session.addMarker(toPiece: clip.id, atTime: 2)
@@ -316,6 +318,8 @@ import Testing
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
         let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
+        session.setEdgeLocked(.start, ofPiece: clip.id, to: false)
+        session.setEdgeLocked(.end, ofPiece: clip.id, to: false)
         let a = try #require(session.addMarker(toPiece: clip.id, atTime: 2))
         let b = try #require(session.addMarker(toPiece: clip.id, atTime: 4))
         let c = try #require(session.addMarker(toPiece: clip.id, atTime: 6))
@@ -344,4 +348,60 @@ import Testing
         #expect(time(b) == 4)
         #expect(session.pickedPoints.isEmpty)
     }
+    @Test func edgeLocksUndoWithoutWritingTheProject() throws {
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        var writes = 0
+        session.onDraftChange = { _ in writes += 1 }
+        session.selectedPieceID = clip.id
+        session.toggleSelectedEdgeLocks()
+        #expect(session.undoTitle == "Undo Unlock Edges")
+        #expect(!session.run.pieces[0].isEdgeLocked(.start))
+        #expect(!session.run.pieces[0].isEdgeLocked(.end))
+        session.undo()
+        #expect(session.run == run)
+        session.redo()
+        session.select(edge: .init(piece: clip.id, edge: .end))
+        session.toggleSelectedEdgeLocks()
+        #expect(session.undoTitle == "Undo Lock End")
+        #expect(session.run.pieces[0].isEdgeLocked(.end))
+        #expect(!session.run.pieces[0].isEdgeLocked(.start))
+        session.toggleSelectedEdgeLocks()
+        #expect(session.undoTitle == "Undo Unlock End")
+        #expect(!session.isChanged)
+        #expect(writes == 0)
+    }
+
+    @Test func aLockedSceneEdgeExplainsStoppedDragsAndRefusedEdits() throws {
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project) { _ in
+            CMTimeRange(start: .zero, end: CMTime(value: 4, timescale: 1))
+        }.get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        let point = try #require(session.addMarker(toPiece: clip.id, atTime: 0))
+        session.setKind(.pace(200), ofPoint: point)
+        #expect(session.notice == MotionDesignSession.edgeLockNotice(.end))
+        #expect(session.selectedPoint?.kind == .marker)
+        let marker = try #require(session.addMarker(toPiece: clip.id, atTime: 1))
+        session.notice = nil
+        session.beginDrag()
+        session.dragEdit { $0.movePoint(marker, to: CMTime(value: 1, timescale: 2)) }
+        #expect(session.notice == MotionDesignSession.edgeLockNotice(.end))
+        session.notice = nil
+        session.dragEdit { $0.movePoint(marker, to: CMTime(value: 1, timescale: 4)) }
+        #expect(session.notice == nil) // Once per drag.
+        session.cancelDrag()
+        session.beginDrag()
+        session.dragEdit { $0.movePoint(marker, to: CMTime(value: 1, timescale: 2)) }
+        #expect(session.notice == MotionDesignSession.edgeLockNotice(.end))
+        session.cancelDrag()
+    }
+
 }

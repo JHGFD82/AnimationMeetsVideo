@@ -778,6 +778,11 @@ struct MotionDesignLanes: View {
             Button("Remove Point", role: .destructive) { session.deleteSelected() }
         } else if let key = session.selectedEdge, let map = session.selectedEdgeMap {
             let name = MotionDesignSession.edgeHandleName(key.edge)
+            if let piece = session.run.pieces.first(id: key.piece) {
+                Button("\(piece.isEdgeLocked(key.edge) ? "Unlock" : "Lock") \(key.edge == .start ? "Start" : "End")") {
+                    session.toggleEdgeLock(key.edge, ofPiece: key.piece)
+                }
+            }
             if !map.canEase(key.edge) {
                 Text("No Handle Past a Pace Marker")
             } else if session.selectedEdgeEase == nil {
@@ -853,17 +858,21 @@ struct MotionDesignLanes: View {
     /// An edge keyframe for VoiceOver, with its one handle's actions, as
     /// Option-dragging it and its handle do.
     private func edgeElement(_ key: MotionDesignSession.EdgeKey, piece index: Int) -> some View {
-        let map = session.run.pieces[index].map
+        let piece = session.run.pieces[index]
+        let map = piece.map
         let name = MotionDesignSession.edgeHandleName(key.edge)
         let frame = key.edge == .start ? map.trimStart : map.trimEnd
         let ease = map.edgeEase(key.edge).map { "\(name) over \(Int(($0.influence * 100).rounded())) percent at \(Self.speedText(map.speed(at: key.edge)))" }
         let select = { session.select(edge: key) }
         return Rectangle()
             .accessibilityLabel(key.edge == .start ? "Clip's first frame" : "Clip's last frame")
-            .accessibilityValue("Frame \(session.timecode(frame)), \(ease ?? "Linear")")
+            .accessibilityValue("Frame \(session.timecode(frame)), \(ease ?? "Linear"), \(piece.isEdgeLocked(key.edge) ? "locked" : "unlocked")")
             .accessibilityAddTraits(key == session.selectedEdge ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { select() }
             .accessibilityActions {
+                Button(piece.isEdgeLocked(key.edge) ? "Unlock" : "Lock") {
+                    select(); session.toggleEdgeLock(key.edge, ofPiece: key.piece)
+                }
                 if !map.canEase(key.edge) {
                     // Held straight by the pace before it: nothing to do.
                 } else if map.edgeEase(key.edge) == nil {

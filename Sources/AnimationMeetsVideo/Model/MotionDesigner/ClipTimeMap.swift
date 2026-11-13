@@ -561,6 +561,13 @@ struct ClipTimeMap: Equatable {
     /// marker, since it can't move the hit.
     mutating func remove(_ id: UUID) {
         guard let index = index(of: id) else { return }
+        if points.count == 1 {
+            // Keep the resting line through the last point rather than
+            // jumping back to where the clip opened.
+            origin = CMTime(seconds: points[index].time.seconds
+                - (points[index].source.seconds - trimStart.seconds) * 100 / restingSpeed,
+                preferredTimescale: Self.timescale)
+        }
         points.remove(at: index)
         if index > 0, index < points.count, points[index - 1].pace != nil, points[index].isHit {
             points[index - 1].kind = .marker

@@ -3,7 +3,8 @@
 Status: **built** except where noted (see [Building it](#building-it));
 the panel is compile-checked and was rendered offscreen, but hasn't been
 used on screen yet. Two things it needs came first and are described
-here too: clips attached to the music, and hold keyframes.
+here too: clips attached to the music, and hold keyframes. Edge locks
+are built too, with the same on-screen validation still to do.
 
 Music videos are cut to the music, and the project already knows the
 music's timing from the beat map ([beat-matching.md](beat-matching.md)).
@@ -113,10 +114,15 @@ time graph and the music.
   it plays, beside the same snap line.
 
 - **The footage strip** places each frame where it plays in the draft:
-  frames are taken at even steps of the footage, one tile's width apart
+  frames are taken on a grid from the file's start, one tile's width apart
   at 100%, so a stretch played slowly spreads them out with the lane
   showing between, and one played fast crowds them into slivers. It is
-  the one thing in the panel that shows retiming at a glance.
+  the one thing in the panel that shows retiming at a glance. Each clip
+  has an edge-lock button at its bottom corners, clear of the trim strips
+  and scene brackets: a closed or open lock on a dark chip, with an
+  18-point target. Clips too narrow for both hide them; the sidebar keeps
+  them. Clicking a lock selects the clip and toggles that edge without
+  starting a move.
 - **The graph** runs up through the run's footage clip after clip, so
   the run reads as one line in each clip's own colour: steep where fast,
   shallow where slow, flat (dashed) over a gap. Each stretch's speed is
@@ -194,7 +200,10 @@ time graph and the music.
   it sets at the point (typed), a frame earlier or later and Remove; for
   several points, how many, Make Hits, Make Markers, an Ease menu, a frame
   earlier or later and Remove; or a
-  clip's start and end and a frame earlier or later. With nothing selected it says what to do.
+  clip's start and end, **Lock start** and **Lock end** checkboxes, and a
+  frame earlier or later. An edge keyframe has its edge's checkbox too.
+  The checkboxes and strip buttons explain whether retiming keeps the
+  cut or keeps its frame. With nothing selected it says what to do.
   Warnings sit under that; Undo and Redo, Cancel and Done at the foot,
   as in Beat Match. Undo and Redo name the change they undo or redo, and
   wait while a drag is under way.
@@ -204,8 +213,10 @@ time graph and the music.
   selected point a hit, P edits its pace, E gives it Easy Ease (or
   Linear again), Delete removes it,
   ← → move it (or else the playhead, even with a clip selected) a frame
-  and ⇧ ten, N turns snapping on and off as on the timeline, Escape lets
-  go (or cancels a drag, which then ignores the rest of that press),
+  and ⇧ ten, L toggles the selected edge lock (or both edges of a selected
+  clip, unlocking if both are locked), N turns snapping on and off as on
+  the timeline, Escape lets go (or cancels a drag, which then ignores
+  the rest of that press),
   ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the draft and
   ⇧⌘Z redoes (not mid-drag), ⌘Return is Done and ⌘. Cancel (Escape
   never closes the panel). Scrolling scrolls; ⌥ or
@@ -272,7 +283,9 @@ on Done each clip gets its own share of the keyframes.
 
 Past the outermost point on a side, the speed carries on at the
 straight-line speed of the stretch next to it, **to the end of that
-clip**. With H→M at 50%, the rest of that clip plays at 50% too. The next
+clip**. With H→M at 50%, the rest of that clip plays at 50% too. A locked
+edge stays at its held time and takes its frame from that straight line;
+an unlocked edge moves to keep the footage it was given. The next
 clip keeps whatever speed it already had. A lone point carries on at the
 speed the clip played at before (a lone pace marker at its pace after
 it). The outermost points' handles bend the open ends too, between the
@@ -341,6 +354,8 @@ clip's edge. The handle bends the open end it reaches into (on a clip
 with no points, the whole clip, at the speed it played at), and easing
 never moves the edge. Dragged back onto its keyframe, it goes.
 
+- The graph's edge-keyframe menu offers Lock Start or Unlock Start
+  (or End) as well as its handle commands.
 - The last frame after a last pace marker has no handle: the pace holds
   its speed straight to the clip's end (`ClipTimeMap.canEase(_:)`).
 - Selected, the sidebar shows the handle's reach and speed, **Add Ease
@@ -366,16 +381,23 @@ is remembered between launches (`Preferences.motionDesignerShowsBeats`).
 The music can't move in the designer; only footage does, and never
 where other clips are.
 
-- **Retiming keeps a clip's footage.** When moving a point, setting a
-  pace or removing a point changes the speed at a clip's open ends, the
-  clip plays the same footage and its edges move instead
+- **Retiming keeps footage at unlocked edges.** When moving a point,
+  setting a pace or removing a point changes the speed at an unlocked
+  open end, it keeps the same footage and its cut moves instead
   (`MotionRun.keepFootage`): speeding up shortens it, slowing down
   lengthens it. Footage is cut only where an edge moving out meets the
   clip beside it (or the timeline's start), and then only as far as its
   outermost point; moving that clip is up to the person. The footage kept
-  is the clip's trim as it opened, or as the person last trimmed it
+  is the clip's trim as it opened, or as the person last trimmed or
+  unlocked it
   (`MotionRun.Piece.given`), so footage cut against a neighbour comes back
   once the clip has room again.
+- **Locked edges keep the cuts.** Every edge opens locked. Retiming
+  reveals or hides footage to keep its held time, within its scene's
+  footage. Each edge settles independently; both locked keeps the clip's
+  place and length, one unlocked lets that side grow or shrink. A lock
+  holds against retiming: moving or trimming still moves the cut and
+  carries its held time with it.
 - **Trimming.** Dragging a clip's edge in the strip reveals or hides
   footage at the speed it plays there, snapping as points do, as far as
   its footage goes, never past its outermost point or to under a frame,
@@ -411,6 +433,55 @@ where other clips are.
   scene that way and to merge scenes for more.
 - Writing rounds a clip's start onto a frame by moving its trim, rounding
   later instead if earlier would leave its footage.
+
+### Edge locks
+
+**Built.** These are the person's session-only locks on each cut, separate
+from the app's lock against outside edits (`ProjectState.lock`).
+`MotionRun.Piece.heldStart` and `heldEnd` hold the timeline times, nil
+when unlocked. `setEdgeLocked(_:ofPiece:to:)` holds an edge where it
+plays now; unlocking adopts the footage it currently plays on that side
+in `Piece.given`, so toggling never moves a cut.
+
+`keepFootage` settles both edges after a retime. An unlocked edge follows
+its given footage, cut against neighbours as above. A locked edge takes
+its trim from the straight open end, independently of its handles:
+
+- `trimEnd = last.source + (heldEnd - last.time) × speedAfterLast / 100`
+- `trimStart = first.source - (first.time - heldStart) × speedBeforeFirst / 100`
+
+For footage 2 s to 6 s playing at 0 s to 4 s, with a hit at the first
+frame and a marker at source 3 s playing at 1 s:
+
+| Marker dragged to | Speed | Locked end | Last frame |
+| --- | --- | --- | --- |
+| 1 s | 100% | 4 s | 6 s |
+| 0.5 s | 200% | 4 s | 10 s |
+| 2 s | 50% | 4 s | 4 s |
+
+With the end unlocked, those drags end at 2 s and 8 s on source 6 s.
+A lone point uses the resting speed: dragging it under two locked cuts
+slips the footage without moving either cut. Removing the last point
+keeps the resting line through its frame and time (`ClipTimeMap.remove`),
+including its `origin`; the clip doesn't jump back to its opening place.
+With no points, locks do nothing until retiming has a point to place.
+
+`fits` checks the held times, scene footage and outermost points as well
+as neighbours. A drag stops at the furthest fitting step; a discrete edit
+that needs footage past the scene is refused whole. An outermost point
+stops at a locked cut and stands in for its edge keyframe there. The
+failure identifies its piece and edge (`MotionRun.EdgeLockFailure`).
+`MotionDesignSession.edgeLockNotice` explains that there is no more of
+the scene to keep that cut, and suggests unlocking it or merging scenes
+in the browser. It is announced to VoiceOver, once per drag, and put away
+by any click. The sidebar's scene-limit note suggests unlocking too.
+
+Locking and unlocking are panel undo steps: Lock Start, Unlock Start,
+Lock End, Unlock End, or Lock Edges and Unlock Edges for both. They don't
+mark a piece edited, write any timing, or make Cancel ask. They aren't
+saved in `MotionDesign` or `project.json`; every opening locks afresh.
+The session skips draft writes for lock-only changes
+(`MotionRun.timingDiffers(from:)`), including undo and redo.
 
 ## Opening on keyframed clips
 
@@ -562,8 +633,14 @@ time, with Make hit, Make marker, Set pace, its other eases by name
 (Linear, Ease In, Ease Out, Easy Ease) where it can ease, Longer,
 Shorter, Faster and Slower for each side it eases, and Remove as
 actions; the graph adds Add marker at playhead. Each clip in the strip
-reads its name and span, with a frame earlier or later as actions. The
-ruler is the playhead, adjustable a frame at a time. Everything a drag
+reads its name and span plus each edge's locked or unlocked state, with
+Lock start or Unlock start and Lock end or Unlock end as actions, as well
+as a frame earlier or later. The strip buttons sit inside that element's
+hidden children, so those actions carry their behavior. An edge keyframe
+reads its lock state too and has a Lock or Unlock action. Sidebar
+checkboxes and L provide keyboard access. Each icon button names its
+edge and state. The ruler is the playhead, adjustable a frame at a time.
+Everything a drag
 does has a key, a button or an action.
 
 ## Building it
@@ -580,5 +657,8 @@ does has a key, a button or an action.
    unit tested; `MotionDesignSession` for the run, its undo and the
    player; the views).
 6. Accessibility. **Built** with the panel.
+7. Edge locks: per-edge held times, footage limits, panel undo, strip
+   buttons, sidebar checkboxes, L and VoiceOver. **Built**; model,
+   session and event tests and a snapshot cover them.
 
 Not yet: the panel hasn't been used on screen.

@@ -78,23 +78,32 @@ struct RetimedFilmstrip: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .frame(width: max(1, x1 - x0), height: height)
+            .clipped()
             .overlay(alignment: .leading) { edgeHandle(piece, edge: .start) }
             .overlay(alignment: .trailing) { edgeHandle(piece, edge: .end) }
             // The shape before the offset, so the clip is grabbed where it
             // is drawn: after it, the shape stayed at the strip's start.
             .contentShape(Rectangle())
-            .offset(x: x0 + (tug?.id == piece.id ? tug?.offset ?? 0 : 0))
             .gesture(moveGesture(piece))
             .onTapGesture {
                 session.selectedPieceID = piece.id
                 session.select(point: nil)
             }
+            .overlay(alignment: .bottomLeading) {
+                if x1 - x0 >= 62 { edgeLockButton(piece, edge: .start).padding(.leading, 9).padding(.bottom, 3) }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if x1 - x0 >= 62 { edgeLockButton(piece, edge: .end).padding(.trailing, 9).padding(.bottom, 3) }
+            }
+            .offset(x: x0 + (tug?.id == piece.id ? tug?.offset ?? 0 : 0))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(info?.name ?? "Clip"), clip")
-            .accessibilityValue("From \(session.timecode(drafted.startOffset)) to \(session.timecode(drafted.endOffset))")
+            .accessibilityValue("From \(session.timecode(drafted.startOffset)) to \(session.timecode(drafted.endOffset)), start \(piece.isEdgeLocked(.start) ? "locked" : "unlocked"), end \(piece.isEdgeLocked(.end) ? "locked" : "unlocked")")
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-            .accessibilityAction { session.selectedPieceID = piece.id }
+            .accessibilityAction { session.select(point: nil); session.selectedPieceID = piece.id }
             .accessibilityActions {
+                Button(piece.isEdgeLocked(.start) ? "Unlock start" : "Lock start") { toggleEdgeLock(.start, piece: piece) }
+                Button(piece.isEdgeLocked(.end) ? "Unlock end" : "Lock end") { toggleEdgeLock(.end, piece: piece) }
                 Button("Move a frame earlier") { session.selectedPieceID = piece.id; session.nudgeSelectedPiece(byFrames: -1) }
                 Button("Move a frame later") { session.selectedPieceID = piece.id; session.nudgeSelectedPiece(byFrames: 1) }
                 Button("Start a frame earlier") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.start, byFrames: -1) }
@@ -103,6 +112,32 @@ struct RetimedFilmstrip: View {
                 Button("End a frame later") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.end, byFrames: 1) }
             }
         }
+    }
+
+    private func toggleEdgeLock(_ edge: MotionRun.Edge, piece: MotionRun.Piece) {
+        session.select(point: nil)
+        session.selectedPieceID = piece.id
+        session.toggleEdgeLock(edge, ofPiece: piece.id)
+    }
+
+    /// Overlay after the move gesture, so a press on a lock belongs to the
+    /// button, including a press dragged off it.
+    private func edgeLockButton(_ piece: MotionRun.Piece, edge: MotionRun.Edge) -> some View {
+        let locked = piece.isEdgeLocked(edge)
+        let side = edge == .start ? "start" : "end"
+        return Button {
+            toggleEdgeLock(edge, piece: piece)
+        } label: {
+            Image(systemName: locked ? Design.Symbol.edgeLocked : Design.Symbol.edgeUnlocked)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(locked ? Design.textPrimary : Design.textSecondary)
+                .frame(width: 18, height: 18)
+                .background(Design.Surface.sunken.color, in: RoundedRectangle(cornerRadius: Design.Radius.chip))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(MotionDesignSession.edgeLockHelp(edge, locked: locked))
+        .accessibilityLabel("\(locked ? "Unlock" : "Lock") \(side), \(locked ? "locked" : "unlocked")")
     }
 
     private struct Tile {
@@ -117,20 +152,22 @@ struct RetimedFilmstrip: View {
     private func tiles(of clip: TimelineClip, x0: CGFloat) -> [Tile] {
         let step = Double(tileWidth) * session.secondsPerPoint
         guard step > 0 else { return [] }
-        let length = clip.trimmedDuration.seconds
-        let count = Int((length / step).rounded(.up))
+        // The grid belongs to the file, so a changing trim doesn't change
+        // every thumbnail. Include the partial tile at either edge.
+        let first = Int((clip.trimStart.seconds / step).rounded(.down))
+        let last = Int((clip.trimEnd.seconds / step).rounded(.up))
         var result: [Tile] = []
         var previous: (index: Int, source: CMTime, x: CGFloat)?
         // Footage times on a tenth-second grid, so a frame drawn once is
         // found again as the zoom changes.
-        for index in 0...count {
-            let seconds = min(clip.trimStart.seconds + Double(index) * step, clip.trimEnd.seconds)
+        for index in first...last {
+            let seconds = Double(index) * step
             let source = CMTime(seconds: (seconds * 10).rounded(.down) / 10, preferredTimescale: 600)
             let x = session.x(of: clip.timelineTime(forSourceTime: CMTime(seconds: seconds, preferredTimescale: 600)).seconds)
             if let previous, previous.x < width, x > 0 {
                 result.append(Tile(index: previous.index, source: previous.source, x: previous.x, width: min(tileWidth, max(1, x - previous.x))))
             }
-            previous = (index, max(source, clip.trimStart), x)
+            previous = (index, source, x)
         }
         return result
     }

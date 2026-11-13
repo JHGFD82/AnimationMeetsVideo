@@ -17,7 +17,7 @@ final class MotionDesignSession: SecondsViewport {
     /// The run being edited.
     private(set) var run: MotionRun {
         didSet {
-            guard run != oldValue else { return }
+            guard run.timingDiffers(from: oldValue) else { return }
             let run = run
             onDraftChange { run.write(into: &$0, over: oldValue) }
         }
@@ -176,6 +176,7 @@ final class MotionDesignSession: SecondsViewport {
     func perform(_ name: String, _ change: (inout MotionRun) -> Void) {
         var edited = run
         change(&edited)
+        explainEdgeLockFailure(edited.edgeLockFailure)
         guard edited != run else { return }
         message = nil
         if dragStart == nil { registerUndo(restoring: run, name: name) } else { dragBase = edited }
@@ -185,6 +186,7 @@ final class MotionDesignSession: SecondsViewport {
     func beginDrag() {
         dragStart = run
         dragBase = run
+        announcedEdgeLockFailure = false
     }
 
     /// Begins a drag on its first change.
@@ -201,6 +203,7 @@ final class MotionDesignSession: SecondsViewport {
         guard let base = dragBase else { return }
         var edited = base
         change(&edited)
+        explainEdgeLockFailure(edited.edgeLockFailure)
         message = nil
         if edited != run { run = edited }
     }
@@ -212,6 +215,57 @@ final class MotionDesignSession: SecondsViewport {
         let text = Self.heldPieceNotice
         notice = text
         AccessibilityNotification.Announcement(text).post()
+    }
+
+    /// Edge locks belong to this session; toggling them never writes timing.
+    func setEdgeLocked(_ edge: MotionRun.Edge, ofPiece id: UUID, to locked: Bool) {
+        let side = edge == .start ? "Start" : "End"
+        perform("\(locked ? "Lock" : "Unlock") \(side)") {
+            $0.setEdgeLocked(edge, ofPiece: id, to: locked)
+        }
+    }
+
+    func toggleEdgeLock(_ edge: MotionRun.Edge, ofPiece id: UUID) {
+        guard let piece = run.pieces.first(id: id) else { return }
+        setEdgeLocked(edge, ofPiece: id, to: !piece.isEdgeLocked(edge))
+    }
+
+    /// L acts on the edge keyframe, or both edges of the selected clip.
+    func toggleSelectedEdgeLocks() {
+        guard pickedPointIDs.isEmpty else { return }
+        if let key = selectedEdge {
+            toggleEdgeLock(key.edge, ofPiece: key.piece)
+        } else if let id = selectedPieceID, let piece = run.pieces.first(id: id) {
+            let locked = !(piece.isEdgeLocked(.start) && piece.isEdgeLocked(.end))
+            perform(locked ? "Lock Edges" : "Unlock Edges") {
+                $0.setEdgeLocked(.start, ofPiece: id, to: locked)
+                $0.setEdgeLocked(.end, ofPiece: id, to: locked)
+            }
+        }
+    }
+
+    static func edgeLockHelp(_ edge: MotionRun.Edge, locked: Bool) -> String {
+        let side = edge == .start ? "start" : "end"
+        let frame = edge == .start ? "first" : "last"
+        let verb = edge == .start ? "starts" : "ends"
+        return locked
+            ? "Locked: retiming keeps this clip's \(side) here and changes the footage it \(verb) on."
+            : "Unlocked: retiming keeps this clip's \(frame) frame and moves its \(side)."
+    }
+
+    static func edgeLockNotice(_ edge: MotionRun.Edge) -> String {
+        let side = edge == .start ? "start" : "end"
+        return "There is no more of this clip's scene to keep its \(side) where it is. Unlock its \(side) to let it move, or merge scenes in the browser for more footage."
+    }
+
+    private var announcedEdgeLockFailure = false
+
+    private func explainEdgeLockFailure(_ failure: MotionRun.EdgeLockFailure?) {
+        guard let failure, !isDragging || !announcedEdgeLockFailure else { return }
+        let text = Self.edgeLockNotice(failure.edge)
+        notice = text
+        AccessibilityNotification.Announcement(text).post()
+        if isDragging { announcedEdgeLockFailure = true }
     }
 
     static let heldPieceNotice = "This clip is held down to the beat. Change all Hit markers to regular markers to change clip placement."
@@ -344,6 +398,7 @@ final class MotionDesignSession: SecondsViewport {
     func setKind(_ kind: TimePoint.Kind, ofPoint id: UUID) {
         var edited = run
         if let conflict = edited.setKind(kind, ofPoint: id) {
+            explainEdgeLockFailure(edited.edgeLockFailure)
             switch conflict {
             case .noRoom:
                 message = "There isn't room for that: the clip would run into the one beside it, or past what it can play."

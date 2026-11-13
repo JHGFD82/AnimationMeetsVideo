@@ -67,6 +67,8 @@ private struct Layout {
         let layout = Layout(starts: [0, 4])
         var run = try layout.run(layout.shots)
         let first = layout.shots[0]
+        run.setEdgeLocked(.start, ofPiece: first, to: false)
+        run.setEdgeLocked(.end, ofPiece: first, to: false)
         let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
         run.setKind(.hit, ofPoint: try #require(added1))
         let added2 = run.addMarker(toPiece: first, atSource: seconds(3))
@@ -89,6 +91,8 @@ private struct Layout {
         let layout = Layout(starts: [0, 12])
         var run = try layout.run(layout.shots)
         let first = layout.shots[0]
+        run.setEdgeLocked(.start, ofPiece: first, to: false)
+        run.setEdgeLocked(.end, ofPiece: first, to: false)
         let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
         run.setKind(.hit, ofPoint: try #require(added1))
         let added2 = run.addMarker(toPiece: first, atSource: seconds(4))
@@ -102,6 +106,8 @@ private struct Layout {
         let layout = Layout(starts: [0, 10])
         var run = try layout.run(layout.shots)
         let first = layout.shots[0]
+        run.setEdgeLocked(.start, ofPiece: first, to: false)
+        run.setEdgeLocked(.end, ofPiece: first, to: false)
         let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
         run.setKind(.hit, ofPoint: try #require(added1))
         let added2 = run.addMarker(toPiece: first, atSource: seconds(3))
@@ -177,7 +183,7 @@ private struct Layout {
         run.trim(first, edge: .start, to: seconds(3))
         #expect(run.pieces[0].map.trimStart == seconds(3))
         run.trim(first, edge: .end, to: seconds(0))
-        #expect(run.pieces[0].map.trimEnd == seconds(3))
+        #expect(run.pieces[0].map.trimEnd > seconds(3))
     }
 
     @Test func movingAClipStopsAtItsNeighbourAndNotWithAHit() throws {
@@ -200,6 +206,8 @@ private struct Layout {
         var layout = Layout(starts: [0, 12])
         var run = try layout.run(layout.shots)
         let first = layout.shots[0]
+        run.setEdgeLocked(.start, ofPiece: first, to: false)
+        run.setEdgeLocked(.end, ofPiece: first, to: false)
         let added4 = run.addMarker(toPiece: first, atSource: seconds(2))
         let hit = try #require(added4)
         run.setKind(.hit, ofPoint: hit)
@@ -220,4 +228,161 @@ private struct Layout {
         #expect(abs(written.timelineTime(forSourceTime: seconds(2)).seconds) < 1e-4)
         #expect(abs(written.timelineTime(forSourceTime: seconds(4)).seconds - 4.01) < 1e-4)
     }
+    @Test func everyEdgeOpensLockedAndTogglesWriteNothing() throws {
+        var layout = Layout(starts: [0, 6])
+        let before = layout.project
+        var run = try layout.run(layout.shots)
+        let opened = run
+        for piece in run.pieces {
+            #expect(piece.heldStart == piece.clip.startOffset)
+            #expect(piece.heldEnd == piece.clip.endOffset)
+            run.setEdgeLocked(.start, ofPiece: piece.id, to: false)
+            run.setEdgeLocked(.end, ofPiece: piece.id, to: false)
+        }
+        #expect(!run.isChanged)
+        #expect(!run.timingDiffers(from: opened))
+        run.write(into: &layout.project, over: opened)
+        #expect(layout.project == before)
+    }
+
+    @Test func aLockedEndChangesFootageInsteadOfMovingTheCut() throws {
+        let layout = Layout(starts: [0])
+        var run = try layout.run(layout.shots)
+        let clip = layout.shots[0]
+        let addedPoint1 = run.addMarker(toPiece: clip, atSource: seconds(2))
+        let hit = try #require(addedPoint1)
+        run.setKind(.hit, ofPoint: hit)
+        let addedPoint2 = run.addMarker(toPiece: clip, atSource: seconds(3))
+        let marker = try #require(addedPoint2)
+        run.movePoint(marker, to: seconds(0.5))
+        #expect(run.pieces[0].span == CMTimeRange(start: .zero, end: seconds(4)))
+        #expect(abs(run.pieces[0].map.trimEnd.seconds - 10) < 1e-4)
+        run.movePoint(marker, to: seconds(2))
+        #expect(run.pieces[0].span == CMTimeRange(start: .zero, end: seconds(4)))
+        #expect(abs(run.pieces[0].map.trimEnd.seconds - 4) < 1e-4)
+        // Unlocking adopts the current footage and moves neither edge.
+        let span = run.pieces[0].span
+        run.setEdgeLocked(.end, ofPiece: clip, to: false)
+        #expect(run.pieces[0].span == span)
+        #expect(run.pieces[0].given.end == seconds(4))
+        run.movePoint(marker, to: seconds(1))
+        #expect(abs(run.pieces[0].span.end.seconds - 2) < 1e-4)
+    }
+
+    @Test func aLockedStartChangesItsFirstFrameAndEasingKeepsBothCuts() throws {
+        let layout = Layout(starts: [4])
+        var run = try layout.run(layout.shots)
+        let clip = layout.shots[0]
+        let addedPoint1 = run.addMarker(toPiece: clip, atSource: seconds(4))
+        let marker = try #require(addedPoint1)
+        let addedPoint2 = run.addMarker(toPiece: clip, atSource: seconds(6))
+        let hit = try #require(addedPoint2)
+        run.setKind(.hit, ofPoint: hit)
+        run.movePoint(marker, to: seconds(7))
+        #expect(abs(run.pieces[0].map.trimStart.seconds) < 1e-4)
+        #expect(abs(run.pieces[0].span.start.seconds - 4) < 1e-4)
+        run.movePoint(marker, to: seconds(5))
+        #expect(abs(run.pieces[0].map.trimStart.seconds - (4 - 2.0 / 3)) < 1e-4)
+        let before = run.pieces[0].span
+        run.setEase(.easyEase, ofPoint: marker)
+        run.setEdgeHandle(.start, ofPiece: clip, to: .easy)
+        #expect(run.pieces[0].span == before)
+    }
+
+    @Test func lockedEdgesStopAtSceneFootageAndAtTheOutermostPoint() throws {
+        let layout = Layout(starts: [0])
+        var run = try MotionRun.opening(Set(layout.shots), in: layout.timelineID, of: layout.project) { _ in
+            CMTimeRange(start: seconds(1), end: seconds(8))
+        }.get()
+        let clip = layout.shots[0]
+        let addedPoint1 = run.addMarker(toPiece: clip, atSource: seconds(2))
+        _ = try #require(addedPoint1)
+        let addedPoint2 = run.addMarker(toPiece: clip, atSource: seconds(3))
+        let marker = try #require(addedPoint2)
+        run.movePoint(marker, to: seconds(0.1))
+        #expect(run.fits)
+        #expect(abs(run.pieces[0].map.trimEnd.seconds - 8) < 1e-4)
+        #expect(run.edgeLockFailure == .init(piece: clip, edge: .end))
+        // A discrete pace edit needing more footage is refused whole.
+        let before = run
+        let conflict = run.setKind(.pace(1000), ofPoint: marker)
+        #expect(conflict == .noRoom)
+        #expect(run == before)
+        #expect(run.edgeLockFailure?.edge == .end)
+        // With just one point there is room to slip up to the locked cut.
+        var lone = try layout.run(layout.shots)
+        let addedPoint3 = lone.addMarker(toPiece: clip, atSource: seconds(4))
+        let point = try #require(addedPoint3)
+        lone.movePoint(point, to: seconds(10))
+        #expect(abs(lone.pieces[0].map.points[0].time.seconds - 4) < 1e-4)
+        #expect(abs(lone.pieces[0].map.trimEnd.seconds - 4) < 1e-4)
+        #expect(!lone.pieces[0].map.hasEdgeKeyframe(.end))
+    }
+
+    @Test func aLonePointSlipsUnderLockedCutsAndRemovalKeepsItsLine() throws {
+        let layout = Layout(starts: [0])
+        var run = try layout.run(layout.shots)
+        let clip = layout.shots[0]
+        let addedPoint1 = run.addMarker(toPiece: clip, atSource: seconds(3))
+        let point = try #require(addedPoint1)
+        run.movePoint(point, to: seconds(2))
+        #expect(run.pieces[0].map.trimStart == seconds(1))
+        #expect(run.pieces[0].map.trimEnd == seconds(5))
+        let before = run.pieces[0].drafted
+        run.removePoint(point)
+        #expect(run.pieces[0].map.points.isEmpty)
+        let after = run.pieces[0].drafted
+        #expect(before.trimStart == after.trimStart && before.trimEnd == after.trimEnd)
+        #expect(before.startOffset == after.startOffset)
+        #expect(abs(after.timelineTime(forSourceTime: seconds(3)).seconds - 2) < 1e-4)
+    }
+
+    @Test func removingTheLastPointCanBeRefusedByAnEdgeLock() throws {
+        let layout = Layout(starts: [0])
+        var run = try MotionRun.opening(Set(layout.shots), in: layout.timelineID, of: layout.project) { _ in
+            CMTimeRange(start: seconds(2), end: seconds(6))
+        }.get()
+        let clip = layout.shots[0]
+        let addedPoint1 = run.addMarker(toPiece: clip, atSource: seconds(2))
+        let point = try #require(addedPoint1)
+        let conflict = run.setKind(.pace(50), ofPoint: point)
+        #expect(conflict == nil)
+        // At 50%, the scene can fill eight seconds. Returning to the
+        // resting 100% line would need footage beyond its end.
+        run.trim(clip, edge: .end, to: seconds(8))
+        let before = run
+        run.removePoint(point)
+        #expect(run == before)
+        #expect(run.edgeLockFailure?.edge == .end)
+    }
+
+    @Test func trimmingAndMovingCarryHeldTimes() throws {
+        let layout = Layout(starts: [4])
+        var run = try layout.run(layout.shots)
+        let clip = layout.shots[0]
+        run.trim(clip, edge: .end, to: seconds(9))
+        #expect(run.pieces[0].heldEnd == run.pieces[0].span.end)
+        run.movePiece(clip, by: seconds(1))
+        #expect(run.pieces[0].heldStart == seconds(5))
+        #expect(run.pieces[0].heldEnd == seconds(10))
+        run.setEdgeLocked(.end, ofPiece: clip, to: false)
+        run.setEdgeLocked(.end, ofPiece: clip, to: true)
+        #expect(run.pieces[0].heldEnd == run.pieces[0].span.end)
+    }
+
+    @Test func removingTheLastPointKeepsAnUnlockedClipWhereItWasMoved() throws {
+        let layout = Layout(starts: [0])
+        var run = try layout.run(layout.shots)
+        let clip = layout.shots[0]
+        run.setEdgeLocked(.start, ofPiece: clip, to: false)
+        run.setEdgeLocked(.end, ofPiece: clip, to: false)
+        let added = run.addMarker(toPiece: clip, atSource: seconds(3))
+        let point = try #require(added)
+        run.movePoint(point, to: seconds(2))
+        let before = run.pieces[0].span
+        run.removePoint(point)
+        #expect(run.pieces[0].span == before)
+        #expect(run.pieces[0].map.origin == seconds(1))
+    }
+
 }
