@@ -11,16 +11,6 @@ import Foundation
 
 /// A frame of a clip placed on the timeline in the motion designer.
 struct TimePoint: Identifiable, Equatable {
-    enum Kind: Equatable, Sendable {
-        /// Pinned to the music: nothing but the person moves it.
-        case hit
-        /// Moved by the person, or by a pace marker before it.
-        case marker
-        /// A marker that holds the speed after it, as a percentage, to the
-        /// next point.
-        case pace(Double)
-    }
-
     /// A side of a point.
     enum Side { case before, after }
 
@@ -29,7 +19,7 @@ struct TimePoint: Identifiable, Equatable {
     var source: CMTime
     /// Where it plays on the timeline.
     var time: CMTime
-    var kind: Kind
+    var locked = false
     /// How the line arrives at it and leaves it, as a keyframe's Ease In and
     /// Ease Out: a handle reaching `influence` of the stretch on that side
     /// along the timeline, at `speed` times the stretch's straight-line
@@ -57,15 +47,7 @@ struct TimePoint: Identifiable, Equatable {
         }
     }
 
-    var isHit: Bool { kind == .hit }
-
-    var pace: Double? {
-        if case .pace(let speed) = kind { return speed }
-        return nil
-    }
-
-    /// The presets a point in the motion designer can take: Hold is how a
-    /// pace marker steps, so it isn't offered as an ease.
+    /// Easing presets available to every marker.
     static let presets: [KeyframeEase.Preset] = [.linear, .easeIn, .easeOut, .easyEase]
 }
 
@@ -140,34 +122,10 @@ struct ClipTimeMap: Equatable {
     /// Which edge of a clip.
     enum Edge: Hashable { case start, end }
 
-    /// Why an edit didn't happen until the person agrees to what it costs.
-    enum Conflict: Equatable {
-        /// A pace marker would have to move this hit, which becomes a marker.
-        case hitWouldMove(UUID)
-        /// A hit would end this pace marker, which becomes a marker.
-        case paceWouldEnd(UUID)
-        /// No speed the clip can play at fits the edit.
-        case noRoom
-    }
-
-    var trimStart: CMTime
-    var trimEnd: CMTime
-    /// In source order, each later on the timeline than the one before.
+    /// In source order, including the first and last frame markers.
     private(set) var points: [TimePoint]
-    /// The speed of the open ends while fewer than two points set one.
-    var restingSpeed: Double
-    /// Where the clip's first frame plays while it has no points to place
-    /// it; the line then runs straight at its resting speed between its
-    /// edge keyframes.
-    var origin: CMTime
-    /// The eases of the keyframes on the clip's first and last frames: the
-    /// handle leaving its first frame, and the one arriving at its last.
-    /// Each has only the handle that reaches into the clip, and none until
-    /// the person pulls it out. They shape the open ends while those have
-    /// footage (`hasEdgeKeyframe`), which they always do on a clip with no
-    /// points.
-    var startEase: KeyframeEase?
-    var endEase: KeyframeEase?
+    var trimStart: CMTime { points[0].source }
+    var trimEnd: CMTime { points[points.count - 1].source }
 
     static let speedRange = 1.0...10_000.0
     /// What computed times are given in, as for ramped clips.
@@ -179,37 +137,25 @@ struct ClipTimeMap: Equatable {
         trimStart: CMTime, trimEnd: CMTime, points: [TimePoint] = [], restingSpeed: Double = 100,
         origin: CMTime = .zero, startEase: KeyframeEase? = nil, endEase: KeyframeEase? = nil
     ) {
-        self.trimStart = trimStart
-        self.trimEnd = trimEnd
-        self.points = points.sorted { $0.source < $1.source }
-        self.restingSpeed = restingSpeed
-        self.origin = origin
-        self.startEase = startEase
-        self.endEase = endEase
+        let interior = points.filter { $0.source > trimStart && $0.source < trimEnd }
+        let first = points.first { $0.source == trimStart }
+        let last = points.first { $0.source == trimEnd }
+        // Callers reading a clip pass its actual edge times. For a new map,
+        // its supplied speed places the edges independently of its markers.
+        self.points = [TimePoint(source: trimStart, time: first?.time ?? origin,
+                                 locked: first?.locked ?? false, easeOut: startEase ?? first?.easeOut)]
+            + interior.sorted { $0.source < $1.source }
+            + [TimePoint(source: trimEnd, time: last?.time ?? CMTimeAdd(origin,
+                CMTime(seconds: (trimEnd - trimStart).seconds * 100 / restingSpeed, preferredTimescale: Self.timescale)),
+                         locked: last?.locked ?? false, easeIn: endEase ?? last?.easeIn)]
     }
 
     func index(of id: UUID) -> Int? { points.firstIndex(id: id) }
 
     // MARK: Speeds
 
-    /// The straight-line speed from point `index` to the next, as a
-    /// percentage; the open end's after the last point.
     func speed(after index: Int) -> Double {
-        index + 1 < points.count ? stretchSpeed(index) : speedAfterLast
-    }
-
-    /// The open start's speed: the stretch after the first point's, or
-    /// what the clip played at before a lone point or a first pace marker,
-    /// whose pace is only the speed after it.
-    var speedBeforeFirst: Double {
-        if points.count >= 2, points[0].pace == nil { return stretchSpeed(0) }
-        return restingSpeed
-    }
-
-    /// The open end's speed: a last pace marker's, else the last stretch's.
-    var speedAfterLast: Double {
-        if let pace = points.last?.pace { return pace }
-        return points.count >= 2 ? stretchSpeed(points.count - 2) : restingSpeed
+        stretchSpeed(min(index, points.count - 2))
     }
 
     /// The straight-line speed between point `index` and the next.
@@ -221,7 +167,7 @@ struct ClipTimeMap: Equatable {
 
     /// The straight-line speed of the stretch on a side of point `index`.
     func straightSpeed(_ side: TimePoint.Side, of index: Int) -> Double {
-        side == .before ? (index == 0 ? speedBeforeFirst : stretchSpeed(index - 1)) : speed(after: index)
+        side == .before ? stretchSpeed(max(0, index - 1)) : speed(after: index)
     }
 
     /// The speed the line has at point `index` on a side, from its handle.
@@ -239,52 +185,31 @@ struct ClipTimeMap: Equatable {
         canEase(side, of: index) ? points[index].ease(side) : nil
     }
 
-    /// The stretches of the line, in order: the open start from the clip's
-    /// first frame (where it has footage before the first point), each
-    /// stretch between points, and the open end to its last frame. The open
-    /// ends run at their speed, bent only by the outermost points' eases
-    /// and the edge keyframes'. A clip with no points is one stretch, from
-    /// its `origin` at its resting speed, between its edge keyframes.
     var stretches: [TimeStretch] {
-        guard let first = points.first, let last = points.last else {
-            let footage = CMTimeSubtract(trimEnd, trimStart).seconds
-            guard footage > 0, restingSpeed > 0 else { return [] }
-            return [TimeStretch(
-                start: (origin.seconds, trimStart.seconds),
-                end: (origin.seconds + footage * 100 / restingSpeed, trimEnd.seconds),
-                leaving: startEase, arriving: endEase
-            )]
+        zip(points, points.dropFirst()).map { first, last in
+            TimeStretch(start: (first.time.seconds, first.source.seconds),
+                        end: (last.time.seconds, last.source.seconds),
+                        leaving: first.easeOut, arriving: last.easeIn)
         }
-        var result: [TimeStretch] = []
-        let lead = CMTimeSubtract(first.source, trimStart).seconds
-        if lead > 0 {
-            result.append(TimeStretch(
-                start: (first.time.seconds - lead * 100 / speedBeforeFirst, trimStart.seconds),
-                end: (first.time.seconds, first.source.seconds),
-                leaving: edgeEase(.start), arriving: effectiveEase(.before, of: 0)
-            ))
-        }
-        for i in points.indices.dropLast() {
-            result.append(TimeStretch(
-                start: (points[i].time.seconds, points[i].source.seconds),
-                end: (points[i + 1].time.seconds, points[i + 1].source.seconds),
-                leaving: effectiveEase(.after, of: i), arriving: effectiveEase(.before, of: i + 1)
-            ))
-        }
-        let tail = CMTimeSubtract(trimEnd, last.source).seconds
-        if tail > 0 {
-            result.append(TimeStretch(
-                start: (last.time.seconds, last.source.seconds),
-                end: (last.time.seconds + tail * 100 / speedAfterLast, trimEnd.seconds),
-                leaving: effectiveEase(.after, of: points.count - 1), arriving: edgeEase(.end)
-            ))
-        }
-        return result
     }
 
     /// Where a frame plays, along the line, past the footage too.
     func time(atSource source: CMTime) -> CMTime? {
+        if let point = points.first(where: { $0.source == source }) { return point.time }
         guard let first = points.first, let last = points.last else { return nil }
+        // A straight stretch can be interpolated as exact rational times.
+        // This matters at 1% and 10000%, where rounding a newly inserted
+        // marker by a tick would put one adjacent stretch past the limit.
+        for (a, b) in zip(points, points.dropFirst()) where a.source < source && source < b.source {
+            let index = self.index(of: a.id)!
+            if stretches[index].isStraight {
+                let offset = source - a.source
+                let footage = CMTimeConvertScale(b.source - a.source, timescale: offset.timescale, method: .default)
+                if abs(offset.value) <= Int32.max, abs(footage.value) <= Int32.max, footage.value > 0 {
+                    return a.time + CMTimeMultiplyByRatio(b.time - a.time, multiplier: Int32(offset.value), divisor: Int32(footage.value))
+                }
+            }
+        }
         let seconds = source.seconds
         let stretches = stretches
         let result: Double
@@ -292,16 +217,17 @@ struct ClipTimeMap: Equatable {
             result = stretch.time(atSource: seconds)
         } else if seconds < (stretches.first?.start.source ?? first.source.seconds) {
             let from = stretches.first.map { ($0.start.time, $0.start.source) } ?? (first.time.seconds, first.source.seconds)
-            result = from.0 + (seconds - from.1) * 100 / speedBeforeFirst
+            result = from.0 + (seconds - from.1) * 100 / speed(after: 0)
         } else {
             let from = stretches.last.map { ($0.end.time, $0.end.source) } ?? (last.time.seconds, last.source.seconds)
-            result = from.0 + (seconds - from.1) * 100 / speedAfterLast
+            result = from.0 + (seconds - from.1) * 100 / speed(after: points.count - 2)
         }
         return CMTime(seconds: result, preferredTimescale: Self.timescale)
     }
 
     /// The frame playing at `time`, along the line, past the footage too.
     func source(atTime time: CMTime) -> CMTime? {
+        if let point = points.first(where: { $0.time == time }) { return point.source }
         guard let first = points.first, let last = points.last else { return nil }
         let seconds = time.seconds
         let stretches = stretches
@@ -310,10 +236,10 @@ struct ClipTimeMap: Equatable {
             result = stretch.source(atTime: seconds)
         } else if seconds < (stretches.first?.start.time ?? first.time.seconds) {
             let from = stretches.first.map { ($0.start.time, $0.start.source) } ?? (first.time.seconds, first.source.seconds)
-            result = from.1 + (seconds - from.0) * speedBeforeFirst / 100
+            result = from.1 + (seconds - from.0) * speed(after: 0) / 100
         } else {
             let from = stretches.last.map { ($0.end.time, $0.end.source) } ?? (last.time.seconds, last.source.seconds)
-            result = from.1 + (seconds - from.0) * speedAfterLast / 100
+            result = from.1 + (seconds - from.0) * speed(after: points.count - 2) / 100
         }
         return CMTime(seconds: result, preferredTimescale: Self.timescale)
     }
@@ -324,58 +250,29 @@ struct ClipTimeMap: Equatable {
         return (start, end)
     }
 
-    /// Whether every stretch plays forwards at a speed the clip can play.
     var isPlayable: Bool {
-        guard points.indices.dropLast().allSatisfy({ Self.speedRange.contains(speed(after: $0)) }) else { return false }
-        return Self.speedRange.contains(speedBeforeFirst) && Self.speedRange.contains(speedAfterLast)
+        stretches.allSatisfy {
+            // Subtracting nearby Double times can put an exact boundary
+            // a few ulps outside the range. This is below a time tick.
+            $0.speed >= Self.speedRange.lowerBound - 1e-10
+                && $0.speed <= Self.speedRange.upperBound + 1e-8 && $0.footage > 0
+        }
     }
 
-    // MARK: Edge keyframes
+    func isEdge(_ id: UUID) -> Bool { points.first?.id == id || points.last?.id == id }
 
-    /// Whether the clip shows a keyframe on its edge's frame: it has
-    /// footage between that frame and the outermost point (a point on the
-    /// very frame stands in for it), or any footage while it has no points.
-    func hasEdgeKeyframe(_ edge: Edge) -> Bool {
-        guard let first = points.first, let last = points.last else { return trimEnd > trimStart }
-        return edge == .start ? first.source > trimStart : last.source < trimEnd
-    }
-
-    /// Whether an edge keyframe can have its handle: not the last frame
-    /// after a last pace marker, which holds its pace straight to it.
-    func canEase(_ edge: Edge) -> Bool {
-        hasEdgeKeyframe(edge) && (edge == .start || points.last?.pace == nil)
-    }
-
-    /// The handle of an edge keyframe, nil while it has none or can't have
-    /// one (`canEase`).
-    func edgeEase(_ edge: Edge) -> KeyframeEase? {
-        guard canEase(edge) else { return nil }
-        return edge == .start ? startEase : endEase
-    }
-
-    /// The open end an edge keyframe's handle reaches into.
-    func edgeStretch(_ edge: Edge) -> TimeStretch? {
-        guard hasEdgeKeyframe(edge) else { return nil }
-        return edge == .start ? stretches.first : stretches.last
-    }
-
-    /// The straight-line speed of the open end at an edge.
-    func straightSpeed(of edge: Edge) -> Double {
-        edge == .start ? speedBeforeFirst : speedAfterLast
-    }
-
-    /// The speed the line has at an edge's frame, from its handle.
-    func speed(at edge: Edge) -> Double {
-        straightSpeed(of: edge) * (edgeEase(edge)?.speed ?? 1)
-    }
-
-    /// Sets the handle of an edge keyframe, as dragging it does: nil takes
-    /// it away, leaving the edge linear. It only ever reaches into the
-    /// clip, so there is no other handle to keep in line.
-    mutating func setEdgeHandle(_ edge: Edge, to ease: KeyframeEase?) {
-        guard canEase(edge) else { return }
-        let ease = ease.map { held($0) }
-        if edge == .start { startEase = ease } else { endEase = ease }
+    /// Trim footage along the existing line, preserving the edge handle.
+    mutating func trim(_ edge: Edge, to time: CMTime, within footage: CMTimeRange, frame: CMTime) {
+        let i = edge == .start ? 0 : points.count - 1
+        guard !points[i].locked, let source = source(atTime: time) else { return }
+        let neighbour = points[edge == .start ? 1 : points.count - 2]
+        let bounded = edge == .start
+            ? CMTimeMinimum(CMTimeMaximum(source, footage.start), neighbour.source - frame)
+            : CMTimeMaximum(CMTimeMinimum(source, footage.end), neighbour.source + frame)
+        guard bounded >= footage.start, bounded <= footage.end,
+              let placed = self.time(atSource: bounded) else { return }
+        points[i].source = bounded
+        points[i].time = placed
     }
 
     // MARK: Editing
@@ -386,7 +283,7 @@ struct ClipTimeMap: Equatable {
     /// frame; with no points yet it goes where the clip plays it at `time`.
     @discardableResult
     mutating func addMarker(atSource source: CMTime, time placed: CMTime? = nil) -> UUID? {
-        guard source >= trimStart, source <= trimEnd, !points.contains(where: { $0.source == source }),
+        guard source > trimStart, source < trimEnd, !points.contains(where: { $0.source == source }),
               let time = time(atSource: source) ?? placed
         else { return nil }
         // The line's speed at the frame, which the new point's handles keep.
@@ -394,7 +291,7 @@ struct ClipTimeMap: Equatable {
         let speed = stretches.first { $0.start.source <= seconds && seconds <= $0.end.source }.map { stretch in
             stretch.speed(atFraction: stretch.duration > 0 ? (time.seconds - stretch.start.time) / stretch.duration : 0)
         }
-        let point = TimePoint(source: source, time: time, kind: .marker, smooth: true)
+        let point = TimePoint(source: source, time: time, smooth: true)
         points.append(point)
         points.sort { $0.source < $1.source }
         guard let index = index(of: point.id) else { return point.id }
@@ -406,31 +303,16 @@ struct ClipTimeMap: Equatable {
         return point.id
     }
 
-    /// Moves a point along the timeline, as far toward `time` as the clip
-    /// can play. A point after a pace marker sets that marker's pace
-    /// instead; one with a pace marker before it in a run moves the run.
+    /// Moves an unlocked marker along time, stopping at the speed limits.
     mutating func move(_ id: UUID, to time: CMTime) {
-        guard let index = index(of: id) else { return }
+        guard let index = index(of: id), !points[index].locked, points[index].time != time else { return }
         let original = self
-        if index > 0, let old = points[index - 1].pace {
-            let source = CMTimeSubtract(points[index].source, points[index - 1].source).seconds
-            let span = CMTimeSubtract(time, points[index - 1].time).seconds
-            let wanted = span > 0 ? (source / span * 100).clamped(between: Self.speedRange.lowerBound, and: Self.speedRange.upperBound) : Self.speedRange.upperBound
-            self = Self.furthest { fraction in
-                var copy = original
-                copy.points[index - 1].kind = .pace(old + (wanted - old) * fraction)
-                copy.followPaces()
-                copy.alignSmooth()
-                return copy
-            }
-            return
-        }
         let start = points[index].time.seconds
         self = Self.furthest { fraction in
             var copy = original
             copy.points[index].time = CMTime(seconds: start + (time.seconds - start) * fraction, preferredTimescale: Self.timescale)
-            copy.followPaces()
-            copy.alignSmooth()
+            copy.alignSmooth(at: index)
+            copy.alignNeighbours(around: index)
             return copy
         }
     }
@@ -448,59 +330,21 @@ struct ClipTimeMap: Equatable {
         return edit(low)
     }
 
-    /// Makes a point a hit, a marker or a pace marker. A pace marker before
-    /// a hit would move it, and a hit right after a pace marker would end
-    /// that pace: each is refused with what it would cost until
-    /// `confirmed`, then done. A pace holds its stretch straight, so the
-    /// handles into it go.
-    @discardableResult
-    mutating func setKind(_ kind: TimePoint.Kind, of id: UUID, confirmed: Bool = false) -> Conflict? {
-        guard let index = index(of: id) else { return nil }
-        var copy = self
-        switch kind {
-        case .pace(let speed):
-            if index + 1 < points.count, points[index + 1].isHit {
-                guard confirmed else { return .hitWouldMove(points[index + 1].id) }
-                copy.points[index + 1].kind = .marker
-            }
-            copy.points[index].kind = .pace(speed.clamped(between: Self.speedRange.lowerBound, and: Self.speedRange.upperBound))
-        case .hit:
-            if index > 0, points[index - 1].pace != nil {
-                guard confirmed else { return .paceWouldEnd(points[index - 1].id) }
-                copy.points[index - 1].kind = .marker
-            }
-            copy.points[index].kind = .hit
-        case .marker:
-            copy.points[index].kind = .marker
-        }
-        copy.followPaces()
-        copy.dropUnusableEases()
-        copy.alignSmooth()
-        guard copy.isPlayable else { return .noRoom }
-        self = copy
-        return nil
+    mutating func setLocked(_ locked: Bool, of id: UUID) {
+        guard let i = index(of: id) else { return }
+        points[i].locked = locked
     }
 
     /// Moves every point `delta` later on the timeline (earlier if
     /// negative), as moving the whole clip does.
     mutating func shift(by delta: CMTime) {
         for index in points.indices { points[index].time = CMTimeAdd(points[index].time, delta) }
-        origin = CMTimeAdd(origin, delta)
     }
 
-    /// Whether a side of point `index` can ease: it has footage on that
-    /// side, and isn't a pace marker's stretch, which holds its pace
-    /// straight to the next point.
+    /// Whether there is a neighbouring stretch on this side.
     func canEase(_ side: TimePoint.Side, of index: Int) -> Bool {
         guard points.indices.contains(index) else { return false }
-        switch side {
-        case .before:
-            if index == 0 { return points[0].source > trimStart }
-            return points[index - 1].pace == nil
-        case .after:
-            if points[index].pace != nil { return false }
-            return index + 1 < points.count || points[index].source < trimEnd
-        }
+        return side == .before ? index > 0 : index + 1 < points.count
     }
 
     /// Whether either side of a point can ease.
@@ -554,27 +398,12 @@ struct ClipTimeMap: Equatable {
     mutating func setSmooth(_ smooth: Bool, of id: UUID) {
         guard let index = index(of: id) else { return }
         points[index].smooth = smooth && points[index].easeIn != nil && points[index].easeOut != nil
-        alignSmooth()
+        alignSmooth(at: index)
     }
 
-    /// Takes a point away. A pace marker left right before a hit becomes a
-    /// marker, since it can't move the hit.
     mutating func remove(_ id: UUID) {
-        guard let index = index(of: id) else { return }
-        if points.count == 1 {
-            // Keep the resting line through the last point rather than
-            // jumping back to where the clip opened.
-            origin = CMTime(seconds: points[index].time.seconds
-                - (points[index].source.seconds - trimStart.seconds) * 100 / restingSpeed,
-                preferredTimescale: Self.timescale)
-        }
+        guard let index = index(of: id), !isEdge(id), !points[index].locked else { return }
         points.remove(at: index)
-        if index > 0, index < points.count, points[index - 1].pace != nil, points[index].isHit {
-            points[index - 1].kind = .marker
-        }
-        followPaces()
-        dropUnusableEases()
-        alignSmooth()
     }
 
     // MARK: Keeping it together
@@ -590,41 +419,39 @@ struct ClipTimeMap: Equatable {
         KeyframeEase(influence: ease.influence, speed: ease.speed.clamped(between: 0, and: 1 / ease.influence))
     }
 
-    /// Takes the eases off sides that can't ease any more, such as into a
-    /// stretch a pace now holds.
-    private mutating func dropUnusableEases() {
-        for index in points.indices {
-            if !canEase(.before, of: index) { points[index].easeIn = nil }
-            if !canEase(.after, of: index) { points[index].easeOut = nil }
-            if points[index].easeIn == nil || points[index].easeOut == nil { points[index].smooth = false }
+    /// Keep smooth neighbours aligned by changing only their handle into
+    /// the moved marker. Their handle into the untouched stretch stays
+    /// exactly as it was, so that stretch never changes shape.
+    private mutating func alignNeighbours(around index: Int) {
+        for neighbour in [index - 1, index + 1] where neighbour > 0 && neighbour + 1 < points.count {
+            guard points[neighbour].smooth,
+                  let into = points[neighbour].easeIn, let out = points[neighbour].easeOut else { continue }
+            if neighbour < index {
+                let speed = straightSpeed(.before, of: neighbour) * into.speed
+                setSide(.after, of: neighbour, to: KeyframeEase(influence: out.influence,
+                    speed: speed / straightSpeed(.after, of: neighbour)))
+            } else {
+                let speed = straightSpeed(.after, of: neighbour) * out.speed
+                setSide(.before, of: neighbour, to: KeyframeEase(influence: into.influence,
+                    speed: speed / straightSpeed(.before, of: neighbour)))
+            }
         }
     }
 
     /// Puts the handles of each point kept in line back in line, at the
     /// speed they share between them by their reach, after the stretches
     /// around it have changed speed.
-    private mutating func alignSmooth() {
-        for index in points.indices where points[index].smooth {
+    private mutating func alignSmooth(at index: Int) {
+        if points[index].smooth {
             guard let into = points[index].easeIn, let out = points[index].easeOut,
                   canEase(.before, of: index), canEase(.after, of: index)
-            else { continue }
+            else { return }
             let left = straightSpeed(.before, of: index), right = straightSpeed(.after, of: index)
-            guard left > 0, right > 0 else { continue }
+            guard left > 0, right > 0 else { return }
             let speed = (left * into.speed * into.influence + right * out.speed * out.influence) / (into.influence + out.influence)
             setSide(.before, of: index, to: KeyframeEase(influence: into.influence, speed: speed / left))
             setSide(.after, of: index, to: KeyframeEase(influence: out.influence, speed: speed / right))
         }
     }
 
-    /// Puts each point after a pace marker where that pace takes it, in
-    /// order, so a run of pace markers carries on.
-    private mutating func followPaces() {
-        for index in points.indices.dropLast() {
-            guard let pace = points[index].pace, !points[index + 1].isHit else { continue }
-            let source = CMTimeSubtract(points[index + 1].source, points[index].source).seconds
-            points[index + 1].time = CMTime(
-                seconds: points[index].time.seconds + source * 100 / pace, preferredTimescale: Self.timescale
-            )
-        }
-    }
 }

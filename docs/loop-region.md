@@ -442,7 +442,7 @@ Differences from `SectionLane`:
 - `MotionDesignLanes`: a `LoopBar` between `ruler(width:)` and
   `RetimedFilmstrip`. Everything measured from the top assumes the
   filmstrip starts at `rulerHeight`: `graphHeight`, the notice's top
-  padding, and `graphTop` and the hit pins in `markings`. Give the
+  padding, and `graphTop` and the locked marker pins in `markings`. Give the
   lanes one `filmTop` (`rulerHeight + LoopBar.height`) and use it in
   each.
 - Mapping: the session is a `SecondsViewport` (`x(of:)`,

@@ -28,20 +28,6 @@ struct MotionDesignView: View {
         .preferredColorScheme(.dark)
         .tint(Design.accent)
         .background(KeyPressMonitor(handler: handleKey))
-        .confirmationDialog(
-            conflictTitle,
-            isPresented: $session.pendingConflict.isPresent,
-            titleVisibility: .visible,
-            presenting: session.pendingConflict
-        ) { pending in
-            Button(conflictAction(pending.conflict)) {
-                pending.retry()
-                session.pendingConflict = nil
-            }
-            Button("Cancel", role: .cancel) { session.pendingConflict = nil }
-        } message: { pending in
-            Text(conflictMessage(pending.conflict))
-        }
     }
 
     // MARK: Transport
@@ -98,37 +84,9 @@ struct MotionDesignView: View {
         .frame(minHeight: 28)
     }
 
-    // MARK: Conflicts
-
-    private var conflictTitle: String {
-        switch session.pendingConflict?.conflict {
-        case .hitWouldMove: "Pacing this marker moves the hit after it"
-        case .paceWouldEnd: "This hit ends the pace before it"
-        default: ""
-        }
-    }
-
-    private func conflictAction(_ conflict: ClipTimeMap.Conflict) -> String {
-        if case .paceWouldEnd = conflict { return "Make Hit" }
-        return "Set Pace"
-    }
-
-    private func conflictMessage(_ conflict: ClipTimeMap.Conflict) -> String {
-        switch conflict {
-        case .hitWouldMove: "The hit can't stay on its beat at this pace. It becomes a marker and moves with the pace."
-        case .paceWouldEnd: "The pace marker before it becomes a marker, so this frame can stay on its beat."
-        case .noRoom: ""
-        }
-    }
-
     // MARK: Keys
 
-    /// Space plays, M adds a marker under the playhead, H makes the
-    /// selected point a hit, P edits its pace, E eases it, Delete removes
-    /// it, ← → move it (or else the playhead) a frame, ⇧ ten, L toggles
-    /// the selected edge locks, N snaps,
-    /// Escape lets go, ⌘= ⌘- ⌘0 zoom, and ⌘Z undoes and ⇧⌘Z redoes in the
-    /// draft. Not while typing in a field.
+    /// L toggles marker locks, M adds a marker, E eases, and arrows nudge.
     private func handleKey(_ event: NSEvent) -> Bool {
         if NSApp.keyWindow?.firstResponder is NSTextView { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -180,9 +138,7 @@ struct MotionDesignView: View {
         case " ": session.togglePlayback()
         case "m": session.addMarkerAtPlayhead()
         case "n": session.snaps.toggle()
-        case "l": session.toggleSelectedEdgeLocks()
-        case "h": session.setKindOfPicked(.hit)
-        case "p": if session.selectedPoint != nil { session.focusesPace = true }
+        case "l": session.togglePickedLocks()
         case "e":
             // Easy Ease, or Linear again, as F9 eases a keyframe.
             if session.pickedPointIDs.count > 1 {
@@ -190,9 +146,7 @@ struct MotionDesignView: View {
                 session.setEaseOfPicked(eased ? .linear : .easyEase)
             } else if let point = session.selectedPoint {
                 session.setEase(point.eased ? .linear : .easyEase, ofPoint: point.id)
-            } else if let key = session.selectedEdge, session.selectedEdgeMap?.canEase(key.edge) == true {
-                // An edge keyframe's one handle, flat, or gone again.
-                session.setSelectedEdgeHandle(session.selectedEdgeEase == nil ? .easy : nil)
+
             }
         default: return false
         }

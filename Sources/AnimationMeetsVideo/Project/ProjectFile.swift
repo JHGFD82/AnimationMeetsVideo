@@ -185,7 +185,8 @@ struct ProjectFile: Codable {
         struct Point: Codable {
             var source: TimeEntry
             /// `"hit"`, `"marker"` or `"pace"`.
-            var kind: String
+            var kind: String?
+            var locked: Bool?
             /// A pace marker's speed after it, as a percentage.
             var pace: Double?
             var easeIn: EaseEntry?
@@ -202,17 +203,8 @@ struct ProjectFile: Codable {
 
         init(_ design: MotionDesign) {
             points = design.points.map { point in
-                let kind: String
-                var pace: Double?
-                switch point.kind {
-                case .hit: kind = "hit"
-                case .marker: kind = "marker"
-                case .pace(let speed):
-                    kind = "pace"
-                    pace = speed
-                }
                 return Point(
-                    source: TimeEntry(point.source), kind: kind, pace: pace,
+                    source: TimeEntry(point.source), locked: point.locked ? true : nil,
                     easeIn: point.easeIn.map(EaseEntry.init), easeOut: point.easeOut.map(EaseEntry.init),
                     smooth: point.smooth ? true : nil
                 )
@@ -224,14 +216,11 @@ struct ProjectFile: Codable {
 
         var design: MotionDesign {
             MotionDesign(
-                points: points.map { point in
-                    let kind: TimePoint.Kind = switch point.kind {
-                    case "hit": .hit
-                    case "pace": .pace(ClipTime.clampedSpeed(point.pace ?? 100))
-                    default: .marker
-                    }
-                    return MotionDesign.Point(
-                        source: point.source.time, kind: kind, easeIn: point.easeIn?.ease, easeOut: point.easeOut?.ease,
+                points: points.enumerated().map { index, point in
+                    MotionDesign.Point(
+                        source: point.source.time, locked: point.locked == true || point.kind == "hit",
+                        easeIn: index > 0 && points[index - 1].kind == "pace" ? nil : point.easeIn?.ease,
+                        easeOut: point.kind == "pace" ? nil : point.easeOut?.ease,
                         smooth: point.smooth ?? false
                     )
                 },
@@ -1340,7 +1329,8 @@ extension ProjectFile {
                 .optional("sound", .choice(["changePitch", "mute"], noun: "sound mode")),
                 .optional("design", .object(object([
                     .required("points", .array(.object(object([
-                        .required("source", .time), .required("kind", .choice(["hit", "marker", "pace"], noun: "point kind")),
+                        .required("source", .time), .optional("kind", .choice(["hit", "marker", "pace"], noun: "point kind")),
+                        .optional("locked", .bool),
                         .optional("pace", .number), .optional("easeIn", ShapeKit.ease), .optional("easeOut", ShapeKit.ease), .optional("smooth", .bool),
                     ])))),
                     .optional("startEase", ShapeKit.ease), .optional("endEase", ShapeKit.ease),

@@ -96,7 +96,7 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ⌃⌥H | Hold the keyframes at the playhead |
 
 The motion designer has keys of its own for everything its drags do
-(points and clips a frame at a time, M, H, P, E, Delete); see
+(markers and clips a frame at a time, M, L, E, Delete); see
 [motion-designer.md](motion-designer.md#the-panel).
 
 The Tape Scrubber (Window menu) runs the sound like tape while the Left

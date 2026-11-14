@@ -39,12 +39,15 @@ import Testing
         // A marker moved after a hit retimes the clip: 1 s of footage over
         // 2 s, so 50% (with a third point, speed keyframes).
         let pinned = session.addMarker(toPiece: clip.id, atTime: 4)
-        session.setKind(.hit, ofPoint: try #require(pinned))
+        session.setLocked(true, ofPoint: try #require(pinned))
         let added = session.addMarker(toPiece: clip.id, atTime: 5)
         let marker = try #require(added)
+        session.setEase(.linear, ofPoint: marker)
         session.perform("Move Point") { $0.movePoint(marker, to: CMTime(value: 6, timescale: 1)) }
-        let speed = placed()?.time.speed.value(at: .zero)
-        #expect(speed.map { abs($0 - 50) < 1e-6 } == true)
+        let retimed = try #require(placed())
+        #expect(abs(retimed.timelineTime(forSourceTime: CMTime(value: 2, timescale: 1)).seconds - 6) < 1e-4)
+        #expect(retimed.startOffset == CMTime(value: 3, timescale: 1))
+        #expect(retimed.trimEnd == clip.trimEnd)
 
         // Undoing in the panel puts the project back too.
         while session.undoManager.canUndo { session.undoManager.undo() }
@@ -101,12 +104,12 @@ import Testing
         // A clip with no points opens with both, without handles, and
         // changes nothing until one is pulled out.
         let map = session.run.pieces[0].map
-        #expect(map.hasEdgeKeyframe(.start) && map.hasEdgeKeyframe(.end))
-        #expect(map.edgeEase(.start) == nil && map.edgeEase(.end) == nil)
+        #expect(map.points.count == 2)
+        #expect(map.points.first?.easeOut == nil && map.points.last?.easeIn == nil)
         #expect(!session.isChanged)
 
-        session.select(edge: .init(piece: clip.id, edge: .start))
-        session.setSelectedEdgeHandle(.easy)
+        session.select(point: session.run.pieces[0].map.points[0].id)
+        session.setEase(.easeOut, ofPoint: session.selectedPointID!)
         let eased = try #require(placed())
         #expect(eased.time.speed.isAnimated)
         #expect(eased.time.design?.startEase == .easy && eased.time.design?.endEase == nil)
@@ -118,12 +121,12 @@ import Testing
         var saved = project
         saved.timelines[0].layers[0].clips[0] = eased
         let again = try MotionRun.opening([clip.id], in: saved.rootTimelineID, of: saved).get()
-        #expect(again.pieces[0].map.edgeEase(.start) == .easy)
+        #expect(again.pieces[0].map.points.first?.easeOut == .easy)
         let reopened = MotionDesignSession(run: again, project: saved, playback: PlaybackModel())
         defer { reopened.end() }
-        reopened.select(edge: .init(piece: clip.id, edge: .start))
+        reopened.select(point: reopened.run.pieces[0].map.points[0].id)
         reopened.deleteSelected()
-        #expect(reopened.run.pieces[0].map.edgeEase(.start) == nil)
+        #expect(reopened.run.pieces[0].map.points.first?.easeOut == nil)
         #expect(reopened.project.clipAndLayer(clip.id, in: saved.rootTimelineID)?.clip.time.design?.startEase == .easy)
     }
 
@@ -137,10 +140,8 @@ import Testing
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
         let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
-        session.setEdgeLocked(.start, ofPiece: clip.id, to: false)
-        session.setEdgeLocked(.end, ofPiece: clip.id, to: false)
         let pinned = session.addMarker(toPiece: clip.id, atTime: 1)
-        session.setKind(.hit, ofPoint: try #require(pinned))
+        session.setLocked(true, ofPoint: try #require(pinned))
         let added = session.addMarker(toPiece: clip.id, atTime: 2)
         let marker = try #require(added)
         let before = session.run
@@ -149,7 +150,7 @@ import Testing
         // dragged back, it has all its footage again, and nothing changed.
         session.beginDrag()
         session.dragEdit { $0.movePoint(marker, to: seconds(5)) }
-        #expect(session.run.pieces[0].map.trimEnd < seconds(4))
+        #expect(session.run.pieces[0].map.trimEnd == seconds(4))
         session.dragEdit { $0.movePoint(marker, to: seconds(2)) }
         session.endDrag("Move Point")
         #expect(session.run == before)
@@ -243,41 +244,6 @@ import Testing
         #expect(session.dragSnapTime == nil)
     }
 
-    @Test func easingSaysWhenThereIsNothingToEase() throws {
-        var project = EditingProject.empty
-        let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 8, timescale: 1))
-        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
-        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
-        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
-        defer { session.end() }
-        let hit = try #require(session.addMarker(toPiece: clip.id, atTime: 1))
-        session.setKind(.hit, ofPoint: hit)
-        let marker = try #require(session.addMarker(toPiece: clip.id, atTime: 3))
-        session.perform("Move Point") { $0.movePoint(marker, to: CMTime(value: 4, timescale: 1)) }
-
-        // A hit on a straight line eases, as a keyframe does: it slows into
-        // the beat and out of it.
-        session.select(point: hit)
-        session.setEase(.easyEase, ofPoint: hit)
-        #expect(session.selectedPoint?.easePreset == .easyEase)
-        #expect(session.undoManager.undoActionName == "Easy Ease")
-
-        // A lone pace marker on the clip's first frame has no footage before
-        // it, and holds the stretch after it, so easing it says so and takes
-        // no undo step.
-        session.select(point: marker)
-        session.deleteSelected()
-        session.select(point: hit)
-        session.deleteSelected()
-        let first = try #require(session.addMarker(toPiece: clip.id, atTime: 0))
-        session.setKind(.pace(100), ofPoint: first)
-        let undoName = session.undoManager.undoActionName
-        session.setEase(.easyEase, ofPoint: first)
-        #expect(session.selectedPoint?.easePreset == .linear)
-        #expect(session.message == MotionDesignSession.nothingToEase)
-        #expect(session.undoManager.undoActionName == undoName)
-    }
-
     @Test func undoAndRedoStepThroughTheDraft() throws {
         var project = EditingProject.empty
         let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
@@ -318,8 +284,6 @@ import Testing
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
         let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
-        session.setEdgeLocked(.start, ofPiece: clip.id, to: false)
-        session.setEdgeLocked(.end, ofPiece: clip.id, to: false)
         let a = try #require(session.addMarker(toPiece: clip.id, atTime: 2))
         let b = try #require(session.addMarker(toPiece: clip.id, atTime: 4))
         let c = try #require(session.addMarker(toPiece: clip.id, atTime: 6))
@@ -329,7 +293,7 @@ import Testing
 
         // Shift-click picks the run from the last clicked; Command-click
         // takes one out.
-        session.click(point: a, .only)
+        session.select(point: a)
         session.click(point: c, .extend)
         #expect(session.pickedPointIDs == [a, b, c])
         #expect(session.selectedPointID == nil)
@@ -348,60 +312,34 @@ import Testing
         #expect(time(b) == 4)
         #expect(session.pickedPoints.isEmpty)
     }
-    @Test func edgeLocksUndoWithoutWritingTheProject() throws {
+
+    @Test func clickingLocksAndUndoWritesTheLockBackToTheProject() throws {
         var project = EditingProject.empty
         let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
         project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
         let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
-        var writes = 0
-        session.onDraftChange = { _ in writes += 1 }
-        session.selectedPieceID = clip.id
-        session.toggleSelectedEdgeLocks()
-        #expect(session.undoTitle == "Undo Unlock Edges")
-        #expect(!session.run.pieces[0].isEdgeLocked(.start))
-        #expect(!session.run.pieces[0].isEdgeLocked(.end))
+        var live = project
+        session.onDraftChange = { $0(&live) }
+        let edge = run.pieces[0].map.points[0].id
+        session.click(point: edge, .toggle)
+        #expect(session.selectedPoint?.locked == false)
+        session.click(point: edge, .only)
+        #expect(session.selectedPoint?.locked == true)
+        #expect(session.isChanged)
+        #expect(live.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip.time.design?.points.first?.locked == true)
+        let held = session.run
+        session.nudgeSelected(byFrames: 1)
+        session.deleteSelected()
+        #expect(session.run == held)
+        #expect(session.notice == MotionDesignSession.lockedMarkerNotice)
         session.undo()
-        #expect(session.run == run)
+        #expect(session.selectedPoint?.locked == false)
+        #expect(live.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip.time.design == nil)
         session.redo()
-        session.select(edge: .init(piece: clip.id, edge: .end))
-        session.toggleSelectedEdgeLocks()
-        #expect(session.undoTitle == "Undo Lock End")
-        #expect(session.run.pieces[0].isEdgeLocked(.end))
-        #expect(!session.run.pieces[0].isEdgeLocked(.start))
-        session.toggleSelectedEdgeLocks()
-        #expect(session.undoTitle == "Undo Unlock End")
-        #expect(!session.isChanged)
-        #expect(writes == 0)
+        #expect(session.selectedPoint?.locked == true)
+        session.click(point: edge, .only)
+        #expect(session.selectedPoint?.locked == false)
     }
-
-    @Test func aLockedSceneEdgeExplainsStoppedDragsAndRefusedEdits() throws {
-        var project = EditingProject.empty
-        let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
-        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
-        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project) { _ in
-            CMTimeRange(start: .zero, end: CMTime(value: 4, timescale: 1))
-        }.get()
-        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
-        defer { session.end() }
-        let point = try #require(session.addMarker(toPiece: clip.id, atTime: 0))
-        session.setKind(.pace(200), ofPoint: point)
-        #expect(session.notice == MotionDesignSession.edgeLockNotice(.end))
-        #expect(session.selectedPoint?.kind == .marker)
-        let marker = try #require(session.addMarker(toPiece: clip.id, atTime: 1))
-        session.notice = nil
-        session.beginDrag()
-        session.dragEdit { $0.movePoint(marker, to: CMTime(value: 1, timescale: 2)) }
-        #expect(session.notice == MotionDesignSession.edgeLockNotice(.end))
-        session.notice = nil
-        session.dragEdit { $0.movePoint(marker, to: CMTime(value: 1, timescale: 4)) }
-        #expect(session.notice == nil) // Once per drag.
-        session.cancelDrag()
-        session.beginDrag()
-        session.dragEdit { $0.movePoint(marker, to: CMTime(value: 1, timescale: 2)) }
-        #expect(session.notice == MotionDesignSession.edgeLockNotice(.end))
-        session.cancelDrag()
-    }
-
 }

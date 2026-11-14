@@ -111,9 +111,9 @@ private struct Sandbox {
             $0.time.sound = .mute
             // The motion designer's points: a hit eased in alone, and a pace.
             $0.time.design = MotionDesign(points: [
-                MotionDesign.Point(source: CMTime(value: 1, timescale: 1), kind: .hit, easeIn: KeyframeEase(influence: 0.5, speed: 0.2)),
+                MotionDesign.Point(source: CMTime(value: 1, timescale: 1), locked: true, easeIn: KeyframeEase(influence: 0.5, speed: 0.2)),
                 MotionDesign.Point(
-                    source: CMTime(value: 2, timescale: 1), kind: .pace(250),
+                    source: CMTime(value: 2, timescale: 1), locked: false,
                     easeIn: .easy, easeOut: KeyframeEase(influence: 0.25, speed: 1.5), smooth: true
                 ),
             ], speed: $0.time.speed)
@@ -135,6 +135,44 @@ private struct Sandbox {
         #expect(restored.anchorPoint == saved.anchorPoint)
         #expect(restored.volume == saved.volume)
         #expect(restored.pan == saved.pan)
+    }
+
+    @Test func savedMarkerLocksLoadAlongsideLegacyHitAndPacePoints() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var project = EditingProject.empty
+        var clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        clip.time.design = MotionDesign(points: [
+            .init(source: .zero, locked: true),
+            .init(source: CMTime(value: 1, timescale: 1), locked: true, easeOut: .easy),
+            .init(source: CMTime(value: 2, timescale: 1), easeIn: .easy),
+        ], speed: clip.time.speed)
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(json.contains("\"locked\" : true"))
+        #expect(!json.contains("\"kind\" : \"hit\"") && !json.contains("\"pace\""))
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip.time.design == clip.time.design)
+
+        // The strict project reader must accept both generations in version 2.
+        let legacy = json.replacingOccurrences(of: "\"locked\" : true", with: "\"kind\" : \"hit\"")
+
+        try legacy.write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
+        let older = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(older.project.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip.time.design == clip.time.design)
+
+        let entry = ProjectFile.MotionDesignEntry(clip.time.design!)
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)) as? [String: Any])
+        var points = try #require(object["points"] as? [[String: Any]])
+        points[1]["locked"] = nil
+        points[1]["kind"] = "pace"
+        points[1]["pace"] = 250
+        object["points"] = points
+        let migrated = try JSONDecoder().decode(ProjectFile.MotionDesignEntry.self, from: JSONSerialization.data(withJSONObject: object)).design
+        #expect(migrated.points[0].locked)
+        #expect(!migrated.points[1].locked && migrated.points[1].easeOut == nil)
+        #expect(migrated.points[2].easeIn == nil)
     }
 
     @Test func roundTripKeepsATimelinesPreviewBackground() async throws {

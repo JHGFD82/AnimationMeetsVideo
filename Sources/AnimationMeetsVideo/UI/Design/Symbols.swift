@@ -9,8 +9,6 @@
 /// with the model type; these are for what a button *does*.
 extension Design {
     enum Symbol {
-        static let edgeLocked = "lock.fill"
-        static let edgeUnlocked = "lock.open.fill"
         static let play = "play.fill"
         static let pause = "pause.fill"
         static let loop = "repeat"

@@ -3,8 +3,7 @@
 Status: **built** except where noted (see [Building it](#building-it));
 the panel is compile-checked and was rendered offscreen, but hasn't been
 used on screen yet. Two things it needs came first and are described
-here too: clips attached to the music, and hold keyframes. Edge locks
-are built too, with the same on-screen validation still to do.
+here too: clips attached to the music, and hold keyframes. The graph uses one kind of marker, with saved locks.
 
 Music videos are cut to the music, and the project already knows the
 music's timing from the beat map ([beat-matching.md](beat-matching.md)).
@@ -24,7 +23,7 @@ else around it, by dragging frames along a time graph.
   (`ProjectHistory.beginGesture(quietly:)`). **Done** keeps them, as one
   undo step, and closes. Each changed clip keeps its points with the
   keyframes (`ClipTime.design`), so opening it again brings back its
-  hits, markers and handles as they were (see
+  markers, locks and handles as they were (see
   [Opening on keyframed clips](#opening-on-keyframed-clips)). **Cancel**
   puts the clips back as they were when the panel opened, asking first if
   anything changed, and leaves no undo step. Quitting with a changed run
@@ -88,150 +87,69 @@ else around it, by dragging frames along a time graph.
 
 ## The panel
 
-**Built** (`UI/MotionDesigner/`). The transport runs across the top:
-play the draft, the playhead's timecode, **Skimming**, **Snapping** and
-**Beats** (show them) as icon toggles in the timeline toolbar's style and
-glyphs (`Design.Symbol`), and zoom. The sidebar is on the left, and the
-lanes fill the rest, on one timeline across: a ruler, the footage, the
-time graph and the music.
+**Built** (`UI/MotionDesigner/`). The transport has playback, timecode,
+Skimming, Snapping, Beats and zoom. The sidebar holds the editor's own
+viewer player, selection controls, Undo, Redo, Cancel and Done. The lanes
+share one timeline: ruler, footage strip, time graph and music.
 
-- **Skimming.** With it on, moving the pointer over the lanes shows the
-  frame under it in the monitor without moving the playhead, as the
-  timeline's skimming does (`PlaybackModel.skim`), with the timeline's
-  red skim line across the lanes. Only hovering skims, never a drag,
-  and leaving the lanes shows the playhead's frame again. It is on unless
-  turned off, and remembered between launches
-  (`Preferences.motionDesignerSkimming`), apart from the timeline's own
-  setting.
-
-- **The window.** The lanes show only the run's stretch of the timeline
-  (`MotionDesignSession.window`): the run as it opened, and wherever it
-  has been moved or grown to since, with a tenth of its length (at least
-  half a second) to spare either side. Songs and beats are drawn only
-  along it, the zoom and scroll stop at its edges, and the playhead stays
-  in it. The playhead is the timeline's own (`PlayheadRail`): a line with
-  its head at the top of the ruler, running on the player's clock while
-  it plays, beside the same snap line.
-
-- **The footage strip** places each frame where it plays in the draft:
-  frames are taken on a grid from the file's start, one tile's width apart
-  at 100%, so a stretch played slowly spreads them out with the lane
-  showing between, and one played fast crowds them into slivers. It is
-  the one thing in the panel that shows retiming at a glance. Each clip
-  has an edge-lock button at its bottom corners, clear of the trim strips
-  and scene brackets: a closed or open lock on a dark chip, with an
-  18-point target. Clips too narrow for both hide them; the sidebar keeps
-  them. Clicking a lock selects the clip and toggles that edge without
-  starting a move.
-- **The graph** runs up through the run's footage clip after clip, so
-  the run reads as one line in each clip's own colour: steep where fast,
-  shallow where slow, flat (dashed) over a gap. Each stretch's speed is
-  read out over it, once for stretches either side of a point at one
-  speed. Between two points the line bends as a keyframe's segment does
-  in the graph editor, shaped by the handles either side. Points use the
-  keyframes' marks: hits in the bright "placed" tone, markers quieter, a
-  pace marker squared off where the speed steps with its pace beside it,
-  an eased point pinched on the sides it eases, as a keyframe's mark is;
-  the selected one is ringed in the accent, with its handles out.
-- **A hit's pin** runs from its frame in the strip, through the graph,
-  to its beat in the music lane.
-- **The music lanes**: a lane for each Music layer with a song under
-  the run, in the timeline's order and named as there when there are
-  several (one lane is 96 points tall; several share up to twice that,
-  the waveform drawn full height and fitted to its lane so it stays
-  visible). The music the footage is cut to is, at each moment, the song
-  on the first Music layer that has one there, as for clips attached to
-  the music (`Timeline.song(at:)`); a song is drawn in full where it
-  leads and dimmed where a layer above has the song
-  (`Timeline.songStretches(of:onLayer:)`). The beats drawn over the lanes
-  and faintly across the graph, and snapped to, are those of the song
-  leading at each moment (`EditingProject.musicBeats(in:tracks:)`), and
-  a hit's pin ends on the lane of the song leading at its time.
-- Clicking the line drops a marker on that frame, selected, and moves
-  the playhead there; grabbing the line drops one and drags it, which
-  sets the speed before and after it, and grabbing a point drags it. A
-  dropped marker is eased with its handles in line, so the line bends
-  smoothly through it, and its handles are there to shape at once. Nothing is dragged until the pointer has
-  moved 3 points, so a click on a point only selects it and changes
-  nothing. Each step of a drag
-  applies to the run as the drag found it
-  (`MotionDesignSession.dragEdit`), so dragging back undoes what going
-  further did. Drags snap, within 8 points, to the beats (while shown),
-  the playhead and the edges of the layer's other clips (the run's other
-  clips included); the snap line shows where. A click elsewhere moves the
-  playhead and picks nothing, as a drag on the ruler or the music scrubs.
-- **Several points** are picked as on the timeline and in the graph
-  editor (see [timeline.md](timeline.md#selecting-several-clips)):
-  **Command-click** adds a point or takes it out, **Shift-click** picks
-  the points from the one last clicked, in time across the run's clips,
-  **dragging in empty graph** draws a lasso round points (with Shift or
-  Command, adding to what is picked), and **⌘A** picks them all. A plain
-  press on a point not picked picks it alone; one already picked keeps the
-  rest, and dragging it moves them all by as much
-  (`MotionDesignSession.movePoints`), each stopping as it would alone.
-  The arrow keys, Delete, H, E and the right-click menu (Make Hits, Make
-  Markers, the eases, Remove) act on every point picked; a point that
-  can't become a hit or marker without asking stays as it was, and the
-  sidebar says how many did. A right-click on a point not picked picks
-  it alone first (on an edge keyframe, that), so the menu acts on what
-  was clicked. Handles and the pace field are for a point picked alone.
-- Dragging a clip in the strip moves it by whole frames, unless a hit
-  holds it. A held clip follows the pointer up to 6 points, then (or when
-  let go) springs back with a small bounce, and a notice under the
-  footage says it is held down to the beat and that making all its hits
-  markers frees it; any click anywhere puts the notice away, and
-  VoiceOver announces it. Moving a held clip a frame at a time shows the
-  same notice. Whichever of its edges comes nearer something to snap to
-  lands on it, to the nearest frame.
-- **The monitor**, at the top of the sidebar, is the editor's own viewer
-  player (`PlaybackModel`), which plays the timeline with the run written
-  in, every layer and effect, exactly as the viewer does: its preview
-  size, renders, mix and the frame it holds while paused. Play plays it
-  from the playhead to the window's end (from the window's start when the
-  playhead is at its end already), so the footage is seen moving against
-  the music it is cut to. The editor builds its player again after each
-  change, as for any edit, swapping it while playing once the changes
-  pause; the playhead is the editor's too.
-- **The sidebar** shows the monitor, then what is
-  selected: a point's kind (Hit, Marker, Pace), the speed after it (a
-  `NumericField`: typing a speed, with or without "%", makes it a pace
-  marker at that speed), its Ease (Linear, Ease In, Ease Out, Easy Ease)
-  and, for each side it eases, how far that handle reaches and the speed
-  it sets at the point (typed), a frame earlier or later and Remove; for
-  several points, how many, Make Hits, Make Markers, an Ease menu, a frame
-  earlier or later and Remove; or a
-  clip's start and end, **Lock start** and **Lock end** checkboxes, and a
-  frame earlier or later. An edge keyframe has its edge's checkbox too.
-  The checkboxes and strip buttons explain whether retiming keeps the
-  cut or keeps its frame. With nothing selected it says what to do.
-  Warnings sit under that; Undo and Redo, Cancel and Done at the foot,
-  as in Beat Match. Undo and Redo name the change they undo or redo, and
-  wait while a drag is under way.
-- A pace marker before a hit, or a hit right after a pace marker, asks
-  first, naming what it costs.
-- Keys: Space plays, M puts a marker under the playhead, H makes the
-  selected point a hit, P edits its pace, E gives it Easy Ease (or
-  Linear again), Delete removes it,
-  ← → move it (or else the playhead, even with a clip selected) a frame
-  and ⇧ ten, L toggles the selected edge lock (or both edges of a selected
-  clip, unlocking if both are locked), N turns snapping on and off as on
-  the timeline, Escape lets go (or cancels a drag, which then ignores
-  the rest of that press),
-  ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the draft and
-  ⇧⌘Z redoes (not mid-drag), ⌘Return is Done and ⌘. Cancel (Escape
-  never closes the panel). Scrolling scrolls; ⌥ or
-  ⌘ scrolling, or a pinch, zooms. A sheet opening over the panel
-  mid-drag (Cancel's question, or a conflict to agree to) cancels the
-  drag too, since the sheet takes the button's release (`DragPress`).
-- **The zoom's edge** is the editor's shared one (`RubberBandZoom`, see
-  [timeline.md](timeline.md)): zooming out past the whole window
-  squeezes all the lanes together about the pointer,
-  over the darker surround, and zooming in past a frame 80 points wide
-  stretches them, against more resistance the further it goes; they
-  spring back when the pinch lifts, and the zoom buttons, ⌘= and ⌘- give
-  the same bump. Scrolling past the window's start or end slides them
-  on and springs back (`RubberBandScroll`). With reduced motion they
-  simply stop.
+- The footage strip places thumbnails where their frames play. Slower
+  stretches spread them apart; faster ones crowd them together. Drag a
+  clip to move it by whole frames; drag its strip edge to trim footage.
+  A scene bracket marks an edge with no further footage to reveal.
+- The graph shows timeline time across and source time up. Its slope is
+  speed, read out over each stretch. Each clip has its own colour; gaps
+  are dashed. A locked marker is larger and brighter, with a pin from
+  its frame through the graph to the music. Unlocked markers have no pin.
+  Eased sides pinch the marker's shape; selection rings it in the accent.
+- Click the line to add an unlocked marker and seek to it; grab the line
+  to add and drag one. Click a marker to select it alone and toggle its
+  lock. Command-click toggles selection, Shift-click selects a range,
+  and a lasso selects several, without changing locks. Right-click picks
+  for the menu without locking. A press moving 3 points becomes a drag.
+- Dragging picked markers moves the unlocked ones and leaves the locked
+  ones behind. A locked drag announces: “This marker is locked. Click it
+  to unlock it.” Option-drag pulls out the handle on the side dragged
+  toward, or takes the existing handle alone, even on a locked marker.
+  An edge marker has only its side inside the clip.
+- A clip with a locked marker cannot move. It tugs up to 6 points and
+  springs back, announcing: “This clip is held by a locked marker.
+  Unlock its markers to move it.” A trim at a locked edge announces:
+  “This edge is locked. Click its marker to unlock it.” Any click puts
+  away the notice. Reduced motion skips the bounce.
+- Dragging snaps within 8 points to shown beats, the playhead and other
+  clip edges. Each drag step applies to the run as it was at its start,
+  so dragging back restores it. Escape cancels the entire drag, and a
+  sheet opening over the panel cancels it too.
+- For two touching clips, pick both markers on the cut to move it
+  together, retiming both. Equal-time markers move in the order that
+  makes room: the later clip first moving later, the earlier first
+  moving earlier (`MotionDesignSession.movePoints`).
+- A marker's sidebar shows Locked, its time and frame, the speeds either
+  side read only, Ease and handles, and a frame earlier or later.
+  Interior markers have Remove, disabled while locked. Edge markers are
+  headed First frame or Last frame and have no Remove. Several markers
+  have Lock, Unlock, Ease, nudges and Remove. Clip controls show its span,
+  trims and movement; the strip has no lock buttons.
+- The menu offers Lock or Unlock (both commands for several), eases and
+  Remove. Removing a locked or edge marker is disabled. Delete on an
+  unlocked edge marker takes its handle away; on a locked marker it
+  asks to unlock it first. Locks are saved edits with undo names Lock
+  Marker, Unlock Marker, Lock Markers and Unlock Markers.
+- Keys: Space plays, M adds a marker at the playhead, L toggles picked
+  locks (all locked if any is unlocked), E toggles Easy Ease and Linear,
+  Delete removes, arrows nudge picked unlocked markers or the playhead
+  by one frame (Shift ten), N toggles snapping, Escape lets go.
+  ⌘A picks all, ⌘= / ⌘- / ⌘0 zoom, ⌘Z / ⇧⌘Z undo and redo,
+  ⌘Return keeps the draft and ⌘. cancels. Keys wait while typing.
+- Skimming shows the hovered frame without moving the playhead, never
+  during a drag. Its preference and the Beats preference persist between
+  sessions. Beats come from the first Music layer with a song at each
+  moment. Each music layer has a waveform lane, dimmed where another
+  song leads; marker pins end on the leading song's lane.
+- The window is the run as opened plus where it has grown or moved,
+  with 10% (at least half a second) spare either side. Playback stops at
+  its end. Zoom and scroll use the timeline's shared rubber band edges;
+  reduced motion simply stops them. The view does not scroll mid-drag.
 
 ## Several clips as one piece
 
@@ -245,52 +163,44 @@ on Done each clip gets its own share of the keyframes.
   They take no markers, and retiming may safely close them: a clip that
   grows eats into the gap, one that shrinks widens it.
 
-## Points on the graph
+## Markers on the graph
 
-- **Hit.** A frame of the footage pinned to a beat of the music: it plays
-  on that beat whatever else changes. A fixed point on the graph, which
-  only the person moves. Hits are what the designer is for; every other
-  point and handle shapes how the footage gets from one hit to the next.
-- **Marker.** Grabbing any other frame drops a marker there. Dragging it
-  along time retimes the footage on both sides: slower before and faster
-  after, or the other way, the line bending through it and still passing
-  through every hit.
-- **Pace marker.** A marker that holds the speed *after* it to a typed
-  value, straight to the next point. With hit H and marker M dragged so
-  H→M plays at 50%, a pace marker P past M at 200% makes the footage
-  after P play at 200%.
-  - Another marker beyond P slides in time so P's pace holds, and a run
-    of pace markers carries on, each placing the next.
-  - A hit beyond P can't stay put and hold the pace too. The person is
-    warned that the hit will become a marker and move to honour the
-    pace; on OK it does, on Cancel the pace isn't set. Making the point
-    right after a pace marker a hit asks the same way, and ends that pace.
-  - Dragging the point right after P sets P's pace instead of bending the
-    line at P. Taking away the point between P and a hit ends P's pace.
-  - The stretch a pace holds runs straight: P's handle out and the next
-    point's handle in go, and can't be put back while the pace holds.
-  - Before a pace marker that is the first point, the clip plays at the
-    speed it had before, since a pace is only the speed after it.
-- Any marker can be made a hit, and a hit a marker.
-- A drag stops where a stretch would play faster than 10000% or slower
-  than 1%, or backwards; an edit that can't fit at all is refused.
-- A new marker lands where its frame plays now, with its handles at the
-  speed the line has there, so adding one bends nothing until it is
-  moved (on a curved stretch the curve either side is near enough the
-  same, not exactly).
+A clip's line is a chain of markers, each a source frame and the timeline
+moment it plays. The first and last are always present on the trim's
+edge frames. Every stretch lies between neighbouring markers and has
+only its own speed. There are no open ends, pace markers or borrowed
+speeds (`ClipTimeMap.points`, `stretches`).
 
-### Open ends
+A marker moves only when dragged or when its clip moves. Dragging an
+interior marker changes the two stretches it touches; its neighbours
+stay, locked or unlocked, as do the cuts and footage. Every marker starts
+unlocked. Locking holds its frame on its moment: it cannot be dragged,
+nudged or removed, and its clip cannot move, but its handles remain free.
 
-Past the outermost point on a side, the speed carries on at the
-straight-line speed of the stretch next to it, **to the end of that
-clip**. With H→M at 50%, the rest of that clip plays at 50% too. A locked
-edge stays at its held time and takes its frame from that straight line;
-an unlocked edge moves to keep the footage it was given. The next
-clip keeps whatever speed it already had. A lone point carries on at the
-speed the clip played at before (a lone pace marker at its pace after
-it). The outermost points' handles bend the open ends too, between the
-point and the clip's edge, which stays where it is: easing a point never
-moves a clip's edge.
+An edge marker cannot be removed and has only its handle inside the clip.
+Dragging it retimes the adjacent stretch and moves the cut by whole
+frames, keeping its source frame. It stops at zero, another clip, or the
+speed limits. Removing an interior marker joins its neighbours with
+their handles. A new marker must be strictly inside the edges and lands
+where its frame plays now, with handles aligned to the line's speed.
+On a curve, insertion preserves the curve approximately.
+
+Every stretch stays between 1% and 10000% and plays forwards. A clip
+opening without interior markers has one stretch at its existing speed.
+
+For footage 2 s to 6 s playing at 0 s to 4 s, let A and B be locked on
+source 3 s and 5 s, playing at 1 s and 3 s, with unlocked M on source
+4 s playing at 2 s:
+
+| M dragged to | A to M | M to B | Start to A, B to end | Cuts | Source trim |
+| --- | --- | --- | --- | --- | --- |
+| 2 s | 100% | 100% | 100% | 0 s, 4 s | 2 s, 6 s |
+| 1.5 s | 200% | 66.7% | 100% | 0 s, 4 s | 2 s, 6 s |
+| 2.5 s | 66.7% | 200% | 100% | 0 s, 4 s | 2 s, 6 s |
+
+Dragging the last edge marker to 5 s instead plays B to the end at 50%,
+keeping source 6 s. A neighbour at 4.5 s stops it there. Trimming the
+strip's end to 3.5 s instead changes the last frame to source 5.5 s.
 
 ### Easing
 
@@ -309,15 +219,11 @@ draws between two keyframes.
   flat: the speed there is 0).
 - **Ease Out**: the footage leaves the point slowly.
 - **Easy Ease**: both, so the footage all but stops on the point. On a
-  hit, that lands the beat on a near-freeze; the rest of each stretch
-  plays faster to keep the hits where they are.
+  locked marker, that lands the beat on a near-freeze; the rest of each
+  stretch plays faster to keep the markers where they are.
 
-Hold isn't offered: a pace marker is how the speed steps. Any point can
-ease, a hit on a straight line and the first and last points included,
-on any side with footage that a pace doesn't hold straight
-(`ClipTimeMap.canEase`). A point that can't ease on either side (a lone
-pace marker on the clip's first frame) says so in the sidebar, and E or
-the menu says why instead of easing.
+Hold isn't offered. Any marker can ease on a side with a neighbouring
+stretch, including locked markers and edges' inward sides.
 
 With a point selected, the graph shows the **handles** of its eased
 sides on its tangent, with a stem back to the point, as the graph
@@ -341,33 +247,6 @@ Out, a tenth of the stretch at a time, and Faster and Slower, a quarter
 at a time), do the same from the keyboard. Speeds are held to what Time
 allows (1% to 10000%) where they are written.
 
-### Edge keyframes
-
-Each clip shows a keyframe on its first and last frames from the moment
-the designer opens, points or not (`ClipTimeMap.hasEdgeKeyframe`); a
-point on the very frame stands in for it. They stay where they are:
-dragging one only says so. They start with no handle, and
-**Option-dragging** one pulls out its handle, which only ever reaches
-into the clip: the first frame has an Ease Out and never an Ease In, the
-last an Ease In and never an Ease Out, so no handle reaches past the
-clip's edge. The handle bends the open end it reaches into (on a clip
-with no points, the whole clip, at the speed it played at), and easing
-never moves the edge. Dragged back onto its keyframe, it goes.
-
-- The graph's edge-keyframe menu offers Lock Start or Unlock Start
-  (or End) as well as its handle commands.
-- The last frame after a last pace marker has no handle: the pace holds
-  its speed straight to the clip's end (`ClipTimeMap.canEase(_:)`).
-- Selected, the sidebar shows the handle's reach and speed, **Add Ease
-  Out/In Handle** and **Remove Handle**; E adds it flat and takes it away
-  again, and Delete takes it away. VoiceOver has each edge as an element
-  with the same actions as a point's handle.
-- The handles are kept on the clip with its points (`startEase`,
-  `endEase` in `time.design`). A clip with no points is only written
-  once one has a handle. Cancel puts back what the clip had when the
-  designer opened, so handles pulled out then go and ones it opened with
-  stay.
-
 ### Beat markers and snapping
 
 The song's beats are drawn on the graph and the music lane, thinned by
@@ -381,27 +260,14 @@ is remembered between launches (`Preferences.motionDesignerShowsBeats`).
 The music can't move in the designer; only footage does, and never
 where other clips are.
 
-- **Retiming keeps footage at unlocked edges.** When moving a point,
-  setting a pace or removing a point changes the speed at an unlocked
-  open end, it keeps the same footage and its cut moves instead
-  (`MotionRun.keepFootage`): speeding up shortens it, slowing down
-  lengthens it. Footage is cut only where an edge moving out meets the
-  clip beside it (or the timeline's start), and then only as far as its
-  outermost point; moving that clip is up to the person. The footage kept
-  is the clip's trim as it opened, or as the person last trimmed or
-  unlocked it
-  (`MotionRun.Piece.given`), so footage cut against a neighbour comes back
-  once the clip has room again.
-- **Locked edges keep the cuts.** Every edge opens locked. Retiming
-  reveals or hides footage to keep its held time, within its scene's
-  footage. Each edge settles independently; both locked keeps the clip's
-  place and length, one unlocked lets that side grow or shrink. A lock
-  holds against retiming: moving or trimming still moves the cut and
-  carries its held time with it.
+- **Retiming keeps the footage.** Interior edits keep both cuts. Dragging
+  an edge marker moves only that cut and retimes its stretch, with no
+  source change. Nothing overlaps, and no footage is cut to make room.
 - **Trimming.** Dragging a clip's edge in the strip reveals or hides
   footage at the speed it plays there, snapping as points do, as far as
-  its footage goes, never past its outermost point or to under a frame,
-  and stopping against a neighbour (`MotionRun.trim`). The sidebar and
+  its footage goes, stopping a source frame short of its nearest interior marker,
+  and stopping against a neighbour (`MotionRun.trim`). A locked edge
+  refuses trimming until unlocked. The sidebar and
   the clip's VoiceOver actions trim a frame at a time.
 - Clips can be **moved** in the designer: dragged along time, or a frame
   at a time with the sidebar's buttons or the clip's VoiceOver actions,
@@ -434,86 +300,33 @@ where other clips are.
 - Writing rounds a clip's start onto a frame by moving its trim, rounding
   later instead if earlier would leave its footage.
 
-### Edge locks
-
-**Built.** These are the person's session-only locks on each cut, separate
-from the app's lock against outside edits (`ProjectState.lock`).
-`MotionRun.Piece.heldStart` and `heldEnd` hold the timeline times, nil
-when unlocked. `setEdgeLocked(_:ofPiece:to:)` holds an edge where it
-plays now; unlocking adopts the footage it currently plays on that side
-in `Piece.given`, so toggling never moves a cut.
-
-`keepFootage` settles both edges after a retime. An unlocked edge follows
-its given footage, cut against neighbours as above. A locked edge takes
-its trim from the straight open end, independently of its handles:
-
-- `trimEnd = last.source + (heldEnd - last.time) × speedAfterLast / 100`
-- `trimStart = first.source - (first.time - heldStart) × speedBeforeFirst / 100`
-
-For footage 2 s to 6 s playing at 0 s to 4 s, with a hit at the first
-frame and a marker at source 3 s playing at 1 s:
-
-| Marker dragged to | Speed | Locked end | Last frame |
-| --- | --- | --- | --- |
-| 1 s | 100% | 4 s | 6 s |
-| 0.5 s | 200% | 4 s | 10 s |
-| 2 s | 50% | 4 s | 4 s |
-
-With the end unlocked, those drags end at 2 s and 8 s on source 6 s.
-A lone point uses the resting speed: dragging it under two locked cuts
-slips the footage without moving either cut. Removing the last point
-keeps the resting line through its frame and time (`ClipTimeMap.remove`),
-including its `origin`; the clip doesn't jump back to its opening place.
-With no points, locks do nothing until retiming has a point to place.
-
-`fits` checks the held times, scene footage and outermost points as well
-as neighbours. A drag stops at the furthest fitting step; a discrete edit
-that needs footage past the scene is refused whole. An outermost point
-stops at a locked cut and stands in for its edge keyframe there. The
-failure identifies its piece and edge (`MotionRun.EdgeLockFailure`).
-`MotionDesignSession.edgeLockNotice` explains that there is no more of
-the scene to keep that cut, and suggests unlocking it or merging scenes
-in the browser. It is announced to VoiceOver, once per drag, and put away
-by any click. The sidebar's scene-limit note suggests unlocking too.
-
-Locking and unlocking are panel undo steps: Lock Start, Unlock Start,
-Lock End, Unlock End, or Lock Edges and Unlock Edges for both. They don't
-mark a piece edited, write any timing, or make Cancel ask. They aren't
-saved in `MotionDesign` or `project.json`; every opening locks afresh.
-The session skips draft writes for lock-only changes
-(`MotionRun.timingDiffers(from:)`), including undo and redo.
-
 ## Opening on keyframed clips
 
-**Built** (`ClipTimeMap(reading:frameDuration:)`).
+**Built** (`ClipTimeMap(reading:frameDuration:)`). The edge markers come
+from the clip's current trim and span. Saved design points come back
+while their saved speed matches the clip's speed, at the moments the
+clip now plays their frames. Points outside the trim are left out.
+Otherwise speed keyframes strictly inside the trim become unlocked,
+linear markers; of two keys a frame or less apart with different speeds,
+only the second makes a marker. Keys on the edges add none. An unchanged
+clip keeps its original keyframes exactly.
 
-- A clip the designer wrote keeps its points with its keyframes
-  (`ClipTime.design`, saved as `time.design` in `project.json`: each
-  point's frame, kind, pace, eases and whether its handles are in line,
-  and the speed they wrote). While the clip's speed is still that speed
-  they come back as they were, hits and handles included, each where the
-  clip now plays its frame, so the clip may have been moved or trimmed
-  meanwhile (points trimmed off are left out).
-- Once the speed has been changed anywhere else, they are left behind,
-  and the speed keyframes make the points instead:
-  - Each speed keyframe the clip plays becomes a **marker**, where it
-    plays now; the person can turn any into a hit.
-  - A [hold keyframe](#hold-keyframes) followed by another keyframe is a
-    step in speed: the keyframe after the hold becomes a **pace marker**
-    at its speed.
-  - Two keyframes a frame or less apart with different speeds do the job
-    of one pace marker, so they are read the same way: a pace marker at
-    the second, and no marker for the first.
-  - A hold at the very start of the trim only sets the speed before the
-    first point, which the clip keeps; it makes no point.
-  - Keyframes' own eases aren't read: their points are linear, and if
-    the person changes that clip, the stretches between them are written
-    as the designer's line.
-- A clip at one speed has no points; it plays at that speed until some
-  are added.
+`time.design` keeps its shape and project formatVersion stays 2:
 
-Opening the designer and closing it without changing a clip leaves its
-keyframes as they were: only clips that were changed are written.
+- Interior points store source, eases, smooth and `locked: true` only
+  while locked. New files omit kind and pace.
+- A locked edge is stored as a point on its frame without eases. Its
+  handle is stored in startEase or endEase. A clip with no interior
+  points, edge handles or locks has no design.
+- Old `kind: hit` and new `locked: true` both lock a marker. Old pace
+  points become unlocked markers; their outgoing handle and the next
+  point's incoming handle are removed. Their typed pace is ignored
+  because the saved speed already plays it.
+- A point on an edge frame merges into that edge, taking its lock and,
+  if no edge handle is saved, its inward handle. An outward trim on the
+  timeline leaves the old locked edge as an interior marker and creates
+  a new unlocked edge. Locks hold only in the designer: ordinary timeline
+  movement and trimming still work, with music attachment keeping sync.
 
 ## Writing keyframes
 
@@ -529,20 +342,18 @@ starts:
   steps are then joined wherever playing them as one keeps every frame
   within a quarter of a frame (`stepTolerance`) of where they played it,
   so a gentle ease is a few keyframes and a near-stop more. Each step
-  starts and ends on the line, so every point, and so every hit, lands
+  starts and ends on the line, so every marker lands
   where it was put, to within a tick.
 - Where the curve slows past 1% (a stop on a point), those steps are held
   at 1% and the others in the stretch play a little faster, so it still
   keeps its length.
 - Every keyframe holds; consecutive ones at one speed are one.
-- A pace marker steps: its stretch is straight at its pace.
 - Each clip's start follows, in the same undo step, and its points are
   kept with the speed (`MotionDesign`) for the next opening.
 
 The time map is one clip's (`ClipTimeMap`: the points in source order,
-each with its frame, its time on the timeline, its kind and its handles;
-`TimeStretch` for the line between two of them), since open ends stop at
-the clip's edges; the panel keeps one for each clip of the run. It and
+each with its frame, its time on the timeline, its lock and its handles;
+`TimeStretch` for the line between two of them), including both edge markers; the panel keeps one for each clip of the run. It and
 the rules above are pure functions, unit tested like `BeatFitting`.
 
 ## Clips attached to the music
@@ -595,7 +406,7 @@ video depends on the music, so clips follow it.
   tied.
 - Not yet: footage following while the song is dragged (it follows on the
   drop).
-- The designer's hits are kept on the clip with its keyframes, so they
+- The designer's markers and locks are kept on the clip with its keyframes, so they
   come back when it opens again; the attachment is what keeps the clip on
   its beat when the song moves afterwards.
 
@@ -626,22 +437,16 @@ jumps to that keyframe's value, as After Effects' hold keyframes do.
 
 ## Accessibility
 
-Following [accessibility.md](accessibility.md). The graph is a group
-named with its clips and hits; each point is an element read as its kind
-and time, then its frame and the speed after it, adjustable a frame at a
-time, with Make hit, Make marker, Set pace, its other eases by name
-(Linear, Ease In, Ease Out, Easy Ease) where it can ease, Longer,
-Shorter, Faster and Slower for each side it eases, and Remove as
-actions; the graph adds Add marker at playhead. Each clip in the strip
-reads its name and span plus each edge's locked or unlocked state, with
-Lock start or Unlock start and Lock end or Unlock end as actions, as well
-as a frame earlier or later. The strip buttons sit inside that element's
-hidden children, so those actions carry their behavior. An edge keyframe
-reads its lock state too and has a Lock or Unlock action. Sidebar
-checkboxes and L provide keyboard access. Each icon button names its
-edge and state. The ruler is the playhead, adjustable a frame at a time.
-Everything a drag
-does has a key, a button or an action.
+Following [accessibility.md](accessibility.md). The graph reads how many
+markers are locked. Each marker reads Marker, First frame marker or Last
+frame marker, locked or unlocked, time, source frame and speed after it.
+Adjust nudges an unlocked marker a frame. Actions select, Lock or Unlock,
+name the eases, shape each eased side (Longer, Shorter, Faster, Slower)
+and Remove for interior markers. The graph keeps Add marker at playhead.
+Clips read their name and span and offer movement and trims by a frame.
+Sidebar checkboxes and L expose locks without the pointer. Icon buttons
+have labels; marker size and pins show locks beyond colour alone. Notices
+are announced, and the shared motion helpers honour reduced motion.
 
 ## Building it
 
@@ -657,8 +462,8 @@ does has a key, a button or an action.
    unit tested; `MotionDesignSession` for the run, its undo and the
    player; the views).
 6. Accessibility. **Built** with the panel.
-7. Edge locks: per-edge held times, footage limits, panel undo, strip
-   buttons, sidebar checkboxes, L and VoiceOver. **Built**; model,
-   session and event tests and a snapshot cover them.
+7. One kind of marker, with persistent locks and draggable edges, replacing
+   hits, pace markers and session-only cut locks. **Built**; covered by
+   model, saving, session and event tests and offscreen snapshots.
 
-Not yet: the panel hasn't been used on screen.
+Not yet: the panel hasn't been used for editing a real project on screen.

@@ -9,7 +9,6 @@ struct MotionDesignSidebar: View {
     let onDone: () -> Void
     let onCancel: () -> Void
 
-    private enum Kind: Hashable { case hit, marker, pace }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,8 +19,6 @@ struct MotionDesignSidebar: View {
                         pickedPointsControls(session.pickedPointIDs.count)
                     } else if let point = session.selectedPoint {
                         pointControls(point)
-                    } else if let key = session.selectedEdge, let map = session.selectedEdgeMap {
-                        edgeControls(key, map: map)
                     } else if let id = session.selectedPieceID, let piece = session.run.pieces.first(id: id) {
                         pieceControls(piece)
                     } else {
@@ -74,8 +71,8 @@ struct MotionDesignSidebar: View {
     private var guidance: some View {
         VStack(alignment: .leading, spacing: Design.Space.close) {
             heading("Retime to the music")
-            Text("Grab the line to put a marker on that frame, and drag it along the music. Make a frame that must land on a beat a hit, and everything else retimes around it.")
-            Text("A pace marker sets the speed after it. Give a point Ease In, Ease Out or Easy Ease to ramp the speed into it, out of it or through it, as a keyframe's ease does.")
+            Text("Grab the line to put a marker on that frame, and drag it along the music. Click a marker to lock its frame to that moment; click again to unlock it.")
+            Text("Give a marker Ease In, Ease Out or Easy Ease to ramp the speed. Option-drag a marker to pull out a handle. L locks or unlocks the picked markers.")
             Text("M puts a marker under the playhead; ← → move the selected point a frame.")
                 .foregroundStyle(Design.textTertiary)
         }
@@ -84,91 +81,16 @@ struct MotionDesignSidebar: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    // MARK: An edge keyframe
-
-    /// The keyframe on a clip's first or last frame: it stays put, and has
-    /// only the handle that reaches into the clip, pulled out here or by
-    /// Option-dragging it.
-    private func edgeControls(_ key: MotionDesignSession.EdgeKey, map: ClipTimeMap) -> some View {
-        let name = MotionDesignSession.edgeHandleName(key.edge)
-        let frame = key.edge == .start ? map.trimStart : map.trimEnd
-        return VStack(alignment: .leading, spacing: Design.Space.step) {
-            heading(key.edge == .start ? "Clip's first frame" : "Clip's last frame")
-            reading("Frame", session.timecode(frame))
-            if let piece = session.run.pieces.first(id: key.piece) { edgeLockToggle(piece, edge: key.edge) }
-            Text(key.edge == .start
-                 ? "Stays at the clip's start. Its handle eases the footage out into the clip."
-                 : "Stays at the clip's end. Its handle eases the footage in to it.")
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            if !map.canEase(key.edge) {
-                Text(MotionDesignSession.edgeHeldByPace)
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if let ease = map.edgeEase(key.edge) {
-                edgeHandleControls(name, ease: ease, speed: map.speed(at: key.edge))
-                Button("Remove Handle") { session.setSelectedEdgeHandle(nil) }
-                    .help("Make this edge linear again (Delete)")
-            } else {
-                Button("Add \(name) Handle") { session.setSelectedEdgeHandle(.easy) }
-                    .help("Pull out this edge's handle, slowing the footage at the clip's \(key.edge == .start ? "start" : "end") (E, or Option-drag the keyframe)")
-            }
-        }
-    }
-
-    /// An edge keyframe's handle, as `handleControls` shows a point's.
-    private func edgeHandleControls(_ label: String, ease: KeyframeEase, speed: Double) -> some View {
-        let percent = "\(Int((ease.influence * 100).rounded()))%"
-        return VStack(alignment: .leading, spacing: Design.Space.close) {
-            HStack(spacing: Design.Space.close) {
-                Text(label)
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textSecondary)
-                    .frame(width: 58, alignment: .leading)
-                Slider(
-                    value: Binding(get: { ease.influence }, set: { reach in
-                        session.setSelectedEdgeHandle(KeyframeEase(influence: reach, speed: ease.speed))
-                    }),
-                    in: 0.05...1
-                ) { editing in
-                    if editing { session.beginDragIfNeeded() } else { session.endDrag("Shape \(label)") }
-                }
-                .accessibilityLabel("\(label) reach")
-                .accessibilityValue("\(percent) of the stretch")
-                Text(percent)
-                    .font(Design.Typeface.numericSmall)
-                    .foregroundStyle(Design.textPrimary)
-                    .frame(width: 34, alignment: .trailing)
-                    .accessibilityHidden(true)
-            }
-            .help("How far into the clip this edge's handle reaches")
-            HStack(spacing: Design.Space.close) {
-                Text("Speed")
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textSecondary)
-                    .frame(width: 58, alignment: .leading)
-                NumericField(value: speed, unit: "%", fractionDigits: 1, accessibilityName: "\(label) speed at this edge in percent") { typed in
-                    session.setSelectedEdgeSpeed(to: typed)
-                }
-                .help("The speed the footage has at this edge, as tilting the handle sets it")
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
     // MARK: A point
 
     /// Several points picked: what can be done to them all at once.
     private func pickedPointsControls(_ count: Int) -> some View {
         VStack(alignment: .leading, spacing: Design.Space.step) {
-            heading("\(count) points")
+            heading("\(count) markers")
             HStack(spacing: Design.Space.close) {
-                Button("Make Hits") { session.setKindOfPicked(.hit) }
-                    .help("Make every picked point a hit (H)")
-                Button("Make Markers") { session.setKindOfPicked(.marker) }
-                    .help("Make every picked point a marker")
+                Button("Lock") { session.setLockedOfPicked(true) }
+                    .help("Lock the picked markers (L)")
+                Button("Unlock") { session.setLockedOfPicked(false) }
             }
             Menu("Ease") {
                 ForEach(TimePoint.presets) { preset in
@@ -186,39 +108,23 @@ struct MotionDesignSidebar: View {
                     .accessibilityLabel("Move the points a frame later")
                 Spacer()
                 Button("Remove", role: .destructive) { session.deleteSelected() }
-                    .help("Remove the picked points (Delete)")
+                    .disabled(!session.canRemovePicked)
+                    .help("Remove the picked unlocked markers (Delete)")
             }
         }
     }
 
     private func pointControls(_ point: TimePoint) -> some View {
         VStack(alignment: .leading, spacing: Design.Space.step) {
-            heading(point.isHit ? "Hit" : point.pace != nil ? "Pace marker" : "Marker")
+            heading(session.selectedPlace?.index == 0 ? "First frame" : session.selectedPlace.map { $0.index == $0.map.points.count - 1 } == true ? "Last frame" : "Marker")
             reading("Plays at", session.timecode(point.time))
             reading("Frame", session.timecode(point.source))
-            Picker("Kind", selection: Binding(get: { kind(of: point) }, set: { choose($0, for: point) })) {
-                Text("Hit").tag(Kind.hit)
-                Text("Marker").tag(Kind.marker)
-                Text("Pace").tag(Kind.pace)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel("Kind of point")
-            HStack(spacing: Design.Space.close) {
-                Text("Pace")
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textSecondary)
-                // The speed after the point; typing one makes it a pace
-                // marker at that speed.
-                NumericField(
-                    value: speedAfter(point) ?? 100, unit: "%", fractionDigits: 1,
-                    accessibilityName: "Pace, speed after this point in percent",
-                    editRequest: $session.focusesPace
-                ) { speed in
-                    guard speed > 0 else { NSSound.beep(); return }
-                    session.setKind(.pace(speed), ofPoint: point.id)
-                }
-                .help("The speed after this point, in percent. Typing one makes it a pace marker (P)")
+            Toggle("Locked", isOn: Binding(get: { point.locked }, set: { session.setLocked($0, ofPoint: point.id) }))
+                .toggleStyle(.checkbox)
+                .help("Hold this frame at this moment (L)")
+            if let place = session.selectedPlace {
+                if place.index > 0 { reading("Speed before", "\(place.map.speed(after: place.index - 1).formatted(.number.precision(.fractionLength(1))))%") }
+                if place.index + 1 < place.map.points.count { reading("Speed after", "\(place.map.speed(after: place.index).formatted(.number.precision(.fractionLength(1))))%") }
             }
             if let found = session.run.piece(holdingPoint: point.id) {
                 footageNote(session.run.pieces[found.piece])
@@ -232,16 +138,18 @@ struct MotionDesignSidebar: View {
                     .help("A frame later (→)")
                     .accessibilityLabel("Move a frame later")
                 Spacer()
-                Button("Remove", role: .destructive) { session.deleteSelected() }
-                    .help("Remove this point (Delete)")
+                if session.selectedPlace?.map.isEdge(point.id) == false {
+                    Button("Remove", role: .destructive) { session.deleteSelected() }
+                        .disabled(point.locked)
+                        .help("Remove this marker (Delete)")
+                }
             }
         }
     }
 
     /// The point's ease, chosen from the keyframe eases by name, and the
     /// handle on each side it eases: how far it reaches and the speed it
-    /// sets at the point. A point neither side of which can ease (beside a
-    /// pace) says so in a note.
+    /// sets at the point. Edge markers only offer their side inside the clip.
     @ViewBuilder
     private func easeControls(_ point: TimePoint) -> some View {
         let canEase = session.run.canEase(point: point.id)
@@ -343,27 +251,6 @@ struct MotionDesignSidebar: View {
         }
     }
 
-    private func kind(of point: TimePoint) -> Kind {
-        point.isHit ? .hit : point.pace != nil ? .pace : .marker
-    }
-
-    private func choose(_ kind: Kind, for point: TimePoint) {
-        switch kind {
-        case .hit: session.setKind(.hit, ofPoint: point.id)
-        case .marker: session.setKind(.marker, ofPoint: point.id)
-        case .pace:
-            // Paced at the speed it already has after it.
-            guard let speed = speedAfter(point) else { return }
-            session.setKind(.pace(speed), ofPoint: point.id)
-            session.focusesPace = true
-        }
-    }
-
-    private func speedAfter(_ point: TimePoint) -> Double? {
-        guard let found = session.run.piece(holdingPoint: point.id) else { return nil }
-        return session.run.pieces[found.piece].map.speed(after: found.point)
-    }
-
     // MARK: A clip
 
     private func pieceControls(_ piece: MotionRun.Piece) -> some View {
@@ -372,8 +259,6 @@ struct MotionDesignSidebar: View {
             heading(session.project.resolvedInfo(for: piece.clip.source)?.name ?? "Clip")
             reading("Starts", session.timecode(drafted.startOffset))
             reading("Ends", session.timecode(drafted.endOffset))
-            edgeLockToggle(piece, edge: .start)
-            edgeLockToggle(piece, edge: .end)
             trimRow("Start", piece: piece, edge: .start)
             trimRow("End", piece: piece, edge: .end)
             footageNote(piece)
@@ -391,22 +276,12 @@ struct MotionDesignSidebar: View {
                     .foregroundStyle(Design.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("A hit holds this clip to its beat. Make its hits markers to move it.")
+                Text("A locked marker holds this clip to its moment. Unlock its markers to move it.")
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    private func edgeLockToggle(_ piece: MotionRun.Piece, edge: MotionRun.Edge) -> some View {
-        Toggle(edge == .start ? "Lock start" : "Lock end", isOn: Binding(
-            get: { piece.isEdgeLocked(edge) },
-            set: { session.setEdgeLocked(edge, ofPiece: piece.id, to: $0) }
-        ))
-        .toggleStyle(.checkbox)
-        .help(MotionDesignSession.edgeLockHelp(edge, locked: piece.isEdgeLocked(edge)))
-        .accessibilityHint(MotionDesignSession.edgeLockHelp(edge, locked: piece.isEdgeLocked(edge)))
     }
 
     /// A frame either way for one edge of a clip, as dragging it does.
@@ -431,8 +306,7 @@ struct MotionDesignSidebar: View {
         let start = piece.isAtFootageEdge(.start), end = piece.isAtFootageEdge(.end)
         if start || end {
             let side = start && end ? "either side" : start ? "before its start" : "after its end"
-            let locked = (start && piece.isEdgeLocked(.start)) || (end && piece.isEdgeLocked(.end))
-            Text("No more of its scene \(side). Merge scenes in the browser to give it more footage.\(locked ? " Or unlock that edge to let it move." : "")")
+            Text("No more of its scene \(side). Merge scenes in the browser to give it more footage.")
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)

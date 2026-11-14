@@ -6,62 +6,40 @@ import Foundation
 // "Writing keyframes").
 
 extension ClipTimeMap {
-    /// The points a forward clip plays. The designer's own points, kept on
-    /// the clip (`ClipTime.design`) while its speed is what they wrote, come
-    /// back as they were, hits and eases included (the clip's edges' too),
-    /// where the clip now plays
-    /// them. Otherwise its speed keyframes make them: a marker for each
-    /// keyframe it plays, where it plays now. A keyframe after a hold is a
-    /// step in speed, so a pace marker at its speed, as is the second of two
-    /// keyframes a frame or less apart (the first then makes no point). A
-    /// hold at the very start of the trim only sets the speed before the
-    /// first point, so it makes none.
+    /// Restores saved markers and locks while their speed still matches.
+    /// Otherwise interior speed keys become unlocked, linear markers; the
+    /// second of a pair at most a frame apart stands for their speed step.
     init(reading clip: TimelineClip, frameDuration: CMTime) {
-        let resting = Self.clamped(clip.speed(atSource: clip.trimStart))
-        if let design = clip.time.design, design.speed == clip.time.speed {
-            let points = design.points.filter { $0.source >= clip.trimStart && $0.source <= clip.trimEnd }.map { point in
-                TimePoint(
-                    source: point.source, time: clip.timelineTime(forSourceTime: point.source), kind: point.kind,
-                    easeIn: point.easeIn, easeOut: point.easeOut, smooth: point.smooth
-                )
-            }
-            self.init(
-                trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points, restingSpeed: resting,
-                origin: clip.startOffset, startEase: design.startEase, endEase: design.endEase
-            )
-            return
-        }
-        let keyframes = clip.time.speed.keyframes
+        let start = TimePoint(source: clip.trimStart, time: clip.startOffset)
+        let end = TimePoint(source: clip.trimEnd, time: clip.endOffset)
         var points: [TimePoint] = []
-        for (index, keyframe) in keyframes.enumerated() where keyframe.time >= clip.trimStart && keyframe.time <= clip.trimEnd {
-            let previous = index > 0 ? keyframes[index - 1] : nil
-            let next = index + 1 < keyframes.count ? keyframes[index + 1] : nil
-            var kind = TimePoint.Kind.marker
-            if let previous, previous.hold {
-                kind = .pace(Self.clamped(keyframe.value))
-            } else if let previous, keyframe.easeIn == nil, previous.easeOut == nil, previous.value != keyframe.value,
-                      CMTimeSubtract(keyframe.time, previous.time) <= frameDuration {
-                kind = .pace(Self.clamped(keyframe.value))
-                if points.last?.source == previous.time, points.last?.kind == .marker { points.removeLast() }
-            } else if keyframe.hold, keyframe.time == clip.trimStart, next != nil {
-                continue
+        var startEase: KeyframeEase?
+        var endEase: KeyframeEase?
+        if let design = clip.time.design, design.speed == clip.time.speed {
+            points = design.points.filter { $0.source >= clip.trimStart && $0.source <= clip.trimEnd }.map {
+                TimePoint(source: $0.source, time: clip.timelineTime(forSourceTime: $0.source),
+                          locked: $0.locked, easeIn: $0.easeIn, easeOut: $0.easeOut, smooth: $0.smooth)
             }
-            points.append(TimePoint(source: keyframe.time, time: clip.timelineTime(forSourceTime: keyframe.time), kind: kind))
+            startEase = design.startEase
+            endEase = design.endEase
+        } else {
+            let keys = clip.time.speed.keyframes
+            for (i, key) in keys.enumerated() where key.time > clip.trimStart && key.time < clip.trimEnd {
+                if i + 1 < keys.count, keys[i + 1].time - key.time <= frameDuration,
+                   keys[i + 1].value != key.value { continue }
+                points.append(TimePoint(source: key.time, time: clip.timelineTime(forSourceTime: key.time)))
+            }
         }
-        self.init(trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points, restingSpeed: resting, origin: clip.startOffset)
+        if !points.contains(where: { $0.source == start.source }) { points.append(start) }
+        if !points.contains(where: { $0.source == end.source }) { points.append(end) }
+        self.init(trimStart: clip.trimStart, trimEnd: clip.trimEnd, points: points,
+                  origin: clip.startOffset, startEase: startEase, endEase: endEase)
     }
 
-    /// The speed keyframes that play the clip along the map, and where it
-    /// then starts on the timeline; nil with no points. A straight stretch
-    /// plays at its speed; a curved one in held steps, short enough to
-    /// follow its curve (`steps`), each playing the footage the curve
-    /// plays over that time, so every step, and every point, lands on the
-    /// line. Where the curve slows past what Time allows (1%) the steps
-    /// beside it make up for it, so the stretch still keeps its length.
-    /// Keyframes go only where the speed changes. A clip with no points
-    /// is written only once an edge keyframe has a handle.
+    /// Writes each neighbouring pair as speed keyframes, straight or in
+    /// held steps following its curve. Every stretch keeps its length.
+    /// The run writes only edited clips, preserving untouched keyframes.
     func writtenSpeed() -> (speed: AnimatedValue<Double>, start: CMTime)? {
-        guard !points.isEmpty || startEase != nil || endEase != nil else { return nil }
         let stretches = stretches
         var keyframes: [Keyframe<Double>] = []
         // Rounded to the nearest tick: `CMTime(seconds:)` cuts a time a hair
@@ -78,11 +56,11 @@ extension ClipTimeMap {
         }
         if keyframes.isEmpty {
             // A lone point at the clip's only frame: it plays at its speed.
-            keyframes.append(Keyframe(time: points.first?.source ?? trimStart, value: Self.clamped(speedAfterLast)))
+            keyframes.append(Keyframe(time: points.first?.source ?? trimStart, value: Self.clamped(speed(after: 0))))
         }
         let curve = Self.simplified(keyframes)
-        let start = stretches.first?.start.time ?? points.first?.time.seconds ?? origin.seconds
-        return (curve, at(start))
+        let start = stretches.first?.start.time ?? points.first?.time.seconds ?? 0
+        return (curve, points.first?.time ?? at(start))
     }
 
     /// Where a stretch's speed steps, and the speed after each: one step

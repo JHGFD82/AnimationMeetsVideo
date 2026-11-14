@@ -17,7 +17,7 @@ final class MotionDesignSession: SecondsViewport {
     /// The run being edited.
     private(set) var run: MotionRun {
         didSet {
-            guard run.timingDiffers(from: oldValue) else { return }
+            guard run.pieces != oldValue.pieces else { return }
             let run = run
             onDraftChange { run.write(into: &$0, over: oldValue) }
         }
@@ -51,11 +51,7 @@ final class MotionDesignSession: SecondsViewport {
         get { pickedPoints.single }
         set { pickedPoints.set(newValue.map { [$0] } ?? [], anchor: newValue) }
     }
-    /// A clip's edge keyframe, selected instead of a point.
-    var selectedEdge: EdgeKey?
     var selectedPieceID: UUID?
-    /// Asks the sidebar to focus the pace field (P, and Set Pace…).
-    var focusesPace = false
     /// Shows the beats, and lets points and clips snap to them. Kept
     /// between sessions, as the timeline keeps its beat markers.
     var showsBeats = UserDefaults.standard.object(forKey: Preferences.motionDesignerShowsBeats) as? Bool ?? true {
@@ -74,16 +70,8 @@ final class MotionDesignSession: SecondsViewport {
     /// What an edit couldn't do and why, until the next one.
     private(set) var message: String?
     /// A notice over the lanes, which any click puts away: why a clip held
-    /// by a hit didn't move.
+    /// by a locked marker didn't move.
     var notice: String?
-    /// An edit waiting on the person to agree to what it costs.
-    struct PendingConflict: Identifiable {
-        let id = UUID()
-        let conflict: ClipTimeMap.Conflict
-        let retry: () -> Void
-    }
-    var pendingConflict: PendingConflict?
-
     // MARK: View
 
     /// The run as it opened, and the room the window keeps either side of
@@ -176,7 +164,6 @@ final class MotionDesignSession: SecondsViewport {
     func perform(_ name: String, _ change: (inout MotionRun) -> Void) {
         var edited = run
         change(&edited)
-        explainEdgeLockFailure(edited.edgeLockFailure)
         guard edited != run else { return }
         message = nil
         if dragStart == nil { registerUndo(restoring: run, name: name) } else { dragBase = edited }
@@ -186,7 +173,8 @@ final class MotionDesignSession: SecondsViewport {
     func beginDrag() {
         dragStart = run
         dragBase = run
-        announcedEdgeLockFailure = false
+        announcedLockedMarker = false
+        announcedLockedEdge = false
     }
 
     /// Begins a drag on its first change.
@@ -196,91 +184,69 @@ final class MotionDesignSession: SecondsViewport {
 
     /// Applies a step of a drag to the run as the drag found it, not as
     /// its last step left it, so going back undoes what going further did
-    /// (footage cut against a neighbour, a pace set) and a drag back to
+    /// (markers moved or handles shaped) and a drag back to
     /// where it began changes nothing. An edit made during the drag (the
     /// marker it grabbed) is part of where it began.
     func dragEdit(_ change: (inout MotionRun) -> Void) {
         guard let base = dragBase else { return }
         var edited = base
         change(&edited)
-        explainEdgeLockFailure(edited.edgeLockFailure)
         message = nil
         if edited != run { run = edited }
     }
 
     var isDragging: Bool { dragStart != nil }
 
-    /// Says why a clip with a hit didn't move, in the notice over the lanes.
+    /// Says why a clip with a locked marker didn't move, in the notice over the lanes.
     func explainHeldPiece() {
         let text = Self.heldPieceNotice
         notice = text
         AccessibilityNotification.Announcement(text).post()
     }
 
-    /// Edge locks belong to this session; toggling them never writes timing.
-    func setEdgeLocked(_ edge: MotionRun.Edge, ofPiece id: UUID, to locked: Bool) {
-        let side = edge == .start ? "Start" : "End"
-        perform("\(locked ? "Lock" : "Unlock") \(side)") {
-            $0.setEdgeLocked(edge, ofPiece: id, to: locked)
-        }
+    static let heldPieceNotice = "This clip is held by a locked marker. Unlock its markers to move it."
+    static let lockedMarkerNotice = "This marker is locked. Click it to unlock it."
+    static let lockedEdgeNotice = "This edge is locked. Click its marker to unlock it."
+    private var announcedLockedMarker = false
+    private var announcedLockedEdge = false
+
+    func explainLockedMarker() {
+        guard !announcedLockedMarker else { return }
+        announce(Self.lockedMarkerNotice)
+        announcedLockedMarker = true
     }
 
-    func toggleEdgeLock(_ edge: MotionRun.Edge, ofPiece id: UUID) {
-        guard let piece = run.pieces.first(id: id) else { return }
-        setEdgeLocked(edge, ofPiece: id, to: !piece.isEdgeLocked(edge))
+    private func explainLockedEdge() {
+        guard !isDragging || !announcedLockedEdge else { return }
+        announce(Self.lockedEdgeNotice)
+        announcedLockedEdge = true
     }
 
-    /// L acts on the edge keyframe, or both edges of the selected clip.
-    func toggleSelectedEdgeLocks() {
-        guard pickedPointIDs.isEmpty else { return }
-        if let key = selectedEdge {
-            toggleEdgeLock(key.edge, ofPiece: key.piece)
-        } else if let id = selectedPieceID, let piece = run.pieces.first(id: id) {
-            let locked = !(piece.isEdgeLocked(.start) && piece.isEdgeLocked(.end))
-            perform(locked ? "Lock Edges" : "Unlock Edges") {
-                $0.setEdgeLocked(.start, ofPiece: id, to: locked)
-                $0.setEdgeLocked(.end, ofPiece: id, to: locked)
-            }
-        }
-    }
-
-    static func edgeLockHelp(_ edge: MotionRun.Edge, locked: Bool) -> String {
-        let side = edge == .start ? "start" : "end"
-        let frame = edge == .start ? "first" : "last"
-        let verb = edge == .start ? "starts" : "ends"
-        return locked
-            ? "Locked: retiming keeps this clip's \(side) here and changes the footage it \(verb) on."
-            : "Unlocked: retiming keeps this clip's \(frame) frame and moves its \(side)."
-    }
-
-    static func edgeLockNotice(_ edge: MotionRun.Edge) -> String {
-        let side = edge == .start ? "start" : "end"
-        return "There is no more of this clip's scene to keep its \(side) where it is. Unlock its \(side) to let it move, or merge scenes in the browser for more footage."
-    }
-
-    private var announcedEdgeLockFailure = false
-
-    private func explainEdgeLockFailure(_ failure: MotionRun.EdgeLockFailure?) {
-        guard let failure, !isDragging || !announcedEdgeLockFailure else { return }
-        let text = Self.edgeLockNotice(failure.edge)
-        notice = text
-        AccessibilityNotification.Announcement(text).post()
-        if isDragging { announcedEdgeLockFailure = true }
-    }
-
-    static let heldPieceNotice = "This clip is held down to the beat. Change all Hit markers to regular markers to change clip placement."
-
-    /// Says why a clip's edge keyframe didn't move, in the notice.
-    func explainEdgeKeyframe() {
-        let text = Self.edgeKeyframeNotice
+    private func announce(_ text: String) {
         notice = text
         AccessibilityNotification.Announcement(text).post()
     }
 
-    static let edgeKeyframeNotice = "A clip's first and last frames stay where they are. Option-drag one to pull out its handle into the clip."
+    func setLocked(_ locked: Bool, ofPoint id: UUID) {
+        perform(locked ? "Lock Marker" : "Unlock Marker") { $0.setLocked(locked, ofPoint: id) }
+    }
 
-    static let edgeHeldByPace = "The pace marker before this frame holds its speed straight to the clip's end, so it has no handle."
+    func setLockedOfPicked(_ locked: Bool) {
+        let ids = pickedPointIDs
+        perform("\(locked ? "Lock" : "Unlock") \(ids.count == 1 ? "Marker" : "Markers")") { run in
+            for id in ids { run.setLocked(locked, ofPoint: id) }
+        }
+    }
 
+    func togglePickedLocks() {
+        let points = run.pieces.flatMap(\.map.points).filter { pickedPointIDs.contains($0.id) }
+        setLockedOfPicked(points.contains { !$0.locked })
+    }
+
+    func edgeIsLocked(_ id: UUID, _ edge: MotionRun.Edge) -> Bool {
+        guard let piece = run.pieces.first(id: id) else { return false }
+        return (edge == .start ? piece.map.points.first : piece.map.points.last)?.locked == true
+    }
 
     func endDrag(_ name: String) {
         dragSnapTime = nil
@@ -320,6 +286,7 @@ final class MotionDesignSession: SecondsViewport {
     /// began.
     func dragTrim(_ id: UUID, edge: MotionRun.Edge, to seconds: Double) {
         guard let start = dragStart else { return }
+        guard !edgeIsLocked(id, edge) else { return explainLockedEdge() }
         var edited = start
         edited.trim(id, edge: edge, to: CMTime(seconds: seconds, preferredTimescale: ClipTimeMap.timescale))
         if edited != run { run = edited }
@@ -329,6 +296,7 @@ final class MotionDesignSession: SecondsViewport {
     /// at the end and hides it at the start.
     func trimSelectedPiece(_ edge: MotionRun.Edge, byFrames frames: Int) {
         guard let id = selectedPieceID, let piece = run.pieces.first(id: id) else { return }
+        guard !edgeIsLocked(id, edge) else { return explainLockedEdge() }
         let at = edge == .start ? piece.span.start : piece.span.end
         let delta = CMTimeMultiply(run.frameDuration, multiplier: Int32(frames))
         perform("Trim Clip") { $0.trim(id, edge: edge, to: CMTimeAdd(at, delta)) }
@@ -394,32 +362,6 @@ final class MotionDesignSession: SecondsViewport {
         undoManager.redo()
     }
 
-    /// Sets a point's kind, asking first when it costs a hit or a pace.
-    func setKind(_ kind: TimePoint.Kind, ofPoint id: UUID) {
-        var edited = run
-        if let conflict = edited.setKind(kind, ofPoint: id) {
-            explainEdgeLockFailure(edited.edgeLockFailure)
-            switch conflict {
-            case .noRoom:
-                message = "There isn't room for that: the clip would run into the one beside it, or past what it can play."
-            case .hitWouldMove, .paceWouldEnd:
-                pendingConflict = PendingConflict(conflict: conflict) { [weak self] in
-                    self?.perform(Self.kindName(kind)) { _ = $0.setKind(kind, ofPoint: id, confirmed: true) }
-                }
-            }
-            return
-        }
-        perform(Self.kindName(kind)) { $0 = edited }
-    }
-
-    static func kindName(_ kind: TimePoint.Kind) -> String {
-        switch kind {
-        case .hit: "Make Hit"
-        case .marker: "Make Marker"
-        case .pace: "Set Pace"
-        }
-    }
-
     /// Puts a marker on the frame of a piece playing at `seconds`, and
     /// selects it.
     @discardableResult
@@ -450,7 +392,6 @@ final class MotionDesignSession: SecondsViewport {
 
     func select(point id: UUID?) {
         selectedPointID = id
-        selectedEdge = nil
         if let id, let (piece, _) = run.piece(holdingPoint: id) { selectedPieceID = run.pieces[piece].id }
     }
 
@@ -462,15 +403,16 @@ final class MotionDesignSession: SecondsViewport {
     /// A click on a point, as `click` says: alone, added or taken out, or
     /// the run from the point last clicked.
     func click(point id: UUID, _ click: SelectClick) {
+        if click == .only, let (p, i) = run.piece(holdingPoint: id) {
+            setLocked(!run.pieces[p].map.points[i].locked, ofPoint: id)
+        }
         pickedPoints.click(id, click, in: pointOrder)
-        selectedEdge = nil
         if let only = pickedPoints.single, let (piece, _) = run.piece(holdingPoint: only) { selectedPieceID = run.pieces[piece].id }
     }
 
     /// The points a lasso covers, with those picked when it began.
     func lasso(points ids: Set<UUID>, keeping kept: Set<UUID>) {
         pickedPoints.lasso(ids, keeping: kept)
-        selectedEdge = nil
     }
 
     /// The picked points that are still in the run.
@@ -482,7 +424,12 @@ final class MotionDesignSession: SecondsViewport {
     /// seconds together, the leading ones first so none is stopped by
     /// another of them; each stops as a point dragged alone does.
     static func movePoints(_ from: [UUID: Double], by delta: Double, in run: inout MotionRun) {
-        let ordered = from.sorted { delta > 0 ? $0.value > $1.value : $0.value < $1.value }
+        let ordered = from.sorted { a, b in
+            if a.value != b.value { return delta > 0 ? a.value > b.value : a.value < b.value }
+            let pa = run.piece(holdingPoint: a.key)?.piece ?? 0
+            let pb = run.piece(holdingPoint: b.key)?.piece ?? 0
+            return delta > 0 ? pa > pb : pa < pb
+        }
         for (id, seconds) in ordered {
             run.movePoint(id, to: CMTime(seconds: seconds + delta, preferredTimescale: ClipTimeMap.timescale))
         }
@@ -502,22 +449,6 @@ final class MotionDesignSession: SecondsViewport {
         guard !from.isEmpty else { return }
         let delta = CMTimeMultiply(run.frameDuration, multiplier: Int32(frames)).seconds
         perform(from.count == 1 ? "Move Point" : "Move Points") { Self.movePoints(from, by: delta, in: &$0) }
-    }
-
-    /// Makes every picked point a hit or a marker. Those that can't be (a
-    /// hit that would move, a pace that would end, no room) stay as they
-    /// are, and the sidebar says how many.
-    func setKindOfPicked(_ kind: TimePoint.Kind) {
-        let ids = pickedPointIDs
-        guard ids.count > 1 else {
-            if let id = ids.first { setKind(kind, ofPoint: id) }
-            return
-        }
-        var refused = 0
-        perform(Self.kindName(kind)) { run in
-            for id in ids where run.setKind(kind, ofPoint: id) != nil { refused += 1 }
-        }
-        if refused > 0 { message = "\(refused) of the points couldn't change: making them so would move a hit, end a pace or need room there isn't." }
     }
 
     /// Sets the ease of every picked point that can take it.
@@ -543,7 +474,7 @@ final class MotionDesignSession: SecondsViewport {
         perform(preset.name) { $0.setEase(preset, ofPoint: id) }
     }
 
-    static let nothingToEase = "This point can't ease: a pace marker holds its speed straight to the next point, and there's no footage on its other side."
+    static let nothingToEase = "This marker has no stretch on that side to ease."
 
     /// The selected point's piece's map, and where the point is in it.
     var selectedPlace: (map: ClipTimeMap, index: Int)? {
@@ -575,78 +506,30 @@ final class MotionDesignSession: SecondsViewport {
         }
     }
 
-    func deleteSelected() {
-        if selectedEdge != nil {
-            // An edge keyframe stays: only its handle goes.
-            if selectedEdgeEase != nil { setSelectedEdgeHandle(nil) }
-            return
+    var canRemovePicked: Bool {
+        run.pieces.contains { piece in
+            piece.map.points.contains { pickedPointIDs.contains($0.id) && !$0.locked && !piece.map.isEdge($0.id) }
         }
+    }
+
+    func deleteSelected() {
         let ids = pickedPointIDs
         guard !ids.isEmpty else { return }
-        perform(ids.count == 1 ? "Remove Point" : "Remove Points") { run in
-            for id in ids { run.removePoint(id) }
+        let locked = run.pieces.flatMap(\.map.points).contains { ids.contains($0.id) && $0.locked }
+        if locked { announce(Self.lockedMarkerNotice) }
+        perform(ids.count == 1 ? "Remove Marker" : "Remove Markers") { run in
+            for id in ids {
+                guard let (p, i) = run.piece(holdingPoint: id) else { continue }
+                let map = run.pieces[p].map
+                if map.points[i].locked { continue }
+                if map.isEdge(id) { run.setEase(.linear, ofPoint: id) }
+                else { run.removePoint(id) }
+            }
         }
-        pickedPoints.clear()
+        pickedPoints.set(ids.filter { run.piece(holdingPoint: $0) != nil })
     }
 
-    // MARK: Edge keyframes
-
-    /// The keyframe on a clip's first or last frame.
-    struct EdgeKey: Hashable {
-        var piece: UUID
-        var edge: MotionRun.Edge
-    }
-
-    func select(edge: EdgeKey) {
-        selectedPointID = nil
-        selectedEdge = edge
-        selectedPieceID = edge.piece
-    }
-
-    /// The selected edge keyframe's piece's map, while it shows the keyframe.
-    var selectedEdgeMap: ClipTimeMap? {
-        guard let key = selectedEdge, let index = run.index(of: key.piece) else { return nil }
-        let map = run.pieces[index].map
-        return map.hasEdgeKeyframe(key.edge) ? map : nil
-    }
-
-    var selectedEdgeEase: KeyframeEase? {
-        guard let key = selectedEdge else { return nil }
-        return selectedEdgeMap?.edgeEase(key.edge)
-    }
-
-    /// The selected edge's handle's name: the clip's first frame only eases
-    /// out into the clip, its last only in.
-    static func edgeHandleName(_ edge: MotionRun.Edge) -> String {
-        edge == .start ? "Ease Out" : "Ease In"
-    }
-
-    /// Sets the selected edge keyframe's handle, nil taking it away.
-    func setSelectedEdgeHandle(_ ease: KeyframeEase?) {
-        guard let key = selectedEdge, selectedEdgeMap != nil else { return }
-        perform(ease == nil ? "Remove Handle" : "Shape \(Self.edgeHandleName(key.edge))") {
-            $0.setEdgeHandle(key.edge, ofPiece: key.piece, to: ease)
-        }
-    }
-
-    /// Lengthens or shortens the selected edge's handle by `step` of its
-    /// open end, pulling one out on the straight line if it has none.
-    func reshapeSelectedEdge(by step: Double) {
-        let ease = selectedEdgeEase ?? KeyframeEase(influence: KeyframeEase.linearInfluence, speed: 1)
-        setSelectedEdgeHandle(KeyframeEase(influence: ease.influence + step, speed: ease.speed))
-    }
-
-    /// Sets the speed the line has at the selected edge's frame, as a
-    /// percentage, as tilting its handle does.
-    func setSelectedEdgeSpeed(to percent: Double) {
-        guard let key = selectedEdge, let map = selectedEdgeMap else { return }
-        let straight = map.straightSpeed(of: key.edge)
-        guard straight > 0 else { return }
-        let ease = selectedEdgeEase ?? KeyframeEase(influence: KeyframeEase.linearInfluence, speed: 1)
-        setSelectedEdgeHandle(KeyframeEase(influence: ease.influence, speed: max(0, percent) / straight))
-    }
-
-    /// Moves the selected clip by whole frames, if it has no hit.
+    /// Moves the selected clip by whole frames, if it has no locked marker.
     func nudgeSelectedPiece(byFrames frames: Int) {
         guard let id = selectedPieceID else { return }
         guard run.canMove(id) else { return explainHeldPiece() }
@@ -656,13 +539,13 @@ final class MotionDesignSession: SecondsViewport {
     /// A piece as it plays in the draft, kept until its map or start
     /// changes, since an eased map is solved to write it.
     func drafted(_ piece: MotionRun.Piece) -> TimelineClip {
-        if let kept = draftCache[piece.id], kept.map == piece.map, kept.start == piece.start { return kept.clip }
+        if let kept = draftCache[piece.id], kept.map == piece.map { return kept.clip }
         let clip = piece.drafted
-        draftCache[piece.id] = (piece.map, piece.start, clip)
+        draftCache[piece.id] = (piece.map, clip)
         return clip
     }
 
-    @ObservationIgnored private var draftCache: [UUID: (map: ClipTimeMap, start: CMTime, clip: TimelineClip)] = [:]
+    @ObservationIgnored private var draftCache: [UUID: (map: ClipTimeMap, clip: TimelineClip)] = [:]
 
     // MARK: Snapping
 

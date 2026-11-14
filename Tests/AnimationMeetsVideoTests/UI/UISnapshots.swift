@@ -12,9 +12,9 @@ import Testing
 @Suite(.serialized, .enabled(if: SnapshotSupport.isEnabled))
 struct UISnapshots {
     /// The motion designer on two shots over a click song: the first held
-    /// by a hit on a downbeat and slowed by a dragged marker, the second
-    /// sped up by a pace marker that is selected; the retimed filmstrip,
-    /// the graph's speeds, the hit's pin down to its beat, and the bracket
+    /// by a locked marker on a downbeat and slowed by a dragged marker, the second
+    /// retimed by an unlocked marker that is selected; the retimed filmstrip,
+    /// the graph's speeds, the locked marker's pin down to its beat, and the bracket
     /// where the first shot's scene starts.
     @Test func motionDesigner() async throws {
         var song = try SnapshotSupport.clickSong(named: "motion-designer-song", seconds: 16)
@@ -48,21 +48,19 @@ struct UISnapshots {
         var run = try MotionRun.opening([first.id, second.id], in: timelineID, of: project) { clip in
             clip.id == first.id ? CMTimeRange(start: .zero, end: seconds(3.5)) : nil
         }.get()
-        run.setEdgeLocked(.end, ofPiece: first.id, to: false)
-        run.setEdgeLocked(.end, ofPiece: second.id, to: false)
         let hitAdded = run.addMarker(toPiece: first.id, atSource: seconds(0.25))
         let hit = try #require(hitAdded)
         run.movePoint(hit, to: seconds(1.25))
-        run.setKind(.hit, ofPoint: hit)
+        run.setLocked(true, ofPoint: hit)
         let slowAdded = run.addMarker(toPiece: first.id, atSource: seconds(1.25))
         let slow = try #require(slowAdded)
         run.movePoint(slow, to: seconds(3.25))
-        let paceAdded = run.addMarker(toPiece: second.id, atSource: seconds(5))
-        let pace = try #require(paceAdded)
-        run.setKind(.pace(250), ofPoint: pace)
+        let markerAdded = run.addMarker(toPiece: second.id, atSource: seconds(5))
+        let marker = try #require(markerAdded)
+        run.movePoint(marker, to: seconds(8))
         let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
-        session.select(point: pace)
+        session.select(point: marker)
         session.seek(to: 2.25)
         let view = MotionDesignView(session: session, onDone: {}, onCancel: {})
         let size = CGSize(width: 1240, height: 600)
@@ -109,21 +107,23 @@ struct UISnapshots {
         // into the clip, and the sidebar's edge controls.
         let edgeSession = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { edgeSession.end() }
-        edgeSession.select(edge: .init(piece: first.id, edge: .start))
-        edgeSession.setSelectedEdgeHandle(KeyframeEase(influence: 0.5, speed: 0.2))
+        edgeSession.select(point: edgeSession.run.pieces[0].map.points[0].id)
+        edgeSession.perform("Shape Ease Out") { $0.setHandle(.after, ofPoint: edgeSession.selectedPointID!, to: KeyframeEase(influence: 0.5, speed: 0.2)) }
         edgeSession.seek(to: 2.25)
         try SnapshotSupport.render(MotionDesignView(session: edgeSession, onDone: {}, onCancel: {}), "motion-designer-edge", size: size)
-        // One edge locked, the other unlocked, with the start bracket
-        // at its scene boundary and both sidebar checkboxes visible.
+        // Locked and unlocked interior markers and a locked edge marker.
         var lockRun = try MotionRun.opening([first.id, second.id], in: timelineID, of: project) { clip in
             clip.id == first.id ? CMTimeRange(start: .zero, end: seconds(3)) : nil
         }.get()
-        lockRun.setEdgeLocked(.end, ofPiece: first.id, to: false)
+        lockRun.setLocked(true, ofPoint: lockRun.pieces[0].map.points[0].id)
+        let lockMarker = lockRun.addMarker(toPiece: first.id, atSource: seconds(1))!
+        lockRun.setLocked(true, ofPoint: lockMarker)
+        _ = lockRun.addMarker(toPiece: first.id, atSource: seconds(2))
         let lockSession = MotionDesignSession(run: lockRun, project: project, playback: PlaybackModel())
         defer { lockSession.end() }
-        lockSession.selectedPieceID = first.id
-        try SnapshotSupport.render(MotionDesignView(session: lockSession, onDone: {}, onCancel: {}), "motion-designer-edge-locks", size: size)
-        // The first shot, held by its hit, dragged: the notice saying why.
+        lockSession.select(point: lockRun.pieces[0].map.points[0].id)
+        try SnapshotSupport.render(MotionDesignView(session: lockSession, onDone: {}, onCancel: {}), "motion-designer-locks", size: size)
+        // The first shot, held by a locked marker: the notice saying why.
         session.select(point: nil)
         session.selectedPieceID = first.id
         session.explainHeldPiece()

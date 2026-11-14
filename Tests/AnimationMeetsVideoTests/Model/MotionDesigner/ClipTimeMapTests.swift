@@ -41,116 +41,21 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
 }
 
 @Suite struct ClipTimeMapTests {
-    // MARK: Solving
-
-    @Test func draggingAMarkerFromAHitRetimesBothSides() throws {
-        var (map, ids) = map(markers: [2, 4])
-        map.setKind(.hit, of: ids[0])
-        map.move(ids[1], to: seconds(6))
-        // 2 s of footage over 4 s is 50%, and so is everything either side.
-        #expect(abs(map.speed(after: 0) - 50) < 1e-9)
-        #expect(abs(map.speedBeforeFirst - 50) < 1e-9)
-        #expect(abs(map.speedAfterLast - 50) < 1e-9)
-        let span = try #require(map.span)
-        #expect(near(span.start, -2) && near(span.end, 18))
-
-        let clip = try played(map)
-        #expect(!clip.time.speed.isAnimated && clip.time.speed.value == 50)
-        #expect(near(clip.timelineTime(forSourceTime: seconds(2)), 2))
-        #expect(near(clip.timelineTime(forSourceTime: seconds(4)), 6))
-    }
-
-    @Test func aPaceMarkerSetsTheSpeedAfterIt() throws {
-        var (map, ids) = map(markers: [2, 4])
-        map.setKind(.hit, of: ids[0])
-        map.move(ids[1], to: seconds(6))
-        // A marker put on a later frame lands where it plays now, at 50%
-        // too: 2 s of footage past the second takes 4 s.
-        let added6 = map.addMarker(atSource: seconds(6))
-        let pace = try #require(added6)
-        #expect(near(map.points[2].time, 10))
-        #expect(map.setKind(.pace(200), of: pace) == nil)
-        #expect(abs(map.speedAfterLast - 200) < 1e-9)
-
-        let clip = try played(map)
-        #expect(clip.time.speed.keyframes.count == 2)
-        #expect(clip.time.speed.keyframes[0].hold && clip.time.speed.keyframes[0].value == 50)
-        #expect(clip.time.speed.keyframes[1].value == 200)
-        #expect(near(clip.timelineTime(forSourceTime: seconds(6)), 10, within: 1e-5))
-        // 4 s more footage at 200% take 2 s.
-        #expect(near(clip.endOffset, 12, within: 1e-5))
-    }
-
-    @Test func aPaceMarkerMovesTheMarkerAfterIt() {
-        var (map, ids) = map(markers: [0, 4, 8])
-        map.move(ids[2], to: seconds(20))
-        #expect(map.setKind(.pace(50), of: ids[0]) == nil)
-        #expect(near(map.points[1].time, 8))
-        // The stretch after it takes up the difference.
-        #expect(abs(map.speed(after: 1) - 4.0 / 12 * 100) < 1e-6)
-        #expect(near(map.points[2].time, 20))
-    }
-
-    @Test func aPaceMarkerBeforeAHitAsksFirst() {
-        var (map, ids) = map(markers: [0, 4])
-        map.setKind(.hit, of: ids[1])
-        #expect(map.setKind(.pace(50), of: ids[0]) == .hitWouldMove(ids[1]))
-        #expect(map.points[0].kind == .marker)
-        #expect(map.setKind(.pace(50), of: ids[0], confirmed: true) == nil)
-        #expect(map.points[1].kind == .marker)
-        #expect(near(map.points[1].time, 8))
-    }
-
-    @Test func aHitAfterAPaceMarkerAsksFirst() {
-        var (map, ids) = map(markers: [0, 4])
-        map.setKind(.pace(50), of: ids[0])
-        #expect(map.setKind(.hit, of: ids[1]) == .paceWouldEnd(ids[0]))
-        #expect(map.setKind(.hit, of: ids[1], confirmed: true) == nil)
-        #expect(map.points[0].kind == .marker && map.points[1].kind == .hit)
-    }
-
-    @Test func movingThePointAfterAPaceMarkerSetsThePace() {
-        var (map, ids) = map(markers: [0, 4])
-        map.setKind(.pace(100), of: ids[0])
-        map.move(ids[1], to: seconds(8))
-        #expect(map.points[0].kind == .pace(50))
-        #expect(near(map.points[1].time, 8))
-    }
-
-    @Test func aPointStopsWhereTheClipCantPlayFasterOrBackwards() {
-        var (map, ids) = map(markers: [2, 4, 6])
-        map.setKind(.hit, of: ids[0])
-        map.setKind(.hit, of: ids[2])
-        map.move(ids[1], to: seconds(9))
-        #expect(map.isPlayable)
-        #expect(map.points[1].time < map.points[2].time)
-        #expect(map.speed(after: 1) <= ClipTimeMap.speedRange.upperBound)
-        #expect(near(map.points[2].time, 6))
-    }
-
-    @Test func removingAPointBetweenAPaceAndAHitEndsThePace() {
-        var (map, ids) = map(markers: [0, 2, 6])
-        map.setKind(.hit, of: ids[2])
-        map.setKind(.pace(100), of: ids[0])
-        map.remove(ids[1])
-        #expect(map.points.map(\.kind) == [.marker, .hit])
-    }
-
     // MARK: Points on the line
 
     @Test func aDroppedMarkerIsEasedInLineAndChangesNothing() throws {
         var (map, ids) = map(markers: [2, 6])
-        map.setKind(.hit, of: ids[0])
-        map.setKind(.hit, of: ids[1])
+        map.setLocked(true, of: ids[0])
         map.move(ids[1], to: seconds(8))
+        map.setLocked(true, of: ids[1])
         let before = try played(map)
         let added = map.addMarker(atSource: seconds(4))
         let id = try #require(added)
         let point = try #require(map.points.first { $0.id == id })
         #expect(point.smooth && point.easeIn != nil && point.easeOut != nil)
         // Its handles carry the line's speed through it: 4 s over 6 s.
-        #expect(abs(map.speed(.before, at: 1) - 400.0 / 6) < 1e-6)
-        #expect(abs(map.speed(.after, at: 1) - 400.0 / 6) < 1e-6)
+        #expect(abs(map.speed(.before, at: 2) - 400.0 / 6) < 1e-6)
+        #expect(abs(map.speed(.after, at: 2) - 400.0 / 6) < 1e-6)
         let after = try played(map)
         #expect(after.time.speed == before.time.speed)
         #expect(near(after.startOffset, before.startOffset.seconds))
@@ -158,32 +63,30 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
 
     @Test func draggingADroppedPointBendsTheLineWithoutAStep() throws {
         var (map, ids) = map(markers: [2, 8])
-        map.setKind(.hit, of: ids[0])
-        map.setKind(.hit, of: ids[1])
+        map.setLocked(true, of: ids[0])
+        map.setLocked(true, of: ids[1])
         let added = map.addMarker(atSource: seconds(5))
         let id = try #require(added)
         map.move(id, to: seconds(7))
         // Slower before it, faster after, the handles in line between.
-        #expect(map.speed(after: 0) < 100 && map.speed(after: 1) > 100)
-        #expect(abs(map.speed(.before, at: 1) - map.speed(.after, at: 1)) < 1e-6)
+        #expect(map.speed(after: 1) < 100 && map.speed(after: 2) > 100)
+        #expect(abs(map.speed(.before, at: 2) - map.speed(.after, at: 2)) < 1e-6)
         let clip = try played(map)
         #expect(playsEveryPoint(map, clip))
-        // The hits stay on their beats. The open ends carry on at the
-        // straight speeds beside them: 3 s of footage over 5 s before, and
-        // 3 s over 1 s after.
-        #expect(near(clip.startOffset, 2 - 2 / 0.6, within: 1e-5) && near(clip.endOffset, 8 + 2.0 / 3, within: 1e-5))
+        // The locked markers, cuts and outer stretches stay where they were.
+        #expect(near(clip.startOffset, 0, within: 1e-5) && near(clip.endOffset, 10, within: 1e-5))
     }
 
     // MARK: Easing
 
-    @Test func easyEaseAtAHitOnAStraightLineSlowsIntoIt() throws {
+    @Test func easyEaseAtALockedMarkerOnAStraightLineSlowsIntoIt() throws {
         var (map, ids) = map(markers: [2, 5, 8])
-        for id in ids { map.setKind(.hit, of: id) }
+        for id in ids { map.setLocked(true, of: id) }
         #expect(map.canEase(ids[1]))
         map.setEase(.easyEase, of: ids[1])
         // As a keyframe's Easy Ease: the footage stops at the point.
-        #expect(map.points[1].easeIn == .easy && map.points[1].easeOut == .easy)
-        #expect(map.speed(.before, at: 1) == 0 && map.speed(.after, at: 1) == 0)
+        #expect(map.points[2].easeIn == .easy && map.points[2].easeOut == .easy)
+        #expect(map.speed(.before, at: 2) == 0 && map.speed(.after, at: 2) == 0)
         let clip = try played(map)
         #expect(playsEveryPoint(map, clip))
         // Slow by the hit, quicker than 100% away from it to make up for it.
@@ -192,10 +95,10 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         #expect(clip.speed(atSource: seconds(2.5)) > 100)
     }
 
-    @Test func theOutermostHitsCanEaseWithoutMovingTheClipsEnds() throws {
+    @Test func theOutermostMarkersCanEaseWithoutMovingTheClipsEnds() throws {
         var (map, ids) = map(markers: [2, 8])
-        for id in ids { map.setKind(.hit, of: id) }
-        map.move(ids[1], to: seconds(11))
+        map.move(ids[1], to: seconds(9))
+        for id in ids { map.setLocked(true, of: id) }
         let straight = try played(map)
         #expect(map.canEase(ids[0]) && map.canEase(ids[1]))
         map.setEase(.easeOut, of: ids[0])
@@ -214,127 +117,37 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         // Out at a tenth of its stretch's 300%: the handle in follows, at
         // 30% too.
         map.setHandle(.after, of: ids[1], to: KeyframeEase(influence: 0.3, speed: 0.1))
-        #expect(map.points[1].smooth)
-        #expect(abs(map.speed(.after, at: 1) - 30) < 1e-6)
-        #expect(abs(map.speed(.before, at: 1) - 30) < 1e-6)
-        #expect(map.points[1].easeIn?.influence == KeyframeEase.easy.influence)
+        #expect(map.points[2].smooth)
+        #expect(abs(map.speed(.after, at: 2) - 30) < 1e-6)
+        #expect(abs(map.speed(.before, at: 2) - 30) < 1e-6)
+        #expect(map.points[2].easeIn?.influence == KeyframeEase.easy.influence)
         // Alone, the handle in stays, and the speed steps at the point.
         map.setHandle(.before, of: ids[1], to: KeyframeEase(influence: 0.5, speed: 0.5), alone: true)
-        #expect(!map.points[1].smooth)
-        #expect(abs(map.speed(.before, at: 1) - 25) < 1e-6)
-        #expect(abs(map.speed(.after, at: 1) - 30) < 1e-6)
+        #expect(!map.points[2].smooth)
+        #expect(abs(map.speed(.before, at: 2) - 25) < 1e-6)
+        #expect(abs(map.speed(.after, at: 2) - 30) < 1e-6)
         #expect(try playsEveryPoint(map, played(map)))
         // Put back in line, they meet at the speed they share by reach.
         map.setSmooth(true, of: ids[1])
-        #expect(map.points[1].smooth)
-        #expect(abs(map.speed(.before, at: 1) - map.speed(.after, at: 1)) < 1e-6)
+        #expect(map.points[2].smooth)
+        #expect(abs(map.speed(.before, at: 2) - map.speed(.after, at: 2)) < 1e-6)
         // Dropped on its point, a handle goes, back to the straight line.
         map.setHandle(.before, of: ids[1], to: nil)
-        #expect(map.points[1].easeIn == nil && map.points[1].easePreset == .easeOut)
+        #expect(map.points[2].easeIn == nil && map.points[2].easePreset == .easeOut)
     }
 
     @Test func handlesAreHeldSoTheFootageNeverRunsBackwards() {
         var (map, ids) = map(markers: [2, 4, 7])
         map.setHandle(.after, of: ids[1], to: KeyframeEase(influence: 0.5, speed: 8), alone: true)
         // Its end stays inside the stretch: no more than the whole footage.
-        #expect(map.points[1].easeOut?.speed == 2)
-    }
-
-    @Test func aPaceHoldsItsStretchStraight() {
-        var (map, ids) = map(markers: [2, 4, 7], smooth: true)
-        map.setEase(.easyEase, of: ids[1])
-        #expect(map.points[1].easeOut != nil && map.points[2].easeIn != nil)
-        map.setKind(.pace(200), of: ids[1])
-        // Its handle out and the next point's handle in go.
-        #expect(map.points[1].easeIn != nil && map.points[1].easeOut == nil)
-        #expect(map.points[2].easeIn == nil)
-        #expect(!map.canEase(.after, of: 1) && !map.canEase(.before, of: 2))
-        map.setEase(.easyEase, of: ids[1])
-        #expect(map.points[1].easePreset == .easeIn)
-        #expect(abs(map.speed(after: 1) - 200) < 1e-9)
-    }
-
-    @Test func aPointThatCantEaseEitherSide() {
-        // A pace marker on the clip's first frame: no footage before it, and
-        // its pace holds the stretch after it.
-        var (map, ids) = map(markers: [0, 4])
-        map.setKind(.pace(50), of: ids[0])
-        #expect(!map.canEase(ids[0]))
-        map.setEase(.easyEase, of: ids[0])
-        #expect(!map.points[0].eased)
-    }
-
-    // MARK: Edge keyframes
-
-    @Test func aClipWithNoPointsHasEdgeKeyframesWithoutHandles() throws {
-        let map = ClipTimeMap(reading: footage(), frameDuration: CMTime(value: 1, timescale: 24))
-        #expect(map.points.isEmpty)
-        #expect(map.hasEdgeKeyframe(.start) && map.hasEdgeKeyframe(.end))
-        #expect(map.edgeEase(.start) == nil && map.edgeEase(.end) == nil)
-        // Nothing to write until a handle is pulled out.
-        #expect(map.writtenSpeed() == nil)
-        let stretch = try #require(map.edgeStretch(.start))
-        #expect(stretch.start == (0, 0) && stretch.end == (10, 10))
-    }
-
-    @Test func anEdgeHandleOnlyReachesIntoTheClip() throws {
-        var (map, _) = map(markers: [4, 6])
-        map.setEdgeHandle(.start, to: .easy)
-        map.setEdgeHandle(.end, to: .easy)
-        let start = try #require(map.edgeStretch(.start))
-        let end = try #require(map.edgeStretch(.end))
-        // The first frame eases out into the clip, the last in to it: the
-        // open ends are the only stretches either handle reaches.
-        #expect(start.leaving == .easy && start.arriving == nil && start.start.source == 0)
-        #expect(end.arriving == .easy && end.leaving == nil && end.end.source == 10)
-        #expect(map.speed(at: .start) == 0 && map.speed(at: .end) == 0)
-        // Easing an edge never moves it.
-        let span = try #require(map.span)
-        #expect(near(span.start, 0, within: 1e-4) && near(span.end, 10, within: 1e-4), "\(span.start.seconds) \(span.end.seconds)")
-        let clip = try played(map)
-        #expect(playsEveryPoint(map, clip))
-        #expect(near(clip.timelineTime(forSourceTime: seconds(10)), 10, within: 1e-4))
-    }
-
-    @Test func aPointOnTheClipsFirstFrameStandsInForItsEdgeKeyframe() {
-        var (map, ids) = map(markers: [0, 5])
-        #expect(!map.hasEdgeKeyframe(.start) && map.hasEdgeKeyframe(.end))
-        map.setEdgeHandle(.start, to: .easy)
-        #expect(map.edgeEase(.start) == nil)
-        // Nor does that point have a handle before the clip.
-        map.setHandle(.before, of: ids[0], to: .easy, alone: true)
-        #expect(map.points[0].easeIn == nil)
-    }
-
-    @Test func aLastPaceMarkerHoldsTheLastFrameStraight() throws {
-        var (map, ids) = map(markers: [4, 6])
-        map.setEdgeHandle(.end, to: .easy)
-        map.setKind(.pace(150), of: ids[1])
-        // Still shown, but its handle can't bend the pace's stretch.
-        #expect(map.hasEdgeKeyframe(.end) && !map.canEase(.end))
-        #expect(map.edgeEase(.end) == nil && map.stretches.last?.arriving == nil)
-        map.setEdgeHandle(.end, to: .easy)
-        #expect(map.edgeEase(.end) == nil)
-    }
-
-    @Test func aClipWithNoPointsWritesItsEdgeHandles() throws {
-        var map = ClipTimeMap(reading: footage(), frameDuration: CMTime(value: 1, timescale: 24))
-        map.setEdgeHandle(.start, to: .easy)
-        let clip = try played(map)
-        #expect(clip.time.speed.isAnimated)
-        #expect(near(clip.startOffset, 0) && near(clip.timelineTime(forSourceTime: seconds(10)), 10, within: 1e-4))
-        // And it comes back on the clip's edge.
-        var saved = clip
-        saved.time.design = MotionDesign(map, speed: clip.time.speed)
-        let read = ClipTimeMap(reading: saved, frameDuration: CMTime(value: 1, timescale: 24))
-        #expect(read.points.isEmpty && read.edgeEase(.start) == .easy && read.edgeEase(.end) == nil)
+        #expect(map.points[2].easeOut?.speed == 2)
     }
 
     // MARK: Writing
 
     @Test func aGentleEaseWritesAFewSteps() throws {
         var (map, ids) = map(markers: [2, 8])
-        for id in ids { map.setKind(.hit, of: id) }
+        for id in ids { map.setLocked(true, of: id) }
         let added = map.addMarker(atSource: seconds(5))
         map.move(try #require(added), to: seconds(5.5))
         let clip = try played(map)
@@ -352,7 +165,7 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         // A stop on the hit is slower than Time's 1%; the steps beside it
         // play quicker, so the hits still land.
         var (map, ids) = map(markers: [1, 2, 3])
-        for id in ids { map.setKind(.hit, of: id) }
+        for id in ids { map.setLocked(true, of: id) }
         map.setEase(.easyEase, of: ids[1])
         let clip = try played(map)
         #expect(playsEveryPoint(map, clip))
@@ -361,49 +174,16 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
 
     // MARK: Reading
 
-    @Test func aKeyframeAfterAHoldIsAPaceMarker() {
-        var clip = footage()
-        clip.time.speed = AnimatedValue(50, keyframes: [
-            Keyframe(time: seconds(2), value: 50, hold: true),
-            Keyframe(time: seconds(6), value: 200),
-        ])
-        let map = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
-        #expect(map.points.map(\.kind) == [.marker, .pace(200)])
-        #expect(map.points.map(\.source) == [seconds(2), seconds(6)])
-        // From the clip's start at zero, 6 s of footage at 50%.
-        #expect(near(map.points[1].time, 12, within: 1e-5))
-    }
-
-    @Test func twoKeyframesAFrameApartAreOnePaceMarker() {
-        var clip = footage()
-        clip.time.speed = AnimatedValue(50, keyframes: [
-            Keyframe(time: seconds(1), value: 50),
-            Keyframe(time: seconds(4), value: 50),
-            Keyframe(time: CMTime(value: 97, timescale: 24), value: 200),
-        ])
-        let map = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
-        #expect(map.points.map(\.kind) == [.marker, .pace(200)])
-        #expect(map.points[1].source == CMTime(value: 97, timescale: 24))
-    }
-
-    @Test func aClipAtOneSpeedHasNoPoints() {
-        var clip = footage()
-        clip.time.speed = AnimatedValue(80)
-        let map = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
-        #expect(map.points.isEmpty && map.restingSpeed == 80)
-        #expect(map.writtenSpeed() == nil)
-    }
-
     /// Hits, a bent smooth point, an eased hit and a pace, as the designer
     /// leaves them.
     private func designed() throws -> ClipTimeMap {
         var (map, ids) = map(markers: [2, 8])
-        for id in ids { map.setKind(.hit, of: id) }
+        for id in ids { map.setLocked(true, of: id) }
         let added = map.addMarker(atSource: seconds(5))
         map.move(try #require(added), to: seconds(6))
         map.setEase(.easeIn, of: ids[1])
         let paced = map.addMarker(atSource: seconds(9))
-        map.setKind(.pace(150), of: try #require(paced))
+        map.setLocked(true, of: try #require(paced))
         return map
     }
 
@@ -417,7 +197,7 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         // Moved along the timeline since, by the music it follows.
         clip.startOffset = CMTimeAdd(clip.startOffset, seconds(3))
         let read = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
-        #expect(read.points.map(\.kind) == map.points.map(\.kind))
+        #expect(read.points.map(\.locked) == map.points.map(\.locked))
         #expect(read.points.map(\.easeIn) == map.points.map(\.easeIn))
         #expect(read.points.map(\.easeOut) == map.points.map(\.easeOut))
         #expect(read.points.map(\.smooth) == map.points.map(\.smooth))
@@ -442,37 +222,123 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         clip.time.speed.setAnimated(true, at: seconds(3))
         clip.time.speed.set(160, at: seconds(6))
         let read = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
-        #expect(!read.points.contains { $0.isHit })
+        #expect(!read.points.contains { $0.locked })
         #expect(!read.points.isEmpty)
     }
 
-    @Test func paceMarkersReadFromKeyframesWriteTheSameAgain() throws {
-        var (map, ids) = map(markers: [2, 4])
-        map.setKind(.hit, of: ids[0])
-        map.move(ids[1], to: seconds(6))
-        let added6 = map.addMarker(atSource: seconds(6))
-        map.setKind(.pace(200), of: try #require(added6))
-        // The point after a pace marker follows it; the one after that
-        // moves freely: 1 s of footage over 4 s.
-        let added8 = map.addMarker(atSource: seconds(8))
-        let added9 = map.addMarker(atSource: seconds(9))
-        #expect(added8 != nil)
-        map.setEase(.linear, of: try #require(added8))
-        map.setEase(.linear, of: try #require(added9))
-        map.move(try #require(added9), to: seconds(15))
-        #expect(near(map.points[3].time, 11))
+    @Test(arguments: [1.5, 2.5]) func movingAnInteriorMarkerKeepsTheWholeScene(_ target: Double) throws {
+        var map = ClipTimeMap(trimStart: seconds(2), trimEnd: seconds(6))
+        let added_a = map.addMarker(atSource: seconds(3))
+        let a = try #require(added_a)
+        let added_m = map.addMarker(atSource: seconds(4))
+        let m = try #require(added_m)
+        let added_b = map.addMarker(atSource: seconds(5))
+        let b = try #require(added_b)
+        for id in [a, m, b] { map.setEase(.linear, of: id) }
+        map.setLocked(true, of: a)
+        map.setLocked(true, of: b)
+        let before = map
+        map.move(m, to: seconds(target))
+        #expect(map.points[2].time == seconds(target))
+        #expect(abs(map.speed(after: 1) - 100 / (target - 1)) < 1e-6)
+        #expect(abs(map.speed(after: 2) - 100 / (3 - target)) < 1e-6)
+        #expect(map.stretches.first == before.stretches.first)
+        #expect(map.stretches.last == before.stretches.last)
+        #expect(map.trimStart == seconds(2) && map.trimEnd == seconds(6))
+        #expect(map.span?.start == .zero && map.span?.end == seconds(4))
+        var unlocked = before
+        unlocked.setLocked(false, of: a)
+        unlocked.setLocked(false, of: b)
+        unlocked.move(m, to: seconds(target))
+        #expect(unlocked.points[2].time == map.points[2].time)
+        let written = try #require(map.writtenSpeed())
+        var clip = TimelineClip(source: .adjustment, startOffset: written.start, trimStart: map.trimStart, trimEnd: map.trimEnd)
+        clip.time.speed = written.speed
+        #expect(playsEveryPoint(map, clip))
+    }
 
-        let clip = try played(map)
+    @Test func lockedMarkersKeepTheirFrameAndTimeButCanEase() throws {
+        var (map, ids) = map(markers: [2, 4, 6])
+        let id = ids[1]
+        map.setLocked(true, of: id)
+        let before = map
+        map.move(id, to: seconds(5))
+        map.remove(id)
+        #expect(map == before)
+        map.setHandle(.after, of: id, to: .easy)
+        #expect(map.points[2].easeOut == .easy)
+        map.setLocked(false, of: id)
+        map.move(id, to: seconds(5))
+        #expect(map.points[2].time == seconds(5))
+    }
+
+    @Test func edgeMarkersRetimeAndOnlyEaseInsideTheClip() throws {
+        var map = ClipTimeMap(trimStart: seconds(2), trimEnd: seconds(6))
+        let last = try #require(map.points.last?.id)
+        let first = map.points[0].id
+        map.move(last, to: seconds(5))
+        #expect(map.trimEnd == seconds(6))
+        #expect(map.span?.end == seconds(5))
+        #expect(map.speed(after: 0) == 80)
+        map.remove(first)
+        map.remove(last)
+        #expect(map.points.count == 2)
+        map.setEase(.easyEase, of: first)
+        map.setEase(.easyEase, of: last)
+        #expect(map.points[0].easeIn == nil && map.points[0].easeOut == .easy)
+        #expect(map.points[1].easeIn == .easy && map.points[1].easeOut == nil)
+        let startAdded = map.addMarker(atSource: map.trimStart)
+        #expect(startAdded == nil)
+        let endAdded = map.addMarker(atSource: map.trimEnd)
+        #expect(endAdded == nil)
+    }
+
+    @Test func readingSpeedKeysCreatesOnlyInteriorUnlockedMarkers() {
+        var clip = footage()
+        clip.time.speed = AnimatedValue(50, keyframes: [
+            Keyframe(time: .zero, value: 50, hold: true),
+            Keyframe(time: seconds(4), value: 50),
+            Keyframe(time: CMTime(value: 97, timescale: 24), value: 200),
+            Keyframe(time: seconds(10), value: 200),
+        ])
+        let map = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
+        #expect(map.points.count == 3)
+        #expect(map.points[1].source == CMTime(value: 97, timescale: 24))
+        #expect(map.points.allSatisfy { !$0.locked && !$0.eased })
+    }
+
+    @Test func aSavedLockedEdgeBecomesInteriorAfterAnOutwardTrim() {
+        var clip = footage()
+        clip.trimStart = seconds(2)
+        var map = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
+        map.setLocked(true, of: map.points[0].id)
+        clip.time.design = MotionDesign(map, speed: clip.time.speed)
+        clip.trimStart = .zero
         let read = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
-        // Without the designer's points, the steps come back as pace
-        // markers, and the speed before them as the clip's own.
-        #expect(read.points.map(\.source) == [seconds(6), seconds(8)])
-        #expect(read.points.map(\.kind) == [.pace(200), .pace(25)])
-        #expect(read.restingSpeed == 50)
-        let again = try played(read, footage())
-        #expect(again.time.speed.keyframes.map(\.time) == clip.time.speed.keyframes.map(\.time))
-        #expect(again.time.speed.keyframes.map(\.hold) == clip.time.speed.keyframes.map(\.hold))
-        for (a, b) in zip(again.time.speed.keyframes, clip.time.speed.keyframes) { #expect(abs(a.value - b.value) < 1e-4) }
-        #expect(near(again.startOffset, clip.startOffset.seconds, within: 1e-5))
+        #expect(!read.points[0].locked)
+        #expect(read.points[1].source == seconds(2) && read.points[1].locked)
+    }
+    @Test func movingAMarkerKeepsTheOuterStretchesAndSmoothNeighbours() throws {
+        var (map, ids) = map(markers: [2, 4, 6], smooth: true)
+        for id in [ids[0], ids[2]] {
+            map.setEase(.easyEase, of: id)
+            map.setHandle(.after, of: id, to: KeyframeEase(influence: 0.3, speed: 0.5))
+        }
+        let first = map.stretches.first
+        let last = map.stretches.last
+        map.move(ids[1], to: seconds(5))
+        #expect(map.stretches.first == first && map.stretches.last == last)
+        for index in [1, 3] {
+            #expect(abs(map.speed(.before, at: index) - map.speed(.after, at: index)) < 1e-6)
+        }
+    }
+
+    @Test(arguments: [-20.0, 20.0]) func draggingStopsAtTheSpeedLimits(_ target: Double) {
+        var (map, ids) = map(markers: [3, 4, 5])
+        map.move(ids[1], to: seconds(target))
+        #expect(map.isPlayable)
+        #expect(map.points[2].time > map.points[1].time)
+        #expect(map.points[2].time < map.points[3].time)
+        #expect(map.stretches.allSatisfy { $0.speed <= 10_000 + 1e-8 && $0.speed >= 1 - 1e-10 })
     }
 }

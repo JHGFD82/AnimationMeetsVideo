@@ -1,23 +1,11 @@
 import CoreMedia
 import SwiftUI
 
-/// The motion designer's lanes, on one timeline across: the ruler, the
-/// retimed filmstrip, the time graph and the music with its beats. The
-/// graph runs up through the run's footage, clip after clip, so the run
-/// reads as one line: steep where it plays fast, shallow where slow, and
-/// flat over a gap. Clicking the line drops a marker on that frame, and
-/// grabbing it drops one, eased with its handles in line, and drags it; a
-/// hit's pin runs from its frame down to its beat. A selected eased point
-/// shows the handles of its Ease In and Ease Out on its tangent, as the
-/// graph editor shows a keyframe's: dragging one along shapes how far it
-/// reaches and tilting it sets the speed at the point, the other swinging
-/// to stay in line unless Option is held; dragged onto its point, it goes.
-/// Each clip's first and last frames show a keyframe too, which stays put:
-/// Option-dragging it pulls out its one handle, which only ever reaches
-/// into the clip. Points are picked as keyframes are in the graph editor:
-/// Command-click adds one or takes it out, Shift-click picks the points
-/// from the last clicked, and dragging in empty space draws a lasso; a
-/// drag of one picked point moves them all.
+/// The footage, time graph and music on one timeline. Every clip is a
+/// chain of markers: clicking toggles a lock, dragging retimes, and
+/// Option-dragging pulls out a handle. Locked markers have a pin through
+/// the lanes and stay while the other picked markers move. Handles shape
+/// the line as keyframe handles do in the graph editor.
 struct MotionDesignLanes: View {
     @Bindable var session: MotionDesignSession
 
@@ -30,7 +18,7 @@ struct MotionDesignLanes: View {
     private enum GraphDrag {
         /// Pressed on something, which isn't dragged until the pointer
         /// moves `dragDistance` from where it went down: a click on a
-        /// point only selects it, and changes nothing.
+        /// marker selects it and toggles its lock.
         case pressed(Grab)
         /// Points moving together as `dragged` is dragged, from where each
         /// was, in seconds.
@@ -38,18 +26,14 @@ struct MotionDesignLanes: View {
         /// A lasso from a point in the graph, adding to `kept`.
         case lasso(from: CGPoint, kept: Set<UUID>, click: SelectClick)
         case handle(UUID, side: TimePoint.Side)
-        case edgeHandle(MotionDesignSession.EdgeKey)
         case seek
-        /// A drag that does nothing, such as one on an edge keyframe
-        /// without Option.
+        /// A drag on a single locked marker.
         case inert
     }
 
     private enum Grab {
         case point(UUID, from: Double, click: SelectClick)
         case handle(UUID, side: TimePoint.Side)
-        case edge(MotionDesignSession.EdgeKey)
-        case edgeHandle(MotionDesignSession.EdgeKey)
         /// The line, where a click or a drag drops a marker.
         case line(piece: UUID, time: Double)
     }
@@ -63,6 +47,7 @@ struct MotionDesignLanes: View {
     @State private var lassoRect: CGRect?
     /// Where the drag snapped, to draw.
     @State private var snapTime: Double?
+    @State private var graphModifiers: NSEvent.ModifierFlags = []
 
     var body: some View {
         GeometryReader { geometry in
@@ -223,7 +208,7 @@ struct MotionDesignLanes: View {
         .overlay(alignment: .topLeading) { lassoOverlay }
         .onContinuousHover { phase in
             if case .active(let location) = phase {
-                let over = point(at: location, stack: stack) != nil || edge(at: location, stack: stack) != nil || line(at: location, stack: stack) != nil
+                let over = point(at: location, stack: stack) != nil || line(at: location, stack: stack) != nil
                 (over ? NSCursor.pointingHand : NSCursor.arrow).set()
             } else {
                 NSCursor.arrow.set()
@@ -231,7 +216,10 @@ struct MotionDesignLanes: View {
         }
         // A right-click picks the point or edge under it first, so its
         // menu acts on what was clicked rather than on what was picked.
-        .background(SecondaryClickMonitor { location in pickForMenu(at: location, stack: stack) })
+        .background(SecondaryClickMonitor(
+            onSecondaryDown: { location in pickForMenu(at: location, stack: stack) },
+            onModifiers: { graphModifiers = $0 }
+        ))
         .contextMenu { pointMenu }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Time graph")
@@ -240,9 +228,7 @@ struct MotionDesignLanes: View {
             ForEach(allPoints, id: \.point.id) { entry in
                 pointElement(entry.point, piece: entry.piece)
             }
-            ForEach(allEdges, id: \.key) { entry in
-                edgeElement(entry.key, piece: entry.piece)
-            }
+
         }
         .accessibilityAction(named: "Add marker at playhead") { session.addMarkerAtPlayhead() }
     }
@@ -291,10 +277,6 @@ struct MotionDesignLanes: View {
             context.fill(Path(ellipseIn: CGRect(x: handle.point.x - 3.5, y: handle.point.y - 3.5, width: 7, height: 7)), with: .color(.white))
         }
         for (index, piece) in session.run.pieces.enumerated() {
-            for edge in [MotionRun.Edge.start, .end] {
-                guard let at = location(of: edge, piece: index, stack: stack) else { continue }
-                drawEdge(MotionDesignSession.EdgeKey(piece: piece.id, edge: edge), map: piece.map, at: at, in: &context)
-            }
             for point in piece.map.points {
                 drawPoint(point, at: location(of: point, piece: index, stack: stack), in: &context)
             }
@@ -329,7 +311,6 @@ struct MotionDesignLanes: View {
     /// keyframe's are: reaching their influence of the stretch along the
     /// timeline, tilted to the speed they set at the point.
     private func easeHandles(stack: Stack) -> [EaseHandle] {
-        if let key = session.selectedEdge { return edgeHandle(key, stack: stack).map { [$0] } ?? [] }
         guard let id = session.selectedPointID, let (p, i) = session.run.piece(holdingPoint: id) else { return [] }
         let map = session.run.pieces[p].map
         let point = map.points[i]
@@ -363,77 +344,10 @@ struct MotionDesignLanes: View {
         return .some(side == .before ? KeyframeEase.incoming(handleAt: unit) : KeyframeEase.outgoing(handleAt: unit))
     }
 
-    // MARK: Edge keyframes
-
-    /// Where a piece's edge keyframe sits, at the open end's outer corner;
-    /// nil while it shows none.
-    private func location(of edge: MotionRun.Edge, piece index: Int, stack: Stack) -> CGPoint? {
-        guard let stretch = session.run.pieces[index].map.edgeStretch(edge) else { return nil }
-        let corner = edge == .start ? stretch.start : stretch.end
-        return CGPoint(x: session.x(of: corner.time), y: stack.y(piece: index, source: corner.source))
-    }
-
-    private func edge(at location: CGPoint, stack: Stack) -> MotionDesignSession.EdgeKey? {
-        var best: (key: MotionDesignSession.EdgeKey, distance: CGFloat)?
-        for (index, piece) in session.run.pieces.enumerated() {
-            for edge in [MotionRun.Edge.start, .end] {
-                guard let at = self.location(of: edge, piece: index, stack: stack) else { continue }
-                let distance = hypot(at.x - location.x, at.y - location.y)
-                if distance <= 9, distance < (best?.distance ?? .infinity) { best = (.init(piece: piece.id, edge: edge), distance) }
-            }
-        }
-        return best?.key
-    }
-
-    /// The selected edge keyframe's handle, reaching into its open end,
-    /// while it has one.
-    private func edgeHandle(_ key: MotionDesignSession.EdgeKey, stack: Stack) -> EaseHandle? {
-        guard let p = session.run.index(of: key.piece) else { return nil }
-        let map = session.run.pieces[p].map
-        guard let ease = map.edgeEase(key.edge), let stretch = map.edgeStretch(key.edge),
-              let anchor = location(of: key.edge, piece: p, stack: stack)
-        else { return nil }
-        let unit = key.edge == .start ? KeyframeEase.outgoingHandle(ease) : KeyframeEase.incomingHandle(ease)
-        let at = CGPoint(
-            x: session.x(of: stretch.start.time + stretch.duration * Double(unit.x)),
-            y: stack.y(piece: p, source: stretch.start.source + stretch.footage * Double(unit.y))
-        )
-        return EaseHandle(grab: .edgeHandle(key), anchor: anchor, point: at)
-    }
-
-    /// The ease an edge keyframe's handle dragged to `location` makes, in
-    /// its open end, so it never reaches past the clip's edge; nil when it
-    /// is on the keyframe, which takes the handle away.
-    private func ease(dragging key: MotionDesignSession.EdgeKey, to pointer: CGPoint, stack: Stack) -> KeyframeEase?? {
-        guard let p = session.run.index(of: key.piece), let stretch = session.run.pieces[p].map.edgeStretch(key.edge),
-              stretch.duration > 0, stretch.footage > 0, let anchor = location(of: key.edge, piece: p, stack: stack)
-        else { return .none }
-        if hypot(pointer.x - anchor.x, pointer.y - anchor.y) < 6 { return .some(nil) }
-        let unit = CGPoint(
-            x: (session.seconds(atX: pointer.x) - stretch.start.time) / stretch.duration,
-            y: (stack.source(piece: p, y: pointer.y) - stretch.start.source) / stretch.footage
-        )
-        return .some(key.edge == .start ? KeyframeEase.outgoing(handleAt: unit) : KeyframeEase.incoming(handleAt: unit))
-    }
-
-    /// An edge keyframe's mark: smaller and quieter than a point's, as the
-    /// clip puts it there, pinched on its inner side once it has a handle.
-    private func drawEdge(_ key: MotionDesignSession.EdgeKey, map: ClipTimeMap, at center: CGPoint, in context: inout GraphicsContext) {
-        let eased = map.edgeEase(key.edge) != nil
-        let size: CGFloat = 9
-        let rect = CGRect(x: center.x - size / 2, y: center.y - size / 2, width: size, height: size)
-        let shape = KeyframeMarkShape(easedIn: key.edge == .end && eased, easedOut: key.edge == .start && eased, holds: false).path(in: rect)
-        context.fill(shape, with: .color(Design.textTertiary))
-        context.stroke(shape, with: .color(.black.opacity(0.5)), lineWidth: 0.5)
-        if key == session.selectedEdge {
-            context.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(Design.accent), lineWidth: 1.5)
-        }
-    }
-
     /// Each stretch's speed, over its middle, where it has room; stretches
     /// either side of a point at one speed share one reading.
     private func drawSpeeds(of piece: MotionRun.Piece, clip: TimelineClip, index: Int, stack: Stack, in context: inout GraphicsContext) {
-        let edges = ([clip.startOffset.seconds] + piece.map.points.map(\.time.seconds) + [clip.endOffset.seconds]).sorted()
+        let edges = piece.map.points.map(\.time.seconds)
         func speed(at seconds: Double) -> Double {
             clip.speed(atSource: clip.sourceTime(atTimelineTime: CMTime(seconds: seconds, preferredTimescale: ClipTimeMap.timescale)))
         }
@@ -448,8 +362,6 @@ struct MotionDesignLanes: View {
         for (a, b) in stretches {
             let xa = session.x(of: a), xb = session.x(of: b)
             guard xb - xa > 48 else { continue }
-            // A pace marker's tag already says the speed after it.
-            if piece.map.points.contains(where: { $0.pace != nil && a <= $0.time.seconds && $0.time.seconds < b }) { continue }
             let middle = (a + b) / 2
             let time = CMTime(seconds: middle, preferredTimescale: ClipTimeMap.timescale)
             let speed = speed(at: middle)
@@ -465,24 +377,16 @@ struct MotionDesignLanes: View {
         speed >= 10 ? "\(Int(speed.rounded()))%" : String(format: "%.1f%%", speed)
     }
 
-    /// A point's mark, in the keyframes' language: squared off past a pace
-    /// marker, where the speed steps; pinched where it is eased. Hits are
-    /// the bright "placed" tone, markers quieter.
+    /// Locked markers are larger and brighter; eased sides pinch in.
     private func drawPoint(_ point: TimePoint, at center: CGPoint, in context: inout GraphicsContext) {
         let isSelected = session.pickedPoints.contains(point.id)
-        let size: CGFloat = point.isHit ? 13 : 11
+        let size: CGFloat = point.locked ? 13 : 11
         let rect = CGRect(x: center.x - size / 2, y: center.y - size / 2, width: size, height: size)
-        let shape = KeyframeMarkShape(easedIn: point.easeIn != nil, easedOut: point.easeOut != nil, holds: point.pace != nil).path(in: rect)
-        context.fill(shape, with: .color(point.isHit ? Design.snap : Design.textSecondary))
+        let shape = KeyframeMarkShape(easedIn: point.easeIn != nil, easedOut: point.easeOut != nil, holds: false).path(in: rect)
+        context.fill(shape, with: .color(point.locked ? Design.snap : Design.textSecondary))
         context.stroke(shape, with: .color(.black.opacity(0.5)), lineWidth: 0.5)
         if isSelected {
             context.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(Design.accent), lineWidth: 1.5)
-        }
-        if let pace = point.pace {
-            context.draw(
-                Text("→ \(Self.speedText(pace))").font(Design.Typeface.numericTag).foregroundStyle(Design.keyframe),
-                at: CGPoint(x: center.x + 9, y: center.y + 6), anchor: .topLeading
-            )
         }
     }
 
@@ -564,17 +468,13 @@ struct MotionDesignLanes: View {
         if let handle = easeHandles(stack: stack).first(where: { hypot($0.point.x - location.x, $0.point.y - location.y) <= 7 }) {
             return .pressed(handle.grab)
         }
-        let click = SelectClick.current
+        let click = SelectClick(graphModifiers)
         if let id = point(at: location, stack: stack), let found = session.run.piece(holdingPoint: id) {
             if click == .only, !session.pickedPoints.contains(id) { session.select(point: id) }
             return .pressed(.point(id, from: session.run.pieces[found.piece].map.points[found.point].time.seconds, click: click))
         }
-        if let key = edge(at: location, stack: stack) {
-            session.select(edge: key)
-            return .pressed(.edge(key))
-        }
         if let hit = line(at: location, stack: stack) { return .pressed(.line(piece: hit.piece, time: hit.time)) }
-        return .lasso(from: location, kept: SelectClick.lassoAdds(NSEvent.modifierFlags) ? session.pickedPoints.items : [], click: click)
+        return .lasso(from: location, kept: SelectClick.lassoAdds(graphModifiers) ? session.pickedPoints.items : [], click: click)
     }
 
     /// The points inside `rect`.
@@ -609,21 +509,20 @@ struct MotionDesignLanes: View {
     }
 
     /// Starts dragging what was pressed, once the pointer has moved.
-    private func startDragging(_ grab: Grab) -> GraphDrag {
-        if case .edge(let key) = grab {
-            // The edge stays put; Option pulls its handle out of it.
-            guard NSEvent.modifierFlags.contains(.option),
-                  let p = session.run.index(of: key.piece), session.run.pieces[p].map.canEase(key.edge)
-            else {
-                session.explainEdgeKeyframe()
-                return .inert
-            }
-            session.beginDrag()
-            return .edgeHandle(key)
-        }
+    private func startDragging(_ grab: Grab, translation: CGSize) -> GraphDrag {
         session.beginDrag()
         switch grab {
         case .point(let id, let from, let click):
+            if graphModifiers.contains(.option), let (p, i) = session.run.piece(holdingPoint: id) {
+                let map = session.run.pieces[p].map
+                let side: TimePoint.Side = i == 0 ? .after : i == map.points.count - 1 ? .before : translation.width < 0 ? .before : .after
+                session.select(point: id)
+                return .handle(id, side: side)
+            }
+            if let (p, i) = session.run.piece(holdingPoint: id), session.run.pieces[p].map.points[i].locked {
+                session.explainLockedMarker()
+                if session.pickedPointIDs.count <= 1 { return .inert }
+            }
             // A point Command- or Shift-dragged joins those picked.
             if !session.pickedPoints.contains(id) { session.pickedPoints.press(id, click) }
             var times = pickedTimes
@@ -631,8 +530,6 @@ struct MotionDesignLanes: View {
             return .points(dragged: id, from: times, added: false)
         case .handle(let id, let side):
             return .handle(id, side: side)
-        case .edge(let key), .edgeHandle(let key):
-            return .edgeHandle(key)
         case .line(let piece, let time):
             if let id = session.addMarker(toPiece: piece, atTime: time) { return .points(dragged: id, from: [id: time], added: true) }
             session.endDrag("Add Marker")
@@ -653,7 +550,7 @@ struct MotionDesignLanes: View {
                 if drag == nil { drag = grab(at: press.origin, stack: stack) }
                 if case .pressed(let grab) = drag {
                     guard hypot(translation.width, translation.height) >= Self.dragDistance else { return }
-                    drag = startDragging(grab)
+                    drag = startDragging(grab, translation: translation)
                 }
                 switch drag {
                 case .points(let id, let from, _):
@@ -674,11 +571,8 @@ struct MotionDesignLanes: View {
                 case .handle(let id, let side):
                     guard let ease = ease(dragging: side, of: id, to: gesture.location, stack: stack) else { break }
                     // Option moves the handle alone, as in the graph editor.
-                    let alone = NSEvent.modifierFlags.contains(.option)
+                    let alone = graphModifiers.contains(.option)
                     session.dragEdit { $0.setHandle(side, ofPoint: id, to: ease, alone: alone) }
-                case .edgeHandle(let key):
-                    guard let ease = ease(dragging: key, to: gesture.location, stack: stack) else { break }
-                    session.dragEdit { $0.setEdgeHandle(key.edge, ofPiece: key.piece, to: ease) }
                 case .seek:
                     session.seek(to: session.seconds(atX: gesture.location.x))
                 case .pressed, .inert, nil:
@@ -700,10 +594,9 @@ struct MotionDesignLanes: View {
                     session.seek(to: session.seconds(atX: gesture.location.x))
                     if click == .only {
                         session.select(point: nil)
-                        session.selectedEdge = nil
                     }
                 case .handle(_, let side): session.endDrag(side == .before ? "Shape Ease In" : "Shape Ease Out")
-                case .edgeHandle(let key): session.endDrag("Shape \(MotionDesignSession.edgeHandleName(key.edge))")
+                case .inert: session.endDrag("Move Marker")
                 // A click on the line drops a marker on that frame, selected,
                 // and moves the playhead there to show it.
                 case .pressed(.line(let piece, let time)):
@@ -740,8 +633,7 @@ struct MotionDesignLanes: View {
     private func pickForMenu(at location: CGPoint, stack: Stack) {
         if let id = point(at: location, stack: stack) {
             if !session.pickedPoints.contains(id) { session.select(point: id) }
-        } else if let key = edge(at: location, stack: stack) {
-            session.select(edge: key)
+
         }
     }
 
@@ -749,21 +641,18 @@ struct MotionDesignLanes: View {
     private var pointMenu: some View {
         let picked = session.pickedPointIDs
         if picked.count > 1 {
-            Button("Make Hits") { session.setKindOfPicked(.hit) }
-            Button("Make Markers") { session.setKindOfPicked(.marker) }
+            Button("Lock Markers") { session.setLockedOfPicked(true) }
+            Button("Unlock Markers") { session.setLockedOfPicked(false) }
             Divider()
             ForEach(TimePoint.presets) { preset in
                 Button(preset.name) { session.setEaseOfPicked(preset) }
                     .help(MotionDesignSidebar.easeDetail(preset))
             }
             Divider()
-            Button("Remove \(picked.count) Points", role: .destructive) { session.deleteSelected() }
+            Button("Remove Markers", role: .destructive) { session.deleteSelected() }
+                .disabled(!session.canRemovePicked)
         } else if let point = session.selectedPoint {
-            Button("Make Hit") { session.setKind(.hit, ofPoint: point.id) }
-                .disabled(point.isHit)
-            Button("Make Marker") { session.setKind(.marker, ofPoint: point.id) }
-                .disabled(point.kind == .marker)
-            Button("Set Pace…") { session.focusesPace = true }
+            Button(point.locked ? "Unlock" : "Lock") { session.setLocked(!point.locked, ofPoint: point.id) }
             Divider()
             // The keyframe menus' eases, checked as the point is.
             let canEase = session.run.canEase(point: point.id)
@@ -775,21 +664,8 @@ struct MotionDesignLanes: View {
                 .help(MotionDesignSidebar.easeDetail(preset))
             }
             Divider()
-            Button("Remove Point", role: .destructive) { session.deleteSelected() }
-        } else if let key = session.selectedEdge, let map = session.selectedEdgeMap {
-            let name = MotionDesignSession.edgeHandleName(key.edge)
-            if let piece = session.run.pieces.first(id: key.piece) {
-                Button("\(piece.isEdgeLocked(key.edge) ? "Unlock" : "Lock") \(key.edge == .start ? "Start" : "End")") {
-                    session.toggleEdgeLock(key.edge, ofPiece: key.piece)
-                }
-            }
-            if !map.canEase(key.edge) {
-                Text("No Handle Past a Pace Marker")
-            } else if session.selectedEdgeEase == nil {
-                Button("Add \(name) Handle") { session.setSelectedEdgeHandle(.easy) }
-            } else {
-                Button("Remove Handle") { session.setSelectedEdgeHandle(nil) }
-            }
+            Button("Remove Marker", role: .destructive) { session.deleteSelected() }
+                .disabled(point.locked || session.selectedPlace?.map.isEdge(point.id) == true)
         } else {
             Button("Add Marker at Playhead") { session.addMarkerAtPlayhead() }
         }
@@ -811,23 +687,18 @@ struct MotionDesignLanes: View {
         session.run.pieces.enumerated().flatMap { index, piece in piece.map.points.map { ($0, index) } }
     }
 
-    private var allEdges: [(key: MotionDesignSession.EdgeKey, piece: Int)] {
-        session.run.pieces.enumerated().flatMap { index, piece in
-            [MotionRun.Edge.start, .end].filter { piece.map.hasEdgeKeyframe($0) }.map { (MotionDesignSession.EdgeKey(piece: piece.id, edge: $0), index) }
-        }
-    }
-
     private var graphSummary: String {
         let points = allPoints.map(\.point)
-        let hits = points.filter(\.isHit).count
-        return "\(session.run.pieces.count) \(session.run.pieces.count == 1 ? "clip" : "clips"), \(hits) \(hits == 1 ? "hit" : "hits"), \(points.count - hits) other points"
+        let locked = points.filter(\.locked).count
+        return "\(session.run.pieces.count) \(session.run.pieces.count == 1 ? "clip" : "clips"), \(locked) \(locked == 1 ? "locked marker" : "locked markers"), \(points.count - locked) unlocked markers"
     }
 
     private func pointElement(_ point: TimePoint, piece index: Int) -> some View {
-        let kind = point.isHit ? "Hit" : point.pace.map { "Pace marker, \(Self.speedText($0))" } ?? "Marker"
+        let map = session.run.pieces[index].map
+        let kind = map.points.first?.id == point.id ? "First frame marker" : map.points.last?.id == point.id ? "Last frame marker" : "Marker"
         let speed = session.run.pieces[index].map.index(of: point.id).map { session.run.pieces[index].map.speed(after: $0) }
         return Rectangle()
-            .accessibilityLabel("\(kind) at \(session.timecode(point.time))")
+            .accessibilityLabel("\(kind), \(point.locked ? "locked" : "unlocked"), at \(session.timecode(point.time))")
             .accessibilityValue("Frame \(session.timecode(point.source))\(speed.map { ", then \(Self.speedText($0))" } ?? ""), \(easeText(point, piece: index))")
             .accessibilityAddTraits(session.pickedPoints.contains(point.id) ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { session.select(point: point.id) }
@@ -839,9 +710,7 @@ struct MotionDesignLanes: View {
                 Button(session.pickedPoints.contains(point.id) ? "Remove from selection" : "Add to selection") {
                     session.click(point: point.id, .toggle)
                 }
-                Button("Make hit") { session.setKind(.hit, ofPoint: point.id) }
-                Button("Make marker") { session.setKind(.marker, ofPoint: point.id) }
-                Button("Set pace") { session.select(point: point.id); session.focusesPace = true }
+                Button(point.locked ? "Unlock" : "Lock") { session.setLocked(!point.locked, ofPoint: point.id) }
                 // The keyframe eases, named as on a keyframe.
                 if session.run.canEase(point: point.id) {
                     ForEach(TimePoint.presets.filter { $0 != point.easePreset }) { preset in
@@ -851,48 +720,10 @@ struct MotionDesignLanes: View {
                 ForEach([TimePoint.Side.before, .after], id: \.self) { side in
                     if point.ease(side) != nil { handleActions(side, of: point) }
                 }
-                Button("Remove") { session.select(point: point.id); session.deleteSelected() }
-            }
-    }
-
-    /// An edge keyframe for VoiceOver, with its one handle's actions, as
-    /// Option-dragging it and its handle do.
-    private func edgeElement(_ key: MotionDesignSession.EdgeKey, piece index: Int) -> some View {
-        let piece = session.run.pieces[index]
-        let map = piece.map
-        let name = MotionDesignSession.edgeHandleName(key.edge)
-        let frame = key.edge == .start ? map.trimStart : map.trimEnd
-        let ease = map.edgeEase(key.edge).map { "\(name) over \(Int(($0.influence * 100).rounded())) percent at \(Self.speedText(map.speed(at: key.edge)))" }
-        let select = { session.select(edge: key) }
-        return Rectangle()
-            .accessibilityLabel(key.edge == .start ? "Clip's first frame" : "Clip's last frame")
-            .accessibilityValue("Frame \(session.timecode(frame)), \(ease ?? "Linear"), \(piece.isEdgeLocked(key.edge) ? "locked" : "unlocked")")
-            .accessibilityAddTraits(key == session.selectedEdge ? [.isButton, .isSelected] : .isButton)
-            .accessibilityAction { select() }
-            .accessibilityActions {
-                Button(piece.isEdgeLocked(key.edge) ? "Unlock" : "Lock") {
-                    select(); session.toggleEdgeLock(key.edge, ofPiece: key.piece)
-                }
-                if !map.canEase(key.edge) {
-                    // Held straight by the pace before it: nothing to do.
-                } else if map.edgeEase(key.edge) == nil {
-                    Button("Add \(name) handle") { select(); session.setSelectedEdgeHandle(.easy) }
-                } else {
-                    Button("Longer \(name)") { select(); session.reshapeSelectedEdge(by: 0.1) }
-                    Button("Shorter \(name)") { select(); session.reshapeSelectedEdge(by: -0.1) }
-                    Button("Faster \(name)") { changeSpeed(of: key, by: 1.25) }
-                    Button("Slower \(name)") { changeSpeed(of: key, by: 0.8) }
-                    Button("Remove handle") { select(); session.setSelectedEdgeHandle(nil) }
+                if !map.isEdge(point.id) {
+                    Button("Remove") { session.select(point: point.id); session.deleteSelected() }.disabled(point.locked)
                 }
             }
-    }
-
-    private func changeSpeed(of key: MotionDesignSession.EdgeKey, by factor: Double) {
-        session.select(edge: key)
-        guard let map = session.selectedEdgeMap else { return }
-        // From a stop, faster starts at a tenth of the straight speed.
-        let speed = map.speed(at: key.edge)
-        session.setSelectedEdgeSpeed(to: speed > 0 ? speed * factor : (factor > 1 ? map.straightSpeed(of: key.edge) / 10 : 0))
     }
 
     /// What dragging a handle does, as VoiceOver actions: a tenth of the
@@ -1033,7 +864,7 @@ struct MotionDesignLanes: View {
 
     // MARK: Over every lane
 
-    /// Each hit's pin from its frame to its beat, the playhead, and where a
+    /// Each locked marker's pin from its frame to its beat, the playhead, and where a
     /// drag snapped, drawn over the lanes.
     private func markings(width: CGFloat, height: CGFloat, graphHeight: CGFloat) -> some View {
         let stack = stack(height: graphHeight, width: width)
@@ -1041,7 +872,7 @@ struct MotionDesignLanes: View {
         return ZStack(alignment: .topLeading) {
             Canvas { context, size in
                 for (index, piece) in session.run.pieces.enumerated() {
-                    for point in piece.map.points where point.isHit {
+                    for point in piece.map.points where point.locked {
                         let at = location(of: point, piece: index, stack: stack)
                         var pin = Path()
                         pin.move(to: CGPoint(x: at.x, y: Self.rulerHeight))
@@ -1106,15 +937,18 @@ private struct MotionSkimLine: View {
 /// only listens: the click goes on to open the menu.
 private struct SecondaryClickMonitor: NSViewRepresentable {
     let onSecondaryDown: (CGPoint) -> Void
+    let onModifiers: (NSEvent.ModifierFlags) -> Void
 
     func makeNSView(context: Context) -> MonitorView {
         let view = MonitorView()
         view.onSecondaryDown = onSecondaryDown
+        view.onModifiers = onModifiers
         return view
     }
 
     func updateNSView(_ view: MonitorView, context: Context) {
         view.onSecondaryDown = onSecondaryDown
+        view.onModifiers = onModifiers
     }
 
     static func dismantleNSView(_ view: MonitorView, coordinator: ()) {
@@ -1123,6 +957,7 @@ private struct SecondaryClickMonitor: NSViewRepresentable {
 
     final class MonitorView: NSView {
         var onSecondaryDown: ((CGPoint) -> Void)?
+        var onModifiers: ((NSEvent.ModifierFlags) -> Void)?
         private var monitor: Any?
 
         // Top-left origin, as the SwiftUI view it backs.
@@ -1133,7 +968,7 @@ private struct SecondaryClickMonitor: NSViewRepresentable {
             super.viewDidMoveToWindow()
             stopMonitoring()
             guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown, .leftMouseDragged]) { [weak self] event in
                 // Local monitors run on the main thread.
                 nonisolated(unsafe) let event = event
                 MainActor.assumeIsolated { self?.handle(event) }
@@ -1143,8 +978,9 @@ private struct SecondaryClickMonitor: NSViewRepresentable {
 
         private func handle(_ event: NSEvent) {
             guard let window, event.window === window else { return }
-            guard event.type == .rightMouseDown || event.modifierFlags.contains(.control) else { return }
             let local = convert(event.locationInWindow, from: nil)
+            if bounds.contains(local) || event.type == .leftMouseDragged { onModifiers?(event.modifierFlags) }
+            guard event.type == .rightMouseDown || event.modifierFlags.contains(.control) else { return }
             if bounds.contains(local) { onSecondaryDown?(local) }
         }
 

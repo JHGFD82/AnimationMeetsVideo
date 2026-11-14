@@ -5,7 +5,7 @@ import SwiftUI
 /// even steps of the footage and placed by the draft, so a stretch played
 /// slowly spreads them apart, with the lane showing between, and one played
 /// fast crowds them into slivers. At 100% they just touch. Dragging a clip
-/// moves it, either edge snapping, unless a hit holds it to a beat: then it
+/// moves it, either edge snapping, unless a locked marker holds it: then it
 /// follows the pointer a few points and springs back, saying why. Dragging
 /// its edge trims it, as far as its scene's footage goes, which a bracket
 /// marks once reached.
@@ -14,7 +14,7 @@ struct RetimedFilmstrip: View {
     let width: CGFloat
     let height: CGFloat
 
-    /// How far a clip held by a hit follows the pointer before it springs
+    /// How far a clip held by a locked marker follows the pointer before it springs
     /// back.
     static let tugReach: CGFloat = 6
     /// A held clip pulled with the pointer, and how far.
@@ -48,7 +48,7 @@ struct RetimedFilmstrip: View {
         let x0 = session.x(of: drafted.startOffset.seconds), x1 = session.x(of: drafted.endOffset.seconds)
         let info = session.project.resolvedInfo(for: piece.clip.source)
         let tone = Design.ClipTone.of(info, streams: piece.clip.streams).color
-        let isSelected = session.selectedPieceID == piece.id && session.selectedPointID == nil && session.selectedEdge == nil
+        let isSelected = session.selectedPieceID == piece.id && session.selectedPointID == nil
         if x1 > 0, x0 < width {
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: Design.Radius.chip)
@@ -89,21 +89,13 @@ struct RetimedFilmstrip: View {
                 session.selectedPieceID = piece.id
                 session.select(point: nil)
             }
-            .overlay(alignment: .bottomLeading) {
-                if x1 - x0 >= 62 { edgeLockButton(piece, edge: .start).padding(.leading, 9).padding(.bottom, 3) }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if x1 - x0 >= 62 { edgeLockButton(piece, edge: .end).padding(.trailing, 9).padding(.bottom, 3) }
-            }
             .offset(x: x0 + (tug?.id == piece.id ? tug?.offset ?? 0 : 0))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(info?.name ?? "Clip"), clip")
-            .accessibilityValue("From \(session.timecode(drafted.startOffset)) to \(session.timecode(drafted.endOffset)), start \(piece.isEdgeLocked(.start) ? "locked" : "unlocked"), end \(piece.isEdgeLocked(.end) ? "locked" : "unlocked")")
+            .accessibilityValue("From \(session.timecode(drafted.startOffset)) to \(session.timecode(drafted.endOffset))")
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { session.select(point: nil); session.selectedPieceID = piece.id }
             .accessibilityActions {
-                Button(piece.isEdgeLocked(.start) ? "Unlock start" : "Lock start") { toggleEdgeLock(.start, piece: piece) }
-                Button(piece.isEdgeLocked(.end) ? "Unlock end" : "Lock end") { toggleEdgeLock(.end, piece: piece) }
                 Button("Move a frame earlier") { session.selectedPieceID = piece.id; session.nudgeSelectedPiece(byFrames: -1) }
                 Button("Move a frame later") { session.selectedPieceID = piece.id; session.nudgeSelectedPiece(byFrames: 1) }
                 Button("Start a frame earlier") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.start, byFrames: -1) }
@@ -112,32 +104,6 @@ struct RetimedFilmstrip: View {
                 Button("End a frame later") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.end, byFrames: 1) }
             }
         }
-    }
-
-    private func toggleEdgeLock(_ edge: MotionRun.Edge, piece: MotionRun.Piece) {
-        session.select(point: nil)
-        session.selectedPieceID = piece.id
-        session.toggleEdgeLock(edge, ofPiece: piece.id)
-    }
-
-    /// Overlay after the move gesture, so a press on a lock belongs to the
-    /// button, including a press dragged off it.
-    private func edgeLockButton(_ piece: MotionRun.Piece, edge: MotionRun.Edge) -> some View {
-        let locked = piece.isEdgeLocked(edge)
-        let side = edge == .start ? "start" : "end"
-        return Button {
-            toggleEdgeLock(edge, piece: piece)
-        } label: {
-            Image(systemName: locked ? Design.Symbol.edgeLocked : Design.Symbol.edgeUnlocked)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(locked ? Design.textPrimary : Design.textSecondary)
-                .frame(width: 18, height: 18)
-                .background(Design.Surface.sunken.color, in: RoundedRectangle(cornerRadius: Design.Radius.chip))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(MotionDesignSession.edgeLockHelp(edge, locked: locked))
-        .accessibilityLabel("\(locked ? "Unlock" : "Lock") \(side), \(locked ? "locked" : "unlocked")")
     }
 
     private struct Tile {
@@ -222,13 +188,13 @@ struct RetimedFilmstrip: View {
         DragGesture(minimumDistance: 3)
             .onChanged { drag in
                 guard follows(drag) else { return }
-                if session.selectedPieceID != piece.id || session.selectedPointID != nil || session.selectedEdge != nil {
+                if session.selectedPieceID != piece.id || session.selectedPointID != nil {
                     session.selectedPieceID = piece.id
                     session.select(point: nil)
                 }
                 let pull = press.translation(drag).width
                 guard session.run.canMove(piece.id) else {
-                    // Held by a hit: it gives a little, then springs back.
+                    // Held by a locked marker: it gives a little, then springs back.
                     guard !tugSprang else { return }
                     if abs(pull) <= Self.tugReach { tug = (piece.id, pull) } else { springBack(piece.id) }
                     return
