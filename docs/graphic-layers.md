@@ -524,8 +524,10 @@ Still to come:
 Planned: none of this is built yet (see step 4 of
 [Building it](#building-it)). Shapes and text are moved and reshaped by
 handles drawn over the viewer: vertices and tangents, a primitive's size
-and corners, a text box's width. The freehand ink of the external
-display (`Annotations.swift`) can be turned into a shape. Following
+and corners, a text box's width. They are handle sets and tools of the
+viewer canvas planned in [viewer-handles.md](viewer-handles.md), which
+also takes the place of the external display's freehand ink
+(`Annotations.swift`): drawing there comes back as a pen tool. Following
 [accessibility.md](accessibility.md), every handle is an accessibility
 element with actions, and the selected vertex can be nudged by the
 arrow keys (ten pixels with Shift).

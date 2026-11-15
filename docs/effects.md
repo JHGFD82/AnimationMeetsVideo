@@ -880,7 +880,8 @@ went away with the built-in compositor. In its place:
 
 - **Dragging in the viewer** (on-screen handles for position, scale,
   rotation or the anchor point). Handy as a shortcut, but easy to trigger
-  by mistake; left out until there's a design that avoids that.
+  by mistake; left out until there's a design that avoids that. One is
+  now planned in [viewer-handles.md](viewer-handles.md).
 
 ## Building it
 
