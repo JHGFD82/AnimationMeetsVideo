@@ -1,12 +1,13 @@
 # Viewer handles
 
-Status: **partly implemented**. Steps 1 to 10 of
-[Building it](#building-it) are built: the handles, the zoom and scroll,
-the keys and VoiceOver, and the opacity chip, in every editor surface's
-viewer and on the synced external display, whose markup is gone; the
-point controls' handles; the loupe a held press opens; and the handles
-and guides packages declare in `viewer`. Step 11 (shape and text
-handles) is not. Where the code differs from what follows is listed
+Status: **implemented**, steps 1 to 11 of [Building it](#building-it):
+the handles, the zoom and scroll, the keys and VoiceOver, and the
+opacity chip, in every editor surface's viewer and on the synced
+external display, whose markup is gone; the point controls' handles;
+the loupe a held press opens; the handles and guides packages declare
+in `viewer`; and a selected shape's or text block's handles. A pen tool
+and free paths' vertices wait on free paths in the model. None of it
+has been built or run yet (see [As built](#as-built)). Where the code differs from what follows is listed
 under [As built](#as-built). The document says what the person sees,
 then the framework the handles are built on, then where each piece goes
 in the code, then the order to build it in. Choices made while writing
@@ -662,8 +663,8 @@ picture follows.
 
 ## An effect's own handles
 
-Point controls and declared handles are built (steps 8 and 10); the
-rest are later stages, which the framework above is shaped for.
+Point controls, declared handles and the shapes' handles are built
+(steps 8, 10 and 11); a pen tool waits on free paths.
 
 - **Point controls** (step 8, built). A package's `point` control is "a
   position from the middle of the frame, in the timeline's pixels"
@@ -899,7 +900,7 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 
 ## As built
 
-Where the code (steps 1 to 10) differs from the plan above:
+Where the code (steps 1 to 11) differs from the plan above:
 
 - **`HandleContext`** carries the clip's picture before its stack
   (`pictureRect`, worked out by `TransformHandles.pictureRect`), Show Up
@@ -961,8 +962,16 @@ Where the code (steps 1 to 10) differs from the plan above:
   from the frame's middle, as point controls are, and expressions gain
   `sin`, `cos`, `atan2`, `deg` and `sqrt` for turning ones. VoiceOver
   adjusts a handle across and down, for the axes its sets read.
+- **Shapes' and text's handles** are a handle set of their own
+  (`ShapeHandles`), chosen in `ViewerHandleSets.active` like the
+  others, rather than through `EffectDefinition.viewerHandles`: the
+  shapes are the only built-in effects with handles, so a field on
+  every definition would hold nothing elsewhere. See
+  [graphic-layers.md](graphic-layers.md#editing-in-the-viewer) for what
+  each shape gets.
 - Not run yet: the code was written without a Swift toolchain, so the
   tests (`TransformHandlesTests`, `PointControlHandlesTests`,
+  `ShapeHandlesTests`,
   `DeclaredHandlesTests`, `ViewerPackageTests`,
   `FineDragTests`, `ViewerMappingTests`,
   `ViewerCanvasInteractionTests`, the new `StructureKeyTests` case and
@@ -971,7 +980,7 @@ Where the code (steps 1 to 10) differs from the plan above:
 
 ## Building it
 
-Steps 1 to 10 are built (see [As built](#as-built)).
+Steps 1 to 11 are built (see [As built](#as-built)).
 
 1. `ViewerMapping` with zoom and place, `ViewerHandleSet` and its types,
    the bounding box (moving `fitTransform`), and `TransformHandles` for
