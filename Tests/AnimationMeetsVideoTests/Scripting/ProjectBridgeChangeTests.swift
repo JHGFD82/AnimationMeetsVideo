@@ -28,7 +28,9 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         var arguments = f.clipArguments
         arguments["time"] = [1, 1]
         _ = try await bridge.value("set_trim_end", arguments)
-        #expect(try await bridge.value("clip", f.clipArguments)["trim_end"] == [1, 1])
+        // Compared as times: it comes back at the timeline's timescale, [24, 24].
+        let trimEnd = try await bridge.value("clip", f.clipArguments)["trim_end"]
+        #expect(try ScriptTime.time(trimEnd, in: nil) == seconds(1))
     }
 
     @Test func splittingGivesBothHalvesInOrder() async throws {

@@ -198,7 +198,10 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
             let (timeline, clip) = clips[i]
             return KeyframingRead(timeline: timeline, kind: .control(clip: clip.id, effect: clip.effects[1].id, control: clip.effects[1].controls[0].id))
         }
-        for i in 0..<3 { clips[i].1.effects[0].keyframing?.reads = [target((i + 1) % 3)] }
+        // Worked out before any is written: target(_:) reads `clips`, which
+        // can't be read while one of its elements is being changed.
+        let reads = (0..<3).map { target(($0 + 1) % 3) }
+        for i in 0..<3 { clips[i].1.effects[0].keyframing?.reads = [reads[i]] }
         for (timeline, clip) in clips {
             project.updateTimeline(timeline) { $0.layers.append(TimelineLayer(clips: [clip], isAdjustment: true)) }
         }
