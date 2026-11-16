@@ -19,7 +19,8 @@ swift build -c "$configuration" --product AnimationMeetsVideo
 bin="$(swift build -c "$configuration" --show-bin-path)"
 binary="$bin/AnimationMeetsVideo"
 # The resource bundle, which holds the effect packages that ship with the
-# app; EffectPackageStore.builtInFolder looks for it in Contents/Resources.
+# app and the Python helper's code; EffectPackageStore.builtInFolder and
+# PythonRuntime.hostScript look for it in Contents/Resources.
 resources="$bin/AnimationMeetsVideo_AnimationMeetsVideo.bundle"
 
 plutil -lint Packaging/Info.plist
@@ -29,6 +30,18 @@ cp "$binary" "$app/Contents/MacOS/AnimationMeetsVideo"
 cp -R "$resources" "$app/Contents/Resources/"
 cp Packaging/Info.plist "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
+
+# The Python scripts and expressions run on, in Contents/Resources/Python
+# (PythonRuntime.builtInInterpreter). Until a release is pinned in
+# fetch-python.sh the app is built without one, and Settings > Scripting
+# asks for one of the person's own.
+status=0
+scripts/fetch-python.sh "$app/Contents/Resources/Python" || status=$?
+if [ "$status" -eq 3 ]; then
+    echo "warning: built without a Python of its own; see scripts/fetch-python.sh." >&2
+elif [ "$status" -ne 0 ]; then
+    exit "$status"
+fi
 
 # Ad-hoc signed, so it runs on the Mac that built it. Sharing it with
 # other Macs needs a Developer ID signature and notarization.

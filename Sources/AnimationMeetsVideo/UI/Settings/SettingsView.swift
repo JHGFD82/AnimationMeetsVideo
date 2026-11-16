@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import SwiftUI
 
 /// The app's Settings window (⌘,): how the editor behaves for every
@@ -12,7 +13,7 @@ import SwiftUI
 /// the other at once.
 struct SettingsView: View {
     enum Tab: String, Hashable {
-        case viewer, timeline, sound, library, projects, layout
+        case viewer, timeline, sound, library, projects, scripting, layout
     }
 
     @AppStorage("settingsTab") private var tab = Tab.viewer
@@ -34,6 +35,9 @@ struct SettingsView: View {
             ProjectsSettings()
                 .tabItem { Label("Projects", systemImage: "externaldrive") }
                 .tag(Tab.projects)
+            ScriptingSettings()
+                .tabItem { Label("Scripting", systemImage: "chevron.left.forwardslash.chevron.right") }
+                .tag(Tab.scripting)
             LayoutSettings()
                 .tabItem { Label("Layout", systemImage: "rectangle.3.group") }
                 .tag(Tab.layout)
@@ -281,6 +285,112 @@ private struct ProjectsSettings: View {
                 SheetNote("While a project changes, a backup of it (its edits, the media copied into it and what was learned about each file) goes into \u{201C}\(ProjectBackups.folderName)\u{201D} beside it, in a folder named for the project, and the newest \(ProjectBackups.kept) are kept. Unchanged files are cloned from the backup before, so after the first one each costs only what changed, but backups don't survive the project's disk failing. Double-click a backup to make a new project from it, beside the original, which is left as it is.")
             }
         }
+    }
+}
+
+// MARK: - Scripting
+
+/// Which Python runs scripts and expressions: the one built into the app,
+/// or one of the person's own, so their packages can be imported (see
+/// docs/python-scripting.md, "Which Python").
+private struct ScriptingSettings: View {
+    @AppStorage(Preferences.pythonInterpreter) private var chosenPath = ""
+    @State private var builtInVersion: PythonVersion?
+    @State private var chosenVersion: PythonVersion?
+
+    private enum Choice: Hashable { case builtIn, chosen, choose }
+
+    var body: some View {
+        SettingsPane {
+            SheetSection("Python") {
+                SheetRow("Interpreter", alignment: .center) {
+                    Picker("Python interpreter", selection: choice) {
+                        Text(verbatim: builtInTitle).tag(Choice.builtIn)
+                        if !chosenPath.isEmpty {
+                            Text(verbatim: chosenTitle).tag(Choice.chosen)
+                        }
+                        Divider()
+                        Text("Choose\u{2026}").tag(Choice.choose)
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 320, alignment: .leading)
+                }
+                SheetNote(note)
+            }
+        }
+        .task(id: chosenPath) { await readVersions() }
+    }
+
+    private var choice: Binding<Choice> {
+        Binding(
+            get: { chosenPath.isEmpty ? .builtIn : .chosen },
+            set: { picked in
+                switch picked {
+                case .builtIn: chosenPath = ""
+                case .chosen: break
+                case .choose: chooseInterpreter()
+                }
+            }
+        )
+    }
+
+    private var builtInTitle: String {
+        if let builtInVersion { return "Built In (Python \(builtInVersion))" }
+        return PythonRuntime.builtInInterpreter == nil ? "Built In (not in this build)" : "Built In"
+    }
+
+    private var chosenTitle: String {
+        let name = (chosenPath as NSString).abbreviatingWithTildeInPath
+        return chosenVersion.map { "\(name) (Python \($0))" } ?? name
+    }
+
+    private var note: String {
+        if !chosenPath.isEmpty, chosenVersion == nil {
+            return "That Python doesn't run or doesn't answer, so scripts and expressions use the built-in one until it does."
+        }
+        if chosenPath.isEmpty, PythonRuntime.builtInInterpreter == nil {
+            return "This build of the app has no Python of its own: the app bundle that scripts/build-app.sh makes does. Choose one, 3.11 or later, or set AMV_PYTHON."
+        }
+        return "Scripts and expressions run on this Python. The built-in one has only the standard library; choose your own, 3.11 or later, to import packages you have installed, such as NumPy. Expressions give the same keyframes on every Mac only on the same Python."
+    }
+
+    private func readVersions() async {
+        // A helper running on the Python chosen before is ended by the
+        // next run, which starts on this one (`PythonHelper.connect`).
+        if let builtIn = PythonRuntime.builtInInterpreter {
+            builtInVersion = await PythonRuntime.version(of: builtIn)
+        } else {
+            builtInVersion = nil
+        }
+        chosenVersion = chosenPath.isEmpty ? nil : await PythonRuntime.version(of: URL(filePath: chosenPath))
+    }
+
+    private func chooseInterpreter() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = true
+        panel.directoryURL = URL(filePath: "/usr/local/bin")
+        panel.prompt = "Use"
+        panel.message = "Choose a Python interpreter, 3.11 or later: python3 in a virtual environment's bin folder, or one installed with Homebrew or from python.org."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            guard let version = await PythonRuntime.version(of: url) else {
+                return showProblem("\u{201C}\(url.lastPathComponent)\u{201D} didn't run as Python.")
+            }
+            guard version.isSupported else {
+                return showProblem("That is Python \(version). Scripts need Python \(PythonRuntime.oldestVersion.major).\(PythonRuntime.oldestVersion.minor) or later.")
+            }
+            chosenPath = url.path
+        }
+    }
+
+    private func showProblem(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't Use That Python"
+        alert.informativeText = message
+        alert.runModal()
     }
 }
 
