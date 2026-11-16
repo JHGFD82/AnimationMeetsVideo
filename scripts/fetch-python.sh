@@ -10,28 +10,99 @@
 # (IDLE, Tk, ensurepip and the test suite), copied to the destination and
 # each binary in it signed, before build-app.sh signs the app around it.
 #
-# Usage: scripts/fetch-python.sh <destination, such as App.app/Contents/Resources/Python>
+# Usage:
+#   scripts/fetch-python.sh --pin [release]
+#       Looks up a release (the latest, or one such as 20251014), takes its
+#       newest CPython 3.14 (PYTHON_MINOR to choose another) and the
+#       archive's SHA-256 from the release's own checksums, and writes the
+#       three below. Review the change and commit it, so every build uses it.
+#   scripts/fetch-python.sh <AnimationMeetsVideo.app/Contents/Resources/Python>
+#       Bundles the pinned Python there; build-app.sh runs this. The folder
+#       is the app's own: it is replaced. A Python already installed on the
+#       Mac can't be bundled (it isn't relocatable); choose it in the app's
+#       Settings > Scripting instead.
 # Exit status 3: nothing is pinned yet, and nothing was copied.
 set -eu
 
 cd "$(dirname "$0")/.."
-destination="${1:?Usage: scripts/fetch-python.sh <destination folder>}"
 
-# The pinned archive. To move to a new Python, take the
-# aarch64-apple-darwin-install_only_stripped archive of a release at
-# https://github.com/astral-sh/python-build-standalone/releases, and its
-# SHA-256 from that release's SHA256SUMS. Overriding these from the
+# The pinned archive, written by --pin. Overriding these from the
 # environment is for trying a release, never for shipping one.
 release="${PYTHON_RELEASE:-}"   # The release tag, such as 20251014.
 version="${PYTHON_VERSION:-}"   # The CPython version, such as 3.14.0.
 sha256="${PYTHON_SHA256:-}"     # The archive's SHA-256, in hex.
 
+releases="${PYTHON_RELEASES_API:-https://api.github.com/repos/astral-sh/python-build-standalone/releases}"
+suffix="aarch64-apple-darwin-install_only_stripped.tar.gz"
+
+pin() {
+    wanted="${1:-latest}"
+    minor="${PYTHON_MINOR:-3.14}"
+    if [ "$wanted" = latest ]; then url="$releases/latest"; else url="$releases/tags/$wanted"; fi
+    json="$(curl --fail --location --silent --show-error "$url")" || {
+        echo "fetch-python.sh: couldn't fetch the release from $url." >&2
+        exit 1
+    }
+    tag="$(printf '%s' "$json" | grep -o '"tag_name": *"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')"
+    [ -n "$tag" ] || { echo "fetch-python.sh: couldn't read a release from $url." >&2; exit 1; }
+    # The newest CPython of that minor version in the release.
+    found_version="$(printf '%s' "$json" \
+        | grep -o "\"name\": *\"cpython-$minor\.[0-9]*+$tag-$suffix\"" \
+        | sed "s/.*cpython-\\([0-9.]*\\)+.*/\\1/" \
+        | sort -t . -k 1,1n -k 2,2n -k 3,3n | tail -n 1)"
+    [ -n "$found_version" ] || {
+        echo "fetch-python.sh: release $tag has no CPython $minor for Apple silicon ($suffix)." >&2
+        exit 1
+    }
+    name="cpython-$found_version+$tag-$suffix"
+    # The release's checksums: SHA256SUMS, or in older releases a .sha256
+    # beside each archive.
+    sums_url="$(printf '%s' "$json" | grep -o '"browser_download_url": *"[^"]*/SHA256SUMS"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')"
+    if [ -n "$sums_url" ]; then
+        found_sha="$(curl --fail --location --silent --show-error "$sums_url" | awk -v n="$name" '$2 == n { print $1 }')"
+    else
+        own_url="$(printf '%s' "$json" | grep -o "\"browser_download_url\": *\"[^\"]*-$suffix.sha256\"" \
+            | grep "cpython-$found_version" | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')"
+        found_sha="$( [ -n "$own_url" ] && curl --fail --location --silent --show-error "$own_url" | cut -c 1-64)"
+    fi
+    if ! printf '%s' "$found_sha" | grep -Eq '^[0-9a-f]{64}$'; then
+        echo "fetch-python.sh: release $tag gives no SHA-256 for $name." >&2
+        exit 1
+    fi
+    pinned="$(mktemp)"
+    sed -e "s/^release=\"\\\${PYTHON_RELEASE:-[^}]*}\"/release=\"\\\${PYTHON_RELEASE:-$tag}\"/" \
+        -e "s/^version=\"\\\${PYTHON_VERSION:-[^}]*}\"/version=\"\\\${PYTHON_VERSION:-$found_version}\"/" \
+        -e "s/^sha256=\"\\\${PYTHON_SHA256:-[^}]*}\"/sha256=\"\\\${PYTHON_SHA256:-$found_sha}\"/" \
+        scripts/fetch-python.sh > "$pinned"
+    # Written over in place, so the file keeps being executable.
+    cat "$pinned" > scripts/fetch-python.sh
+    rm -f "$pinned"
+    echo "Pinned CPython $found_version, release $tag, SHA-256 $found_sha."
+    echo "Review the change to scripts/fetch-python.sh and commit it."
+}
+
+if [ "${1:-}" = "--pin" ]; then
+    pin "${2:-latest}"
+    exit 0
+fi
+
+destination="${1:?Usage: scripts/fetch-python.sh --pin [release], or scripts/fetch-python.sh <App.app/Contents/Resources/Python>}"
+# The folder is replaced, so only the app's own is taken: never a Python
+# that is already somewhere else.
+case "$destination" in
+    *.app/Contents/Resources/Python | *.app/Contents/Resources/Python/) ;;
+    *)
+        echo "fetch-python.sh: $destination isn't an app's Contents/Resources/Python, which this replaces. To use a Python you have, choose it in the app's Settings > Scripting." >&2
+        exit 2
+        ;;
+esac
+
 if [ -z "$release" ] || [ -z "$version" ] || [ -z "$sha256" ]; then
-    echo "fetch-python.sh: no Python release is pinned yet; set release, version and sha256 in scripts/fetch-python.sh." >&2
+    echo "fetch-python.sh: no Python release is pinned yet. Run scripts/fetch-python.sh --pin to pin the latest, then commit the change." >&2
     exit 3
 fi
 
-name="cpython-$version+$release-aarch64-apple-darwin-install_only_stripped.tar.gz"
+name="cpython-$version+$release-$suffix"
 cache="build/python"
 archive="$cache/$name"
 mkdir -p "$cache"

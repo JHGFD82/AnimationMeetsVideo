@@ -68,6 +68,7 @@ Follow Google's change-description conventions for every commit.
   `python3 -B -m unittest discover -s Tests/AnimationMeetsVideoTests/Scripting/Python`.
   `scripts/build-app.sh` bundles the CPython that `scripts/fetch-python.sh`
   fetches by a pinned release and SHA-256, and builds without one while
-  none is pinned.
+  none is pinned; `scripts/fetch-python.sh --pin` looks up the latest
+  release and writes the pins, to review and commit.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the
   standalone Command Line Tools).
