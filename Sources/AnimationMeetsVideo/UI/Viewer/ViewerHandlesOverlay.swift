@@ -19,7 +19,12 @@ import SwiftUI
 /// magnified view of where the handle is, by the pointer, in which the
 /// drag goes at a quarter of the pointer's pace, a sixteenth with Option.
 /// It opens only as a handle is first grabbed, never when a drag under
-/// way pauses.
+/// way pauses, and never for a turn.
+///
+/// A turn hides the pointer and follows the mouse's own movement instead
+/// (`FreePointer`), so it can go on past the screen's edge; the farther
+/// from the anchor, the finer it turns. The pointer comes back by the
+/// box's edge as the drag ends.
 ///
 /// A click gives the canvas the keys: Tab picks what the arrows change,
 /// and the arrows nudge it. VoiceOver reaches each value as an adjustable
@@ -231,6 +236,12 @@ struct ViewerHandlesOverlay: View {
             lever.addLine(to: drag.pointer)
             context.stroke(lever, with: .color(.black.opacity(0.35)), lineWidth: 3)
             context.stroke(lever, with: .color(.white.opacity(0.85)), lineWidth: 1)
+            // A turn hides the pointer: the lever's end stands in for it.
+            if book.free != nil {
+                let tip = Path(ellipseIn: CGRect(x: drag.pointer.x - 3, y: drag.pointer.y - 3, width: 6, height: 6))
+                context.fill(tip, with: .color(.white))
+                context.stroke(tip, with: .color(.black.opacity(0.5)), lineWidth: 1)
+            }
         }
         let litPivot = levered || (drag == nil && hovered.map { id in list.contains { $0.id == id && $0.isPivot } } == true)
         for handle in list {
@@ -543,8 +554,9 @@ struct ViewerHandlesOverlay: View {
                 book.isDead = true
             }
             // Held still on a handle that is a place on the picture, the
-            // press opens the loupe; the opacity chip has nothing to show.
-            if !book.isDead, id != .opacity {
+            // press opens the loupe; the opacity chip has nothing to show,
+            // and a turn gets fine by going far from the anchor instead.
+            if !book.isDead, id != .opacity, !Self.isTurn(id) {
                 book.hold = Task { @MainActor in
                     try? await Task.sleep(for: FineDrag.holdDelay)
                     guard !Task.isCancelled else { return }
@@ -559,8 +571,31 @@ struct ViewerHandlesOverlay: View {
             // Moved first: an ordinary drag, which never opens the loupe.
             book.cancelHold()
             begin(id)
+            if Self.isTurn(id) { takePointer(at: value.location) }
+        } else if book.free != nil {
+            // The pointer is held still; the mouse's movement comes from
+            // the book's monitor.
+            return
         }
         move(to: value.location)
+    }
+
+    private static func isTurn(_ id: HandleID?) -> Bool {
+        if case .rotate = id { true } else { false }
+    }
+
+    /// A turn: the pointer hides and stays put, and the drag follows the
+    /// mouse's movement from here, as far as it goes.
+    private func takePointer(at location: CGPoint) {
+        book.takePointer(at: location) { point in move(to: point) }
+    }
+
+    /// Where the pointer shows again as a turn ends, in view points.
+    private func pointerComingBack() -> CGPoint? {
+        guard let free = book.free, let drag = book.drag, let context = book.shown, let set = book.set,
+              let pivot = set.pivot(of: drag.handle, context)
+        else { return nil }
+        return free.letGo(about: mapping.toView(pivot))
     }
 
     /// The press has held still on its handle: the drag begins, in the
@@ -653,7 +688,7 @@ struct ViewerHandlesOverlay: View {
     private func finishDrag() {
         guard book.began, let start = book.shown?.clip else { return }
         let edited = source.state.drag?.clip ?? start
-        book.endDrag()
+        book.endDrag(pointerTo: pointerComingBack())
         projectState?.endHold()
         // A drag let go (`ProjectState.letGo`) has written it already.
         if project.clipAndLayer(start.id, in: source.timelineID)?.clip != edited {
@@ -668,7 +703,7 @@ struct ViewerHandlesOverlay: View {
     /// included, and the rest of the press drags nothing.
     private func cancelDrag() {
         guard book.began, let start = book.shown?.clip else { return }
-        book.endDrag()
+        book.endDrag(pointerTo: pointerComingBack())
         book.isDead = true
         projectState?.endHold()
         if project.clipAndLayer(start.id, in: source.timelineID)?.clip != start {
@@ -825,6 +860,8 @@ private final class HandleDragBook {
     var hold: Task<Void, Never>?
     /// The loupe, once a held press has opened it.
     var fine: FineDrag?
+    /// A turn's pointer, while the system's is hidden and held still.
+    private(set) var free: FreePointer?
     /// The press drags nothing: it hit nothing, was refused, or Escape
     /// cancelled it.
     var isDead = false
@@ -834,6 +871,11 @@ private final class HandleDragBook {
     var escape: DragEscape?
     private var monitor: Any?
     private var onFlags: ((NSEvent.ModifierFlags) -> Void)?
+    private var mouseMonitor: Any?
+    private var onMouse: ((CGPoint) -> Void)?
+    /// The system pointer's place on the screens (`NSEvent.mouseLocation`,
+    /// y up) as the drag took it, for putting it back.
+    private var grabbedOnScreen = CGPoint.zero
 
     func press(at point: CGPoint) {
         isPressed = true
@@ -867,8 +909,50 @@ private final class HandleDragBook {
         hold = nil
     }
 
-    /// The drag is over; the press goes on until the button comes up.
-    func endDrag() {
+    /// Hides the pointer and holds it still, and calls `onMove` with the
+    /// drag's point as the mouse moves, from `location` on, unbounded.
+    func takePointer(at location: CGPoint, onMove: @escaping (CGPoint) -> Void) {
+        guard free == nil else { return }
+        free = FreePointer(at: location)
+        grabbedOnScreen = NSEvent.mouseLocation
+        onMouse = onMove
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDragged) { [weak self] event in
+            nonisolated(unsafe) let event = event
+            MainActor.assumeIsolated {
+                guard let self, var free = self.free else { return }
+                free.move(dx: Double(event.deltaX), dy: Double(event.deltaY))
+                self.free = free
+                self.onMouse?(free.location)
+            }
+            return event
+        }
+        NSCursor.hide()
+        CGAssociateMouseAndMouseCursorPosition(0)
+    }
+
+    /// Shows the pointer again, at `place` in view points when given.
+    private func givePointerBack(to place: CGPoint?) {
+        guard let free else { return }
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+        mouseMonitor = nil
+        onMouse = nil
+        if let place {
+            // View points run y down from the grab; the screens' y up from
+            // the bottom of the main one; the warp's y down from its top.
+            let x = grabbedOnScreen.x + (place.x - free.grabbed.x)
+            let y = grabbedOnScreen.y - (place.y - free.grabbed.y)
+            let height = NSScreen.screens.first?.frame.height ?? 0
+            CGWarpMouseCursorPosition(CGPoint(x: x, y: height - y))
+        }
+        CGAssociateMouseAndMouseCursorPosition(1)
+        NSCursor.unhide()
+        self.free = nil
+    }
+
+    /// The drag is over; the press goes on until the button comes up. A
+    /// turn's pointer shows again at `pointerTo`.
+    func endDrag(pointerTo: CGPoint? = nil) {
+        givePointerBack(to: pointerTo)
         cancelHold()
         fine = nil
         escape?.end()
@@ -892,5 +976,6 @@ private final class HandleDragBook {
     isolated deinit {
         hold?.cancel()
         if let monitor { NSEvent.removeMonitor(monitor) }
+        givePointerBack(to: nil)
     }
 }

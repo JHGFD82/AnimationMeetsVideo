@@ -144,7 +144,7 @@ scroll during a drag is ignored.
 | Inside the box | Position follows the pointer, in whole pixels | Kept to one axis: the one the drag from its start is nearer (the 45° line decides), free to change as the pointer crosses it | | `120, −40` |
 | A corner handle | Scale about the **anchor**, **proportional**: both numbers grow by the same factor, keeping whatever ratio they had | **Free**: width and height apart, the corner under the pointer | | `150%`, or `150% × 120%` when apart |
 | An edge-middle handle | Scale about the anchor along **that axis only**: width for the left and right handles, height for the top and bottom | **Proportional**: both numbers by the same factor | | the same |
-| A rotation zone | Rotation follows the pointer round the **anchor**, from any of the eight zones; turns past 360° are kept | **Snapped to multiples of 15°** | | `37.5°`, always shown, to a tenth of a degree |
+| A rotation zone | Rotation follows the pointer round the **anchor**, from any of the eight zones; turns past 360° are kept. The pointer hides and the drag goes on past the screen's edge, turning finer the farther it is from the anchor (see [Turning](#turning)) | **Snapped to multiples of 15°** | | `37.5°`, always shown, to a tenth of a degree |
 | The anchor | The anchor point follows the pointer, in whole pixels, catching on the box's corners, edge middles and center; the picture stays where it is | In steps of **ten pixels** | **A tenth** of the pointer's movement, in tenths of a pixel, and no catching | `Anchor 120, −40` |
 | The opacity chip | Opacity, one point of drag for 1%, 0 to 100 | Ten per point | A tenth per point | `80%` |
 
@@ -214,7 +214,28 @@ with ⌥"). Releasing saves it as any drag does, and Escape puts it back.
   drawn only on the display the drag is on.
 - The opacity chip has no place on the picture to enlarge, so a press
   held on it opens none.
+- **A rotation zone opens none either**: a turn gets fine by going far
+  from the anchor instead ([Turning](#turning)), which a slowed pointer
+  held to the screen would only cut short.
 - It is decoration: VoiceOver and the keys have their own steps.
+
+### Turning
+
+**A drag on a rotation zone hides the pointer** once it passes the
+3 point slop, and holds it still: the drag follows the mouse's own
+movement from there (`FreePointer`), added up without bounds, so it
+goes on past the well's and the screen's edges. A turn is the angle
+round the anchor, so the farther the drag goes from the anchor the less
+each point of movement turns the picture: a tenth of a degree is a
+small move a few thousand points out. The lever runs from the anchor
+toward the drag's point, a dot at its end standing in for the pointer
+while that is in the well, and the readout stays in the well.
+
+- Shift's 15° snap works the same at any distance.
+- As the drag ends, let go or Escape, the pointer shows again on the
+  line from the anchor toward where the drag got to, as far from the
+  anchor as it was grabbed: about where the zone it grabbed has turned
+  to.
 
 ### Scaling and turning about the anchor
 
