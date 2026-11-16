@@ -434,16 +434,19 @@ off.
 - Drag an edge to resize it, or the middle to move it. Edges snap as
   everything else does (below), and the region lands on frames, stays
   at least a quarter second long and within the timeline.
-- Click it to turn it on or off. Its right-click menu turns it on or off
-  and removes it.
+- Click it to select it, then Delete removes it (also in its
+  right-click menu, which turns it on or off too). Escape, or selecting
+  anything else, lets go of it.
 - **C** and **Timeline > Loop Playback** do the same, and with no
   region make one over the selected clips, else the whole timeline. **Set Loop Start to Playhead** and
   **Set Loop End to Playhead** in the same menu move an end (or make a
   region from the playhead to the end, or the start to the playhead),
-  and **Remove Loop Region** takes it away.
+  and **Delete Loop Region** takes it away.
 - The loop button in the header, beside the sections button, shows or
-  hides the bar, as does **Loop row** in the view options. Hiding it
-  doesn't turn the loop off.
+  hides the bar, as does **Loop row** in the view options. The loop is
+  on only while the bar shows: hiding it turns the loop off, showing it
+  turns the region on again, and turning the loop on with C or the menu
+  shows the bar.
 
 While it is on, playing that reaches its end goes back to its start.
 Play starts at the playhead when that is inside the region, else at its

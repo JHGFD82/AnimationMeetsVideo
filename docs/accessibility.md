@@ -82,8 +82,8 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ⌘B | Split the selected clip (or the clips picked together) at the playhead; with nothing selected, every clip the playhead is in |
 | ⇧⌘B | Split every clip the playhead is in, on every layer |
 | , / . | Nudge the selected clip a frame earlier or later; ten with Shift |
-| Delete | Delete the selected section, layer, transition, clip, or the clips picked together |
-| Escape | Select nothing (no clip, layer, section or lasso); not during a value drag, a drag in the tracks (a clip, lasso, section, keyframe, transition side, music point or layer header), or a drag on an EQ or tone graph, a curve's edge slider or a Keyframing range handle, which it cancels |
+| Delete | Delete the selected loop region, section, layer, transition, clip, or the clips picked together |
+| Escape | Select nothing (no clip, layer, section, loop region or lasso); not during a value drag, a drag in the tracks (a clip, lasso, section, keyframe, transition side, music point or layer header), or a drag on an EQ or tone graph, a curve's edge slider or a Keyframing range handle, which it cancels |
 | ⌘A | Pick every clip of the timeline together, for Cut, Copy, Duplicate, Delete, the nudge keys and Put Selection in New Timeline (a lasso, Command-click and Shift-click pick some with the pointer; a clip's VoiceOver actions Add to selection and Remove from selection do it one clip at a time, and Move selection one frame earlier or later moves them) |
 | ⌘X / ⌘C / ⌘V / ⌘D | Cut, copy, paste at the playhead, or duplicate the selected clip, or all the clips picked together (or the selected effect in the effects panel); also in the Edit menu |
 | A / B / Y | Arrow, blade and slip tools |
@@ -159,11 +159,12 @@ playhead to the middle of the view when it lands out of view.
   rename and delete.
 - **The loop bar** is a group named "Loop". The region in it reads "Loop
   region" and whether it is on, with its span ("On, from 00:00:04:00 to
-  00:00:08:00"); pressing turns it on or off, and its actions move
-  either end or the whole region a frame earlier or later and remove
-  it. C and the Timeline menu do the same without the bar, and turning
-  it on or off is announced ("Loop on"). The header's "Loop row" toggle
-  shows or hides the bar.
+  00:00:08:00"); pressing selects it, for Delete, and its actions turn
+  it on or off, move either end or the whole region a frame earlier or
+  later and delete it. C and the Timeline menu turn it on or off
+  without the bar, which is announced ("Loop on"). The header's "Loop
+  row" toggle shows or hides the bar, turning the loop on or off with
+  it.
 - **Keyframes** read their time and ease; pressing moves the playhead to
   one, and actions apply an ease or delete it.
 - **Joined transitions** read their kind, length and curve; pressing

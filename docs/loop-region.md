@@ -69,11 +69,15 @@ Colors for the region (its right-click **Color** menu) are described in
   (`min(6, max(2, width / 3))`, as `SectionLane` does), and the pointer
   shows `.columnResize` over it.
 - **Drag the middle** to move the region, its length kept.
-- **Click** the region (press and release within 3 points, anywhere on
-  it, edges included) to turn it off or on.
+- **Click** the region (anywhere on it, edges included) to select it,
+  as a section is selected: drawn brighter with a light outline, and
+  nothing else stays selected. **Delete** then removes it, and Escape
+  or a click elsewhere lets go of it. Selecting a clip, a layer or a
+  section lets go of it too. The press selects; a drag from it moves or
+  resizes the region as well.
 - **Escape** during any of these drags cancels it (`EscapableDrag`).
 - **Right-click** the region: **Turn Loop Off** / **Turn Loop On**,
-  **Color** ▸ (not built yet), **Remove Loop Region**.
+  **Color** ▸ (not built yet), **Delete Loop Region**.
 - While a drag runs, the bar draws a draft; the region itself changes
   once, on release. Playback keeps looping the old range until then.
 
@@ -112,8 +116,8 @@ the targets are depends on the host; see each under
 - **Pressing play** with the region on: if the playhead is inside it
   (from its start up to a frame before its end), playing starts where
   the playhead is. Anywhere else, playing starts at the region's start.
-- **Turning it on while playing** (a click on the region, C, the
-  menu): the playhead goes to the region's start at once and plays on
+- **Turning it on while playing** (C, the menu, its right-click menu,
+  or showing the main timeline's bar): the playhead goes to the region's start at once and plays on
   from there, wherever it was.
 - **Drawing a new region while playing** does the same on release,
   since a new region is on.
@@ -143,12 +147,16 @@ timeline's bar can be hidden, so each host also has:
   the host is about (each host says which, below).
 - In the **main timeline**, a **loop button** in the header shows or
   hides the loop bar, as the sections button beside it does its row
-  (an icon toggle with `Design.Symbol.loop`; help "Hide the loop row" /
-  "Show the loop row"). It doesn't turn the loop on or off: hidden, a
-  region that is on goes on looping, and the Timeline menu's checkmark
-  still says so. The other hosts don't hide their bar, so there a loop
-  button would turn the loop on or off, as C does; settle that when
-  building them.
+  (an icon toggle with `Design.Symbol.loop`; help "Hide the loop row
+  and turn the loop off" / "Show the loop row and turn the loop on").
+  The loop is on only while its bar shows, as Logic's cycle shows only
+  while on: hiding the bar (the button, or **Loop row** in the view
+  options) turns the loop off, and showing it turns the region on
+  again. Turning it on with C or the menu shows the bar. A region saved
+  on, in a project opened with the bar hidden, is turned off
+  (`TimelineLoopVisibility`). The other hosts don't hide their bar, so
+  there a loop button would turn the loop on or off, as C does; settle
+  that when building them.
 
 The main timeline's **Timeline** menu (`TimelineCommands`) gets, in a
 group after Play/Pause:
@@ -158,7 +166,7 @@ group after Play/Pause:
 | Loop Playback  C | Toggles, with a checkmark while on; makes a region when there is none |
 | Set Loop Start to Playhead | Moves the region's start to the playhead; with no region, makes one from the playhead to the timeline's end |
 | Set Loop End to Playhead | Moves its end to the playhead; with no region, makes one from the start of the timeline to the playhead |
-| Remove Loop Region | Enabled while there is one |
+| Delete Loop Region | Enabled while there is one. Delete Selection (⌫) removes it too while it is selected |
 
 The two Set items follow the resize rules (frames, minimum length,
 limits) and are disabled where they would do nothing. They are the
@@ -439,12 +447,11 @@ Differences from `SectionLane`:
   then the `Timeline` rule. Don't divide a translation by a zoom.
 - `x(start)` may be greater than `x(end)`: a reversed clip's graph runs
   backwards in timeline time. Take the min and max of the two.
-- A click is told from a drag on release (moved less than 3 points),
-  not on mouse-down: a click toggles, and toggling on mouse-down would
-  toggle at the start of every drag. The region and its edges take a
-  drag with no minimum distance and start following it only past 3
-  points, so one gesture tells both.
-- No selection, no rename, no Option-copy, no double-click.
+- The region and its edges take a drag with no minimum distance: its
+  press selects the region (`isSelected`, `onSelect`; the host keeps
+  the selection), and it follows the pointer only once it has moved 3
+  points, so a click only selects.
+- No rename, no Option-copy, no double-click.
 
 ## Hosting it
 
@@ -540,12 +547,14 @@ Following [accessibility.md](accessibility.md), "Rules for new UI":
 
 - The bar: `.accessibilityElement(children: .contain)`, label "Loop".
 - The region: one element, label "Loop region", value
-  "On, from 00:00:12:00 to 00:00:16:00" (or "Off, …"), `.isButton`, its
-  default action toggles.
+  "On, from 00:00:12:00 to 00:00:16:00" (or "Off, …"), `.isButton`
+  (and `.isSelected` while selected); its default action selects it,
+  as a click does.
 - Its named actions, which are also its context menu's commands and
-  the drags a frame at a time: Move start one frame earlier / later,
-  Move end one frame earlier / later, Move region one frame earlier /
-  later, Remove loop region, Choose color…, Use default color.
+  the drags a frame at a time: Turn loop on / off, Move start one
+  frame earlier / later, Move end one frame earlier / later, Move
+  region one frame earlier / later, Delete loop region, Choose color…,
+  Use default color.
 - The main timeline's loop button: `accessibilityLabel("Loop row")`,
   as the sections button is "Sections row".
 - The chip's fill and rim are `.decorative()` where they sit over the
@@ -569,8 +578,8 @@ Mirror the source folders (`Tests/AnimationMeetsVideoTests/…`):
   file without `loop` reads as none; a damaged one is dropped, and the
   rest of the file still reads.
 - `UI/LoopBarInteractionTests` with `EventHarness` (`UI_EVENTS=1`):
-  a drag draws; a drag on an edge resizes and snaps; a click toggles
-  and a drag doesn't; Escape cancels.
+  a drag draws; a drag on an edge resizes and snaps; a click selects
+  and never toggles; a drag of the middle moves; Escape cancels.
 - `UI/UISnapshots`: a `loopBar` case showing the rail with a section
   and a region on, off and recolored, to check by eye that the two
   rows read apart. The existing `keyframeGraph`, `linkedKeyframeGraphs`,
@@ -602,9 +611,14 @@ build starts.
    works without a pointer and with the timeline's bar hidden.
 9. **Beat Match keeps its own loop.**
 10. **The main timeline's loop button shows or hides the bar**, as the
-    sections button does its row, rather than turning the loop on or
-    off; asked for once the bar was tried. C and the menu turn it on or
-    off.
+    sections button does its row; asked for once the bar was tried.
+    Hiding the bar turns the loop off (asked for too), and showing it
+    turns the region on again, so the button works as Logic's cycle
+    button and there is a pointer path back to on. C and the menu turn
+    it on or off as well.
+11. **A click selects the region, for Delete**, as a section's does
+    (asked for once the bar was tried), instead of turning it on or
+    off. Its right-click menu, C and the menu turn it on or off.
 
 ## Building it
 
