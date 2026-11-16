@@ -1,6 +1,11 @@
 import CoreMedia
 import Foundation
 import Observation
+import os
+
+/// Why expression runs fail, in the system log: `log show --predicate
+/// 'subsystem == "com.jhgfd.animationmeetsvideo"'`.
+let expressionLog = Logger(subsystem: "com.jhgfd.animationmeetsvideo", category: "Expressions")
 
 /// Runs the expressions waiting for a run (see docs/python-scripting.md,
 /// "A run" and "Arriving"): one at a time, on the confined helper, each
@@ -84,15 +89,18 @@ final class ExpressionRunner {
             switch end {
             case .samples(let samples): values = samples
             case .failed(let error):
-                failure = ExpressionFailure(summary: error.summary, time: error.time)
+                failure = ExpressionFailure(summary: error.summary, time: error.time, details: error.fullTraceback)
                 // The note has one line; the whole traceback, the helper's
                 // frames too, goes to the log to report.
-                if !error.wasStopped { NSLog("Expression run failed: %@\n%@", error.summary, error.fullTraceback) }
+                if !error.wasStopped {
+                    expressionLog.error("Expression run failed: \(error.summary, privacy: .public)\n\(error.fullTraceback, privacy: .public)")
+                }
             case .finished: failure = ExpressionFailure(summary: "The expression gave no samples.", time: nil)
             }
         } catch {
-            NSLog("Expression run failed before it could finish: %@ (%@)", error.localizedDescription, String(describing: error))
-            failure = ExpressionFailure(summary: error.localizedDescription, time: nil)
+            let details = "\(error.localizedDescription)\n\n\(String(reflecting: error))"
+            expressionLog.error("Expression run failed before it could finish: \(details, privacy: .public)")
+            failure = ExpressionFailure(summary: error.localizedDescription, time: nil, details: details)
         }
         let reads = await bridge.reads
         let expected = request.times.count * request.width

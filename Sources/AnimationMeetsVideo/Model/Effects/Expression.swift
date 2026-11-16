@@ -100,6 +100,9 @@ struct ExpressionFailure: Equatable, Sendable {
     /// The moment it happened, in the timeline's seconds, when it isn't in
     /// every sample.
     var time: Double?
+    /// Everything known about it, for the designer's Details: the whole
+    /// traceback, or the app's own error.
+    var details = ""
 }
 
 /// Expressions' results for the session, as `SpectrogramStore` keeps

@@ -1,5 +1,6 @@
 import CoreMedia
 import Foundation
+import os
 
 /// Answers the helper's calls about the project (see
 /// docs/python-scripting.md, "The bridge").
@@ -74,11 +75,13 @@ actor ProjectBridge {
         do {
             return .value(try respond(to: call))
         } catch let error as ScriptCallError {
-            if readsOnly { NSLog("Expression run: the app refused %@: %@", call.method, error.message) }
+            if readsOnly {
+                expressionLog.error("Expression run: the app refused \(call.method, privacy: .public): \(error.message, privacy: .public)")
+            }
             return .error(error)
         } catch {
-            NSLog("Expression run: the app failed to answer %@: %@", call.method, String(describing: error))
-            return .error(.value(error.localizedDescription))
+            expressionLog.error("Expression run: the app failed to answer \(call.method, privacy: .public): \(String(reflecting: error), privacy: .public)")
+            return .error(.value("\(error.localizedDescription) (\(call.method): \(String(reflecting: error)))"))
         }
     }
 

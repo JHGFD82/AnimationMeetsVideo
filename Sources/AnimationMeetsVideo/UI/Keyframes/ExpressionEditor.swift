@@ -12,6 +12,8 @@ struct ExpressionEditor: View {
     let code: String
     /// Its error, from its last run: "Line 2: NameError: …".
     let failure: String?
+    /// Everything known about the error: the traceback, or the app's own.
+    var details: String = ""
     let approval: CodeApproval
     /// How many of the project's expressions aren't allowed, for Allow All.
     let notAllowedCount: Int
@@ -39,6 +41,20 @@ struct ExpressionEditor: View {
                     .fixedSize(horizontal: false, vertical: true)
                     // To copy whole, as a report needs it.
                     .textSelection(.enabled)
+                if !details.isEmpty {
+                    DisclosureGroup("Details") {
+                        ScrollView {
+                            Text(verbatim: details)
+                                .font(Design.Typeface.numericSmall)
+                                .foregroundStyle(Design.textSecondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 160)
+                    }
+                    .font(Design.Typeface.micro)
+                    .accessibilityHint("The whole error, to copy into a report")
+                }
                     .accessibilityLabel("Error: \(failure)")
             }
         }

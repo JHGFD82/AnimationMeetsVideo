@@ -414,12 +414,14 @@ private struct KeyframeDesignerSidebar: View {
         let project = hud.project
         let base = driver.keyframing?.base
             ?? clip.number(of: target).map { EditingProject.removingKeyframes(of: driver.id, from: $0) }
-        let failure = project.fittingExpressionResult(of: driver, in: clip, of: timeline, base: base)?.failure.map { failure in
+        let found = project.fittingExpressionResult(of: driver, in: clip, of: timeline, base: base)?.failure
+        let failure = found.map { failure in
             failure.summary + (failure.time.map { String(format: " (at %.2f s)", $0) } ?? "")
         }
         let notAllowed = project.expressions().map { $0.effect }.filter { !EditingProject.expressionIsAllowed($0) }
         return ExpressionEditor(
-            code: driver.expression ?? "", failure: failure, approval: .shared, notAllowedCount: notAllowed.count,
+            code: driver.expression ?? "", failure: failure, details: found?.details ?? "", approval: .shared,
+            notAllowedCount: notAllowed.count,
             onApply: { code in editEffect(driver.id) { $0.expression = code } },
             onAllowAll: { CodeApproval.shared.allow(notAllowed.compactMap(\.expression)) }
         )
