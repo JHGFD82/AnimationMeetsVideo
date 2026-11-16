@@ -30,6 +30,9 @@ struct EditorView: View {
     /// The project's state, shared by its windows, which refuses edits to
     /// clips the motion designer has open (`ProjectState.lock`).
     @Environment(ProjectState.self) private var projectState: ProjectState?
+    /// Where scripts read what this window shows; set only in the
+    /// project's own window.
+    @Environment(\.scriptWindow) private var scriptWindow
     @State private var activeTimelineID: UUID
     @State private var selection: TimelineSelection?
     @State private var playback = PlaybackModel()
@@ -206,6 +209,12 @@ struct EditorView: View {
         }
         // A timeline opened is shown at its playhead, not under a skim of
         // the browser.
+        .onChange(of: activeTimeline.wrappedValue, initial: true) { _, id in
+            scriptWindow?.timelineID = id
+        }
+        .onChange(of: selection, initial: true) { _, picked in
+            scriptWindow?.selection = picked
+        }
         .onChange(of: activeTimeline.wrappedValue) { _, id in
             onTimelineChange?(id)
             skim.end()
@@ -234,6 +243,7 @@ struct EditorView: View {
         }
         .onChange(of: project) { oldValue, newValue in projectDidChange(newValue, from: oldValue) }
         .onReceive(NotificationCenter.default.publisher(for: .spectrogramsChanged)) { _ in analysisArrived() }
+        .runsExpressions(of: project, projectState: projectState) { expressionResultsArrived() }
         .onChange(of: analysis.beats, initial: true) { _, beats in
             if DetectedBeats.shared.update(beats, owner: ObjectIdentifier(analysis)) { analysisArrived() }
         }
@@ -245,6 +255,7 @@ struct EditorView: View {
         // Closing it, or its project, asks before stopping an export.
         .background(WindowReader { [exportWindow] in exportWindow.editorWindow = $0 })
         .onAppear {
+            scriptWindow?.playhead = { [playback] in playback.currentTime }
             let live = liveProject
             beatMatch.onEdit = live.edit
             beatMatch.onOpen = { [playback] in playback.player.pause() }
@@ -323,9 +334,24 @@ struct EditorView: View {
     /// beats do. That is the analysis arriving, not an edit, so it is made
     /// in the undo baseline too rather than recorded.
     private func analysisArrived() {
+        // Expressions waiting on a sound or beats run now they are here.
+        ExpressionRunner.shared.runWaiting(in: project)
         var refreshed = project
         guard refreshed.refreshKeyframing() else { return }
         history.adopt { $0.refreshKeyframing() }
+        writeDerived { project = refreshed }
+    }
+
+    /// Expressions whose runs have finished make their keyframes. As with
+    /// analysis, applying the code was the edit; the result arriving isn't
+    /// one, so it is made in the undo baseline too.
+    private func expressionResultsArrived() {
+        // A run made from a drag still held goes into the drag, for the
+        // viewer to follow; the drag's end commits it.
+        projectState?.applyExpressionResultsWhileHeld()
+        var refreshed = project
+        guard refreshed.applyExpressionResults() else { return }
+        history.adopt { $0.applyExpressionResults() }
         writeDerived { project = refreshed }
     }
 

@@ -8,9 +8,10 @@ import UniformTypeIdentifiers
 /// package, which no other project in the same folder can share.
 ///
 /// A backup is an `.amvbackup` package holding what a project needs to be
-/// opened on its own: its `project.json`, its `Media/` and its
+/// opened on its own: its `project.json`, its `Media/`, its
 /// `Reference/` (the original files' pictures, sound and scores, which
-/// can't be made again once a file is replaced), and `backup.json`, which
+/// can't be made again once a file is replaced), its `Scripts/`, and
+/// `backup.json`, which
 /// says where the project was and when this was taken. Media the project
 /// refers to in place stays where it is and isn't copied. The cache and
 /// the package's own autosaves are left out; they can be made again.
@@ -111,7 +112,7 @@ enum ProjectBackups {
         do {
             try ProjectStore.encode(project, packageURL: packageURL)
                 .write(to: partial.appending(path: ProjectStore.projectFileName), options: .atomic)
-            for subfolder in [ProjectStore.mediaFolderName, ProjectStore.referenceFolderName] {
+            for subfolder in [ProjectStore.mediaFolderName, ProjectStore.referenceFolderName, ProjectStore.scriptsFolderName] {
                 try copyTree(subfolder, of: packageURL, into: partial, reusing: previous)
             }
             setMediaExcludedFromBackup(true, in: partial)

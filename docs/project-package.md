@@ -39,6 +39,7 @@ MyProject.amv/
   project.json        the edit: assets, timelines, layers, clips
   view-state.json     where each timeline was left (see "View state")
   Media/              optional: assets copied in by choice
+  Scripts/            the project's Python scripts (see python-scripting.md)
   Reference/          per-asset reference data (never auto-deleted)
     <assetID>/
       reference.json      metadata snapshot of the original file
@@ -192,6 +193,7 @@ Name 2026-10-24 14.30.05.amvbackup/
   backup.json    the package it was taken of, its name, and when
   Media/         the media copied into the project
   Reference/     what was learned about each original file
+  Scripts/       the project's Python scripts
 ```
 
 so it opens on its own even if the project's package is gone. Media the
@@ -226,8 +228,8 @@ deleted at once. Forgetting an original still waits for the save so it can
 be undone.
 
 Saving writes `project.json` and copies nothing, since imports are already
-in place. Save As copies what the old package holds in `Media/` and
-`Reference/` into the new one; media referenced from elsewhere stays where
+in place. Save As copies what the old package holds in `Media/`,
+`Reference/` and `Scripts/` into the new one; media referenced from elsewhere stays where
 it is. Saving as a package that already exists, once the save panel's
 replace prompt is confirmed, moves the old package to the Trash first (as
 New Project does), so none of its media, backups or render cache end up in
@@ -349,6 +351,7 @@ lengths now, and a damaged one is left out.
 | `Reference/` | No, only through an explicit "forget original" action, applied at the next save. It may be the only record of a replaced file, so Save As copies each asset's folder into the new package. |
 | `Cache/` | Yes. `Renders/` has a size cap and evicts oldest-first; its entries are keyed by a hash of the exact content they render, so any upstream edit invalidates them. `References/` holds one movie per Matroska file, named by a hash of the file's path, size and date; opening the project deletes those no asset uses, and remakes any missing. |
 | `Backups/` | Yes, by count: each autosave deletes all but the newest 20. |
+| `Scripts/` | No: it is the person's work, like `project.json`. The app writes to it only for New Script… (through `PackageCoordinator`), and Save As and backups copy it whole. |
 
 `Cache/` is marked excluded from backup and sync, and should be kept out of
 version control. Settings to move the cache elsewhere come later.

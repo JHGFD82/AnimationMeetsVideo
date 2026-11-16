@@ -846,7 +846,14 @@ some are unresolved, each with its `kind` (`"inputLeftBehind"`,
 `"againstReset"` or `"keyframesOutside"`) and what it was (the input's
 name, the effect read, the keyframe count). A clip has `time` and
 `shutter` only when they aren't off, a nested clip `"passThrough": true`
-only when set, and a clip turned off `"enabled": false`. The
+only when set, and a clip turned off `"enabled": false`. A Keyframing
+effect has `keyframing`, what it writes to and how (see
+[keyframing-effects.md](keyframing-effects.md#saving)); an Expression
+adds `expression`, its Python code, and in its `keyframing` `reads`,
+what its last run read, written only when it read something (see
+[python-scripting.md](python-scripting.md#model-and-saving)). Neither
+key is taken on any other kind: `expression` on a Transform is an
+unknown key, refused with where it is. The
 project has `canvasMargin` only when it isn't 0.5 (of a frame, on each
 side). Keyframes are written as layer transforms' are today
 (`easeIn` and `easeOut` only when eased), with times in rational seconds

@@ -62,5 +62,21 @@ Follow Google's change-description conventions for every commit.
   `EffectPackageStore.packageTypeIdentifier` and
   `ProjectBackups.typeIdentifier`. It also copies the resource
   bundle, which holds the effect packages that ship with the app.
+- Python scripting (`docs/python-scripting.md`) lives in
+  `Sources/AnimationMeetsVideo/Scripting/`, with its views in
+  `UI/Scripting/` and the helper's own Python in
+  `Resources/Python/amv_host/`. Suites that need a real interpreter
+  (`PythonHelperTests`, `ConfinementTests`) run with
+  `AMV_PYTHON=<python3> swift test --filter "PythonHelper|Confinement"`
+  and are skipped without it; `--filter` matches suite names, not
+  folders, so all of scripting is
+  `--filter "Script|Python|Confinement|Expression|CodeApproval|ProjectBridge|BetweenFrames"`; the helper's Python tests also run alone with
+  `python3 -B -m unittest discover -s Tests/AnimationMeetsVideoTests/Scripting/Python`.
+  `scripts/build-app.sh` bundles the CPython that `scripts/fetch-python.sh`
+  fetches by a pinned release and SHA-256, and builds without one while
+  none is pinned; `scripts/fetch-python.sh --pin` looks up the latest
+  release and writes the pins to `scripts/python-pin`, which git ignores. Run with no
+  arguments it puts the pinned Python into the built app, always at
+  `Contents/Resources/Python`.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the
   standalone Command Line Tools).

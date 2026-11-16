@@ -177,6 +177,10 @@ final class ProjectState {
     /// locked clip and explains a driven control's keyframes.
     @ObservationIgnored var onRefused: (Refusal) -> Void = { _ in }
 
+    /// The locks held now, for a script's run to refuse changes to their
+    /// clips line by line (`ProjectBridge`).
+    var clipLocks: [ClipLock] { Array(locks.values) }
+
     /// Locks clips of a timeline against every write but their owner's,
     /// and gives the key that owns them.
     func lock(_ clipIDs: Set<UUID>, in timelineID: UUID) -> UUID {

@@ -136,10 +136,14 @@ extension CompositionExporter {
         let planned = plan
         // (Task locals don't reach the threads the keys are worked out on.)
         let skipsStillFrames = keysSkipStillFrames
-        var keys = [String](repeating: "", count: unkeyed.count)
-        keys.withUnsafeMutableBufferPointer { keys in
-            DispatchQueue.concurrentPerform(iterations: unkeyed.count) { index in
-                let piece = planned[unkeyed[index]]
+        let pieces = unkeyed
+        var keys = [String](repeating: "", count: pieces.count)
+        keys.withUnsafeMutableBufferPointer { buffer in
+            // Each iteration writes only its own slot, so sharing the
+            // buffer across threads is safe.
+            nonisolated(unsafe) let keys = buffer
+            DispatchQueue.concurrentPerform(iterations: pieces.count) { index in
+                let piece = planned[pieces[index]]
                 keys[index] = renderKey(
                     for: piece.range, clips: piece.clips, frame: frame,
                     frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace, canvasMargin: canvasMargin,

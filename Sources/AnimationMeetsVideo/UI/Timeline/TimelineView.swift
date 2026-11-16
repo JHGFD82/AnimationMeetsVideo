@@ -127,6 +127,9 @@ struct TimelineView: View {
     /// Clips picked together with a lasso, two or more (one is selected as
     /// a clip). Selecting anything else lets go of them.
     @State var groupSelection: Set<UUID> = []
+    /// Where a script reads what is selected (`amv.selection`), in the
+    /// project's own window; nil in a timeline window.
+    @Environment(\.scriptWindow) var scriptWindow
     /// The clip last clicked or Command-clicked, where a Shift-click's
     /// range of clips begins.
     @State var selectionAnchor: UUID?
@@ -266,6 +269,8 @@ struct TimelineView: View {
                 Text("Timeline")
                     .font(Design.Typeface.panelTitle)
                     .foregroundStyle(Design.textPrimary)
+                    // Scripts read the lasso's clips as the selection.
+                    .onChange(of: groupSelection, initial: true) { _, picked in scriptWindow?.groupSelection = picked }
                 TimelineToolPicker(current: tool, tool: $tool)
                     .equatable()
                 Spacer()

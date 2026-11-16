@@ -44,6 +44,7 @@ struct ProjectWindow: View {
             .equatable()
             .environment(session.projectState)
             .environment(session.autosaveStatus)
+            .environment(\.scriptWindow, session.scriptWindow)
             .projectDialogs(session: session, window: nil)
             .newEffectPackagePrompt(isHost: NewEffectPackagePrompt.shared.hostWindow == windowID)
             .onExternalProjectChange { session.checkForExternalProjectChange() }
@@ -61,6 +62,11 @@ struct ProjectWindow: View {
                     onClose: closeOffered
                 )
             }
+            // While a script runs on this project (`ScriptRunner`), on a
+            // view of its own so it never contends with the start sheet.
+            .background(Color.clear.sheet(isPresented: Binding(get: { scriptRun != nil }, set: { _ in })) {
+                if let run = scriptRun { ScriptRunSheet(run: run, onStop: ScriptRunner.shared.stop) }
+            })
             .background(WindowCloseGuard(shouldClose: shouldClose))
             .background(WindowReader { session.editorWindow = $0 })
             .background(ProjectWindowTitle(projectState: session.projectState, savedProject: session.savedProject, packageURL: session.projectURL, autosaveStatus: session.autosaveStatus))
@@ -103,6 +109,14 @@ struct ProjectWindow: View {
 
     /// Whether another window has a project, so this one can close
     /// without quitting the app.
+    /// The script running on this window's project, if one is.
+    private var scriptRun: ScriptRunner.Run? {
+        guard let run = ScriptRunner.shared.current, run.kind == .script, !session.isEmpty,
+              run.projectID == session.project.id
+        else { return nil }
+        return run
+    }
+
     private var othersOpen: Bool {
         ProjectWindows.shared.sessions.contains { $0 !== session && !$0.isEmpty }
     }

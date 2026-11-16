@@ -7,6 +7,10 @@ struct KeyboardShortcutsViewTests {
         #expect(KeyboardShortcutsView.spokenKeys("⇧⌘B") == "Shift Command B")
         #expect(KeyboardShortcutsView.spokenKeys("⌃⌥H") == "Control Option H")
         #expect(KeyboardShortcutsView.spokenKeys("⌥← ⌥→") == "Option Left Arrow, Option Right Arrow")
+        // The scripting keys.
+        #expect(KeyboardShortcutsView.spokenKeys("⌘.") == "Command Period")
+        #expect(KeyboardShortcutsView.spokenKeys("⌘Return") == "Command Return")
+        #expect(KeyboardShortcutsView.spokenKeys("⌥⌘Y") == "Option Command Y")
     }
 
     @Test func eachKeyOfARowIsSeparated() {

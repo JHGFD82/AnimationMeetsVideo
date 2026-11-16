@@ -53,6 +53,7 @@ final class ProjectHistory {
     /// Starts a fresh history for a newly created or opened project.
     func reset(to project: EditingProject) {
         baseline = project
+        nextStepName = nil
         lastRecordedAt = nil
         lastRecordedIdentity = nil
         mediaMoves = [:]
@@ -64,6 +65,17 @@ final class ProjectHistory {
     /// the live project.
     func adopt(_ change: (inout EditingProject) -> Void) {
         change(&baseline)
+    }
+
+    /// The name the next step is recorded under, in place of the one
+    /// `ProjectChange` would give it by comparing (see `nameNextStep`).
+    private var nextStepName: String?
+
+    /// Records the next change as a step of its own named `name`, never
+    /// merged with the one before: a script's run, which `ProjectChange`
+    /// would call "Edit …" for whichever change it compared first.
+    func nameNextStep(_ name: String) {
+        nextStepName = name
     }
 
     /// Whether a gesture holds the changes back (see `beginGesture`).
@@ -129,6 +141,12 @@ final class ProjectHistory {
         let before = baseline
         baseline = project
         defer { changeLanded?() }
+        if let name = nextStepName {
+            nextStepName = nil
+            lastRecordedAt = nil
+            lastRecordedIdentity = nil
+            return registerUndo(restoring: before, name: name)
+        }
         let step = ProjectChange.step(from: before, to: project, scenes: scenes)
 
         if let last = lastRecordedAt,

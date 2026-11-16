@@ -79,6 +79,14 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "⌘J", does: "Project settings"),
             Shortcut(keys: "⌥⌘R", does: "Render now"),
         ]),
+        Group(title: "Scripts and expressions", shortcuts: [
+            Shortcut(keys: "⌥⌘Y", does: "Open the Python Console"),
+            Shortcut(keys: "Return", does: "Console: run the line"),
+            Shortcut(keys: "↑ ↓", does: "Console: an earlier or later line"),
+            Shortcut(keys: "⌘Return", does: "Expression editor: apply the code"),
+            Shortcut(keys: "Esc", does: "Expression editor: put back the applied code; a script or console line running: stop it"),
+            Shortcut(keys: "⌘.", does: "Stop a script or console line running"),
+        ]),
     ]
 
     var body: some View {

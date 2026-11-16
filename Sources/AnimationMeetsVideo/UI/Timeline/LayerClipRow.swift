@@ -205,12 +205,12 @@ struct LayerClipRow: View {
 
     /// How far either side of the view clips are still drawn, so a scroll
     /// or a rubber band's stretch doesn't show one arriving late.
-    static let cullMargin: CGFloat = 200
+    nonisolated static let cullMargin: CGFloat = 200
 
     /// Whether any of the clip is on screen, or nearly: `visibleX` is the
     /// on-screen part of a row laid out at `pixelsPerSecond`, in the row's
     /// own (unscrolled) coordinates.
-    static func isVisible(_ clip: TimelineClip, pixelsPerSecond: CGFloat, in visibleX: ClosedRange<CGFloat>) -> Bool {
+    nonisolated static func isVisible(_ clip: TimelineClip, pixelsPerSecond: CGFloat, in visibleX: ClosedRange<CGFloat>) -> Bool {
         let start = CGFloat(clip.startOffset.seconds) * pixelsPerSecond
         let end = CGFloat(clip.endOffset.seconds) * pixelsPerSecond
         return end >= visibleX.lowerBound - cullMargin && start <= visibleX.upperBound + cullMargin
