@@ -50,8 +50,10 @@ Colors for the region (its right-click **Color** menu) are described in
   outline in `tone.greyed()`).
 - On the chip: the `Design.Symbol.loop` glyph, then the region's length
   as compact timecode (`CMTime.compactTimecode(frameRate:)`, "4:00"), in
-  `Design.Typeface.numericMicro`, one line, cut off when the chip is too
-  narrow. The ink is the one [bar-colors.md](bar-colors.md#ink) picks
+  `Design.Typeface.numericMicro`, one line. Too narrow for both, the
+  chip shows the glyph alone, and too narrow for that, nothing
+  (`ViewThatFits`): a label cut off at the chip's edge ran over its
+  outline, so the chip looked cut off. The ink is the one [bar-colors.md](bar-colors.md#ink) picks
   for the fill.
 - There is at most **one region per timeline**. Each timeline has its
   own.
@@ -157,13 +159,16 @@ timeline's bar can be hidden, so each host also has:
   again. Turning it on with C or the menu shows the bar. A region saved
   on, in a project opened with the bar hidden, is turned off
   (`TimelineLoopVisibility`).
-- The **Motion Designer**'s bar can't be hidden, so its loop button, in
-  the transport beside Snapping, turns the loop on or off, as C does
-  (help "Loop on: playing repeats the loop region (C)" / "Loop off (C)").
-  Turning the loop on there, or drawing a region in its bar, shows the
-  main timeline's loop row too, so the loop stays on once the designer
-  closes. The graph editors' toggle is to be settled when they are
-  built.
+- The **Motion Designer**'s loop button, in the transport beside
+  Snapping, does the same as the timeline's: it shows or hides the
+  designer's loop bar, turning the loop on or off with it. The two bars
+  are one setting (`TimelineAreaLayout.showsLoop`), so hiding one hides
+  both, and the loop is on only while they show. Each host keeps that
+  rule with its own `TimelineLoopVisibility`; both can act on one
+  change, which is why they use `PlaybackLoop.setOn`, where asking
+  twice does nothing, rather than `toggle`. Turning the loop on there
+  with C, or drawing a region, shows the bars. The graph editors'
+  toggle is to be settled when they are built.
 
 The main timeline's **Timeline** menu (`TimelineCommands`) gets, in a
 group after Play/Pause:
@@ -507,10 +512,11 @@ Built (`MotionDesignLanes`, `MotionDesignLoop.swift`, `MotionDesignView`).
 
 - `MotionDesignLanes`: a `LoopBar` between `ruler(width:)` and
   `RetimedFilmstrip`, in a view of its own (`MotionLoopLane`) that reads
-  the loop, on the ruler's raised surface. Everything measured from the
-  top goes from one `filmTop` (`rulerHeight + LoopBar.height`):
-  `graphHeight`, the notice's top padding, and `graphTop` and the locked
-  marker pins in `markings`.
+  the loop, on the ruler's raised surface, while the loop row shows.
+  Everything measured from the top goes from one `filmTop`
+  (`filmTop(showsLoop:)`: `rulerHeight`, plus `LoopBar.height` while
+  the bar shows): `graphHeight`, the notice's top padding, and
+  `graphTop` and the locked marker pins in `markings`.
 - Mapping: the session is a `SecondsViewport` (`x(of:)`,
   `seconds(atX:)`). Limits: the window (`session.loopLimits`). Snap:
   `session.snapped(_:tolerance:)` with 8 points' worth of seconds;
@@ -525,10 +531,12 @@ Built (`MotionDesignLanes`, `MotionDesignLoop.swift`, `MotionDesignView`).
   loop.
 - Selecting: a click on the region selects it (`isLoopSelected`), and
   picking a marker or a clip lets go of it (and the other way round).
-  Delete removes the selected region, Escape lets go of it.
-- `MotionDesignView`: the loop button in the transport's toggle group
-  (`MotionLoopToggle`), and `c` in `handleKey` (with no region: over
-  `run.span`, within the window).
+  Delete removes the selected region, Escape or hiding the bar lets go
+  of it.
+- `MotionDesignView`: the loop button in the transport's toggle group,
+  bound to `showsLoop`, with `TimelineLoopVisibility` behind the panel;
+  and `c` in `handleKey` (with no region: over `run.span`, within the
+  window).
 - The loop is the timeline's, not the draft's: Cancel doesn't undo it,
   and the region drawn here is the timeline's region.
 
@@ -627,7 +635,8 @@ build starts.
 8. **The loop button, C and the menu items** are added so the feature
    works without a pointer and with the timeline's bar hidden.
 9. **Beat Match keeps its own loop.**
-10. **The main timeline's loop button shows or hides the bar**, as the
+10. **The loop button shows or hides the bar**, in the main timeline
+    and, the same setting, the Motion Designer, as the
     sections button does its row; asked for once the bar was tried.
     Hiding the bar turns the loop off (asked for too), and showing it
     turns the region on again, so the button works as Logic's cycle

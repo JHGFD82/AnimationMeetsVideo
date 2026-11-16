@@ -99,9 +99,11 @@ music.
   (snapping as the lanes' drags do), click it to select it for Delete.
   While the designer is open the loop plays only what of the region is
   inside its window, and playing turns back at the region's end instead
-  of stopping at the window's. The Loop button and C turn it on or off,
-  and with no region make one over the clips. It is the timeline's loop,
-  not part of the draft: Cancel leaves it.
+  of stopping at the window's. The Loop button shows or hides the bar,
+  as the timeline's does, and they are one setting: hidden, the loop is
+  off; shown, it is on. C turns the loop on or off, and with no region
+  makes one over the clips. It is the timeline's loop, not part of the
+  draft: Cancel leaves it.
 
 - The footage strip places thumbnails where their frames play. Slower
   stretches spread them apart; faster ones crowd them together. Drag a
@@ -458,8 +460,9 @@ and Remove for interior markers. The graph keeps Add marker at playhead.
 Clips read their name and span and offer movement and trims by a frame.
 Sidebar checkboxes and L expose locks without the pointer. The loop bar
 reads as the main timeline's does (its region's actions turn it on or
-off, move either end or the whole region a frame, and delete it), and
-the Loop button and C turn it on or off without the bar. Icon buttons
+off, move either end or the whole region a frame, and delete it); C
+turns it on or off without the bar, and the "Loop row" button shows or
+hides the bar. Icon buttons
 have labels; marker size and pins show locks beyond colour alone. Notices
 are announced, and the shared motion helpers honour reduced motion.
 
