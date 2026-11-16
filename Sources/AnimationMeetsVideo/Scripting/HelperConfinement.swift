@@ -59,7 +59,7 @@ enum HelperConfinement {
         (version 1)
         (deny default)
         ; Python itself, which sandbox-exec starts, and nothing after it:
-        ; no process-fork, so no subprocess, os.system or multiprocessing.
+        ; nothing may fork, so no subprocess, os.system or multiprocessing.
         (allow process-exec
         \(executables))
         ; What Python and the system libraries read to start and run.

@@ -33,6 +33,8 @@ struct HelperPong: Equatable, Sendable {
 /// needs it, never at launch, and kept until the app quits.
 enum PythonHelpers {
     static let scripts = PythonHelper()
+    /// Confined (`HelperConfinement`): an expression is arithmetic.
+    static let expressions = PythonHelper(confined: true)
 }
 
 /// Python run as a child process and talked to over pipes, rather than
@@ -46,6 +48,8 @@ enum PythonHelpers {
 actor PythonHelper: ScriptHelper {
     private let findInterpreter: @Sendable () -> PythonInterpreter?
     private let host: URL?
+    /// Whether it runs in the sandbox, as the expressions' helper does.
+    let confined: Bool
     private var connection: HelperConnection?
     private var nextID = 0
     /// The run under way, and the runs that ended by Stop or by the limit.
@@ -60,10 +64,12 @@ actor PythonHelper: ScriptHelper {
 
     init(
         interpreter: @escaping @Sendable () -> PythonInterpreter? = { PythonRuntime.interpreter() },
-        host: URL? = PythonRuntime.hostScript
+        host: URL? = PythonRuntime.hostScript,
+        confined: Bool = false
     ) {
         findInterpreter = interpreter
         self.host = host
+        self.confined = confined
     }
 
     func run(
@@ -171,7 +177,7 @@ actor PythonHelper: ScriptHelper {
         if let connection, connection.isAlive, connection.interpreter == interpreter { return connection }
         if let connection { drop(connection) }
         guard let host else { throw ScriptHelperError.couldNotStart("the app's helper code is missing") }
-        let started = try HelperConnection(interpreter: interpreter, host: host)
+        let started = try HelperConnection(interpreter: interpreter, host: host, confined: confined)
         connection = started
         return started
     }
@@ -219,14 +225,25 @@ final class HelperConnection: @unchecked Sendable {
     private let input: FileHandle
     private let writing = NSLock()
 
-    init(interpreter: PythonInterpreter, host: URL) throws {
+    init(interpreter: PythonInterpreter, host: URL, confined: Bool = false) throws {
         // A write to a helper that has gone would end the app.
         signal(SIGPIPE, SIG_IGN)
         self.interpreter = interpreter
         let toHelper = Pipe(), fromHelper = Pipe(), errors = Pipe()
         input = toHelper.fileHandleForWriting
-        process.executableURL = interpreter.executable
-        process.arguments = PythonRuntime.helperArguments(host: host)
+        if confined {
+            // Never run unconfined in its place: without the sandbox,
+            // expressions don't run at all.
+            guard HelperConfinement.isAvailable else {
+                throw ScriptHelperError.couldNotStart("this Mac can't confine expressions (sandbox-exec is missing)")
+            }
+            let command = HelperConfinement.command(interpreter: interpreter.executable, host: host)
+            process.executableURL = command.executable
+            process.arguments = command.arguments
+        } else {
+            process.executableURL = interpreter.executable
+            process.arguments = PythonRuntime.helperArguments(host: host)
+        }
         process.standardInput = toHelper
         process.standardOutput = fromHelper
         process.standardError = errors
