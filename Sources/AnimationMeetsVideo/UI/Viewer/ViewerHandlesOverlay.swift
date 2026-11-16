@@ -207,8 +207,16 @@ struct ViewerHandlesOverlay: View {
                 var path = Path()
                 path.addLines(outline.points.map(map.toView))
                 if outline.isClosed { path.closeSubpath() }
-                context.stroke(path, with: .color(.black.opacity(0.35)), lineWidth: 3)
-                context.stroke(path, with: .color(Design.accent), lineWidth: 1)
+                switch outline.style {
+                case .box:
+                    context.stroke(path, with: .color(.black.opacity(0.35)), lineWidth: 3)
+                    context.stroke(path, with: .color(Design.accent), lineWidth: 1)
+                case .guide:
+                    // What an effect covers: dashed, so it isn't taken for
+                    // the clip's box.
+                    context.stroke(path, with: .color(.black.opacity(0.35)), lineWidth: 2.5)
+                    context.stroke(path, with: .color(.white.opacity(0.85)), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                }
             }
         }
         guard !shown.context.isLocked else { return }
@@ -229,7 +237,7 @@ struct ViewerHandlesOverlay: View {
             // While dragging, only the crosshair stays, for a scale or a
             // turn; the loupe shows them all, for what is near.
             // A point being dragged stays, as it is all there is to see.
-            let isDraggedPoint = handle.glyph == .round && handle.id == drag?.handle
+            let isDraggedPoint = (handle.glyph == .round || handle.glyph == .diamond) && handle.id == drag?.handle
             if drag != nil, !inLoupe, !(levered && handle.id == .anchor), !isDraggedPoint { continue }
             let place = map.toView(handle.place)
             let alpha = handle.isEnabled ? 1.0 : 0.4
@@ -244,6 +252,15 @@ struct ViewerHandlesOverlay: View {
                 let dot = Path(ellipseIn: CGRect(x: place.x - 4, y: place.y - 4, width: 8, height: 8))
                 context.fill(dot, with: .color(.white.opacity(alpha)))
                 context.stroke(dot, with: .color(Design.accent.opacity(alpha)), lineWidth: 1)
+            case .diamond:
+                var diamond = Path()
+                diamond.move(to: CGPoint(x: place.x, y: place.y - 5))
+                diamond.addLine(to: CGPoint(x: place.x + 5, y: place.y))
+                diamond.addLine(to: CGPoint(x: place.x, y: place.y + 5))
+                diamond.addLine(to: CGPoint(x: place.x - 5, y: place.y))
+                diamond.closeSubpath()
+                context.fill(diamond, with: .color(.white.opacity(alpha)))
+                context.stroke(diamond, with: .color(Design.accent.opacity(alpha)), lineWidth: 1)
             case .crosshair:
                 var cross = Path()
                 cross.move(to: CGPoint(x: place.x - 5, y: place.y))

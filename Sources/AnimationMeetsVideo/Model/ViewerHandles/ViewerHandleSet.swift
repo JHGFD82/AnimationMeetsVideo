@@ -132,6 +132,8 @@ enum HandleGlyph: Equatable, Sendable {
     /// A square turned with the box: a scale handle.
     case square
     case round
+    /// A square turned on its corner: a handle an effect package declares.
+    case diamond
     case crosshair
     /// Not drawn: a zone (a rotation zone).
     case none

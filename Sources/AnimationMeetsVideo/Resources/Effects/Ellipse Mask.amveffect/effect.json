@@ -14,5 +14,16 @@
     {"id": "maskKeep", "name": "Keep", "type": "choice", "default": "inside", "options": [{"id": "inside", "name": "Inside"}, {"id": "outside", "name": "Outside"}]}
   ],
   "amount": true,
-  "arguments": ["center(maskCenter)", "maskSize", "scale", "maskFeather * scale", "-rad(maskAngle)", "index(maskKeep)"]
+  "arguments": ["center(maskCenter)", "maskSize", "scale", "maskFeather * scale", "-rad(maskAngle)", "index(maskKeep)"],
+  "viewer": {
+    "handles": [
+      {"name": "Width", "x": "maskCenter.x + maskSize.x / 2 * cos(rad(maskAngle))", "y": "maskCenter.y + maskSize.x / 2 * sin(rad(maskAngle))", "set": {"maskSize.x": "2 * abs((x - maskCenter.x) * cos(rad(maskAngle)) + (y - maskCenter.y) * sin(rad(maskAngle)))"}},
+      {"name": "Height", "x": "maskCenter.x - maskSize.y / 2 * sin(rad(maskAngle))", "y": "maskCenter.y + maskSize.y / 2 * cos(rad(maskAngle))", "set": {"maskSize.y": "2 * abs((y - maskCenter.y) * cos(rad(maskAngle)) - (x - maskCenter.x) * sin(rad(maskAngle)))"}},
+      {"name": "Angle", "x": "maskCenter.x + (maskSize.x / 2 + 48) * cos(rad(maskAngle))", "y": "maskCenter.y + (maskSize.x / 2 + 48) * sin(rad(maskAngle))", "set": {"maskAngle": "maskAngle + (deg(atan2(y - maskCenter.y, x - maskCenter.x)) - maskAngle) - 360 * round((deg(atan2(y - maskCenter.y, x - maskCenter.x)) - maskAngle) / 360)"}}
+    ],
+    "guides": [
+      {"ellipse": {"center": "maskCenter", "size": "maskSize", "angle": "maskAngle"}},
+      {"line": ["maskCenter", ["maskCenter.x + (maskSize.x / 2 + 48) * cos(rad(maskAngle))", "maskCenter.y + (maskSize.x / 2 + 48) * sin(rad(maskAngle))"]]}
+    ]
+  }
 }

@@ -26,6 +26,13 @@ struct PointControlHandles: ViewerHandleSet {
     /// stack; nil when it is off, cut off by Show Up to Here, or under a
     /// Transform that scales the picture to nothing.
     private func located(_ context: HandleContext) -> (effect: Effect, matrix: CGAffineTransform)? {
+        Self.locate(effectID, context)
+    }
+
+    /// The effect with ID `effectID` among those the viewer draws, and the
+    /// matrix from its coordinates to the frame's after the rest of the
+    /// stack; the same for any of an effect's own handles.
+    static func locate(_ effectID: UUID, _ context: HandleContext) -> (effect: Effect, matrix: CGAffineTransform)? {
         let effects = TransformHandles.shownEffects(context.clip, upTo: context.shownUpTo)
         guard let index = effects.index(of: effectID), effects[index].enabled,
               let matrix = StackFolding.placement(

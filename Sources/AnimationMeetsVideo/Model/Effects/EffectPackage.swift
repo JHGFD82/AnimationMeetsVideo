@@ -83,6 +83,65 @@ struct EffectPackage: Sendable {
         var showsResponse: Bool { curves.isEmpty }
     }
 
+    /// What the viewer draws over the picture while the effect is selected
+    /// (see docs/effect-packages.md, "Viewer"): handles that move its
+    /// controls and guides that show its shape, placed by expressions of
+    /// the controls, as offsets from the middle of the frame in the
+    /// timeline's pixels, down positive, as a point control is. It changes
+    /// nothing drawn.
+    struct Viewer: Sendable {
+        /// A place given by expressions: two numbers, or one that is a
+        /// point or a vector of two.
+        enum Place: Sendable {
+            case pair(EffectExpression, EffectExpression)
+            case vector(EffectExpression)
+
+            func evaluate(_ values: some EffectExpression.Values) -> (x: Double, y: Double) {
+                switch self {
+                case .pair(let x, let y):
+                    return (x.number(values), y.number(values))
+                case .vector(let vector):
+                    let parts = vector.evaluate(values)
+                    return (parts.first ?? 0, parts.count > 1 ? parts[1] : 0)
+                }
+            }
+        }
+
+        /// A control a handle's drag sets, or one part of one, and to what:
+        /// an expression of the controls as they were when the drag began
+        /// and of `x` and `y`, where it is dragged to.
+        struct Setting: Sendable {
+            var control: ControlKind
+            var component: Int?
+            var value: EffectExpression
+        }
+
+        struct Handle: Sendable {
+            var name: String
+            var place: Place
+            var sets: [Setting]
+
+            /// Whether dragging it across or down changes anything.
+            var movesAcross: Bool { sets.contains { $0.value.reads("x") } }
+            var movesDown: Bool { sets.contains { $0.value.reads("y") } }
+        }
+
+        /// A line drawn with the handles, to show what the effect covers.
+        enum Guide: Sendable {
+            /// Through the places, open.
+            case line([Place])
+            /// Through the places, closed.
+            case polygon([Place])
+            /// Its middle, its width and height, and how far it is turned,
+            /// in degrees clockwise.
+            case ellipse(center: Place, size: Place, angle: EffectExpression?)
+            case rectangle(center: Place, size: Place, angle: EffectExpression?)
+        }
+
+        var handles: [Handle] = []
+        var guides: [Guide] = []
+    }
+
     /// Running the kernel once per copy or band (see
     /// docs/effect-packages.md, "Repeating").
     struct Repeat: Sendable {
@@ -175,6 +234,8 @@ struct EffectPackage: Sendable {
     var linear = false
     /// The tone graph the effects panel shows for it, if any.
     var graph: Graph?
+    /// The handles and guides the viewer shows for it, if any.
+    var viewer: Viewer?
     /// Whether it is a general kernel that reads its picture only at the
     /// pixel it draws (`perPixel`): it reads other pictures, such as a
     /// curve's table, but works on each pixel where it is, as a color

@@ -66,7 +66,7 @@ import Testing
         picked.source = .graphic
         let layer = TimelineLayer(clips: [picked])
         let sets = ViewerHandleSets.active(for: picked, on: layer, in: .empty, selectedEffectID: light.id)
-        #expect(sets.count == 1 && sets.first is PointControlHandles)
+        #expect(sets.first is PointControlHandles && !sets.contains { $0 is TransformHandles })
         #expect(ViewerHandleSets.active(for: picked, on: layer, in: .empty, selectedEffectID: nil).first is TransformHandles)
     }
 
