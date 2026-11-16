@@ -86,10 +86,11 @@ viewer's zoom.
   6 points.
 - **Position** has no handle either: a drag **inside the box** moves the
   clip.
-- **The anchor**: a 10 point crosshair where the clip's anchor point is.
-  It can be dragged. The scale handles and the rotation zones ignore it
-  (see
-  [The anchor point and the handles](#the-anchor-point-and-the-handles)).
+- **The anchor**: a 10 point crosshair where the clip's anchor point is,
+  the point the scale handles and the rotation zones work about (see
+  [Scaling and turning about the anchor](#scaling-and-turning-about-the-anchor)).
+  It can be dragged, and a double-click puts it back at the middle of
+  the picture.
 - **The opacity chip**: a small chip in the well's top left corner, with
   the `circle.lefthalf.filled` glyph and the clip's opacity ("100%").
   Drag it left or right to **fade**. It has a fixed place, not one by
@@ -121,7 +122,8 @@ A handle that can't be dragged (a driven control, below) shows
 
 A drag begins once the pointer has moved 3 points; a press without a
 drag changes nothing. While it lasts the viewer follows it live, the
-box follows the picture, the handles are hidden, and a **readout** chip
+box follows the picture, the handles are hidden (all but the crosshair,
+during a scale or a turn), and a **readout** chip
 by the pointer (the style of the timeline's drag timecode label) says
 the value it has reached: the control's own numbers, as the effects
 panel shows them. Releasing saves it as one undo step. **Escape** puts
@@ -133,32 +135,39 @@ scroll during a drag is ignored.
 | Drag | Does | Shift | Option | Readout |
 | --- | --- | --- | --- | --- |
 | Inside the box | Position follows the pointer, in whole pixels | Kept to one axis: the one the drag from its start is nearer (the 45° line decides), free to change as the pointer crosses it | | `120, −40` |
-| A corner handle | Scale, **proportional**: both numbers grow by the same factor, keeping whatever ratio they had. The opposite corner stays where it is | **Free**: width and height apart, the corner under the pointer | Scales from the box's **center** instead | `150%`, or `150% × 120%` when apart |
-| An edge-middle handle | Scale along **that axis only**: width for the left and right handles, height for the top and bottom. The opposite edge stays where it is | **Proportional**: both numbers by the same factor | Scales from the box's center | the same |
-| A rotation zone | Rotation follows the pointer round the box's **center**, from any of the eight zones; turns past 360° are kept | **Snapped to multiples of 15°** | | `37.5°`, always shown, to a tenth of a degree |
-| The anchor | The anchor point follows the pointer, in whole pixels; the picture stays where it is | In steps of **ten pixels** | **A tenth** of the pointer's movement, in tenths of a pixel | `Anchor 120, −40` |
+| A corner handle | Scale about the **anchor**, **proportional**: both numbers grow by the same factor, keeping whatever ratio they had | **Free**: width and height apart, the corner under the pointer | | `150%`, or `150% × 120%` when apart |
+| An edge-middle handle | Scale about the anchor along **that axis only**: width for the left and right handles, height for the top and bottom | **Proportional**: both numbers by the same factor | | the same |
+| A rotation zone | Rotation follows the pointer round the **anchor**, from any of the eight zones; turns past 360° are kept | **Snapped to multiples of 15°** | | `37.5°`, always shown, to a tenth of a degree |
+| The anchor | The anchor point follows the pointer, in whole pixels, catching on the box's corners, edge middles and center; the picture stays where it is | In steps of **ten pixels** | **A tenth** of the pointer's movement, in tenths of a pixel, and no catching | `Anchor 120, −40` |
 | The opacity chip | Opacity, one point of drag for 1%, 0 to 100 | Ten per point | A tenth per point | `80%` |
 
 - **Shift means "the other way"** on a scale handle: a corner is
   proportional and Shift frees it; an edge is one axis and Shift makes
-  it proportional. Shift and Option work together: a corner with both
-  is free from the center.
+  it proportional.
+- **Scale and rotation write only their own control.** They turn about
+  the anchor, which is what the controls do, so a scale or a turn never
+  touches Position and never adds a keyframe to it.
 - An edge handle changes one of Scale's two numbers, x or y, which the
   stack applies along the screen's axes at that step
   ([effects.md](effects.md#transform)). With Scale above Rotation in the
   effect, as a new Transform has them, that is the box's own width or
   height. With Rotation above Scale it shears the box, as the same
   numbers typed in the panel would.
-- A scale handle dragged across the point held flips the clip (negative
+- A scale handle dragged across the anchor flips the clip (negative
   scale), as the control allows.
 - **The anchor's readout shows before a press too**: hovering the
   crosshair puts its position by the pointer (`Anchor 0, 0`), so it is
   plain what a press there would move. The numbers are the ones the
   effects panel shows: the offset from the middle of the picture, in
   timeline pixels.
-- **Moving the anchor leaves the picture where it is** at the playhead:
-  on a clip that is scaled or turned, Position changes to make up for
-  it. On a clip that is neither, only the anchor changes.
+- **Moving the anchor leaves the picture where it is**: on a clip that
+  is scaled or turned, Position is shifted to make up for it (see
+  [Keyframes](#keyframes) for how). On a clip that is neither, only the
+  anchor changes.
+- **The anchor catches** on the box's nine points (corners, edge middles,
+  center) when it comes within 8 points of one, and the readout names
+  it (`Anchor 480, −270 · Top Right`). Option, for fine movement, turns
+  the catching off.
 - Scale is kept to a tenth of a percent, rotation to a tenth of a
   degree, opacity to whole percents (tenths with Option).
 - A Shift drag that leaves Scale's x and y apart, or an edge drag, turns
@@ -167,54 +176,64 @@ scroll during a drag is ignored.
   as it is.
 - A control a Keyframing effect drives refuses hand edits
   ([keyframing-effects.md](keyframing-effects.md)). A handle is drawn
-  dimmed when any control its drag would write is driven, and a press
-  on it gives the same notice the panel's field does
-  (`ProjectState.Refusal.drivenKeyframes`). Scale's and rotation's
-  handles write Position too (below), so a driven Position dims them
-  as well as the inside of the box.
+  dimmed when the control its drag writes is driven, and a press on it
+  gives the same notice the panel's field does
+  (`ProjectState.Refusal.drivenKeyframes`).
 - Starting playback mid-drag (Space) ends the drag as letting go would,
   and the handles go.
 
-### The anchor point and the handles
+### Scaling and turning about the anchor
 
-**The scale handles and the rotation zones ignore the anchor point.**
-What they hold still is decided by the box alone:
+**The scale handles and the rotation zones work about the anchor
+point**, wherever it is: at the picture's middle, where it starts, on a
+corner, or outside the box altogether. That is what the Scale and
+Rotation controls do with the same numbers
+([effects.md](effects.md#transform)), so a handle changes one control
+and nothing else. Holding some other point still (the opposite corner,
+the box's center) would mean changing Position along with it, and on a
+clip whose Position has keyframes that would add one and animate
+something nobody asked to animate.
 
-| Drag | Holds still |
-| --- | --- |
-| A corner | The opposite corner |
-| An edge middle | The middle of the opposite edge |
-| Either, with Option | The box's center |
-| A rotation zone | The box's center |
+**Any handle works, wherever the anchor is.** A drag is read as a lever
+from the anchor to the pointer:
 
-So a clip behaves the same under the handles wherever its anchor is,
-and moving the anchor never changes what a handle does.
+- a **turn** is the angle that lever sweeps. The spot that was grabbed
+  stays on the line from the anchor to the pointer, so the clip follows
+  the hand from any of the eight zones, the ones nearest the anchor
+  included;
+- a **scale** is how much longer or shorter the lever gets. The handle
+  stays under the pointer.
 
-The Scale and Rotation controls themselves still turn about the anchor;
-that is what the anchor is ([effects.md](effects.md#transform)). A
-handle gets its own fixed point by changing **Position** along with
-Scale or Rotation, by whatever keeps that point where it is. When the
-point is the anchor anyway (a turn, or an Option scale, of a clip whose
-anchor is at its center), Position comes out unchanged and isn't
-written.
+A zone or handle near the anchor is a short lever: a small movement
+turns or scales a lot. One far from it is a long lever, and finer. With
+the anchor outside the box, every handle is on the same side of it and
+the clip swings or grows away from the anchor like a door on its hinge.
+None of this is special to this app; it is how a moved reference point
+behaves in Photoshop, Illustrator and After Effects.
 
-The keys and VoiceOver, which have no handle to hold, scale and turn
-about the box's center, as an Option drag does. So nothing done in the
-viewer goes by the anchor.
+What keeps it readable:
 
-Outside the viewer the anchor is what it always was:
+- **The lever is drawn.** During a scale or a turn, a thin line joins
+  the crosshair to the pointer, so what the clip is working about is in
+  plain sight, and the crosshair stays while the other handles hide.
+  When the anchor is out of view the line runs off the edge toward it.
+- **The crosshair lights up** (an accent ring) while the pointer rests
+  on a scale handle or a rotation zone, before any press.
+- **No lever, no drag.** A scale handle within 10 points of the anchor
+  on screen is dimmed, since the least movement would scale the clip
+  out of sight. So is an edge handle on the same line as the anchor:
+  with the anchor on the top edge, the top handle has nothing to pull
+  against, while the bottom, left and right ones work as ever. A turn
+  holds its angle while the pointer is within 10 points of the anchor
+  and picks it up again as it leaves.
+- **Putting the anchor somewhere useful is quick**: it catches on the
+  box's corners, edge middles and center as it is dragged, and a
+  double-click sends it home. To scale from a corner, drop the anchor
+  on that corner and drag the one opposite.
 
-- numbers typed or dragged in the effects panel scale and turn about
-  it;
-- **between keyframes** the picture scales and turns about it while
-  Position slides. A scale keyframed with the handles keeps its fixed
-  corner all the way between two keyframes. A turn keyframed with the
-  handles is about the box's center at each keyframe, but between them
-  the center cuts across rather than staying put, unless the anchor is
-  there. For a turn about a point over time, put the anchor on it.
-
-The crosshair keeps its place on the picture through a scale or a turn:
-the anchor point's own numbers aren't changed by either.
+There is no Option on a scale handle. "From the center" is what a clip
+does until its anchor is moved, and once it is moved, the anchor is the
+point asked for.
 
 ### Keyframes
 
@@ -222,23 +241,26 @@ the anchor point's own numbers aren't changed by either.
 at the playhead**, or changes the one already there, as typing in the
 effects panel does (`EffectControl.setComponent(_:to:at:)`, in the
 clip's source time). The rule is one for every value a drag or a key
-writes:
+changes:
 
-- Position, Scale, Rotation and Opacity;
-- **the anchor point** (`TimelineClip.anchorPoint`): dragging it adds a
-  keyframe when it is animated, like the rest;
-- the Position that a scale, a turn or an anchor drag changes to hold
-  its point still.
+- Position, from a drag inside the box;
+- Scale, Rotation and Opacity, from their handles, zones and chip;
+- **the anchor point** (`TimelineClip.anchorPoint`), from dragging the
+  crosshair.
 
 Something without keyframes simply takes the new value; nothing in the
-viewer ever starts animating it. Each value follows the rule on its own:
-a scale drag on a clip with Scale keyframed and Position not adds a
-Scale keyframe and changes Position's one value, which moves the clip
-at every frame, not only this one. The effects panel shows which values
-are animated before a drag is made.
+viewer ever starts animating it. Each drag changes the one thing it is
+named for, with one exception.
 
-The point a drag holds still is held at the playhead. At other frames
-the picture is where the keyframes put it, as in any app.
+**The exception is the Position an anchor drag shifts** to keep a scaled
+or turned picture where it is. That shift isn't a manipulation of
+Position, so it adds no keyframe: Position is moved **as a whole**, its
+one value or every one of its keyframes by the same amount. While Scale
+and Rotation hold still over the clip, that keeps the picture exactly
+where it was at every frame. Where they are keyframed no single shift
+can; the picture is exact at the playhead and the anchor's move shows
+at the other frames, which is what moving the pivot of an animated
+scale or turn means.
 
 ### Which effect a drag edits
 
@@ -256,9 +278,9 @@ A stack can hold several Transform effects, or none.
   bottom still acts as the layer's blend mode
   ([effects.md](effects.md#blending)) and isn't moved along with the
   picture.
-- A target that has lost a control the drag writes (a Transform reduced
-  to its Scale, then scaled by a handle, which needs Position too) gets
-  it back (`Effect.addControl`); one switched off is switched on.
+- A target that has lost the control being dragged (a Transform reduced
+  to its Position, then scaled by a handle) gets it back
+  (`Effect.addControl`); one switched off is switched on.
 - With **Show Up to Here** on, the target is picked among the effects
   the viewer is drawing, so a drag is always seen.
 - Nothing is added by selecting the clip or by pressing: only by the
@@ -295,7 +317,7 @@ selected clip, as it does with the viewer active today.
 | Keys | Does |
 | --- | --- |
 | Tab / ⇧Tab | Pick what the arrows change, next or previous: Position, Scale, Rotation, Anchor, Opacity. A chip beside the opacity chip names it and its value ("Position 120, −40") while the canvas has the keys. |
-| ← → ↑ ↓ | Nudge it: Position or Anchor one pixel that way; Scale 1% (→ and ↑ up, proportional, from the box's center); Rotation 1° (→ and ↓ clockwise, about the box's center); Opacity 1% |
+| ← → ↑ ↓ | Nudge it: Position or Anchor one pixel that way; Scale 1% (→ and ↑ up, proportional); Rotation 1° (→ and ↓ clockwise); Opacity 1% |
 | with Shift | Ten pixels, 10%, 15°, 10% |
 | with Option | A tenth of a pixel, 0.1%, 0.1°, 0.1% |
 | Escape | During a drag, cancel it; otherwise give the keys back to the timeline |
@@ -545,39 +567,34 @@ trial values.
   (after the Shift lock, which is applied to the pointer's movement on
   screen), rounded to whole pixels. `J` is the identity for a lone
   Transform, so this is the plain case too.
-- **Scale**, in two steps. `F` is the point held still: the opposite
-  corner or edge middle, or the box's center with Option.
-  1. The vector from `F` to the dragged handle is linear in Scale's two
-     numbers and doesn't depend on Position at all. Three folds give
-     that 2×2. A corner, free (Shift): solve it so the handle is at the
-     pointer. Proportional (a corner, or an edge with Shift): the one
-     factor on both numbers that brings the handle nearest the pointer,
-     a projection onto the line from `F` through the handle. An edge:
-     the same projection for its one number.
-  2. Fold again with the new Scale, see where `F` went, and move it back
-     with Position, as a Position drag is solved. Nothing is written to
-     Position when it comes out unchanged.
-
-  A handle Scale can't move (its number is 0) is drawn dimmed.
-- **Rotation**, in two steps as Scale is. `C` is the box's center on
-  screen.
-  1. The angle the pointer has swept round `C` since the press, added up
-     from step to step so it runs past 360°, times the direction the
-     picture turns on screen for a positive Rotation (measured from two
-     folds, so a flipped clip still follows the pointer). Shift snaps
-     the resulting **value**, not the change, to a multiple of 15°.
-  2. Fold again with the new Rotation, see where `C` went (nowhere, when
-     the anchor is at the center), and move it back with Position.
+- **Scale.** Where the dragged handle lands is affine in Scale's two
+  numbers as well. With the same three folds: a corner, free (Shift),
+  solve the 2×2 so the handle is at the pointer. Proportional (a
+  corner, or an edge with Shift): the one factor on both numbers that
+  brings the handle nearest the pointer, a projection onto the line
+  from the anchor through the handle. An edge: the same projection for
+  its one number. A handle Scale can't move (it is level with the
+  anchor on that axis, or its number is 0) is drawn dimmed.
+- **Rotation.** The angle the pointer has swept round the anchor on
+  screen since the press, added up from step to step so it runs past
+  360° and held while the pointer is within 10 points of the anchor,
+  times the direction the picture turns on screen for a positive
+  Rotation (measured from two folds, so a flipped clip still follows the
+  pointer). Shift snaps the resulting **value**, not the change, to a
+  multiple of 15°.
 - **The anchor.** Where the anchor is on screen, and where the picture
   is, are both affine in the anchor point's two numbers and Position's
   two together. Five folds give a 4×4 system with two conditions: the
   anchor has moved by the pointer's movement (cut to a tenth with
-  Option), and a corner of the box is where it was. The anchor point's
-  numbers are rounded to whole pixels (tens with Shift, tenths with
-  Option) and Position solved again for the rounded anchor. With no
-  scale or turn in the stack Position comes out unchanged and isn't
-  written. A clip scaled to nothing has no answer; its crosshair is
-  dimmed.
+  Option, or brought onto one of the box's nine points when within 8
+  view points of it), and a corner of the box is where it was. The
+  anchor point's numbers are rounded to whole pixels (tens with Shift,
+  tenths with Option) and Position solved again for the rounded
+  anchor. The change in Position is added to its one value or to every
+  keyframe of it alike (`AnimatedValue.offset(by:)`, new), never set as
+  a keyframe. With no scale or turn in the stack Position comes out
+  unchanged and isn't written. A clip scaled to nothing has no answer;
+  its crosshair is dimmed.
 - **Opacity.** `start + points dragged × step`, through
   `ValueDrag.value(from:distance:step:flags:range:)`, the panel's own
   rule.
@@ -710,11 +727,12 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
   thing a drag can change is an **adjustable** element in it: Position X,
   Position Y, Scale, Rotation, Anchor X, Anchor Y, Opacity, with the
   number as its value ("120 pixels", "150 percent"). Increment and
-  decrement are the arrow keys' nudges (`ViewerHandleSet.nudge`), Scale
-  and Rotation about the box's center as the keys are, so VoiceOver
-  gets every later handle set for free.
+  decrement are the arrow keys' nudges (`ViewerHandleSet.nudge`), so
+  VoiceOver gets every later handle set for free.
 - Named actions for the ten-fold steps (Move 10 pixels left…), and
-  Reset on each.
+  Reset on each. The anchor's elements also have Move to Center and
+  Move to *each of the box's eight other points*, the keyboard's way to
+  what catching does for a drag.
 - The readout and the hover text aren't announced; the element's value
   is read after.
 - The Show Handles toggle is a toggle with a label and an on or off
@@ -739,23 +757,24 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
     target, with an effect that doesn't move the anchor, and with a
     flip;
   - a corner proportional and, with Shift, free; an edge one axis and,
-    with Shift, proportional; the opposite corner or edge unmoved after
-    each, and the center unmoved with Option; Position untouched when
-    the point held is the anchor;
-  - rotation from a corner zone and from an edge zone, about the box's
-    center with the anchor at it (Position untouched) and away from it
-    (the center unmoved); 15° snapping of the value; turns past 360°;
-  - the same scale and the same turn giving the same box whatever the
-    anchor point is;
-  - a keyframed scale from a corner keeping that corner between its
-    keyframes;
+    with Shift, proportional; each with the anchor at the center, on a
+    corner and outside the box, the anchor unmoved on screen and
+    Position untouched every time;
+  - rotation from a corner zone and from an edge zone, near the anchor
+    and far from it, the grabbed point staying on the line from the
+    anchor to the pointer; the angle held within 10 points of the
+    anchor; 15° snapping of the value; turns past 360°;
+  - handles dimmed within 10 points of the anchor and level with it;
   - the 45° lock and its change of axis;
   - the anchor: the box unmoved on a scaled and turned clip, Position
-    untouched on a plain one, Shift's tens and Option's tenths;
+    untouched on a plain one, Shift's tens and Option's tenths, catching
+    on each of the nine points and not with Option, the double-click;
   - keyframes: each of Position, Scale, Rotation, Opacity and the anchor
     point gets a keyframe at the source time when animated and none when
-    not, each on its own, the held-still Position included;
-  - a driven Position dimming the scale and rotation handles;
+    not, and no other value is written;
+  - an anchor drag on a clip with Position keyframes: every keyframe
+    shifted alike, none added, and the box unmoved at each of them while
+    Scale and Rotation hold still;
   - no edge-middle handle on an edge under 32 points;
   - the target rule (selected, last, added, above a trailing Blending, a
     missing control put back); nudges.
@@ -775,7 +794,8 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 - `ViewerPanelTrackingTests`: the panel's body still isn't invalidated
   by the playhead, by a drag or by a scroll.
 - `UISnapshots`: `viewerHandles` (a turned clip, a stretched one, a
-  dimmed driven handle, the readout, the anchor's hover text),
+  dimmed driven handle, the readout, the anchor's hover text, a turn
+  with its lever line and the anchor outside the box),
   `viewerZoomed` (zoomed in and off center, with both chips) and the
   external display's synced view.
 - Stage 8 on: `PointControlHandlesTests` over the shipped packages, and
@@ -783,21 +803,24 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 
 ## Decisions made here
 
-- **Handles ignore the anchor by changing Position**, since the Scale
-  and Rotation controls can only turn about the anchor. A scale or a
-  turn made with a handle on a clip with Position keyframes therefore
-  adds a Position keyframe too.
-- **A scale drag holds the opposite corner or edge still**, and a turn
-  the box's center.
-- **The keys and VoiceOver scale and turn about the box's center**, the
-  nearest thing to a handle they have, so nothing in the viewer goes by
-  the anchor.
+- **Scale and rotation work about the anchor**, from every handle, so
+  they change one control each. Holding another point still was planned
+  and dropped: it wrote Position, and a keyframe there when Position was
+  animated.
+- **Option does nothing on a scale handle.** The request gave it "from
+  the object's center"; with the anchor as the pivot that is either
+  what already happens or a second pivot that writes Position.
+- **A drag near the anchor is a short lever, not an error**, shown by a
+  line from the anchor to the pointer, with handles dimmed and turns
+  held only inside 10 points of it.
+- **The anchor catches on the box's nine points** and a double-click
+  centers it, so "scale from this corner" is a drop and a drag.
+- **An anchor drag shifts Position as a whole** rather than setting a
+  keyframe, so it animates nothing. It is the one place a drag writes a
+  value it isn't named for.
 - **Corners keep the first rule** (proportional, free with Shift) and
   only edges take the new one (one axis, proportional with Shift), so
   Shift flips whichever the handle does by itself.
-- **Option on a scale handle means the box's center**, not the anchor,
-  as the request says "object center"; they are the same until the
-  anchor is moved.
 - **Dragging the anchor keeps the picture still**, changing Position on
   a scaled or turned clip, as After Effects' Pan Behind does. Moving
   the anchor alone would make such a clip jump.
@@ -810,9 +833,6 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
   is a build step of its own so it can be left out.
 - **Only the anchor has hover text.** The pointer's shape says enough
   for the rest; the anchor sits where a move would start.
-- **A handle is dimmed when anything its drag writes is driven**, the
-  Position it holds its point with included, though an Option scale of
-  a centered clip wouldn't need it.
 - **Delete with the canvas focused deletes the clip**, as it does
   whenever the viewer is the active panel.
 - **Shift on rotation snaps the value**, so a clip at 7° goes to 0° or
