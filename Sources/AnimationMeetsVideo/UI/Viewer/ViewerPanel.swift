@@ -25,6 +25,10 @@ struct ViewerPanel: View {
     /// A clip skimmed in the browser, shown in place of the timeline;
     /// absent in windows without a browser.
     @Environment(BrowserSkim.self) private var skim: BrowserSkim?
+    /// The viewer's zoom and place, its own (see `ViewerFraming`). Read
+    /// only by the views that show it, so a pinch or a scroll doesn't
+    /// rebuild the panel.
+    @State private var framing = ViewerFraming()
 
     private var isSkimming: Bool { skim?.isActive ?? false }
 
@@ -42,7 +46,11 @@ struct ViewerPanel: View {
                 // Always there, emptied timeline or not: the picture it shows
                 // stays until a newer one replaces it, so a timeline emptied
                 // and filled again (an undo) never shows black between.
-                picture { ViewerPicture(playback: playback, frameRate: frameRate) }
+                FramedPicture(playback: playback, frameRate: frameRate, frameSize: frameSize, framing: framing)
+                // Over the picture, under the notices, which keep their
+                // clicks.
+                ViewerCanvas(framing: framing, frameSize: frameSize)
+                ViewerFramingChips(framing: framing)
                 if !hasContent {
                     ZStack {
                         Design.Surface.well.color
@@ -92,6 +100,8 @@ struct ViewerPanel: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // A zoomed picture stays in the well.
+            .clipped()
 
             HStack(spacing: Design.Space.group) {
                 // While a clip is skimmed, Space plays it rather than the
@@ -132,26 +142,14 @@ struct ViewerPanel: View {
             .padding(.vertical, Design.Space.close)
             .rail(.raised)
         }
+        // The View menu's zoom acts on the viewer in the window with the
+        // keys.
+        .focusedSceneValue(\.viewerActions, ViewerActions(framing: framing))
         // Skimming takes the viewer, so the timeline stops playing; where
         // its playhead was is kept.
         .onChange(of: isSkimming) { _, skimming in
             if skimming, playback.isPlaying { playback.togglePlayback() }
         }
-    }
-
-    /// The composition, inset from the well with a cut edge so the frame
-    /// boundary reads whatever the content is. Deliberately no drop
-    /// shadow: it would force the video surface through an offscreen pass
-    /// on every frame, and the hairline already does the job.
-    private func picture<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .aspectRatio(aspectRatio, contentMode: .fit)
-            .overlay {
-                Rectangle()
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                    .allowsHitTesting(false)
-            }
-            .padding(36)
     }
 
     /// Auto shows the size it's drawing at while that isn't full.
@@ -175,6 +173,40 @@ struct ViewerPanel: View {
             }
         }
         .help("Viewer quality. Smaller sizes play complex timelines smoothly; Auto draws full size when paused and steps down only while playback can't keep up.")
+    }
+}
+
+/// The composition, sized and placed in the well by the viewer's zoom and
+/// place (`ViewerMapping`): at Fit, inset from the well with a cut edge
+/// so the frame boundary reads whatever the content is. Sized, not put
+/// through a scale effect, and deliberately no drop shadow: either would
+/// force the video surface through an offscreen pass on every frame, and
+/// the hairline already does the job. Past 100% the picture's pixels are
+/// enlarged, not drawn again. A view of its own, so a pinch or a scroll
+/// redraws only this.
+private struct FramedPicture: View {
+    let playback: PlaybackModel
+    let frameRate: Double
+    let frameSize: CGSize
+    let framing: ViewerFraming
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        GeometryReader { proxy in
+            let mapping = framing.mapping(frameSize: frameSize, wellSize: proxy.size, backingScale: displayScale)
+            let rect = mapping.pictureRect
+            let _ = framing.note(mapping)
+            ViewerPicture(playback: playback, frameRate: frameRate)
+                .overlay {
+                    Rectangle()
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+                .frame(width: max(rect.width, 1), height: max(rect.height, 1))
+                .position(x: rect.midX, y: rect.midY)
+        }
+        // Another frame size starts again from Fit.
+        .onChange(of: frameSize) { framing.fit() }
     }
 }
 

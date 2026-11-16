@@ -61,6 +61,7 @@ struct AnimationMeetsVideoApp: App {
             FileCommands()
             EditCommands()
             TimelineCommands()
+            ViewerCommands()
             WindowCommands()
         }
 
