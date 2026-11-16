@@ -311,7 +311,9 @@ the same.
 
 ## Not yet
 
-- Expressions, or linking a control to another live.
+- Expressions, or linking a control to another live. Planned as a
+  ninth method, Expression, whose Python code can read other controls
+  (see [python-scripting.md](python-scripting.md)).
 - Driving a control on another clip directly, without an adjustment or
   nested clip.
 - Audio Keys from a sound that isn't on the timeline (an input from the
