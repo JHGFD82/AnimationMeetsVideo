@@ -101,7 +101,7 @@ struct LoopBar: View {
     // MARK: Drawing
 
     /// The region as drawn: the loop's tone when on, greyed when off, its
-    /// glyph and length on it, cut off when it is too narrow. Selected, it
+    /// glyph and length on it as far as they fit. Selected, it
     /// is drawn as a selected section is: the brighter fill and a light
     /// outline.
     private func chip(_ shown: LoopRegion, selected: Bool = false) -> some View {
@@ -119,20 +119,32 @@ struct LoopBar: View {
                     RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                         .strokeBorder(Design.bevelEdge, lineWidth: 1)
                 }
-            HStack(spacing: 3) {
-                Image(systemName: Design.Symbol.loop)
-                    .font(.system(size: 9, weight: .semibold))
-                Text(shown.duration.compactTimecode(frameRate: timeline.frameRate))
-                    .font(Design.Typeface.numericMicro)
+            // The glyph and the length where they fit, else the glyph
+            // alone, else nothing: a label cut off at the chip's edge ran
+            // over its outline, so the edge looked cut off itself.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 3) {
+                    glyph
+                    Text(shown.duration.compactTimecode(frameRate: timeline.frameRate))
+                        .font(Design.Typeface.numericMicro)
+                }
+                .padding(.horizontal, Design.Space.tight)
+                glyph
+                    .padding(.horizontal, Design.Space.tight)
+                Color.clear
+                    .frame(width: 0, height: 0)
             }
             .foregroundStyle(Design.textOnColor)
             .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, Design.Space.tight)
             .accessibilityHidden(true)
         }
         .frame(width: max(2, bounds.max - bounds.min), height: Self.height - 4, alignment: .leading)
         .clipped()
+    }
+
+    private var glyph: some View {
+        Image(systemName: Design.Symbol.loop)
+            .font(.system(size: 9, weight: .semibold))
     }
 
     /// `region` as the player has it, drawn as `shown` (the draft while
