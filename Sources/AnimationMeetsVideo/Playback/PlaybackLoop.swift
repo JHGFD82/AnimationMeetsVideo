@@ -150,6 +150,14 @@ final class PlaybackLoop {
         if toggled.isOn, isPlaying, let active = activeRange { jump(active.start) }
     }
 
+    /// Turns the region on or off, when there is one and it isn't
+    /// already, as `toggle` does. Asking twice does nothing the second
+    /// time, so two views keeping the same rule can both ask.
+    func setOn(_ on: Bool) {
+        guard let region, region.isOn != on else { return }
+        toggle()
+    }
+
     // MARK: Playing
 
     /// The player started or stopped. Not private, so tests can drive the

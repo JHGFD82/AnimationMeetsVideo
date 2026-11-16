@@ -19,12 +19,15 @@ struct TimelineLoopLane: View {
 }
 
 /// Keeps the loop on only while its bar shows: hiding the bar (the
-/// header's loop button, or Loop row in the view options) turns the loop
-/// off, and showing it turns it on again. A region found on while the bar
-/// is hidden, as a project opened that way has, is turned off. Turning
-/// the loop on from C or the menu shows the bar first
-/// (`TimelineView.showLoopRow`). A view of its own, so the timeline's
-/// body doesn't read the loop.
+/// timeline's or the Motion Designer's loop button, or Loop row in the
+/// view options; one setting, `TimelineAreaLayout.showsLoop`, for both)
+/// turns the loop off, and showing it turns it on again. A region found
+/// on while the bar is hidden, as a project opened that way has, is
+/// turned off. Turning the loop on from C or the menu shows the bar first
+/// (`TimelineAreaLayout.showLoopRow`). The timeline and the designer each
+/// have one, which can both act: `PlaybackLoop.setOn` asked twice does
+/// nothing the second time. A view of its own, so its host's body doesn't
+/// read the loop.
 struct TimelineLoopVisibility: View {
     let loop: PlaybackLoop
     let isShown: Bool
@@ -35,14 +38,14 @@ struct TimelineLoopVisibility: View {
             .accessibilityHidden(true)
             .onChange(of: isShown) { _, shown in
                 guard let region = loop.region, region.isOn != shown else { return }
-                loop.toggle()
+                loop.setOn(shown)
                 AccessibilityNotification.Announcement(shown ? "Loop on" : "Loop off").post()
             }
             // What the defaults hold now, not `isShown`: turning the loop
             // on elsewhere (the Motion Designer) shows the row in the same
             // step, before this view has been given the new layout.
             .onChange(of: loop.isOn, initial: true) { _, on in
-                if on, !TimelineAreaLayout.stored.showsLoop { loop.toggle() }
+                if on, !TimelineAreaLayout.stored.showsLoop { loop.setOn(false) }
             }
     }
 }

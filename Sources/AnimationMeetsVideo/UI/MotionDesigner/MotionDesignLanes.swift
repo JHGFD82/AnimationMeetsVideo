@@ -11,8 +11,11 @@ struct MotionDesignLanes: View {
     @Bindable var session: MotionDesignSession
 
     static let rulerHeight: CGFloat = 20
-    /// Where the footage starts: under the ruler and the loop bar.
-    static let filmTop: CGFloat = rulerHeight + LoopBar.height
+    /// Where the footage starts: under the ruler, and the loop bar while
+    /// it shows.
+    static func filmTop(showsLoop: Bool) -> CGFloat {
+        rulerHeight + (showsLoop ? LoopBar.height : 0)
+    }
     static let filmHeight: CGFloat = 56
     static let musicHeight: CGFloat = 96
     /// Room above and below the line, so points at its ends stay whole.
@@ -51,14 +54,21 @@ struct MotionDesignLanes: View {
     /// Where the drag snapped, to draw.
     @State private var snapTime: Double?
     @State private var graphModifiers: NSEvent.ModifierFlags = []
+    /// Whether the loop bar shows: the timeline's setting, which the
+    /// designer's loop button changes too.
+    @AppStorage(Preferences.timelineAreaLayout) private var areaLayout = TimelineAreaLayout()
+
+    private var filmTop: CGFloat { Self.filmTop(showsLoop: areaLayout.showsLoop) }
 
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
-            let graphHeight = max(120, geometry.size.height - Self.filmTop - Self.filmHeight - musicHeight)
+            let graphHeight = max(120, geometry.size.height - filmTop - Self.filmHeight - musicHeight)
             VStack(spacing: 0) {
                 ruler(width: width)
-                MotionLoopLane(session: session, width: width) { snapTime = $0 }
+                if areaLayout.showsLoop {
+                    MotionLoopLane(session: session, width: width) { snapTime = $0 }
+                }
                 RetimedFilmstrip(session: session, width: width, height: Self.filmHeight)
                 graph(width: width, height: graphHeight)
                 musicLane(width: width)
@@ -113,7 +123,7 @@ struct MotionDesignLanes: View {
                     .floatingSurface(radius: Design.Radius.chip)
                     .frame(maxWidth: 460)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, Self.filmTop + Self.filmHeight + Design.Space.step)
+                    .padding(.top, filmTop + Self.filmHeight + Design.Space.step)
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
@@ -872,14 +882,15 @@ struct MotionDesignLanes: View {
     /// drag snapped, drawn over the lanes.
     private func markings(width: CGFloat, height: CGFloat, graphHeight: CGFloat) -> some View {
         let stack = stack(height: graphHeight, width: width)
-        let graphTop = Self.filmTop + Self.filmHeight
+        let pinTop = filmTop
+        let graphTop = pinTop + Self.filmHeight
         return ZStack(alignment: .topLeading) {
             Canvas { context, size in
                 for (index, piece) in session.run.pieces.enumerated() {
                     for point in piece.map.points where point.locked {
                         let at = location(of: point, piece: index, stack: stack)
                         var pin = Path()
-                        pin.move(to: CGPoint(x: at.x, y: Self.filmTop))
+                        pin.move(to: CGPoint(x: at.x, y: pinTop))
                         pin.addLine(to: CGPoint(x: at.x, y: graphTop + at.y - 8))
                         pin.move(to: CGPoint(x: at.x, y: graphTop + at.y + 8))
                         pin.addLine(to: CGPoint(x: at.x, y: size.height))

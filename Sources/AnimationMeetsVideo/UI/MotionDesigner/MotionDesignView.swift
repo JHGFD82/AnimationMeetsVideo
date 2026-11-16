@@ -9,6 +9,8 @@ struct MotionDesignView: View {
     @Bindable var session: MotionDesignSession
     let onDone: () -> Void
     let onCancel: () -> Void
+    /// Whether the loop bar shows, here and in the timeline.
+    @AppStorage(Preferences.timelineAreaLayout) private var areaLayout = TimelineAreaLayout()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +30,14 @@ struct MotionDesignView: View {
         .preferredColorScheme(.dark)
         .tint(Design.accent)
         .background(KeyPressMonitor(handler: handleKey))
+        // The loop is on only while its bar shows, as in the timeline.
+        .background {
+            TimelineLoopVisibility(loop: session.playback.loop, isShown: areaLayout.showsLoop)
+        }
+        // Delete mustn't take away a region out of sight.
+        .onChange(of: areaLayout.showsLoop) { _, shown in
+            if !shown { session.isLoopSelected = false }
+        }
     }
 
     // MARK: Transport
@@ -66,7 +76,13 @@ struct MotionDesignView: View {
                 }
                 .help(session.snaps ? "Snapping on: points and clips snap to beats, the playhead and clip edges (N)" : "Snapping off (N)")
                 .accessibilityLabel("Snapping")
-                MotionLoopToggle(session: session)
+                // The timeline's loop row and this bar are one setting:
+                // shown, the region loops; hidden, it doesn't.
+                Toggle(isOn: $areaLayout.showsLoop) {
+                    Image(systemName: Design.Symbol.loop)
+                }
+                .help(areaLayout.showsLoop ? "Hide the loop row and turn the loop off" : "Show the loop row and turn the loop on")
+                .accessibilityLabel("Loop row")
                 Toggle(isOn: $session.showsBeats) {
                     Image(systemName: Design.Symbol.beats)
                 }
@@ -160,23 +176,5 @@ struct MotionDesignView: View {
         default: return false
         }
         return true
-    }
-}
-
-/// The transport's loop button: on while the loop region is on. The
-/// designer's bar can't be hidden, so unlike the timeline's button this
-/// one turns the loop on or off, as C does; with no region it makes one
-/// over the clips. A view of its own, so the panel doesn't read the loop.
-private struct MotionLoopToggle: View {
-    let session: MotionDesignSession
-
-    var body: some View {
-        let isOn = session.playback.loop.isOn
-        Toggle(isOn: Binding(get: { isOn }, set: { _ in session.toggleLoop() })) {
-            Image(systemName: Design.Symbol.loop)
-        }
-        .help(isOn ? "Loop on: playing repeats the loop region (C)" : "Loop off (C)")
-        .accessibilityLabel("Loop")
-        .accessibilityValue(isOn ? "On" : "Off")
     }
 }

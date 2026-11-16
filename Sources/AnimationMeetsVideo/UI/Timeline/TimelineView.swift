@@ -320,7 +320,16 @@ struct TimelineView: View {
                             clickVolume: $beatClickVolume, onPreviewClick: { beatClicks.preview() }
                         )
                     }
-                    Toggle(isOn: $areaLayout.showsLoop) {
+                    // Into the layout a gesture is changing too, if any, which
+                    // is the one drawn: written to the defaults alone, the
+                    // bar stayed until the gesture's layout was let go.
+                    Toggle(isOn: Binding(
+                        get: { shownAreaLayout.showsLoop },
+                        set: { shown in
+                            areaLayout.showsLoop = shown
+                            liveAreaLayout?.showsLoop = shown
+                        }
+                    )) {
                         Image(systemName: Design.Symbol.loop)
                     }
                     .help(shownAreaLayout.showsLoop ? "Hide the loop row and turn the loop off" : "Show the loop row and turn the loop on")

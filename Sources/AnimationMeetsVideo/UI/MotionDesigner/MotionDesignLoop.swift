@@ -20,8 +20,9 @@ extension MotionDesignSession {
         playback.loop.narrow(to: loopLimits)
     }
 
-    /// The loop button and C: the region on or off, or with none, one
-    /// over the run's clips, turned on. Says which to VoiceOver.
+    /// C: the region on or off, or with none, one over the run's clips,
+    /// turned on, which shows the loop bar. Says which to VoiceOver. (The
+    /// loop button shows or hides the bar, as the timeline's does.)
     func toggleLoop() {
         let loop = playback.loop
         if loop.region != nil {

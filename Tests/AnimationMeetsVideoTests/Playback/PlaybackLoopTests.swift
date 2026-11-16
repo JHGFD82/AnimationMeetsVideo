@@ -121,6 +121,24 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(rig.jumps == [seconds(7), seconds(10)])
     }
 
+    /// What two views keeping "on only while its bar shows" both ask: the
+    /// second asking does nothing, where two toggles would undo each other.
+    @Test func setOnTwiceIsOnce() {
+        let rig = Rig()
+        rig.loop.setOn(true)
+        #expect(rig.loop.region == nil)
+        rig.loop.draw(LoopRegion(start: seconds(4), end: seconds(8)))
+        rig.loop.setOn(false)
+        rig.loop.setOn(false)
+        #expect(rig.loop.region?.isOn == false)
+        rig.loop.playingChanged(true)
+        rig.loop.setOn(true)
+        rig.loop.setOn(true)
+        #expect(rig.loop.isOn)
+        // Turned on while playing, it went to the start once.
+        #expect(rig.jumps == [seconds(4)])
+    }
+
     @Test func playStartsInsideFromThePlayheadElseFromTheStart() {
         let rig = Rig()
         #expect(rig.loop.playStart(from: seconds(1)) == nil)
