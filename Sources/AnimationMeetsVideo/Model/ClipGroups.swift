@@ -77,6 +77,25 @@ extension EditingProject {
         }
     }
 
+    /// Gives the clips with these IDs a color, or with nil their tone by
+    /// kind back: the clips picked, or a layer's (its Color menu).
+    mutating func setColor(_ color: BarColor?, ofClips ids: Set<UUID>, in timelineID: UUID) {
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return }
+        for layer in timelines[tIndex].layers.indices {
+            for clip in timelines[tIndex].layers[layer].clips.indices where ids.contains(timelines[tIndex].layers[layer].clips[clip].id) {
+                timelines[tIndex].layers[layer].clips[clip].color = color
+            }
+        }
+    }
+
+    /// Clear Layer: every clip of the layer deleted, as deleting them by
+    /// hand does, and the layer kept with its name, kind, height, sound
+    /// and settings.
+    mutating func clearLayer(_ layerID: UUID, in timelineID: UUID) {
+        guard let layer = timeline(id: timelineID)?.layer(id: layerID), !layer.clips.isEmpty else { return }
+        deleteClips(Set(layer.clips.map(\.id)), in: timelineID)
+    }
+
     /// Takes the clips out of a timeline into a new one of its own, with the
     /// same frame size, rate and colors, their layers and their places in
     /// time and across layers kept, starting at zero; then puts that

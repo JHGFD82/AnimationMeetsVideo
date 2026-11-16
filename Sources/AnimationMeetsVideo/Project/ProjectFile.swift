@@ -103,6 +103,8 @@ struct ProjectFile: Codable {
         /// `false` for a clip set not to follow the music; absent while it
         /// does.
         var followsMusic: Bool? = nil
+        /// `"#RRGGBB"`, the color the person gave it; absent for its tone.
+        var color: String? = nil
     }
 
     /// Where a clip is tied to a song (see `MusicAttachment`).
@@ -1058,6 +1060,8 @@ struct ProjectFile: Codable {
         var name: String
         var start: TimeEntry
         var end: TimeEntry
+        /// `"#RRGGBB"`; absent for the sections' tone.
+        var color: String? = nil
     }
 
     struct RegionEntry: Codable {
@@ -1412,6 +1416,7 @@ extension ProjectFile {
                 .required("song", .uuid), .required("asset", .uuid), .required("time", .time), .optional("frame", .time),
             ]))),
             .optional("followsMusic", .bool),
+            .optional("color", .color),
             .optional("time", .object(object([
                 .optional("speed", property(.number)),
                 .optional("frameBlending", .choice(["blend", "opticalFlow"], noun: "frame blending")),
@@ -1446,6 +1451,7 @@ extension ProjectFile {
             .required("layers", .array(layer)),
             .optional("sections", .array(.object(object([
                 .required("id", .uuid), .required("name", .string), .required("start", .time), .required("end", .time),
+                .optional("color", .color),
             ])))),
             .optional("previewBackground", .numbers(count: 3)),
         ]))

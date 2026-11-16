@@ -10,6 +10,8 @@ struct TimelineSection: Identifiable, Equatable {
     var name: String
     var start: CMTime
     var end: CMTime
+    /// The color the person gave it; nil for the sections' tone.
+    var color: BarColor?
 
     var duration: CMTime { CMTimeSubtract(end, start) }
 }
@@ -49,6 +51,11 @@ extension EditingProject {
 
     mutating func renameSection(_ id: UUID, in timelineID: UUID, to name: String) {
         updateSection(id, in: timelineID) { $0.name = name }
+    }
+
+    /// Gives a section a color, or with nil its tone back.
+    mutating func setColor(_ color: BarColor?, ofSection id: UUID, in timelineID: UUID) {
+        updateSection(id, in: timelineID) { $0.color = color }
     }
 
     mutating func deleteSection(_ id: UUID, in timelineID: UUID) {
@@ -131,7 +138,7 @@ extension EditingProject {
             let start = CMTimeMaximum(gap.start, CMTimeMinimum(wanted, CMTimeSubtract(gap.end, length)))
             let end = CMTimeMinimum(CMTimeAdd(start, length), gap.end)
             guard CMTimeSubtract(end, start) >= frame else { continue }
-            return TimelineSection(name: section.name, start: start, end: end)
+            return TimelineSection(name: section.name, start: start, end: end, color: section.color)
         }
         return nil
     }

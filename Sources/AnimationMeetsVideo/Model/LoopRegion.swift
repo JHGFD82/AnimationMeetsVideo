@@ -9,6 +9,9 @@ struct LoopRegion: Equatable {
     var start: CMTime
     var end: CMTime
     var isOn = true
+    /// The color the person gave it; nil for `Design.loop`. View state, as
+    /// the region is: no undo. See docs/bar-colors.md.
+    var color: BarColor?
 
     enum Edge {
         case start, end

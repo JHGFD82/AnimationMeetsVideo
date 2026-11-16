@@ -198,7 +198,8 @@ extension ProjectStore {
                                 enabled: clip.enabled ? nil : false,
                                 soundMuted: clip.soundMuted ? true : nil,
                                 music: layer.kind == .music ? nil : clip.music.map(ProjectFile.MusicEntry.init),
-                                followsMusic: clip.followsMusic ? nil : false
+                                followsMusic: clip.followsMusic ? nil : false,
+                                color: clip.color?.hex
                             )
                         },
                         volume: layer.kind.isAudio && layer.volume != AnimatedValue(0.0)
@@ -213,7 +214,8 @@ extension ProjectStore {
                 sections: timeline.sections.isEmpty ? nil : timeline.sections.map { section in
                     ProjectFile.SectionEntry(
                         id: section.id, name: section.name,
-                        start: ProjectFile.TimeEntry(section.start), end: ProjectFile.TimeEntry(section.end)
+                        start: ProjectFile.TimeEntry(section.start), end: ProjectFile.TimeEntry(section.end),
+                        color: section.color?.hex
                     )
                 },
                 previewBackground: timeline.previewBackground

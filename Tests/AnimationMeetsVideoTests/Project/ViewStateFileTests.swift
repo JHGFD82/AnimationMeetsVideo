@@ -75,12 +75,17 @@ struct ViewStateFileTests {
         state.timelines[main] = ViewState.Timeline(
             loop: LoopRegion(start: CMTime(value: 12 * 1001, timescale: 24000), end: CMTime(value: 16, timescale: 1))
         )
-        state.timelines[other] = ViewState.Timeline(loop: LoopRegion(start: .zero, end: CMTime(value: 3, timescale: 1), isOn: false))
+        state.timelines[other] = ViewState.Timeline(
+            loop: LoopRegion(start: .zero, end: CMTime(value: 3, timescale: 1), isOn: false, color: BarColor(0xB897F0))
+        )
 
         try ViewStateFile.write(state, to: url)
         #expect(ViewStateFile.read(from: url) == state)
         let text = try String(contentsOf: ViewStateFile.url(in: url), encoding: .utf8)
         #expect(text.contains("\"12012/24000s\""))
+        // The loop's own color is kept with it; the default is left out.
+        #expect(text.contains("\"#B897F0\""))
+        #expect(text.components(separatedBy: "\"color\"").count == 2)
     }
 
     /// A file from before loop regions reads as none; a damaged region is

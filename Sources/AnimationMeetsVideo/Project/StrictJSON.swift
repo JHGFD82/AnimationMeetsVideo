@@ -11,6 +11,8 @@ indirect enum JSONShape: Sendable {
     case uuid
     /// Exact rational seconds such as `"5s"` or `"1001/24000s"`.
     case time
+    /// A bar's color: `#` and six hex digits (`BarColor(hex:)`).
+    case color
     /// One of a fixed set of strings; `noun` names it in messages
     /// ("blend mode").
     case choice([String], noun: String)
@@ -103,6 +105,11 @@ enum StrictJSON {
             guard let text = value as? String, isTime(text) else {
                 let shown = (value as? String).map { "\"\($0)\" isn't a valid time" } ?? "Expected a time"
                 throw JSONShapeError(message: shown + ", written as rational seconds such as 1001/24000s or 5s", path: path)
+            }
+        case .color:
+            guard let text = value as? String, BarColor(hex: text) != nil else {
+                let shown = (value as? String).map { "\"\($0)\" isn't a color" } ?? "Expected a color"
+                throw JSONShapeError(message: shown + ", written as # and six hex digits such as #3DB8D0", path: path)
             }
         case .choice(let options, let noun):
             guard let text = value as? String else { throw expected("text", path) }

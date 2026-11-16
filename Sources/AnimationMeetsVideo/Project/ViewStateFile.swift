@@ -108,11 +108,15 @@ enum ViewStateFile {
             var start: ProjectFile.TimeEntry?
             var end: ProjectFile.TimeEntry?
             var on: Bool?
+            /// `"#RRGGBB"`; absent for the loop's tone. One that doesn't
+            /// read is dropped, leaving the region in its tone.
+            var color: String?
 
             init(_ region: LoopRegion) {
                 start = ProjectFile.TimeEntry(region.start)
                 end = ProjectFile.TimeEntry(region.end)
                 on = region.isOn
+                color = region.color?.hex
             }
 
             init(from decoder: Decoder) {
@@ -120,6 +124,7 @@ enum ViewStateFile {
                 start = try? container?.decodeIfPresent(ProjectFile.TimeEntry.self, forKey: .start)
                 end = try? container?.decodeIfPresent(ProjectFile.TimeEntry.self, forKey: .end)
                 on = try? container?.decodeIfPresent(Bool.self, forKey: .on)
+                color = try? container?.decodeIfPresent(String.self, forKey: .color)
             }
 
             /// Nil unless both times read and the end is after the start.
@@ -127,7 +132,7 @@ enum ViewStateFile {
                 guard let start = start?.time, let end = end?.time,
                       start.isNumeric, end.isNumeric, end > start
                 else { return nil }
-                return LoopRegion(start: start, end: end, isOn: on ?? true)
+                return LoopRegion(start: start, end: end, isOn: on ?? true, color: color.flatMap(BarColor.init(hex:)))
             }
         }
 
