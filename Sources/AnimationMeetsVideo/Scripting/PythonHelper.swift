@@ -287,7 +287,7 @@ final class HelperConnection: @unchecked Sendable {
             let data = handle.availableData
             if data.isEmpty { handle.readabilityHandler = nil } else { errorText.append(data) }
         }
-        nonisolated(unsafe) let errorOutput = errors.fileHandleForReading
+        let errorOutput = errors.fileHandleForReading
         let sandboxed = confined
         process.terminationHandler = { ended in
             // What it wrote just before it ended may not have been read

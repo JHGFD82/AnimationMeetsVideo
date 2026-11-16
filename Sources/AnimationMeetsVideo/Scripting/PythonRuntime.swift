@@ -80,10 +80,10 @@ enum PythonRuntime {
     /// The interpreter's version, asked of it; nil when it doesn't run or
     /// doesn't answer within a few seconds.
     static func version(of interpreter: URL) async -> PythonVersion? {
-        nonisolated(unsafe) let process = Process()
+        let process = Process()
         process.executableURL = interpreter
         process.arguments = ["-E", "-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"]
-        nonisolated(unsafe) let output = Pipe()
+        let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
