@@ -55,6 +55,9 @@ enum ProjectStore {
         ?? .package
     static let projectFileName = "project.json"
     static let mediaFolderName = "Media"
+    /// The project's Python scripts (see docs/python-scripting.md): the
+    /// person's work, copied by Save As and backups, never deleted.
+    static let scriptsFolderName = "Scripts"
     static let referenceFolderName = "Reference"
     static let cacheFolderName = "Cache"
     static let backupsFolderName = "Backups"

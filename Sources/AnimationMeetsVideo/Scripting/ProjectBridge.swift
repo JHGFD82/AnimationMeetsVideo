@@ -73,10 +73,6 @@ actor ProjectBridge {
         }
     }
 
-    /// A change, if `call` is one; nil for any other call. Changes come
-    /// in the step that adds them (see `ProjectBridge+Changes`).
-    func change(_ call: HelperCall) throws -> JSONValue? { nil }
-
     // MARK: - Reads
 
     private func readProject() -> JSONValue {
@@ -184,7 +180,7 @@ actor ProjectBridge {
     private func readControlAt(_ call: HelperCall) throws -> JSONValue {
         let target = try self.target(call)
         guard let times = call["times"]?.array else { throw ScriptCallError.type("control_at takes a list of times") }
-        let frames = try timeline(call, key: "target")
+        let frames = try self.timeline(call, key: "target")
         return try .array(times.map { time in
             let at = try ScriptTime.time(time, in: frames)
             switch target.kind {
@@ -243,7 +239,7 @@ actor ProjectBridge {
     }
 
     func layer(_ call: HelperCall) throws -> (Timeline, TimelineLayer) {
-        let timeline = try timeline(call)
+        let timeline = try self.timeline(call)
         guard let layer = timeline.layer(id: try uuid(call, "layer")) else {
             throw ScriptCallError.gone("The layer is no longer in \u{201C}\(timeline.name)\u{201D}.")
         }
@@ -309,10 +305,24 @@ actor ProjectBridge {
         return object
     }
 
-    /// Lets the changes in `ProjectBridge+Changes` replace the working
-    /// copy.
-    func setWorking(_ project: EditingProject) {
-        working = project
+    /// Takes a change made to a copy of the working copy, unless the app
+    /// would refuse it by hand: a change to a clip a tool has open, or to
+    /// keyframes a Keyframing method made. Then the working copy is left
+    /// as it was and the line that asked raises `amv.Refused`. What
+    /// follows from the change (methods whose clip or reads changed making
+    /// their keyframes again) follows at once, so the reads after it see
+    /// it, as the editor does after an edit.
+    func commit(_ project: EditingProject) throws {
+        for lock in context.locks where lock.isChanged(from: working, to: project) {
+            let name = lock.clipIDs.first.map { working.clipName($0, in: lock.timelineID) } ?? "A clip"
+            throw ScriptCallError.refused("\u{201C}\(name)\u{201D} is open in the Motion Designer, and nothing else may change it until it closes.")
+        }
+        if let edit = project.drivenKeyframesEdit(since: working) {
+            throw ScriptCallError.refused("\(edit.controlName)'s keyframes are made by \(edit.methodName), which would write over them. Bake them first, with bake().")
+        }
+        var refreshed = project
+        refreshed.refreshKeyframing(after: working)
+        working = refreshed
     }
 }
 

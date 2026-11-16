@@ -28,6 +28,9 @@ final class ProjectSession {
     /// What the project's window shows, for scripts' `amv.timeline`,
     /// `amv.selection` and `amv.playhead`.
     @ObservationIgnored let scriptWindow = ScriptWindowState()
+    /// The project's scripts, in its package's `Scripts/`, for the
+    /// Scripts menu.
+    let scriptLibrary = ScriptLibrary()
     /// The project's own window, whose undo its timeline windows share
     /// (see `TimelineWindow`).
     @ObservationIgnored weak var editorWindow: NSWindow?
@@ -114,6 +117,7 @@ final class ProjectSession {
 
     private func setProjectURL(_ url: URL?) {
         projectURL = url
+        scriptLibrary.watch(package: url)
         onProjectURLChange?(url)
         ProjectWindows.shared.openProjectsChanged()
     }
@@ -152,6 +156,8 @@ final class ProjectSession {
             try await ProjectStore.trashPackage(at: url, checkingLock: true)
             try ProjectStore.preparePackage(at: url)
             _ = try await ProjectStore.save(fresh, to: url)
+            // Made on this Mac, so its scripts run without asking.
+            CodeApproval.shared.allowScripts(ofProject: fresh.id, at: url)
             return url
         } catch {
             showAlert(title: "Couldn't Create Project", message: ErrorAdvice.sentence(for: error))
@@ -377,6 +383,7 @@ final class ProjectSession {
             fileMonitor.track(package: url)
             analysis.packageURL = url
             if isNewLocation {
+                if let previous = projectURL { CodeApproval.shared.projectMoved(project.id, from: previous, to: url) }
                 setProjectURL(url)
                 viewMemory.move(to: url)
             }
@@ -565,6 +572,7 @@ final class ProjectSession {
     /// The window is closing: lets go of the project's lock and watching.
     func close() {
         viewMemory.save(for: project)
+        scriptLibrary.watch(package: nil)
         fileMonitor.stop()
         projectLock?.release()
         projectLock = nil

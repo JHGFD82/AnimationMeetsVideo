@@ -44,6 +44,14 @@ struct ScriptTarget {
     let sceneTracks: [UUID: ChangeScoreTrack]
     let window: ScriptWindowState
 
+    init(projectState: ProjectState, history: ProjectHistory, packageURL: URL?, sceneTracks: [UUID: ChangeScoreTrack], window: ScriptWindowState) {
+        self.projectState = projectState
+        self.history = history
+        self.packageURL = packageURL
+        self.sceneTracks = sceneTracks
+        self.window = window
+    }
+
     init(session: ProjectSession) {
         projectState = session.projectState
         history = session.history

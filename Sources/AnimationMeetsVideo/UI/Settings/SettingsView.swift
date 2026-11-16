@@ -317,6 +317,15 @@ private struct ScriptingSettings: View {
                 }
                 SheetNote(note)
             }
+            Groove()
+            SheetSection("Allowed code") {
+                SheetRow("This Mac", alignment: .center) {
+                    Button("Forget Allowed Code") { CodeApproval.shared.forgetAll() }
+                        .disabled(CodeApproval.shared.isEmpty)
+                        .accessibilityHint("Scripts and expressions from projects ask again before they run")
+                }
+                SheetNote("Python that came with a project from somewhere else runs only once you allow it here. Forgetting asks again for every script and expression you allowed, and for the projects whose scripts you let run.")
+            }
         }
         .task(id: chosenPath) { await readVersions() }
     }
