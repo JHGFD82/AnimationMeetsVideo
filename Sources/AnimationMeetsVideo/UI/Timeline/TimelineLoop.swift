@@ -1,27 +1,9 @@
 import CoreMedia
 import SwiftUI
 
-/// The loop button in the timeline's header: on while the loop region is
-/// on. A view of its own, reading the loop in its body, so turning the
-/// loop on or off doesn't rebuild the whole timeline (`TimelineView` is
-/// `Equatable` and doesn't read it).
-struct TimelineLoopButton: View {
-    let loop: PlaybackLoop
-    /// Turns the loop on or off, making a region when there is none.
-    let onToggle: () -> Void
-
-    var body: some View {
-        Toggle(isOn: Binding(get: { loop.isOn }, set: { _ in onToggle() })) {
-            Image(systemName: Design.Symbol.loop)
-        }
-        .help("Loop playback over the loop region (C)")
-        .accessibilityLabel("Loop")
-        .accessibilityValue(loop.isOn ? "On" : "Off")
-    }
-}
-
-/// The loop bar under the ruler. Reads the loop in its own body, as the
-/// button does.
+/// The loop bar under the ruler. Reads the loop in its own body, so
+/// turning the loop on or off doesn't rebuild the whole timeline
+/// (`TimelineView` is `Equatable` and doesn't read it).
 struct TimelineLoopLane: View {
     let parent: TimelineView
     let width: CGFloat
@@ -36,8 +18,9 @@ struct TimelineLoopLane: View {
     }
 }
 
-// The loop region in the main timeline: its bar, the button, C and the
-// Timeline menu's items. See docs/loop-region.md.
+// The loop region in the main timeline: its bar, C and the Timeline
+// menu's items. The header's loop button shows or hides the bar, as the
+// sections button does its row. See docs/loop-region.md.
 extension TimelineView {
     func loopBar(viewport: TimelineViewport) -> some View {
         let tolerance = snapTolerance(viewport)
@@ -57,10 +40,9 @@ extension TimelineView {
         )
     }
 
-    /// The loop button, C and Loop Playback: turns the region on or off,
-    /// or with none, makes one over the selected clips, else the whole
-    /// timeline, and turns it on. Says which to VoiceOver, since nothing
-    /// else does.
+    /// C and Loop Playback: turns the region on or off, or with none,
+    /// makes one over the selected clips, else the whole timeline, and
+    /// turns it on. Says which to VoiceOver, since nothing else does.
     func toggleLoop() {
         let loop = playback.loop
         if loop.region != nil {

@@ -71,6 +71,9 @@ struct LoopBar: View {
             Color.black.opacity(0.22)
                 .contentShape(Rectangle())
                 .gesture(drawGesture)
+                // The crosshair, as over the keyframe graph: here a drag
+                // draws.
+                .pointerStyle(.rectSelection)
             if let region {
                 regionView(region, shown: isAdjusting ? draft ?? region : region)
                     // A region being drawn replaces it on release; until

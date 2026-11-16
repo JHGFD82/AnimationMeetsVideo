@@ -25,7 +25,10 @@ extension TimelineView {
         let viewport = viewport(width: trackWidth)
         let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
         let shownAreas = shownAreaLayout.shown
+        // A groove parts the loop bar from the sections when both show.
+        let partsLoopFromSections = shownAreaLayout.showsLoop && shownAreaLayout.showsSections
         let railHeight = rulerHeight + (shownAreaLayout.showsLoop ? LoopBar.height : 0)
+            + (partsLoopFromSections ? separatorHeight : 0)
             + (shownAreaLayout.showsSections ? SectionLane.height : 0) + separatorHeight
         // Whatever height the timeline is given goes to the areas,
         // split by their shares: a taller timeline shows more
@@ -68,6 +71,10 @@ extension TimelineView {
                             .accessibilityHidden(true)
                         TimelineLoopLane(parent: self, width: trackWidth)
                     }
+                }
+                if partsLoopFromSections {
+                    Groove()
+                        .frame(height: separatorHeight)
                 }
                 if shownAreaLayout.showsSections {
                     HStack(spacing: 0) {

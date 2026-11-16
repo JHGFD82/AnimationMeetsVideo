@@ -317,6 +317,11 @@ struct TimelineView: View {
                             clickVolume: $beatClickVolume, onPreviewClick: { beatClicks.preview() }
                         )
                     }
+                    Toggle(isOn: $areaLayout.showsLoop) {
+                        Image(systemName: Design.Symbol.loop)
+                    }
+                    .help(shownAreaLayout.showsLoop ? "Hide the loop row" : "Show the loop row")
+                    .accessibilityLabel("Loop row")
                     Toggle(isOn: $areaLayout.showsSections) {
                         Image(systemName: "rectangle.split.3x1")
                     }
@@ -345,7 +350,6 @@ struct TimelineView: View {
                     }
                     .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
                     .accessibilityLabel("Snapping")
-                    TimelineLoopButton(loop: playback.loop, onToggle: toggleLoop)
                     Button {
                         addAdjustmentLayer()
                     } label: {
