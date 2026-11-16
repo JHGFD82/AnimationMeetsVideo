@@ -1,10 +1,10 @@
 # Viewer handles
 
-Status: **partly implemented**. Steps 1 to 6 of
+Status: **partly implemented**. Steps 1 to 7 of
 [Building it](#building-it) are built: the handles, the zoom and scroll,
 the keys and VoiceOver, and the opacity chip, in every editor surface's
-viewer. Steps 7 to 10 (the external display's canvas in place of its
-markup, an effect's own handles, `viewer` in packages, shape and text
+viewer and on the synced external display, whose markup is gone. Steps
+8 to 10 (an effect's own handles, `viewer` in packages, shape and text
 handles) are not. Where the code differs from what follows is listed
 under [As built](#as-built). The document says what the person sees,
 then the framework the handles are built on, then where each piece goes
@@ -870,7 +870,7 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 
 ## As built
 
-Where the code (steps 1 to 6) differs from the plan above:
+Where the code (steps 1 to 7) differs from the plan above:
 
 - **`HandleContext`** carries the clip's picture before its stack
   (`pictureRect`, worked out by `TransformHandles.pictureRect`), Show Up
@@ -893,20 +893,34 @@ Where the code (steps 1 to 6) differs from the plan above:
   `ViewerCanvas` puts over the well inside a `PlayheadReader`; the
   pointer shapes are drawn from SF Symbols by `HandleCursors`, the
   resize arrow included, turned to the nearest 15°.
-- **`ViewerCanvasState`** is owned by `TimelineEditorSurface`, not
-  `EditorView`, since the external display (step 7) doesn't share it yet.
+- **`ViewerCanvasState`** is owned by `EditorView` and handed to its
+  surface and the external display, as planned; a surface not given one
+  (a timeline window's, the external display's independent editor) keeps
+  its own. It also carries the editor surface's parked playhead and
+  effects panel (`follow(playhead:effects:)`, set while the surface is
+  shown), which the external display's canvas reads: neither lived
+  outside the surface before.
+- **The readout and the lever** are drawn only on the display the drag
+  is on, since the pointer is in its points; the other display shows
+  the clip moving, and a fade's value in its opacity chip.
+- **The zoom keys** (⌘+, ⌘=, ⌘−, ⌘0, ⇧⌘0) are taken by the canvas's key
+  monitor in its own window, before the View menu, which can't reach
+  the external display's window (not one of the app's scenes). The menu
+  still lists them, and has them when text is being typed.
+- **The external display's picture** is `FramedPicture` (moved out of
+  `ViewerPanel`), with no hairline round it, filling the screen at Fit.
 - **The anchor drag** solves the anchor and Position together (the 4×4
   system), rounds the anchor, then solves Position again from one corner
   of the box, as planned; with no Transform on, the anchor moves alone.
 - Not run yet: the code was written without a Swift toolchain, so the
   tests (`TransformHandlesTests`, `ViewerMappingTests`,
   `ViewerCanvasInteractionTests`, the new `StructureKeyTests` case and
-  the `viewerHandles` and `viewerZoomed` snapshots) need a build on a
-  Mac before this is taken as working.
+  the `viewerHandles`, `viewerZoomed` and `externalDisplaySynced`
+  snapshots) need a build on a Mac before this is taken as working.
 
 ## Building it
 
-Steps 1 to 6 are built (see [As built](#as-built)).
+Steps 1 to 7 are built (see [As built](#as-built)).
 
 1. `ViewerMapping` with zoom and place, `ViewerHandleSet` and its types,
    the bounding box (moving `fitTransform`), and `TransformHandles` for

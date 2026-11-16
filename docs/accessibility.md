@@ -160,6 +160,9 @@ playhead to the middle of the view when it lands out of view.
   half a well that way; ⌘+, ⌘−, ⌘0 and ⇧⌘0 zoom and center it.
 - **Show Handles** in the viewer's rail is a toggle with an on or off
   value; the Center and Fit chips are buttons, Fit's value the zoom.
+- **The external display**, synced, has the same canvas and elements
+  over its picture, and a Show Handles switch in its top bar; the zoom
+  keys work there too, since the canvas takes them itself.
 
 ### Effects panel lanes
 
@@ -272,11 +275,6 @@ the snap line's arrival.
 - **Announcements**: VoiceOver isn't told when a timeline edit lands (a
   split, a nudge refused at a neighbor), so the result must be found by
   reading.
-- **Annotations** on the external display are drawn with the pointer only;
-  VoiceOver can remove the last stroke or clear them (Remove last stroke
-  and Clear annotations actions, also the Remove last stroke and Clear
-  markup buttons in the window's top bar) but not draw. ⌘Z and ⇧⌘Z undo
-  and redo strokes while the window shows them.
 - **Dialogs and alerts** use standard controls and should work, but have
   not been checked with VoiceOver.
 - Nothing here has been tested with VoiceOver on a real machine yet; the

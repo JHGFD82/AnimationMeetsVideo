@@ -76,10 +76,11 @@ keeps it as a downloadable artifact for 14 days.
    milestone that produces a usable edit-and-export loop.
 
 3. **Dual-display viewer (done).** `NSScreen`-aware full-screen output window for an
-   external display, playhead-synced with the main editor, plus a lightweight
-   freehand draw-over/annotation layer for review and directing. This is
-   scoped as simple markup ink, not the full vector engine from milestone 8 —
-   it exists so the editor is useful on a two-monitor desk early.
+   external display, playhead-synced with the main editor. Its freehand
+   markup ink has since given way to the viewer's canvas
+   ([docs/viewer-handles.md](docs/viewer-handles.md)): the same handles,
+   zoom and scroll as the main viewer, editing the project; drawing comes
+   back as a pen tool.
 
 4. **HDR color pipeline (done).** Metal preview path driven by `rgba16Float`
    textures, EDR-aware `MTKView` configuration, and CoreVideo/ColorSync tagging
