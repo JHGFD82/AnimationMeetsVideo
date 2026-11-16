@@ -7,7 +7,7 @@ import Testing
 /// A clip block clicked, dragged and cancelled with real events (see
 /// `EventHarness`; run with `UI_EVENTS=1`).
 @MainActor
-@Suite(.serialized, .enabled(if: EventHarness.isEnabled))
+@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .eventsOneAtATime)
 struct ClipBlockInteractionTests {
     /// What the block asked for.
     @MainActor

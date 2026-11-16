@@ -9,7 +9,7 @@ import Testing
 /// take the keyboard, as well as on another field (`TextEditEnding`,
 /// which covers every window).
 @MainActor
-@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .timeLimit(.minutes(1)))
+@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .eventsOneAtATime, .timeLimit(.minutes(1)))
 struct TextEditEndingPanelTests {
     @MainActor @Observable
     final class Record {

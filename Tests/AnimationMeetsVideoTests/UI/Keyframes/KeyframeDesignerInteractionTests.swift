@@ -5,7 +5,7 @@ import Testing
 @testable import AnimationMeetsVideo
 
 @MainActor
-@Suite(.serialized, .enabled(if: EventHarness.isEnabled))
+@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .eventsOneAtATime)
 struct KeyframeDesignerInteractionTests {
     @MainActor private struct Fixture {
         let hud: KeyframeGraphHUDs

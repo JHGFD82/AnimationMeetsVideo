@@ -7,7 +7,7 @@ import Testing
 /// The Timelines tab's filmstrips skimmed and opened with real events (see
 /// `EventHarness`; run with `UI_EVENTS=1`).
 @MainActor
-@Suite(.serialized, .enabled(if: EventHarness.isEnabled))
+@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .eventsOneAtATime)
 struct TimelineFilmstripsInteractionTests {
     private static let size = CGSize(width: 400, height: 300)
 

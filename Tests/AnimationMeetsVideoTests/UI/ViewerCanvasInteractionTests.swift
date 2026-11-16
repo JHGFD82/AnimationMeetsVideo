@@ -7,7 +7,7 @@ import Testing
 /// The viewer's handles dragged, cancelled and nudged with real events (see
 /// `EventHarness`; run with `UI_EVENTS=1`).
 @MainActor
-@Suite(.serialized, .enabled(if: EventHarness.isEnabled))
+@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .eventsOneAtATime)
 struct ViewerCanvasInteractionTests {
     private static let well = CGSize(width: 1032, height: 612)
 
