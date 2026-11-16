@@ -8,7 +8,8 @@ import Foundation
 /// `+ - * /` and parentheses work as in a numeric field, with unary minus.
 /// Comparisons (`< <= > >= == !=`) bind loosest and give 1 or 0. Only
 /// numbers take part in arithmetic; a vector (a point, a color, several
-/// numbers) can only be an expression's whole value.
+/// numbers) can only be an expression's whole value, or be read a part at
+/// a time (`spotSize.x`, `.y`, `.z`, `.w`).
 struct EffectExpression: Equatable, Sendable {
     /// What an expression or a name gives.
     enum ValueType: Equatable, Sendable {
@@ -58,7 +59,13 @@ struct EffectExpression: Equatable, Sendable {
     /// take a control's name instead.
     static let functions: [String: Int] = [
         "rad": 1, "fract": 1, "floor": 1, "round": 1, "abs": 1, "min": 2, "max": 2, "mod": 2, "pow": 2, "log": 1,
+        // For a viewer handle that turns or measures: degrees from radians,
+        // and the angle of (x, y) as atan2(y, x).
+        "deg": 1, "sin": 1, "cos": 1, "atan2": 2, "sqrt": 1,
     ]
+
+    /// The names of a vector's parts, in order.
+    static let componentNames: [Character] = ["x", "y", "z", "w"]
 
     /// Every name a package's control can't take.
     static var reservedNames: Set<String> {
@@ -74,6 +81,8 @@ struct EffectExpression: Equatable, Sendable {
         case call(String, [Node])
         case center(String)
         case index(String)
+        /// One part of a vector or point control, from 0.
+        case component(String, Int)
     }
 
     let text: String
@@ -105,7 +114,7 @@ struct EffectExpression: Equatable, Sendable {
         func reads(_ node: Node) -> Bool {
             switch node {
             case .number: false
-            case .name(let read), .center(let read), .index(let read): read == name
+            case .name(let read), .center(let read), .index(let read), .component(let read, _): read == name
             case .negate(let operand): reads(operand)
             case .binary(_, let lhs, let rhs), .comparison(_, let lhs, let rhs): reads(lhs) || reads(rhs)
             case .call(_, let arguments): arguments.contains(where: reads)
@@ -155,11 +164,19 @@ struct EffectExpression: Equatable, Sendable {
             // fraction, as for a logarithm of 0 or less.
             case "pow": return [finite(pow(numbers[0], numbers[1]))]
             case "log": return [numbers[0] > 0 ? log(numbers[0]) : 0]
+            case "deg": return [numbers[0] * 180 / .pi]
+            case "sin": return [sin(numbers[0])]
+            case "cos": return [cos(numbers[0])]
+            case "atan2": return [numbers[0] == 0 && numbers[1] == 0 ? 0 : atan2(numbers[0], numbers[1])]
+            case "sqrt": return [numbers[0] > 0 ? numbers[0].squareRoot() : 0]
             case "min": return [min(numbers[0], numbers[1])]
             default: return [max(numbers[0], numbers[1])]
             }
         case .center(let name): return values.center(name)
         case .index(let name): return [values.index(name)]
+        case .component(let name, let index):
+            let parts = values.value(name)
+            return [parts.indices.contains(index) ? parts[index] : 0]
         }
     }
 
@@ -264,6 +281,19 @@ struct EffectExpression: Equatable, Sendable {
                 guard let type = names[name] else { throw Problem(message: "Unknown name \"\(name)\"") }
                 guard type != .choice else { throw Problem(message: "\"\(name)\" is a choice; read it as index(\(name))") }
                 guard type != .curve else { throw Problem(message: "\"\(name)\" is a curve; a kernel reads it as a picture from it") }
+                if let part = componentSuffix() {
+                    let count: Int = switch type {
+                    case .point: 2
+                    case .vector(let count): count
+                    default: 0
+                    }
+                    guard part < count else {
+                        throw Problem(message: count == 0
+                            ? "\"\(name)\" is one number, with no parts to read"
+                            : "\"\(name)\" has \(count) parts, so no .\(EffectExpression.componentNames[part])")
+                    }
+                    return (.component(name, part), .number)
+                }
                 return (.name(name), type)
             }
             index += 1
@@ -299,6 +329,18 @@ struct EffectExpression: Equatable, Sendable {
         }
 
         private static func functionArity(_ name: String) -> Int? { EffectExpression.functions[name] }
+
+        /// `.x`, `.y`, `.z` or `.w` straight after a name: which part, read
+        /// past; nil, reading nothing, for anything else.
+        private mutating func componentSuffix() -> Int? {
+            guard index + 1 < characters.count, characters[index] == ".",
+                  let part = EffectExpression.componentNames.firstIndex(of: characters[index + 1])
+            else { return nil }
+            let after = index + 2
+            if after < characters.count, characters[after].isLetter || characters[after].isNumber || characters[after] == "_" { return nil }
+            index = after
+            return part
+        }
 
         private mutating func identifier() -> String {
             let start = index
