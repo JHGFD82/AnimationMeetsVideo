@@ -108,7 +108,9 @@ have these, with every command in the Scripts menu or a labeled button:
 
 The console's output is a system text view, read by character, word or
 line and selectable across entries, and what each line gave is
-announced; an expression's error is announced when it appears and is
+announced. Only errors are in the error tone, and a problem the app
+reports starts with "Error:"; text printed to stderr is in the primary
+tone, as red alone would call it an error; an expression's error is announced when it appears and is
 the last line of its editor's value.
 
 The motion designer has keys of its own for everything its drags do

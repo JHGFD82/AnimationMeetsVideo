@@ -786,6 +786,8 @@ By the rules in [accessibility.md](accessibility.md):
 - As built: the console's output is a read-only system text view on the
   well surface, where the error tone reads at 5.2:1 (3.1:1 on the
   panel's own surface), and a problem the app reports reads "Error:";
+  text a script prints to stderr is in the primary tone like stdout,
+  since it is often a warning and red alone mustn't say "error";
   what each line gave is announced. Its input line stays enabled while
   a line runs, so Escape reaches it. The run sheet's Stop answers to
   Escape and Command-Period. Review Expressions' rows keep their Allow

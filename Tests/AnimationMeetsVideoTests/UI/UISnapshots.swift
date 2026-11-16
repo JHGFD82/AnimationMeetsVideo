@@ -2104,7 +2104,7 @@ struct UISnapshots {
     /// The Python Console with what the app itself reports, each after
     /// "Error:" in the error tone: a script's changes not kept, and no
     /// Python to run a line. Around them, the note a script starts with
-    /// and what it printed to its error stream.
+    /// and what it printed to stderr, in the primary tone like stdout.
     @Test func scriptConsoleProblems() throws {
         let transcript = ScriptTranscript()
         transcript.append(.note("Running \u{201C}Tidy Titles\u{201D}\n"))

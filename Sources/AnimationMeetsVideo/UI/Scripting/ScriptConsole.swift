@@ -185,10 +185,10 @@ struct ScriptConsole: View {
 }
 
 /// The console's transcript, as a read-only system text view: lines typed
-/// in the secondary tone after ">>> ", printed text and values in the
-/// primary one, errors in the error tone, a problem the app reports
-/// after "Error:", and notes in the warning tone. It scrolls to the end
-/// as entries come.
+/// in the secondary tone after ">>> ", printed text (stderr too) and
+/// values in the primary one, errors in the error tone, a problem the
+/// app reports after "Error:", and notes in the warning tone. It
+/// scrolls to the end as entries come.
 private struct TranscriptView: NSViewRepresentable {
     let entries: [ScriptTranscript.Entry]
 
@@ -235,8 +235,10 @@ private struct TranscriptView: NSViewRepresentable {
             case .input:
                 text = ">>> " + text
                 color = Design.textSecondary
-            case .output, .result: color = Design.textPrimary
-            case .errorOutput: color = Design.statusDanger
+            // stderr too: it carries warnings and progress as often as
+            // errors, and red with no word beside it would be colour alone
+            // saying "error". A real error comes back as `.error`.
+            case .output, .errorOutput, .result: color = Design.textPrimary
             case .error:
                 // A traceback ends naming its error; a problem says so.
                 if !text.hasPrefix("Traceback"), !text.contains("Error:") { text = "Error: " + text }
