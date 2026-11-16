@@ -22,6 +22,9 @@ struct ViewerPanel: View {
     /// (Show Up to Here).
     var banner: String?
     var onClearBanner: () -> Void = {}
+    /// What the viewer's handles edit (see `ViewerCanvas`); nil in a viewer
+    /// that edits nothing.
+    var handles: ViewerHandlesSource?
     /// A clip skimmed in the browser, shown in place of the timeline;
     /// absent in windows without a browser.
     @Environment(BrowserSkim.self) private var skim: BrowserSkim?
@@ -29,6 +32,7 @@ struct ViewerPanel: View {
     /// only by the views that show it, so a pinch or a scroll doesn't
     /// rebuild the panel.
     @State private var framing = ViewerFraming()
+    @AppStorage(Preferences.viewerHandles) private var showsHandles = false
 
     private var isSkimming: Bool { skim?.isActive ?? false }
 
@@ -49,7 +53,10 @@ struct ViewerPanel: View {
                 FramedPicture(playback: playback, frameRate: frameRate, frameSize: frameSize, framing: framing)
                 // Over the picture, under the notices, which keep their
                 // clicks.
-                ViewerCanvas(framing: framing, frameSize: frameSize)
+                ViewerCanvas(
+                    framing: framing, frameSize: frameSize, playback: playback, handles: handles,
+                    showsOtherPicture: isSkimming || trimPreview.isActive
+                )
                 ViewerFramingChips(framing: framing)
                 if !hasContent {
                     ZStack {
@@ -121,6 +128,15 @@ struct ViewerPanel: View {
 
                 ViewerTimecode(playback: playback, frameRate: frameRate)
                 Spacer()
+                if handles != nil {
+                    Toggle(isOn: $showsHandles) {
+                        Image(systemName: "viewfinder")
+                    }
+                    .toggleStyle(.icon)
+                    .help("Show handles on the clip selected in the timeline (H)")
+                    .accessibilityLabel("Show Handles")
+                    .accessibilityValue(showsHandles ? "On" : "Off")
+                }
                 Menu {
                     Toggle("Motion Blur in Preview", isOn: Binding(
                         get: { playback.motionBlurInPreview },

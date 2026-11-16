@@ -1321,6 +1321,75 @@ struct UISnapshots {
     /// The box over the pointer while something on the timeline is
     /// dragged: moved later, earlier, and back where it started; a
     /// transition lengthened; a slip.
+    /// The viewer's handles on a shrunk, stretched and turned rectangle
+    /// whose anchor is moved off its middle: the box, the scale handles
+    /// turned with it, the crosshair and the opacity chip. Then a turn
+    /// under way, with its lever from the crosshair to the pointer and the
+    /// readout, the other handles hidden.
+    @Test func viewerHandles() throws {
+        let key = Preferences.viewerHandles
+        let remembered = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(true, forKey: key)
+        defer { UserDefaults.standard.set(remembered, forKey: key) }
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let shape = try #require(project.addShapeLayer(.rectangle, to: timelineID))
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            var transform = Effect(kind: .transform)
+            transform.changeControl(.scale) { $0.number = AnimatedValue(ComponentValue(values: [50, 40])) }
+            transform.changeControl(.rotation) { $0.number = AnimatedValue(ComponentValue(values: [20])) }
+            clip.effects.append(transform)
+            clip.anchorPoint = AnimatedValue(Vector2(x: 300, y: -200))
+        }
+        let frameSize = try #require(project.timeline(id: timelineID)).frameSize
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: timelineID)).clip
+        let selection = TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID)
+        let state = ProjectState(project)
+        func canvas(_ canvasState: ViewerCanvasState) -> some View {
+            ZStack {
+                Design.Surface.well.color
+                ViewerCanvas(
+                    framing: ViewerFraming(), frameSize: frameSize, playback: PlaybackModel(),
+                    handles: ViewerHandlesSource(
+                        project: .constant(project), timelineID: timelineID, selection: selection,
+                        effectsState: EffectsPanelState(), playhead: PlayheadState(), state: canvasState
+                    )
+                )
+            }
+            .environment(state)
+            .preferredColorScheme(.dark)
+        }
+        let size = CGSize(width: 800, height: 500)
+        try SnapshotSupport.render(canvas(ViewerCanvasState()), "viewer-handles", size: size)
+        let turning = ViewerCanvasState()
+        turning.drag = ViewerCanvasState.Drag(
+            handle: .rotate(.topRight), clipID: shape.clipID, clip: clip, readout: "37.5\u{00B0}", pointer: CGPoint(x: 600, y: 110)
+        )
+        try SnapshotSupport.render(canvas(turning), "viewer-handles-turning", size: size)
+    }
+
+    /// The viewer's Center and Fit chips, zoomed in to 150% off center.
+    @Test func viewerZoomed() throws {
+        let framing = ViewerFraming()
+        let size = CGSize(width: 640, height: 400)
+        let mapping = framing.mapping(frameSize: CGSize(width: 1920, height: 1080), wellSize: size, backingScale: 2)
+        framing.apply(mapping.zoomed(to: 1.5, about: CGPoint(x: 160, y: 120)))
+        let picture = try #require(framing.current).pictureRect
+        try SnapshotSupport.render(
+            ZStack(alignment: .topLeading) {
+                Design.Surface.well.color
+                Rectangle()
+                    .fill(LinearGradient(colors: [.indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: picture.width, height: picture.height)
+                    .position(x: picture.midX, y: picture.midY)
+                ViewerFramingChips(framing: framing)
+            }
+            .clipped()
+            .preferredColorScheme(.dark),
+            "viewer-zoomed", size: size
+        )
+    }
+
     @Test func dragTimecodeLabel() throws {
         try SnapshotSupport.render(
             VStack(alignment: .leading, spacing: 12) {

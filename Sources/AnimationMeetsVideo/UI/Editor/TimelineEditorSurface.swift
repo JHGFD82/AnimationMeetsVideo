@@ -93,6 +93,9 @@ struct TimelineEditorSurface<Library: View>: View {
     @AppStorage(Preferences.inspectorPanelWidth) private var inspectorPanelWidth = 280.0
     @AppStorage(Preferences.browserWidth) private var browserWidth = 260.0
     @State private var effectsState = EffectsPanelState()
+    /// The viewer's handles: their tool, what the arrows change, and the
+    /// drag in progress.
+    @State private var canvasState = ViewerCanvasState()
     /// The panel last clicked in, which wears a light border and gets the
     /// keys and the Edit menu first.
     @State private var activePanel = ActivePanel()
@@ -268,7 +271,11 @@ struct TimelineEditorSurface<Library: View>: View {
                         offlineNotice: offlineNotice,
                         trimPreview: trimPreview,
                         banner: partialBanner,
-                        onClearBanner: { effectsState.showUpTo = nil }
+                        onClearBanner: { effectsState.showUpTo = nil },
+                        handles: ViewerHandlesSource(
+                            project: $project, timelineID: timelineID, selection: selection,
+                            effectsState: effectsState, playhead: playhead, state: canvasState
+                        )
                     )
                     .editorPanel(.viewer, activePanel)
                     if showsSidePanel {
