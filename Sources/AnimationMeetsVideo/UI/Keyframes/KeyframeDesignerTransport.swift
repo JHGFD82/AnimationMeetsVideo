@@ -25,6 +25,7 @@ struct KeyframeDesignerTransport: View {
                 .accessibilityValue(time.timecode(frameRate: frameRate))
             Groove(axis: .vertical).frame(height: 18)
             GraphSkimToggle(hud: hud)
+            GraphLoopToggle()
             Spacer()
             Text("Changes apply immediately")
                 .font(Design.Typeface.micro)
