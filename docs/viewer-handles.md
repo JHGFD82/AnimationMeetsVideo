@@ -31,8 +31,11 @@ avoids that". What this design does about it is under
 Handles are **off until asked for**. A toggle in the viewer's rail
 (`viewfinder` glyph, beside the preview options) turns them on and off,
 as do **Show Handles** in the View menu and the **H** key while the
-viewer or the timeline has the keys. Remembered per Mac
-(`Preferences.viewerHandles`, off by default).
+viewer or the timeline has the keys (left alone while text is typed, as
+the timeline's plain keys are). Remembered per Mac
+(`Preferences.viewerHandles`, off by default), one setting for every
+viewer. The toggle's help says what it waits for: "Show handles on the
+clip selected in the timeline (H)".
 
 ### When handles show
 
@@ -69,24 +72,33 @@ viewer's zoom.
   round what it draws. On screen it is that rectangle turned, or a
   parallelogram when a stretch is followed by a turn. A one point line
   in `Design.accent` over a three point line of black at 35%, so it
-  reads on any footage.
+  reads on any footage. It is drawn past the frame's edge too, in the
+  well, for a clip moved or scaled out of the frame, and it isn't
+  changed by a transition playing over the clip.
 - **Scale handles**: eight squares, 8 points, white with an accent
   edge, turned with the box: one at each corner and one at the middle
-  of each edge.
+  of each edge. An edge shorter than 32 points on screen has no middle
+  handle, so a small box's handles don't run together; zooming in
+  brings it back.
 - **Rotation**: there is no handle of its own. The zone just **outside**
-  each of the eight scale handles, from the handle's edge to 24 points
-  out, turns the clip.
+  each scale handle turns the clip: the part of a circle 24 points
+  round the handle that lies outside the box and past the handle's own
+  6 points.
 - **Position** has no handle either: a drag **inside the box** moves the
   clip.
-- **The anchor**: a 10 point crosshair where the clip's anchor point is,
-  the point rotation turns about. It can be dragged.
-- **The opacity chip**: a small chip under the middle of the box's bottom
-  edge, kept inside the view, with the `circle.lefthalf.filled` glyph and
-  the clip's opacity ("100%"). Drag it left or right to **fade**.
+- **The anchor**: a 10 point crosshair where the clip's anchor point is.
+  It can be dragged. The scale handles and the rotation zones ignore it
+  (see
+  [The anchor point and the handles](#the-anchor-point-and-the-handles)).
+- **The opacity chip**: a small chip in the well's top left corner, with
+  the `circle.lefthalf.filled` glyph and the clip's opacity ("100%").
+  Drag it left or right to **fade**. It has a fixed place, not one by
+  the box: the ground round the box is the rotation zones', and a fixed
+  chip is in reach wherever the box is.
 
-A press is given to the first of these it lands on: a scale handle
-(within 6 points), the anchor, the chip, a rotation zone, the inside of
-the box. Anywhere else it does nothing.
+A press is given to the first of these it lands on: the chip, a scale
+handle (within 6 points), the anchor, a rotation zone, the inside of the
+box. Anywhere else it does nothing.
 
 ### The pointer
 
@@ -109,30 +121,28 @@ A handle that can't be dragged (a driven control, below) shows
 
 A drag begins once the pointer has moved 3 points; a press without a
 drag changes nothing. While it lasts the viewer follows it live, the
-other handles are hidden, and a **readout** chip by the pointer (the
-style of the timeline's drag timecode label) says the value it has
-reached. Releasing saves it as one undo step. **Escape** puts everything
-back, a Transform effect the drag added included. Modifiers are read as
-they change, so pressing or releasing Shift or Option mid-drag takes
-effect at once, with the pointer still.
+box follows the picture, the handles are hidden, and a **readout** chip
+by the pointer (the style of the timeline's drag timecode label) says
+the value it has reached: the control's own numbers, as the effects
+panel shows them. Releasing saves it as one undo step. **Escape** puts
+everything back, a Transform effect the drag added included. Modifiers
+are read as they change, so pressing or releasing Shift or Option
+mid-drag takes effect at once, with the pointer still. A pinch or a
+scroll during a drag is ignored.
 
 | Drag | Does | Shift | Option | Readout |
 | --- | --- | --- | --- | --- |
 | Inside the box | Position follows the pointer, in whole pixels | Kept to one axis: the one the drag from its start is nearer (the 45° line decides), free to change as the pointer crosses it | | `120, −40` |
 | A corner handle | Scale, **proportional**: both numbers grow by the same factor, keeping whatever ratio they had. The opposite corner stays where it is | **Free**: width and height apart, the corner under the pointer | Scales from the box's **center** instead | `150%`, or `150% × 120%` when apart |
 | An edge-middle handle | Scale along **that axis only**: width for the left and right handles, height for the top and bottom. The opposite edge stays where it is | **Proportional**: both numbers by the same factor | Scales from the box's center | the same |
-| A rotation zone | Rotation follows the pointer round the anchor; turns past 360° are kept | **Snapped to multiples of 15°** | | `37.5°`, always shown, to a tenth of a degree |
+| A rotation zone | Rotation follows the pointer round the box's **center**, from any of the eight zones; turns past 360° are kept | **Snapped to multiples of 15°** | | `37.5°`, always shown, to a tenth of a degree |
 | The anchor | The anchor point follows the pointer, in whole pixels; the picture stays where it is | In steps of **ten pixels** | **A tenth** of the pointer's movement, in tenths of a pixel | `Anchor 120, −40` |
 | The opacity chip | Opacity, one point of drag for 1%, 0 to 100 | Ten per point | A tenth per point | `80%` |
 
 - **Shift means "the other way"** on a scale handle: a corner is
   proportional and Shift frees it; an edge is one axis and Shift makes
-  it proportional.
-- **Scale holds a point still.** The Scale control scales about the
-  anchor, so to keep the opposite corner or edge (or, with Option, the
-  box's center) where it is, a scale drag also changes **Position** by
-  whatever that takes. When the point held is the anchor itself (Option
-  on a clip whose anchor hasn't been moved), Position isn't touched.
+  it proportional. Shift and Option work together: a corner with both
+  is free from the center.
 - An edge handle changes one of Scale's two numbers, x or y, which the
   stack applies along the screen's axes at that step
   ([effects.md](effects.md#transform)). With Scale above Rotation in the
@@ -141,7 +151,6 @@ effect at once, with the pointer still.
   numbers typed in the panel would.
 - A scale handle dragged across the point held flips the clip (negative
   scale), as the control allows.
-- **Rotation turns about the anchor**, from whichever zone it is dragged.
 - **The anchor's readout shows before a press too**: hovering the
   crosshair puts its position by the pointer (`Anchor 0, 0`), so it is
   plain what a press there would move. The numbers are the ones the
@@ -157,26 +166,79 @@ effect at once, with the pointer still.
   shows the two numbers as separate; a proportional drag leaves the link
   as it is.
 - A control a Keyframing effect drives refuses hand edits
-  ([keyframing-effects.md](keyframing-effects.md)). Its handle is drawn
-  dimmed, and a press on it gives the same notice the panel's field does
-  (`ProjectState.Refusal.drivenKeyframes`).
+  ([keyframing-effects.md](keyframing-effects.md)). A handle is drawn
+  dimmed when any control its drag would write is driven, and a press
+  on it gives the same notice the panel's field does
+  (`ProjectState.Refusal.drivenKeyframes`). Scale's and rotation's
+  handles write Position too (below), so a driven Position dims them
+  as well as the inside of the box.
 - Starting playback mid-drag (Space) ends the drag as letting go would,
   and the handles go.
+
+### The anchor point and the handles
+
+**The scale handles and the rotation zones ignore the anchor point.**
+What they hold still is decided by the box alone:
+
+| Drag | Holds still |
+| --- | --- |
+| A corner | The opposite corner |
+| An edge middle | The middle of the opposite edge |
+| Either, with Option | The box's center |
+| A rotation zone | The box's center |
+
+So a clip behaves the same under the handles wherever its anchor is,
+and moving the anchor never changes what a handle does.
+
+The Scale and Rotation controls themselves still turn about the anchor;
+that is what the anchor is ([effects.md](effects.md#transform)). A
+handle gets its own fixed point by changing **Position** along with
+Scale or Rotation, by whatever keeps that point where it is. When the
+point is the anchor anyway (a turn, or an Option scale, of a clip whose
+anchor is at its center), Position comes out unchanged and isn't
+written.
+
+The keys and VoiceOver, which have no handle to hold, scale and turn
+about the box's center, as an Option drag does. So nothing done in the
+viewer goes by the anchor.
+
+Outside the viewer the anchor is what it always was:
+
+- numbers typed or dragged in the effects panel scale and turn about
+  it;
+- **between keyframes** the picture scales and turns about it while
+  Position slides. A scale keyframed with the handles keeps its fixed
+  corner all the way between two keyframes. A turn keyframed with the
+  handles is about the box's center at each keyframe, but between them
+  the center cuts across rather than staying put, unless the anchor is
+  there. For a turn about a point over time, put the anchor on it.
+
+The crosshair keeps its place on the picture through a scale or a turn:
+the anchor point's own numbers aren't changed by either.
 
 ### Keyframes
 
 **A manipulation of something that already has keyframes adds a keyframe
 at the playhead**, or changes the one already there, as typing in the
 effects panel does (`EffectControl.setComponent(_:to:at:)`, in the
-clip's source time). This holds for every value a drag writes: Position,
-Scale, Rotation and Opacity, the anchor point
-(`TimelineClip.anchorPoint`), and the Position a scale or anchor drag
-changes to hold its point still. Something without keyframes simply
-takes the new value; a drag never starts animating it.
+clip's source time). The rule is one for every value a drag or a key
+writes:
 
-The point a scale or anchor drag holds still is held at the playhead.
-Where the other values are keyframed, the frames between keyframes move
-as the keyframes say, as in any app.
+- Position, Scale, Rotation and Opacity;
+- **the anchor point** (`TimelineClip.anchorPoint`): dragging it adds a
+  keyframe when it is animated, like the rest;
+- the Position that a scale, a turn or an anchor drag changes to hold
+  its point still.
+
+Something without keyframes simply takes the new value; nothing in the
+viewer ever starts animating it. Each value follows the rule on its own:
+a scale drag on a clip with Scale keyframed and Position not adds a
+Scale keyframe and changes Position's one value, which moves the clip
+at every frame, not only this one. The effects panel shows which values
+are animated before a drag is made.
+
+The point a drag holds still is held at the playhead. At other frames
+the picture is where the keyframes put it, as in any app.
 
 ### Which effect a drag edits
 
@@ -194,9 +256,11 @@ A stack can hold several Transform effects, or none.
   bottom still acts as the layer's blend mode
   ([effects.md](effects.md#blending)) and isn't moved along with the
   picture.
-- A target that has lost the control being dragged (a Transform reduced
-  to its Position, then scaled by a handle) gets it back
-  (`Effect.addControl`); one switched off is switched on.
+- A target that has lost a control the drag writes (a Transform reduced
+  to its Scale, then scaled by a handle, which needs Position too) gets
+  it back (`Effect.addControl`); one switched off is switched on.
+- With **Show Up to Here** on, the target is picked among the effects
+  the viewer is drawing, so a drag is always seen.
 - Nothing is added by selecting the clip or by pressing: only by the
   first step of a drag (or a key) that changes a value. Moving the
   anchor of a clip that is neither scaled nor turned adds nothing: the
@@ -224,21 +288,25 @@ stays under the pointer whatever else is in the stack (see
 
 A click in the canvas gives it the keyboard (it is focusable, and wears
 the active panel's border as the viewer does). While it has it and
-handles show, it claims these keys (`claimsKeys`), so the arrows don't
-step the playhead and Delete doesn't delete the clip:
+handles show, it claims Tab, the arrows and Escape (`claimsKeys`), so
+the arrows don't step the playhead. Delete isn't claimed: it deletes the
+selected clip, as it does with the viewer active today.
 
 | Keys | Does |
 | --- | --- |
-| Tab / ⇧Tab | Pick what the arrows change, next or previous: Position, Scale, Rotation, Anchor, Opacity. Its part of the handles is ringed. |
-| ← → ↑ ↓ | Nudge it: Position or Anchor one pixel that way; Scale 1% (→ and ↑ up, about the anchor); Rotation 1° (→ and ↓ clockwise); Opacity 1% |
+| Tab / ⇧Tab | Pick what the arrows change, next or previous: Position, Scale, Rotation, Anchor, Opacity. A chip beside the opacity chip names it and its value ("Position 120, −40") while the canvas has the keys. |
+| ← → ↑ ↓ | Nudge it: Position or Anchor one pixel that way; Scale 1% (→ and ↑ up, proportional, from the box's center); Rotation 1° (→ and ↓ clockwise, about the box's center); Opacity 1% |
 | with Shift | Ten pixels, 10%, 15°, 10% |
 | with Option | A tenth of a pixel, 0.1%, 0.1°, 0.1% |
 | Escape | During a drag, cancel it; otherwise give the keys back to the timeline |
 
 Position is picked to begin with, so a click in the viewer and an arrow
 key nudges the clip. Each nudge is an edit of its own, as a nudge on the
-tone graph is, and adds a keyframe as a drag does. Space still plays,
-and the handles go.
+tone graph is, and does what the drag does: it adds a keyframe where
+the value is animated, and a nudge of the anchor keeps the picture
+still. Space still plays, and the handles go. The canvas gives the keys back when its handles
+stop showing (another selection, playback) and at a press outside it,
+as other drawn views do.
 
 ## Zooming and scrolling the viewer
 
@@ -252,7 +320,9 @@ while playing**: they change what is looked at, not the project.
   both axes at once. A mouse's wheel scrolls it up and down, and across
   with Shift, as the system has it.
 - **⌘+** and **⌘−** zoom in and out by steps (10, 25, 50, 75, 100, 150,
-  200, 400, 800%), about the middle of the view. ⌘= is taken as ⌘+.
+  200, 400, 800%), about the middle of the view. ⌘= is taken as ⌘+. The
+  timeline keeps its plain **=**, **−** and **\\**: with Command the keys
+  are the viewer's, without it the timeline's.
 - Zoom runs from 10% to 800%. 100% is one timeline pixel to one screen
   pixel. **Fit** is the frame fitted to the well with its 36 point
   margin, as today, and is where every viewer starts.
@@ -347,7 +417,7 @@ struct ViewerHandle: Identifiable {
     /// A zone round `place` that is the handle too, in points: the ring
     /// outside a scale handle that rotates.
     var zone: HandleZone?
-    var isEnabled = true             // false: drawn dimmed, refuses with `refusal`
+    var isEnabled = true             // false: drawn dimmed; a press gives the project's refusal
     var name: String                 // "Scale", "Top Left Corner", "Center"
     var value: String                // "150%", read by VoiceOver and the readout
     /// Shown by the pointer while it rests on the handle: the anchor's.
@@ -489,12 +559,15 @@ trial values.
      Position when it comes out unchanged.
 
   A handle Scale can't move (its number is 0) is drawn dimmed.
-- **Rotation.** The angle the pointer has swept round the anchor on
-  screen since the press, added up from step to step so it runs past
-  360°, times the direction the picture turns on screen for a positive
-  Rotation (measured from two folds, so a flipped clip still follows the
-  pointer). Shift snaps the resulting **value**, not the change, to a
-  multiple of 15°.
+- **Rotation**, in two steps as Scale is. `C` is the box's center on
+  screen.
+  1. The angle the pointer has swept round `C` since the press, added up
+     from step to step so it runs past 360°, times the direction the
+     picture turns on screen for a positive Rotation (measured from two
+     folds, so a flipped clip still follows the pointer). Shift snaps
+     the resulting **value**, not the change, to a multiple of 15°.
+  2. Fold again with the new Rotation, see where `C` went (nowhere, when
+     the anchor is at the center), and move it back with Position.
 - **The anchor.** Where the anchor is on screen, and where the picture
   is, are both affine in the anchor point's two numbers and Position's
   two together. Five folds give a 4×4 system with two conditions: the
@@ -586,7 +659,8 @@ frame like any other.
 
 `ViewerPanel` lays `ViewerCanvas` over the well, above the picture and
 below the notices (banner, offline notice, build error), which keep
-their hit testing; the Center and Fit chips sit above the canvas. It is
+their hit testing; the Center and Fit chips sit above the canvas, bottom
+left, and the opacity chip is the canvas's own, top left. It is
 a view of its own that reads the playhead through `PlayheadReader`, so
 `ViewerPanel.body` still reads nothing that changes as the playhead
 moves (`ViewerPanelTrackingTests`). `TimelineEditorSurface` passes it
@@ -616,7 +690,7 @@ already reaches the editor's undo manager (`editorUndoManager`).
 Fit there fills the screen with no margin, so a full-frame clip's
 handles sit on the screen's edges, half showing, and its rotation zones
 are off the screen: pinch out, or ⌘−, to bring them in. ⌘0 goes back to
-filling the screen.
+filling the screen. The opacity chip sits under the top bar.
 
 **The markup goes**: `Annotations.swift` (`AnnotationModel`,
 `AnnotationOverlay`, `InkLayers`), `AnnotationModelTests`, the Remove
@@ -636,8 +710,9 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
   thing a drag can change is an **adjustable** element in it: Position X,
   Position Y, Scale, Rotation, Anchor X, Anchor Y, Opacity, with the
   number as its value ("120 pixels", "150 percent"). Increment and
-  decrement are the arrow keys' nudges (`ViewerHandleSet.nudge`), so
-  VoiceOver gets every later handle set for free.
+  decrement are the arrow keys' nudges (`ViewerHandleSet.nudge`), Scale
+  and Rotation about the box's center as the keys are, so VoiceOver
+  gets every later handle set for free.
 - Named actions for the ten-fold steps (Move 10 pixels left…), and
   Reset on each.
 - The readout and the hover text aren't announced; the element's value
@@ -646,9 +721,10 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
   value. The Center and Fit chips are buttons with those labels; Fit's
   value is the zoom ("64 percent"). Handle glyphs and the box are
   `.decorative()`.
-- Everything a drag does has the keys above. Everything the pinch and
-  the scroll do has ⌘+, ⌘−, ⌘0 and ⇧⌘0, bar scrolling to a chosen spot,
-  which Center undoes.
+- Everything a drag does has the keys above. The pinch has ⌘+, ⌘− and
+  ⌘0; the scroll has ⇧⌘0 and the canvas's VoiceOver scroll actions
+  (`accessibilityScrollAction`), which move the picture half a well
+  that way.
 - No animation: handles and chips appear and go at once, and Fit and
   Center jump (or go through `editorAnimation`, which respects Reduce
   Motion).
@@ -666,14 +742,21 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
     with Shift, proportional; the opposite corner or edge unmoved after
     each, and the center unmoved with Option; Position untouched when
     the point held is the anchor;
-  - rotation from a corner zone and from an edge zone, about the anchor;
-    15° snapping of the value; turns past 360°;
+  - rotation from a corner zone and from an edge zone, about the box's
+    center with the anchor at it (Position untouched) and away from it
+    (the center unmoved); 15° snapping of the value; turns past 360°;
+  - the same scale and the same turn giving the same box whatever the
+    anchor point is;
+  - a keyframed scale from a corner keeping that corner between its
+    keyframes;
   - the 45° lock and its change of axis;
   - the anchor: the box unmoved on a scaled and turned clip, Position
     untouched on a plain one, Shift's tens and Option's tenths;
   - keyframes: each of Position, Scale, Rotation, Opacity and the anchor
-    gets a keyframe at the source time when animated and none when not,
-    the held-still Position included;
+    point gets a keyframe at the source time when animated and none when
+    not, each on its own, the held-still Position included;
+  - a driven Position dimming the scale and rotation handles;
+  - no edge-middle handle on an edge under 32 points;
   - the target rule (selected, last, added, above a trailing Blending, a
     missing control put back); nudges.
 - `ViewerMappingTests`: frame to view and back at Fit, letterboxed both
@@ -700,21 +783,21 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 
 ## Decisions made here
 
-- **A scale drag holds the opposite corner or edge still**, which the
-  request implies by giving Option "from the center". The Scale control
-  scales about the anchor, so this is done by changing Position with
-  it, and a scale drag on a clip with Position keyframes adds one
-  there. The other reading, scaling about the anchor unless Option is
-  down, never touches Position but makes Option do nothing on a clip
-  whose anchor is at its center.
+- **Handles ignore the anchor by changing Position**, since the Scale
+  and Rotation controls can only turn about the anchor. A scale or a
+  turn made with a handle on a clip with Position keyframes therefore
+  adds a Position keyframe too.
+- **A scale drag holds the opposite corner or edge still**, and a turn
+  the box's center.
+- **The keys and VoiceOver scale and turn about the box's center**, the
+  nearest thing to a handle they have, so nothing in the viewer goes by
+  the anchor.
 - **Corners keep the first rule** (proportional, free with Shift) and
   only edges take the new one (one axis, proportional with Shift), so
   Shift flips whichever the handle does by itself.
 - **Option on a scale handle means the box's center**, not the anchor,
   as the request says "object center"; they are the same until the
   anchor is moved.
-- **Rotation turns about the anchor** though it is dragged from the
-  box's edge.
 - **Dragging the anchor keeps the picture still**, changing Position on
   a scaled or turned clip, as After Effects' Pan Behind does. Moving
   the anchor alone would make such a clip jump.
@@ -722,8 +805,16 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
   ten at a time, Option a tenth. "More incremental" could also mean
   both slow it down.
 - **Opacity is a chip dragged sideways**, the panel's value drag moved
-  onto the picture: opacity has no place in space to grab. It is a build
-  step of its own so it can be left out.
+  into the viewer: opacity has no place in space to grab. It sits in a
+  corner of the well, not by the box, where the rotation zones are. It
+  is a build step of its own so it can be left out.
+- **Only the anchor has hover text.** The pointer's shape says enough
+  for the rest; the anchor sits where a move would start.
+- **A handle is dimmed when anything its drag writes is driven**, the
+  Position it holds its point with included, though an Option scale of
+  a centered clip wouldn't need it.
+- **Delete with the canvas focused deletes the clip**, as it does
+  whenever the viewer is the active panel.
 - **Shift on rotation snaps the value**, so a clip at 7° goes to 0° or
   15°, not 22°.
 - **The last Transform effect is the target**, and a new one goes at the
@@ -746,8 +837,8 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 - **Snapping** to the frame's middle and edges, and guides.
 - **Motion paths**: a keyframed Position drawn as a path with its
   keyframes as handles.
-- **A hand tool** and Space-drag to scroll the viewer, and a menu of
-  zoom sizes.
+- **A hand tool** and Space-drag to scroll the viewer, zooming with a
+  mouse's wheel, and a menu of zoom sizes.
 - **Crop and corner pin** handles.
 - The pen, shape and text tools themselves, and free paths; this plan
   only makes room for them.
@@ -759,14 +850,15 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
    Position, Scale, Rotation and the anchor with the target rule and the
    keyframe rule, with `TransformHandlesTests` and `ViewerMappingTests`.
 2. Transform effects out of `StructureKey`, with its tests.
-3. `ViewerFraming`, the picture placed by the mapping, pinch, scroll,
+3. `ViewerCanvas` in `ViewerPanel` with nothing to draw yet, and
+   `ViewerFraming`: the picture placed by the mapping, pinch, scroll,
    the Center and Fit chips, and `ViewerCommands` with their keys; the
    snapshot and event tests.
-4. `ViewerCanvas` and `ViewerCanvasState`: drawing, hit testing and
-   zones, cursors and hover text, the drag's life (slop, hold,
+4. Handles on the canvas, and `ViewerCanvasState`: drawing, hit testing
+   and zones, cursors and hover text, the drag's life (slop, hold,
    modifiers, Escape, readout, undo), hiding while playing or skimming;
-   in `ViewerPanel`, with Show Handles (off by default), its
-   preference, menu item and key; snapshots and event tests.
+   Show Handles (off by default), its preference, menu item and key;
+   snapshots and event tests.
 5. The keys and the accessibility elements, checked with the
    `accessibility-reviewer` agent.
 6. The opacity chip.
@@ -790,6 +882,7 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
     [rendering.md](rendering.md), where it says what the structure key
     holds and how the viewer's picture is sized.
 
-Steps 1 to 5 are the feature as asked; 6 and 7 complete it; 8 to 10 are
-the framework's later users. This can't be built or run on Linux; it
+Steps 1 to 5 are the feature as asked (step 3 alone gives the viewer
+its zoom, with no handles); 6 and 7 complete it; 8 to 10 are the
+framework's later users. This can't be built or run on Linux; it
 needs full Xcode on a Mac. CI runs only when started by hand.
