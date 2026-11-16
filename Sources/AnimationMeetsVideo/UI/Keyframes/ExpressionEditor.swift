@@ -41,6 +41,7 @@ struct ExpressionEditor: View {
                     .fixedSize(horizontal: false, vertical: true)
                     // To copy whole, as a report needs it.
                     .textSelection(.enabled)
+                    .accessibilityLabel("Error: \(failure)")
                 if !details.isEmpty {
                     DisclosureGroup("Details") {
                         ScrollView {
@@ -55,7 +56,6 @@ struct ExpressionEditor: View {
                     .font(Design.Typeface.micro)
                     .accessibilityHint("The whole error, to copy into a report")
                 }
-                    .accessibilityLabel("Error: \(failure)")
             }
         }
         .onChange(of: failure) { _, failure in
