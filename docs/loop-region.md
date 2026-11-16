@@ -1,6 +1,6 @@
 # Loop region
 
-Status: **built**, but for the region's color. Built: the model and its rules
+Status: **built, not yet run**. Built: the model and its rules
 (`Model/LoopRegion.swift`), the loop in the player
 (`Playback/PlaybackLoop.swift`, `PlaybackModel.jump(to:)` and the play
 rule), saving it in the view state, its suspension while a take
@@ -11,8 +11,9 @@ bar, its loop button and C (`UI/MotionDesigner/MotionDesignLoop.swift`);
 in the graph editors and the Keyframe Designer the bar, its toggle, C
 and Delete (`UI/Keyframes/GraphLoopBar.swift`); and one region per
 timeline in every window of the project (`Playback/LoopRegions.swift`).
-Not built: the region's color, which waits for `BarColor`
-([bar-colors.md](bar-colors.md)). See [Building it](#building-it) for
+The region's color is built with the other bar colors
+([bar-colors.md](bar-colors.md)): its right-click menu's Color, kept in
+`view-state.json` with the region and the same in every window. See [Building it](#building-it) for
 what is left. The rest of this document is written for whoever builds
 it: it says what the person sees, then where each piece goes in the
 code, then the order to build it in. Choices made while writing it that the
@@ -220,7 +221,7 @@ struct LoopRegion: Equatable {
     var start: CMTime
     var end: CMTime
     var isOn = true
-    /// Nil for `Design.loop`. See docs/bar-colors.md. Not built yet.
+    /// Nil for `Design.loop`. See docs/bar-colors.md.
     var color: BarColor?
 
     enum Edge { case start, end }
@@ -230,9 +231,9 @@ struct LoopRegion: Equatable {
 }
 ```
 
-`BarColor` comes from [bar-colors.md](bar-colors.md). It isn't built
-yet, so `color` is left out of `LoopRegion`, of `PlaybackLoop` and of
-the view state; add it to all three with that document's model step.
+`BarColor` comes from [bar-colors.md](bar-colors.md). A color is
+changed with `PlaybackLoop.setColor` (an `adjust`, so every window has
+it and playing never jumps) and `pickColor` (the color picker).
 
 Pure functions in an extension on `Timeline`, each taking the `limits`
 (a `CMTimeRange`) the host allows, so they can be unit tested without a
@@ -470,7 +471,7 @@ struct LoopBar: View {
     let onAdjust: (LoopRegion) -> Void  // PlaybackLoop.adjust (and Color)
     let onRemove: () -> Void            // PlaybackLoop.remove
     let onToggle: () -> Void            // PlaybackLoop.toggle
-    let onPickColor: () -> Void         // "Other…", see bar-colors.md; not built yet
+    var onPickColor: () -> Void         // "Other…", see bar-colors.md
 
     static let height: CGFloat = SectionLane.height
 }
@@ -695,14 +696,14 @@ build starts.
 
 ## Building it
 
-Steps 2 to 7 are built, without the region's color, and the region
+Every step is built, the region's color included, and the region
 is the same in every window ([In every window](#in-every-window)). None of it has
 been compiled or run yet: it was written where there is no Xcode, so
 build it, run the tests and look at the snapshot before going on.
 
-1. `BarColor` from [bar-colors.md](bar-colors.md) (its model step).
-   Not built; then add `color` to `LoopRegion`, `PlaybackLoop.adjust`
-   and the view state's `loop`.
+1. Built: `BarColor` from [bar-colors.md](bar-colors.md), and `color`
+   on `LoopRegion`, through `PlaybackLoop.adjust`, and in the view
+   state's `loop`.
 2. Built: `LoopRegion` and the `Timeline` rules, with `LoopRegionTests`.
 3. Built: `PlaybackLoop`, `PlaybackModel.jump(to:)`, the play rule, with
    `PlaybackLoopTests`.

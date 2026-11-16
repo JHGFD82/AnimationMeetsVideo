@@ -20,7 +20,10 @@ import SwiftUI
 ///    (playhead, snap, beats, keyframes) is one warm family at three
 ///    brightnesses; structure and status are desaturated so they stay
 ///    ambient, except the loop region, a cool cyan so it never reads as
-///    a section. Nothing else gets a colour.
+///    a section. Nothing else gets a colour, but what the person picks:
+///    a clip, a section or the loop region can be given any color of
+///    their own (`BarColor`, docs/bar-colors.md), with no rule about
+///    which go together; those bars take readable ink (`Design.ink`).
 /// 3. **Quantities are monospaced.** Any number that can change under the
 ///    pointer — timecode, frame counts, field values — is set in `Font`'s
 ///    mono faces so it doesn't jitter while it updates.

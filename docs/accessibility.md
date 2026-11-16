@@ -157,7 +157,12 @@ playhead to the middle of the view when it lands out of view.
   toggles. Pressing one selects the layer; its actions move it up or
   down, rename it and delete it.
 - **Sections** read their name and span; pressing selects, and actions
-  rename and delete.
+  rename, choose a color (the Mac's color picker, which has its own
+  swatches), use the default color, and delete. Clips and the loop
+  region have Choose color… and Use default color too, rather than an
+  action per swatch.
+- **Layer headers** also have Choose color for its clips…, Use default
+  color for its clips, and Clear layer.
 - **The loop bar** is a group named "Loop". The region in it reads "Loop
   region" and whether it is on, with its span ("On, from 00:00:04:00 to
   00:00:08:00"); pressing selects it, for Delete, and its actions turn
@@ -260,6 +265,14 @@ surface from `well` to `overlay` (`Design.textPrimary`, `textSecondary`,
 sheet surface, so sheets use `textSecondary` for their notes. Colour never
 carries meaning alone: clip kinds also differ by icon and name, and
 render states by position on the ruler strip.
+
+A bar with a color the person gave it (a clip, a section, the loop
+region) has its name and glyphs in white or black, whichever stands out
+more from its fill as drawn where the label sits (`Design.ink`): the
+better of the two reaches 4.5:1 on any color, plain, selected or turned
+off ([bar-colors.md](bar-colors.md#ink)). A bar without one keeps
+`textOnColor`. A bar's color is never read out: it is decoration the
+person chose, and the bar's label already says what it is.
 
 ## Reduced motion
 
