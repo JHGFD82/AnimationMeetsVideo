@@ -94,6 +94,16 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ⇧F | Show the selected clip's footage in the browser's Clips tab |
 | F9 | Easy ease the keyframes at the playhead; Shift for ease in, ⌘⇧ for ease out |
 | ⌃⌥H | Hold the keyframes at the playhead |
+| H | Show or hide handles in the viewer on the selected clip (also View > Show Handles) |
+| ⌘+ / ⌘− / ⌘0 / ⇧⌘0 | Zoom the viewer in, out, to fit, or center its frame (View menu; ⌘= zooms in too) |
+
+The viewer's handles take keys of their own once the viewer is clicked
+while they show (see [viewer-handles.md](viewer-handles.md#keys)): Tab
+and ⇧Tab pick what the arrows change (Position, Scale, Rotation, Anchor,
+Opacity), and the arrows nudge it, ten with Shift and a tenth with
+Option. Escape gives the keys back to the timeline. They are claimed
+(`claimsKeys`) only meanwhile, so the arrows step the playhead
+everywhere else.
 
 The motion designer has keys of its own for everything its drags do
 (markers and clips a frame at a time, M, L, E, Delete); see
@@ -135,6 +145,21 @@ playhead to the middle of the view when it lands out of view.
 - **Property values** in the rows and the inspector read as what they are
   ("Position X") and their value; pressing one opens it for typing
   (`NumericField`'s `accessibilityName`).
+
+### Viewer handles
+
+- **The handles** are a group named "Handles of *clip name*", holding an
+  adjustable element for each thing a drag changes: Position X, Position
+  Y, Scale, Rotation, Anchor X, Anchor Y and Opacity, with the number as
+  its value ("120 pixels", "150 percent"). Increment and decrement are
+  the arrow keys' nudges; named actions take ten-fold steps (Move 10
+  pixels left, Turn 15 degrees clockwise…) and Reset; the anchor's also
+  move it to the box's center, corners and edge middles, keeping the
+  picture still.
+- **Scrolling** the group (VoiceOver's scroll actions) moves the picture
+  half a well that way; ⌘+, ⌘−, ⌘0 and ⇧⌘0 zoom and center it.
+- **Show Handles** in the viewer's rail is a toggle with an on or off
+  value; the Center and Fit chips are buttons, Fit's value the zoom.
 
 ### Effects panel lanes
 

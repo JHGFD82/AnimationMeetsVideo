@@ -1,10 +1,15 @@
 # Viewer handles
 
-Status: **planned, not implemented**. Nothing here is built. This
-document is written for whoever builds it: it says what the person sees,
+Status: **partly implemented**. Steps 1 to 6 of
+[Building it](#building-it) are built: the handles, the zoom and scroll,
+the keys and VoiceOver, and the opacity chip, in every editor surface's
+viewer. Steps 7 to 10 (the external display's canvas in place of its
+markup, an effect's own handles, `viewer` in packages, shape and text
+handles) are not. Where the code differs from what follows is listed
+under [As built](#as-built). The document says what the person sees,
 then the framework the handles are built on, then where each piece goes
-in the code as it stands today, then the order to build it in. Choices
-made while writing it that the request didn't settle are listed under
+in the code, then the order to build it in. Choices made while writing
+it that the request didn't settle are listed under
 [Decisions made here](#decisions-made-here).
 
 With **Show Handles** on, selecting a clip with pictures in the timeline
@@ -863,7 +868,45 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 - The pen, shape and text tools themselves, and free paths; this plan
   only makes room for them.
 
+## As built
+
+Where the code (steps 1 to 6) differs from the plan above:
+
+- **`HandleContext`** carries the clip's picture before its stack
+  (`pictureRect`, worked out by `TransformHandles.pictureRect`), Show Up
+  to Here's effect (`shownUpTo`) and whether the clip is locked, rather
+  than the project and the timeline: a handle set needs no more. A drag
+  that adds a Transform is given the effect itself (`newTransform`, made
+  once by `TransformHandles.newTransform` when the drag begins), so each
+  step inserts the same effect with the same controls.
+- **`ViewerHandleSet`** also has `pivot(of:_:)`, the point a rotation
+  zone's drag turns about; `HandleDrag` adds up the angle swept round it
+  (`move(to:about:holdingWithin:)`), holding within 10 points.
+- **The undo step's name** comes from `ProjectChange`, as for every
+  other edit; `HandleEdit.actionName` is kept for a later set to use.
+- **"Not several clips picked together"** isn't checked: the editor's
+  surface sees only `TimelineSelection`, the one clip last picked, so
+  with clips picked together the handles are that clip's.
+- **The layer being shown** isn't a rule: layers can't be hidden, so the
+  clip being on and under the playhead is enough.
+- **Drawn and run** by `ViewerHandlesOverlay` (`UI/Viewer/`), which
+  `ViewerCanvas` puts over the well inside a `PlayheadReader`; the
+  pointer shapes are drawn from SF Symbols by `HandleCursors`, the
+  resize arrow included, turned to the nearest 15°.
+- **`ViewerCanvasState`** is owned by `TimelineEditorSurface`, not
+  `EditorView`, since the external display (step 7) doesn't share it yet.
+- **The anchor drag** solves the anchor and Position together (the 4×4
+  system), rounds the anchor, then solves Position again from one corner
+  of the box, as planned; with no Transform on, the anchor moves alone.
+- Not run yet: the code was written without a Swift toolchain, so the
+  tests (`TransformHandlesTests`, `ViewerMappingTests`,
+  `ViewerCanvasInteractionTests`, the new `StructureKeyTests` case and
+  the `viewerHandles` and `viewerZoomed` snapshots) need a build on a
+  Mac before this is taken as working.
+
 ## Building it
+
+Steps 1 to 6 are built (see [As built](#as-built)).
 
 1. `ViewerMapping` with zoom and place, `ViewerHandleSet` and its types,
    the bounding box (moving `fitTransform`), and `TransformHandles` for

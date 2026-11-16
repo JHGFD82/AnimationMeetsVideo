@@ -419,8 +419,6 @@ ignore it, and drop the transforms if it saved the project.
 - In the graph editor: a speed graph, and keeping linked Scale's aspect
   when dragging one component.
 - **3D** (see [Only 2D for now](#only-2d-for-now)).
-- **Dragging in the viewer** to move, scale or rotate a clip (planned in
-  [viewer-handles.md](viewer-handles.md)).
 - **Copying and pasting keyframes.** Whole effects can be copied, with
   their keyframes, but not keyframes on their own.
 - **U** to show only animated properties, as in After Effects. The

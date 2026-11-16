@@ -522,7 +522,9 @@ Still to come:
 ## Editing in the viewer
 
 Planned: none of this is built yet (see step 4 of
-[Building it](#building-it)). Shapes and text are moved and reshaped by
+[Building it](#building-it)). The viewer canvas it builds on is: a
+graphic clip already gets the Transform handles, whose box is the
+rectangle round what its shapes draw. Shapes and text are moved and reshaped by
 handles drawn over the viewer: vertices and tangents, a primitive's size
 and corners, a text box's width. They are handle sets and tools of the
 viewer canvas planned in [viewer-handles.md](viewer-handles.md), which

@@ -660,6 +660,19 @@ lower or raise it. A press without a drag still opens the field for typing.
 - The project settings sheet's width, height and frame rate don't drag:
   a slip there would change the whole timeline.
 
+### Handles in the viewer
+
+With **Show Handles** on (the viewer's rail, the View menu, or H), the
+clip selected in the timeline has handles over it in the viewer that edit
+these same Transform controls: a drag inside its box moves it, a corner
+or an edge middle scales it about the anchor point, just outside one
+turns it about the anchor, the crosshair moves the anchor point keeping
+the picture still, and the chip in the well's corner fades it. They edit
+the Transform effect selected in the panel, else the last one in the
+stack, adding one when there is none, and set a keyframe at the playhead
+where a value is animated, as typing does. See
+[viewer-handles.md](viewer-handles.md).
+
 ### Keyframes in the panel
 
 The panel has its own ruler and playhead, spanning the selected clip. The
@@ -878,10 +891,10 @@ went away with the built-in compositor. In its place:
 
 ## Not in this plan
 
-- **Dragging in the viewer** (on-screen handles for position, scale,
-  rotation or the anchor point). Handy as a shortcut, but easy to trigger
-  by mistake; left out until there's a design that avoids that. One is
-  now planned in [viewer-handles.md](viewer-handles.md).
+- Nothing listed now. Dragging in the viewer, once left out as easy to
+  trigger by mistake, is built as the viewer's handles
+  ([viewer-handles.md](viewer-handles.md)), off until Show Handles is
+  turned on.
 
 ## Building it
 
