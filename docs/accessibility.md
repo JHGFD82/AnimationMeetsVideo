@@ -125,7 +125,8 @@ tone, as red alone would call it an error; an expression's error is announced wh
 the last line of its editor's value.
 
 The motion designer has keys of its own for everything its drags do
-(markers and clips a frame at a time, M, L, E, Delete); see
+(markers and clips a frame at a time, M, L, E, C for the loop, Delete);
+see
 [motion-designer.md](motion-designer.md#the-panel).
 
 The Tape Scrubber (Window menu) runs the sound like tape while the Left

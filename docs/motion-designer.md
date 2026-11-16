@@ -88,9 +88,20 @@ else around it, by dragging frames along a time graph.
 ## The panel
 
 **Built** (`UI/MotionDesigner/`). The transport has playback, timecode,
-Skimming, Snapping, Beats and zoom. The sidebar holds the editor's own
-viewer player, selection controls, Undo, Redo, Cancel and Done. The lanes
-share one timeline: ruler, footage strip, time graph and music.
+Skimming, Snapping, Loop, Beats and zoom. The sidebar holds the editor's
+own viewer player, selection controls, Undo, Redo, Cancel and Done. The
+lanes share one timeline: ruler, loop bar, footage strip, time graph and
+music.
+
+- The loop bar under the ruler holds the timeline's loop region, as the
+  main timeline's does ([loop-region.md](loop-region.md)): drag across
+  it to draw one, drag its edges or middle to resize or move it
+  (snapping as the lanes' drags do), click it to select it for Delete.
+  While the designer is open the loop plays only what of the region is
+  inside its window, and playing turns back at the region's end instead
+  of stopping at the window's. The Loop button and C turn it on or off,
+  and with no region make one over the clips. It is the timeline's loop,
+  not part of the draft: Cancel leaves it.
 
 - The footage strip places thumbnails where their frames play. Slower
   stretches spread them apart; faster ones crowd them together. Drag a
@@ -137,8 +148,9 @@ share one timeline: ruler, footage strip, time graph and music.
   Marker, Unlock Marker, Lock Markers and Unlock Markers.
 - Keys: Space plays, M adds a marker at the playhead, L toggles picked
   locks (all locked if any is unlocked), E toggles Easy Ease and Linear,
-  Delete removes, arrows nudge picked unlocked markers or the playhead
-  by one frame (Shift ten), N toggles snapping, Escape lets go.
+  Delete removes (the loop region, when it is selected), arrows nudge
+  picked unlocked markers or the playhead by one frame (Shift ten), N
+  toggles snapping, C turns the loop on or off, Escape lets go.
   ⌘A picks all, ⌘= / ⌘- / ⌘0 zoom, ⌘Z / ⇧⌘Z undo and redo,
   ⌘Return keeps the draft and ⌘. cancels. Keys wait while typing.
 - Skimming shows the hovered frame without moving the playhead, never
@@ -444,7 +456,10 @@ Adjust nudges an unlocked marker a frame. Actions select, Lock or Unlock,
 name the eases, shape each eased side (Longer, Shorter, Faster, Slower)
 and Remove for interior markers. The graph keeps Add marker at playhead.
 Clips read their name and span and offer movement and trims by a frame.
-Sidebar checkboxes and L expose locks without the pointer. Icon buttons
+Sidebar checkboxes and L expose locks without the pointer. The loop bar
+reads as the main timeline's does (its region's actions turn it on or
+off, move either end or the whole region a frame, and delete it), and
+the Loop button and C turn it on or off without the bar. Icon buttons
 have labels; marker size and pins show locks beyond colour alone. Notices
 are announced, and the shared motion helpers honour reduced motion.
 

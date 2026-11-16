@@ -1,14 +1,16 @@
 # Loop region
 
-Status: **built in the main timeline; planned elsewhere**. Built: the
-model and its rules (`Model/LoopRegion.swift`), the loop in the player
+Status: **built in the main timeline and the Motion Designer; planned
+in the graph editors**. Built: the model and its rules
+(`Model/LoopRegion.swift`), the loop in the player
 (`Playback/PlaybackLoop.swift`, `PlaybackModel.jump(to:)` and the play
 rule), saving it in the view state, its suspension while a take
-records, and in the main timeline the bar (`UI/Components/LoopBar.swift`),
+records; in the main timeline the bar (`UI/Components/LoopBar.swift`),
 the header button that shows or hides it, C and the Timeline menu's
-items (`UI/Timeline/TimelineLoop.swift`). Not built: the bar, button and key
-in the Motion Designer, the graph editors and the Keyframe Designer, and
-the region's color, which waits for `BarColor`
+items (`UI/Timeline/TimelineLoop.swift`); and in the Motion Designer the
+bar, its loop button and C (`UI/MotionDesigner/MotionDesignLoop.swift`).
+Not built: the bar, toggle and key in the graph editors and the Keyframe
+Designer, and the region's color, which waits for `BarColor`
 ([bar-colors.md](bar-colors.md)). See [Building it](#building-it) for
 what is left. The rest of this document is written for whoever builds
 it: it says what the person sees, then where each piece goes in the
@@ -154,9 +156,14 @@ timeline's bar can be hidden, so each host also has:
   options) turns the loop off, and showing it turns the region on
   again. Turning it on with C or the menu shows the bar. A region saved
   on, in a project opened with the bar hidden, is turned off
-  (`TimelineLoopVisibility`). The other hosts don't hide their bar, so
-  there a loop button would turn the loop on or off, as C does; settle
-  that when building them.
+  (`TimelineLoopVisibility`).
+- The **Motion Designer**'s bar can't be hidden, so its loop button, in
+  the transport beside Snapping, turns the loop on or off, as C does
+  (help "Loop on: playing repeats the loop region (C)" / "Loop off (C)").
+  Turning the loop on there, or drawing a region in its bar, shows the
+  main timeline's loop row too, so the loop stays on once the designer
+  closes. The graph editors' toggle is to be settled when they are
+  built.
 
 The main timeline's **Timeline** menu (`TimelineCommands`) gets, in a
 group after Play/Pause:
@@ -496,24 +503,34 @@ Differences from `SectionLane`:
 
 ### Motion Designer
 
+Built (`MotionDesignLanes`, `MotionDesignLoop.swift`, `MotionDesignView`).
+
 - `MotionDesignLanes`: a `LoopBar` between `ruler(width:)` and
-  `RetimedFilmstrip`. Everything measured from the top assumes the
-  filmstrip starts at `rulerHeight`: `graphHeight`, the notice's top
-  padding, and `graphTop` and the locked marker pins in `markings`. Give the
-  lanes one `filmTop` (`rulerHeight + LoopBar.height`) and use it in
-  each.
+  `RetimedFilmstrip`, in a view of its own (`MotionLoopLane`) that reads
+  the loop, on the ruler's raised surface. Everything measured from the
+  top goes from one `filmTop` (`rulerHeight + LoopBar.height`):
+  `graphHeight`, the notice's top padding, and `graphTop` and the locked
+  marker pins in `markings`.
 - Mapping: the session is a `SecondsViewport` (`x(of:)`,
-  `seconds(atX:)`). Limits: `session.window`. Snap:
-  `session.snapped(_:tolerance:)` with 8 points' worth of seconds; show
-  it with the lanes' `snapTime`.
-- `MotionDesignSession`: `playback.loop.narrow(to: window)` when it
-  opens and whenever `window` changes (the run moved or grew), and
+  `seconds(atX:)`). Limits: the window (`session.loopLimits`). Snap:
+  `session.snapped(_:tolerance:)` with 8 points' worth of seconds;
+  shown with the lanes' `snapTime`.
+- `MotionDesignSession`: `playback.loop.narrow(to: loopLimits)` when it
+  opens and whenever the run changes (which moves the window), and
   `narrow(to: nil)` in `end()`. Its `togglePlayback()` keeps its own
-  window rule and its stop at the window's end; the loop's start rule
-  runs inside `playback.togglePlayback()` after it.
-- `MotionDesignView`: the loop button in the transport's toggle group,
-  and `c` in `handleKey` (with no region: `run.span`).
-- The loop is the timeline's, not the draft's: Cancel doesn't undo it.
+  window rule; the loop's start rule runs inside
+  `playback.togglePlayback()` after it. Its stop at the window's end
+  stands aside while a loop is active: a region running to the window's
+  end has both observers fire together, and a pause there would end the
+  loop.
+- Selecting: a click on the region selects it (`isLoopSelected`), and
+  picking a marker or a clip lets go of it (and the other way round).
+  Delete removes the selected region, Escape lets go of it.
+- `MotionDesignView`: the loop button in the transport's toggle group
+  (`MotionLoopToggle`), and `c` in `handleKey` (with no region: over
+  `run.span`, within the window).
+- The loop is the timeline's, not the draft's: Cancel doesn't undo it,
+  and the region drawn here is the timeline's region.
 
 ### Graph editors and the Keyframe Designer
 
@@ -622,7 +639,7 @@ build starts.
 
 ## Building it
 
-Steps 2 to 5 are built, without the region's color. None of it has
+Steps 2 to 6 are built, without the region's color. None of it has
 been compiled or run yet: it was written where there is no Xcode, so
 build it, run the tests and look at the snapshot before going on.
 
@@ -638,7 +655,9 @@ build it, run the tests and look at the snapshot before going on.
    button, key and menu items; `TimelineRecording` suspending the loop
    while a take records; the `loopBar` snapshot case and
    `LoopBarInteractionTests`.
-6. The Motion Designer's bar, button and key.
+6. Built: the Motion Designer's bar, button and key, with
+   `MotionDesignLoopTests`; `MotionDesignLanesInteractionTests` measure
+   from `filmTop`.
 7. The graph editors' and the Keyframe Designer's bar, toggle and key.
 8. Accessibility, checked with the `accessibility-reviewer` agent.
 9. Docs, once built: this document's status; the README's row;
