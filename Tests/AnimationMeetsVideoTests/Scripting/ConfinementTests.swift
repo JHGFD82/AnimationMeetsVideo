@@ -90,7 +90,17 @@ struct ConfinementTests {
         )
         #expect(profile.contains(#"(subpath "/opt/py \"x\"")"#))
         #expect(profile.contains(#"(subpath "/App/Python")"#))
-        #expect(profile.contains("(deny default)"))
-        #expect(!profile.contains("(allow network") && !profile.contains("process-fork") && !profile.contains("file-write*"))
+        #expect(profile.contains("(deny default)") && profile.contains("(import \"system.sb\")"))
+        // The denials come last, so they win over anything allowed before.
+        #expect(profile.hasSuffix("(deny process-fork)\n(deny network*)"))
+        #expect(!profile.contains("(allow network") && !profile.contains("(allow process-fork") && !profile.contains("file-write*"))
+    }
+
+    @Test func aFrameworkPythonMayStartAsItsPythonApp() {
+        let profile = HelperConfinement.profile(
+            interpreter: URL(filePath: "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3"),
+            host: URL(filePath: "/App/Python/amv_host/__main__.py")
+        )
+        #expect(profile.contains("(allow process-exec*\n    (subpath \"/Library/Frameworks/Python.framework/Versions/3.13\")"))
     }
 }

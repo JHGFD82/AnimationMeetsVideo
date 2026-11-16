@@ -46,33 +46,52 @@ enum HelperConfinement {
         return folders.filter { seen.insert($0).inserted }
     }
 
-    /// The profile, in the sandbox's own language.
+    /// The installations the helper may run code from: the interpreter's,
+    /// by the path it was chosen at and the one its links lead to. A
+    /// framework build (Homebrew's, python.org's) starts again as its
+    /// Python.app, inside its installation, at once.
+    static func installations(of interpreter: URL) -> [String] {
+        let paths = [interpreter, interpreter.resolvingSymlinksInPath()].map {
+            $0.deletingLastPathComponent().deletingLastPathComponent().path
+        }
+        var seen = Set<String>()
+        return paths.filter { seen.insert($0).inserted }
+    }
+
+    /// The profile, in the sandbox's own language. It starts from Apple's
+    /// own base profile for any process (`system.sb`: the system's
+    /// libraries and what starting needs), which a profile written path
+    /// by path missed, so Python couldn't start. The rules after it win
+    /// where they disagree, so the last ones take away what an expression
+    /// mustn't have whatever the base allows.
     static func profile(interpreter: URL, host: URL) -> String {
         let readable = readableFolders(interpreter: interpreter, host: host)
             .map { "    (subpath \(quoted($0)))" }
             .joined(separator: "\n")
-        let executables = Set([interpreter.path, interpreter.resolvingSymlinksInPath().path])
-            .sorted()
-            .map { "    (literal \(quoted($0)))" }
+        let runnable = installations(of: interpreter)
+            .map { "    (subpath \(quoted($0)))" }
             .joined(separator: "\n")
         return """
         (version 1)
         (deny default)
-        ; Python itself, which sandbox-exec starts, and nothing after it:
-        ; nothing may fork, so no subprocess, os.system or multiprocessing.
-        (allow process-exec
-        \(executables))
+        (import "system.sb")
+        ; Python, and what its installation starts it as: never anything
+        ; outside it, and, below, never a second process.
+        (allow process-exec*
+        \(runnable))
         ; What Python and the system libraries read to start and run.
         (allow file-read*
         \(readable))
         ; Looking a path up isn't reading what is in it.
         (allow file-read-metadata)
-        ; Its own pipes and /dev/null; no file anywhere else.
         (allow file-write-data
             (literal "/dev/null"))
         (allow sysctl-read)
         (allow signal (target self))
-        ; No network: nothing allows network*, so it is denied by default.
+        ; What an expression may never do, whatever is allowed above: start
+        ; another process, or reach the network.
+        (deny process-fork)
+        (deny network*)
         """
     }
 

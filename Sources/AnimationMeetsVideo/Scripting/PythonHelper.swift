@@ -287,8 +287,19 @@ final class HelperConnection: @unchecked Sendable {
             let data = handle.availableData
             if data.isEmpty { handle.readabilityHandler = nil } else { errorText.append(data) }
         }
-        process.terminationHandler = { _ in
-            reader.finish(ScriptHelperError.ended(errorText.text))
+        nonisolated(unsafe) let errorOutput = errors.fileHandleForReading
+        let sandboxed = confined
+        process.terminationHandler = { ended in
+            // What it wrote just before it ended may not have been read
+            // yet: read the rest first, or the reason comes back empty.
+            errorOutput.readabilityHandler = nil
+            errorText.append(errorOutput.readDataToEndOfFile())
+            let how = ended.terminationReason == .uncaughtSignal
+                ? "it was stopped by signal \(ended.terminationStatus)"
+                : "exit status \(ended.terminationStatus)"
+            let place = sandboxed ? " in its sandbox" : ""
+            let text = errorText.text
+            reader.finish(ScriptHelperError.ended(text.isEmpty ? "\(how)\(place)" : "\(text) (\(how)\(place))"))
         }
         do {
             try process.run()
