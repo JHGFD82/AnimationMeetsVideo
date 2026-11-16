@@ -25,9 +25,12 @@ struct ScriptRunSheet: View {
             Button("Stop", action: onStop)
                 .keyboardShortcut(.cancelAction)
                 .accessibilityHint("Stops the script; it changes nothing")
+            // Command-Period too, as Stop answers to in a Mac app. Not
+            // `.hidden()`, whose key equivalents don't fire.
             Button("Stop") { onStop() }
                 .keyboardShortcut(".", modifiers: .command)
-                .hidden()
+                .opacity(0)
+                .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
         }
     }

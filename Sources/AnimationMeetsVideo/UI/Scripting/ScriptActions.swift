@@ -61,6 +61,7 @@ enum ScriptActions {
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.stringValue = "Untitled Script"
         field.placeholderString = "Name"
+        field.setAccessibilityLabel("Script name")
         alert.accessoryView = field
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")

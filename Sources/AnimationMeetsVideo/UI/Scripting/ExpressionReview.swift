@@ -140,6 +140,7 @@ private struct ExpressionReviewRow: View {
                 Spacer()
                 if !row.isAllowed {
                     Button("Allow", action: onAllow)
+                        .accessibilityLabel("Allow the expression on \(row.clip), \(row.control)")
                         .accessibilityHint("Lets this expression's code run on this Mac")
                 }
             }
@@ -155,6 +156,8 @@ private struct ExpressionReviewRow: View {
                 .background(Design.Surface.well.color, in: RoundedRectangle(cornerRadius: Design.Radius.control))
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
+        // Its own element holding its texts and its Allow button, which
+        // combining would flatten away.
+        .accessibilityElement(children: .contain)
     }
 }

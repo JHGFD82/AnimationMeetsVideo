@@ -80,8 +80,9 @@ struct ExpressionEditor: View {
                 .focused($focused)
                 .onExitCommand { draft = nil }
                 .accessibilityLabel("Expression code")
-                .accessibilityValue(failure.map { "\(text). Error: \($0)" } ?? text)
-                .accessibilityHint("Python whose last line is the control's value. Command-Return applies it; Escape puts back the applied code.")
+                // The error is the value's last line, not only a mark.
+                .accessibilityValue(failure.map { "\(text)\nError: \($0)" } ?? text)
+                .accessibilityHint("Python whose last line is the control's value. Command-Return applies it; Escape puts back the applied code. Tab indents; Control-Tab leaves.")
             HStack(spacing: Design.Space.step) {
                 if isEdited {
                     Text("Edited")

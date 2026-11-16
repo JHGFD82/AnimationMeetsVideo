@@ -314,6 +314,7 @@ private struct ScriptingSettings: View {
                     }
                     .labelsHidden()
                     .frame(maxWidth: 320, alignment: .leading)
+                    .accessibilityHint(note)
                 }
                 SheetNote(note)
             }

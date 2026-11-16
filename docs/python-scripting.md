@@ -1,6 +1,6 @@
 # Python scripting
 
-Status: **partly built.** Steps 1 to 11 of [Building it](#building-it)
+Status: **partly built.** Steps 1 to 11 and 13 of [Building it](#building-it)
 are written: the helper, the runtime and the Settings tab; reading the
 project and the console; scripts that edit, the Scripts menu and
 `Scripts/`; the expression model; allowing expressions, with Review
@@ -8,8 +8,8 @@ Expressions; the confined helper; running expressions, with the code
 editor and the Expression chip in the Keyframe Designer; Listen To and
 Beats From, with `audio()`, `beats`, `noise()` and `wiggle()`; Between
 Frames; re-running only the changed samples; and following a held drag.
-Steps 1 to 8 have been built and tried on a Mac; steps 9 to 11 were
-written since and not yet built. No Python release is pinned in the
+Steps 1 to 8 have been built and tried on a Mac; steps 9 to 11 and the
+accessibility review (13) were written since and not yet built. No Python release is pinned in the
 repository: `scripts/fetch-python.sh --pin`, run on the Mac that builds
 the app, writes the pin to `scripts/python-pin`, which git ignores.
 Still to come: NumPy (step 12), which step 10's measurement (below)
@@ -780,6 +780,14 @@ By the rules in [accessibility.md](accessibility.md):
   menu or a labeled button; Stop answers to Escape and Command-Period.
 - Code is set in `Design.Typeface.numeric`, the monospaced face numbers
   use, in `Design`'s text tones.
+- As built: the console's output is a read-only system text view on the
+  well surface, where the error tone reads at 5.2:1 (3.1:1 on the
+  panel's own surface), and a problem the app reports reads "Error:";
+  what each line gave is announced. Its input line stays enabled while
+  a line runs, so Escape reaches it. The run sheet's Stop answers to
+  Escape and Command-Period. Review Expressions' rows keep their Allow
+  buttons, named for their expression. The keys are in Help > Keyboard
+  Shortcuts and [accessibility.md](accessibility.md#keyboard).
 
 ## Tests
 

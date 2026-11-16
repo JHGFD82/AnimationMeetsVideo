@@ -98,21 +98,10 @@ struct ScriptConsole: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollViewReader { scroller in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(transcript.entries) { entry in
-                            EntryRow(entry: entry).id(entry.id)
-                        }
-                    }
-                    .padding(Design.Space.step)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .onChange(of: transcript.entries.last?.id) { _, last in
-                    if let last { scroller.scrollTo(last, anchor: .bottom) }
-                }
-            }
-            .accessibilityLabel("Console output")
+            // A system text view: VoiceOver reads it as one text, by
+            // character, word or line, and a selection spans entries. On
+            // the well, where the error tone reads at 5.2:1.
+            TranscriptView(entries: transcript.entries)
             Groove()
             HStack(spacing: Design.Space.step) {
                 Text(verbatim: ">>>")
@@ -128,8 +117,10 @@ struct ScriptConsole: View {
                     .onKeyPress(.upArrow) { step(-1) }
                     .onKeyPress(.downArrow) { step(1) }
                     .accessibilityLabel("Python line")
-                    .accessibilityHint("Return runs it on the project in the front window. Up and down arrows step through earlier lines.")
-                    .disabled(runner.isRunning)
+                    .accessibilityHint("Return runs it on the project in the front window. Up and down arrows step through earlier lines. Escape or Command-Period stops a line that is running.")
+                    // Kept enabled while a line runs, so it keeps the
+                    // keyboard and Escape reaches it; submit() waits.
+                    .onExitCommand { if runner.isRunning { runner.stop() } }
                 if runner.isRunning {
                     ProgressView().controlSize(.small)
                     Button("Stop", action: runner.stop)
@@ -147,7 +138,6 @@ struct ScriptConsole: View {
         .background(Design.Surface.floating.color)
         .preferredColorScheme(.dark)
         .tint(Design.accent)
-        .onExitCommand { runner.stop() }
         .onAppear { inputFocused = true }
     }
 
@@ -165,8 +155,14 @@ struct ScriptConsole: View {
         fresh = false
         Task {
             let outcome = await runner.run(request, named: "Console", on: ScriptTarget(session: session))
-            if case .failed(let failure) = outcome {
-                AccessibilityNotification.Announcement(failure.summary).post()
+            // What came of it is said, so it needn't be looked for.
+            switch outcome {
+            case .failed(let failure): AccessibilityNotification.Announcement("Error: \(failure.summary)").post()
+            case .couldNotRun(let reason): AccessibilityNotification.Announcement("Couldn't run: \(reason)").post()
+            case .projectChanged: AccessibilityNotification.Announcement("The project changed while it ran; nothing was kept").post()
+            case .finished:
+                let said = transcript.entries.last.flatMap { $0.kind == .input ? nil : $0.text }
+                AccessibilityNotification.Announcement(said.map { String($0.prefix(300)) } ?? "Done").post()
             }
             inputFocused = true
         }
@@ -188,40 +184,67 @@ struct ScriptConsole: View {
     }
 }
 
-/// One entry of the console's transcript.
-private struct EntryRow: View {
-    let entry: ScriptTranscript.Entry
+/// The console's transcript, as a read-only system text view: lines typed
+/// in the secondary tone after ">>> ", printed text and values in the
+/// primary one, errors in the error tone, a problem the app reports
+/// after "Error:", and notes in the warning tone. It scrolls to the end
+/// as entries come.
+private struct TranscriptView: NSViewRepresentable {
+    let entries: [ScriptTranscript.Entry]
 
-    var body: some View {
-        Text(verbatim: shown)
-            .font(Design.Typeface.numeric)
-            .foregroundStyle(color)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityLabel(accessibilityText)
-    }
-
-    private var shown: String {
-        let text = entry.text.hasSuffix("\n") ? String(entry.text.dropLast()) : entry.text
-        return entry.kind == .input ? ">>> " + text : text
-    }
-
-    private var color: Color {
-        switch entry.kind {
-        case .input: Design.textSecondary
-        case .output, .result: Design.textPrimary
-        case .errorOutput, .error: Design.statusDanger
-        case .note: Design.statusWarning
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.drawsBackground = true
+        scroll.backgroundColor = NSColor(Design.Surface.well.color)
+        if let text = scroll.documentView as? NSTextView {
+            text.isEditable = false
+            text.isSelectable = true
+            text.drawsBackground = true
+            text.backgroundColor = NSColor(Design.Surface.well.color)
+            text.textContainerInset = NSSize(width: Design.Space.step, height: Design.Space.step)
+            text.setAccessibilityLabel("Console output")
         }
+        return scroll
     }
 
-    private var accessibilityText: String {
-        switch entry.kind {
-        case .input: "You typed: \(entry.text)"
-        case .error: "Error: \(entry.text)"
-        case .note: "Note: \(entry.text)"
-        default: entry.text
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let text = scroll.documentView as? NSTextView else { return }
+        let ids = entries.map(\.id)
+        // Most updates add to the end; a whole new text only when it changed.
+        guard ids != context.coordinator.shown || entries.last?.text != context.coordinator.lastText else { return }
+        context.coordinator.shown = ids
+        context.coordinator.lastText = entries.last?.text
+        text.textStorage?.setAttributedString(Self.attributed(entries))
+        text.scrollToEndOfDocument(nil)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        var shown: [UUID] = []
+        var lastText: String?
+    }
+
+    static func attributed(_ entries: [ScriptTranscript.Entry]) -> NSAttributedString {
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let result = NSMutableAttributedString()
+        for entry in entries {
+            var text = entry.text.hasSuffix("\n") ? String(entry.text.dropLast()) : entry.text
+            let color: Color
+            switch entry.kind {
+            case .input:
+                text = ">>> " + text
+                color = Design.textSecondary
+            case .output, .result: color = Design.textPrimary
+            case .errorOutput: color = Design.statusDanger
+            case .error:
+                // A traceback ends naming its error; a problem says so.
+                if !text.hasPrefix("Traceback"), !text.contains("Error:") { text = "Error: " + text }
+                color = Design.statusDanger
+            case .note: color = Design.statusWarning
+            }
+            result.append(NSAttributedString(string: text + "\n", attributes: [.font: font, .foregroundColor: NSColor(color)]))
         }
+        return result
     }
 }
