@@ -66,7 +66,7 @@ private struct BackupSandbox {
         defer { sandbox.cleanUp() }
         func isExcluded(_ package: URL) throws -> Bool {
             let media = package.appending(path: ProjectStore.mediaFolderName, directoryHint: .isDirectory)
-            return try #require(media.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup)
+            return try #require(media.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup as Bool?)
         }
         let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL)
         #expect(try isExcluded(backup))

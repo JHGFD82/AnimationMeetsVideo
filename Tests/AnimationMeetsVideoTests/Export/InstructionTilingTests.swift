@@ -31,6 +31,7 @@ import Testing
             #expect(CMTimeCompare(earlier.end, later.start) == 0, "\(earlier.end.value)/\(earlier.end.timescale) vs \(later.start.value)/\(later.start.timescale)")
         }
         let whole = CMTimeRange(start: .zero, duration: composed.composition.duration)
-        #expect(try await videoComposition.isValid(for: composed.composition, timeRange: whole, validationDelegate: nil))
+        let tracks = try await composed.composition.load(.tracks)
+        #expect(videoComposition.isValid(for: tracks, assetDuration: composed.composition.duration, timeRange: whole, validationDelegate: nil))
     }
 }
