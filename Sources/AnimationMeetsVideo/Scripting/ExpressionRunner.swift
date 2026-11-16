@@ -233,3 +233,22 @@ final class ExpressionRunner {
         )
     }
 }
+
+// MARK: - Following a held drag
+
+extension ProjectState {
+    /// Writes the keyframes of the expressions whose results fit the drag
+    /// held aside (`held`) into it, so the viewer, which draws from it,
+    /// follows an expression while something it reads is dragged (see
+    /// docs/python-scripting.md, "Arriving"). The project itself isn't
+    /// touched: the drag's last step is committed when it ends, and the
+    /// edit that commits it finds the result already made. Written as what
+    /// follows from an edit (`writeDerived`), not as an edit by hand of the
+    /// keyframes an expression makes. Returns whether anything changed.
+    @discardableResult
+    func applyExpressionResultsWhileHeld() -> Bool {
+        guard isHolding, var held = self.held, held.applyExpressionResults() else { return false }
+        writeDerived { hold { value = held } }
+        return true
+    }
+}

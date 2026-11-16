@@ -1,19 +1,19 @@
 # Python scripting
 
-Status: **partly built.** Steps 1 to 10 of [Building it](#building-it)
+Status: **partly built.** Steps 1 to 11 of [Building it](#building-it)
 are written: the helper, the runtime and the Settings tab; reading the
 project and the console; scripts that edit, the Scripts menu and
 `Scripts/`; the expression model; allowing expressions, with Review
 Expressions; the confined helper; running expressions, with the code
 editor and the Expression chip in the Keyframe Designer; Listen To and
 Beats From, with `audio()`, `beats`, `noise()` and `wiggle()`; Between
-Frames; and re-running only the changed samples. Steps 1 to 8 have been
-built and tried on a Mac; steps 9 and 10 were written since and not yet
-built. No Python release is pinned in the
+Frames; re-running only the changed samples; and following a held drag.
+Steps 1 to 8 have been built and tried on a Mac; steps 9 to 11 were
+written since and not yet built. No Python release is pinned in the
 repository: `scripts/fetch-python.sh --pin`, run on the Mac that builds
 the app, writes the pin to `scripts/python-pin`, which git ignores.
-Still to come: following a held drag (step 11) and NumPy (12), which
-step 10's measurement (below) doesn't call for.
+Still to come: NumPy (step 12), which step 10's measurement (below)
+doesn't call for.
 
 `noise(x, dimension=0)` and `wiggle(frequency, amount, octaves=1,
 dimension=0)` are Wiggler's noise for the expression's Seed, worked out
@@ -441,9 +441,14 @@ over the **time limit** (5 seconds) is stopped, with the note "Took
 longer than 5 seconds, so it was stopped."
 
 During a held drag (`ProjectState.hold`) of something an expression
-reads, the expression follows when the drag ends, like everything but
-the viewer and the dragged row. Following each step is a later step of
-[Building it](#building-it).
+reads, such as one of its inputs in the Keyframe Designer, the
+expression runs against the drag as it goes (`held`), and what lands is
+written into the drag, as what follows from it rather than an edit, so
+the viewer follows each step; only the samples the step changed are run
+again. The project is untouched until the drag ends, when its last
+step is committed and the edit that commits it finds the result
+already made. A view of its own watches the drag, so the rest of the
+editor doesn't run again at each step.
 
 ### Doing less work
 

@@ -132,6 +132,41 @@ import Testing
         #expect(f.project.expressionPrint(of: after.effect(id: id)!, in: after, of: timeline, base: nil, reads: []) != before)
     }
 
+    @Test func aRunMadeFromAHeldDragGoesIntoTheDragAndItsEndCommitsIt() async throws {
+        let (f, id) = fixture()
+        let state = ProjectState(f.project)
+        func setInputA(_ value: Double) {
+            var project = state.value
+            project.editEffect(id, ofClip: f.clipID, in: f.timelineID) { effect in
+                effect.changeControl(.inputA) { $0.number = AnimatedValue(ComponentValue(values: [value])) }
+            }
+            state.value = project
+        }
+        func opacity(_ project: EditingProject) -> AnimatedValue<ComponentValue> {
+            project.clipAndLayer(f.clipID, in: f.timelineID)!.clip.effect(id: f.transformID)!.control(.opacity)!.number
+        }
+        // A step of dragging input A, held aside.
+        state.beginHold()
+        state.hold { setInputA(5) }
+        let held = try #require(state.held)
+        let job = ExpressionRunner.Job(timelineID: f.timelineID, clipID: f.clipID, effectID: id)
+        let count = try #require(ExpressionRunner.request(for: job, in: held)).times.count
+        let result = try #require(await ExpressionRunner(helper: FakeHelper(end: .samples((0..<count).map(Double.init)))).run(job, in: held))
+        ExpressionResults.shared.store(result, for: id)
+        let applied = state.applyExpressionResultsWhileHeld()
+        #expect(applied)
+        // The drag shows it; the project doesn't have it yet.
+        let drag = try #require(state.held)
+        #expect(!opacity(drag).keyframes.isEmpty)
+        #expect(opacity(state.value).keyframes.isEmpty)
+        // The drag ends: its last step is committed, and finds the result.
+        state.endHold()
+        setInputA(5)
+        #expect(opacity(state.value) == opacity(held.applyingExpressionResults()))
+        // Not held, nothing goes into a drag.
+        #expect(!state.applyExpressionResultsWhileHeld())
+    }
+
     @Test func theHelperMayReuseTheLastRunOnlyWhileWhatItReadIsUnchanged() async throws {
         var (f, id) = fixture()
         let job = ExpressionRunner.Job(timelineID: f.timelineID, clipID: f.clipID, effectID: id)
@@ -192,4 +227,13 @@ final class ReadingHelper: ScriptHelper, @unchecked Sendable {
     func stop() async {}
 
     func ping() async throws -> HelperPong { HelperPong(version: PythonVersion("3.14.0"), executable: "fake") }
+}
+
+private extension EditingProject {
+    /// The project with the expression results that fit it written.
+    func applyingExpressionResults() -> EditingProject {
+        var project = self
+        project.applyExpressionResults()
+        return project
+    }
 }

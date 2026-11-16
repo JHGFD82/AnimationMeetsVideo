@@ -5,8 +5,33 @@ extension View {
     /// and when code is allowed, and calls `onArrived` when results land,
     /// for the editor to write their keyframes (see
     /// docs/python-scripting.md, "Arriving").
-    func runsExpressions(of project: EditingProject, onArrived: @escaping () -> Void) -> some View {
+    ///
+    /// With `projectState`, a held drag (`ProjectState.hold`) of something
+    /// an expression reads, such as one of its inputs in the Keyframe
+    /// Designer, runs it against the drag as it goes, and the editor
+    /// writes what lands into the drag (`applyExpressionResultsWhileHeld`),
+    /// so the viewer follows each step.
+    func runsExpressions(
+        of project: EditingProject, projectState: ProjectState? = nil, onArrived: @escaping () -> Void
+    ) -> some View {
         modifier(ExpressionFollowing(project: project, onArrived: onArrived))
+            .background(HeldExpressionFollower(projectState: projectState))
+    }
+}
+
+/// Runs the expressions a held drag leaves waiting, against the drag. A
+/// view of its own, as the dragged row and the viewer are: reading `held`
+/// in the editor's body would run the whole editor again at each step,
+/// which holding the drag is there to avoid.
+private struct HeldExpressionFollower: View {
+    let projectState: ProjectState?
+
+    var body: some View {
+        Color.clear
+            .onChange(of: projectState?.held?.editCount) { _, _ in
+                if let held = projectState?.held { ExpressionRunner.shared.runWaiting(in: held) }
+            }
+            .accessibilityHidden(true)
     }
 }
 
