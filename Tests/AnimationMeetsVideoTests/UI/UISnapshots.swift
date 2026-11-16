@@ -2101,6 +2101,21 @@ struct UISnapshots {
         try SnapshotSupport.render(console, "script-console", size: CGSize(width: 620, height: 380))
     }
 
+    /// The Python Console with what the app itself reports, each after
+    /// "Error:" in the error tone: a script's changes not kept, and no
+    /// Python to run a line. Around them, the note a script starts with
+    /// and what it printed to its error stream.
+    @Test func scriptConsoleProblems() throws {
+        let transcript = ScriptTranscript()
+        transcript.append(.note("Running \u{201C}Tidy Titles\u{201D}\n"))
+        transcript.append(ScriptOutput(stream: .stderr, text: "2 clips have no name; skipped\n"))
+        transcript.append(.problem("The project changed while \u{201C}Tidy Titles\u{201D} ran, so its changes weren't kept. Run it again."))
+        transcript.append(.input("amv.selection"))
+        transcript.append(.problem(ScriptHelperError.noPython.errorDescription ?? ""))
+        let console = ScriptConsole(transcript: transcript, runner: ScriptRunner(helper: PythonHelper(interpreter: { nil }), transcript: transcript))
+        try SnapshotSupport.render(console, "script-console-problems", size: CGSize(width: 620, height: 380))
+    }
+
     /// The Expression's code in the Keyframe Designer: applied, with an
     /// error, and come from elsewhere, not allowed yet.
     @Test func expressionEditor() throws {
