@@ -2083,4 +2083,58 @@ struct UISnapshots {
         )
         try SnapshotSupport.render(editor, "music-points", size: CGSize(width: 1500, height: 900))
     }
+
+    /// The Python Console after a few lines: one typed and its value, text
+    /// printed, and a traceback.
+    @Test func scriptConsole() throws {
+        let transcript = ScriptTranscript()
+        transcript.append(.input("[c.name for c in amv.selection]"))
+        transcript.append(.result("['Skate', 'Skate 2']"))
+        transcript.append(.input("for c in amv.selection: print(c.start)"))
+        transcript.append(ScriptOutput(stream: .stdout, text: "0\n5/2\n"))
+        transcript.append(.input("amv.timeline.layer('Logo')"))
+        transcript.append(.failure(ScriptFailure(
+            exception: "LookupError", message: "\u{201C}Main\u{201D} has no layer called \u{201C}Logo\u{201D}", line: 1,
+            traceback: "Traceback (most recent call last):\n  File \"<console>\", line 1, in <module>\nLookupError: \u{201C}Main\u{201D} has no layer called \u{201C}Logo\u{201D}\n"
+        )))
+        let console = ScriptConsole(transcript: transcript, runner: ScriptRunner(helper: PythonHelper(interpreter: { nil }), transcript: transcript))
+        try SnapshotSupport.render(console, "script-console", size: CGSize(width: 620, height: 380))
+    }
+
+    /// The Python Console with what the app itself reports, each after
+    /// "Error:" in the error tone: a script's changes not kept, and no
+    /// Python to run a line. Around them, the note a script starts with
+    /// and what it printed to stderr, in the primary tone like stdout.
+    @Test func scriptConsoleProblems() throws {
+        let transcript = ScriptTranscript()
+        transcript.append(.note("Running \u{201C}Tidy Titles\u{201D}\n"))
+        transcript.append(ScriptOutput(stream: .stderr, text: "2 clips have no name; skipped\n"))
+        transcript.append(.problem("The project changed while \u{201C}Tidy Titles\u{201D} ran, so its changes weren't kept. Run it again."))
+        transcript.append(.input("amv.selection"))
+        transcript.append(.problem(ScriptHelperError.noPython.errorDescription ?? ""))
+        let console = ScriptConsole(transcript: transcript, runner: ScriptRunner(helper: PythonHelper(interpreter: { nil }), transcript: transcript))
+        try SnapshotSupport.render(console, "script-console-problems", size: CGSize(width: 620, height: 380))
+    }
+
+    /// The Expression's code in the Keyframe Designer: applied, with an
+    /// error, and come from elsewhere, not allowed yet.
+    @Test func expressionEditor() throws {
+        let allowed = "swing = a * sin(t * tau * b)\nvalue + swing"
+        CodeApproval.allowInSession(allowed)
+        let approval = CodeApproval(file: FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-\(UUID().uuidString).json"))
+        approval.allow(allowed)
+        let states = VStack(alignment: .leading, spacing: 24) {
+            ExpressionEditor(code: allowed, failure: nil, approval: approval, notAllowedCount: 0, onApply: { _ in }, onAllowAll: {})
+            ExpressionEditor(
+                code: allowed, failure: "Line 2: NameError: name 'swng' is not defined (at 1.25 s)", approval: approval,
+                notAllowedCount: 0, onApply: { _ in }, onAllowAll: {}
+            )
+            ExpressionEditor(code: "import os\nvalue", failure: nil, approval: approval, notAllowedCount: 12, onApply: { _ in }, onAllowAll: {})
+        }
+        .padding(16)
+        .frame(width: 320)
+        .background(Design.Surface.floating.color)
+        .preferredColorScheme(.dark)
+        try SnapshotSupport.render(states, "expression-editor", size: CGSize(width: 320, height: 700))
+    }
 }

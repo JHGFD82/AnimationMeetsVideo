@@ -100,6 +100,18 @@ enum Preferences {
     static let timelineAreaLayout = "timelineAreaLayout"
     static let effectsPanelShowsKeyframeLanes = "effectsPanelShowsKeyframeLanes"
 
+    // MARK: Scripting
+
+    /// The path of the Python the person chose in Settings > Scripting;
+    /// empty or absent for the one built into the app (see
+    /// `PythonRuntime`).
+    static let pythonInterpreter = "pythonInterpreter"
+    /// Whether the Python Console panel is open.
+    static let showsScriptConsole = "showsScriptConsole"
+    /// The paths of the scripts last run with Run Script File…, newest
+    /// first, as a JSON array.
+    static let recentScriptFiles = "recentScriptFiles"
+
     // MARK: Projects
 
     /// `RecentProjects.stored`: the projects opened last, newest first,

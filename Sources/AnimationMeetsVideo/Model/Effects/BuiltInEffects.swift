@@ -37,6 +37,9 @@ extension EffectKind {
     static let looper = EffectKind(builtIn: "looper")
     static let timeStep = EffectKind(builtIn: "timeStep")
     static let overshoot = EffectKind(builtIn: "overshoot")
+    /// Python whose value at each moment is written as keyframes (see
+    /// docs/python-scripting.md).
+    static let expression = EffectKind(builtIn: "expression")
     /// Holds an effect whose package isn't installed (`Effect.missing`).
     /// Never listed or saved under this name.
     static let missing = EffectKind(builtIn: "missing")
@@ -250,6 +253,13 @@ extension ControlKind {
     static let stiffness = ControlKind(builtIn: "stiffness")
     static let damping = ControlKind(builtIn: "damping")
     static let mass = ControlKind(builtIn: "mass")
+    // Expression
+    static let inputA = ControlKind(builtIn: "inputA")
+    static let inputB = ControlKind(builtIn: "inputB")
+    static let inputC = ControlKind(builtIn: "inputC")
+    static let inputD = ControlKind(builtIn: "inputD")
+    static let expressionKeys = ControlKind(builtIn: "expressionKeys")
+    static let betweenFrames = ControlKind(builtIn: "betweenFrames")
 }
 
 enum BuiltInEffects {
@@ -278,7 +288,7 @@ enum BuiltInEffects {
         "flowSmear", "slitScan", "feedback",
         "rectangle", "ellipse", "polygon", "star", "text", "textAnimator", "stroke",
         "equalizer", "compressor", "limiter", "voiceIsolation",
-        "audioKeys", "beatKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot",
+        "audioKeys", "beatKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot", "expression",
     ]
 
     /// The effects written in Swift, in the library's order.
@@ -382,6 +392,13 @@ enum BuiltInEffects {
         EffectDefinition(
             .overshoot, "Overshoot", .keyframing, "arrowshape.bounce.right", controls: [.stiffness, .damping, .mass, .tolerance],
             reshapesTarget: true
+        ),
+        EffectDefinition(
+            .expression, "Expression", .keyframing, "function",
+            sections: [
+                ControlSection("Inputs", [.inputA, .inputB, .inputC, .inputD]),
+                ControlSection("Keyframes", [.seed, .expressionKeys, .betweenFrames, .tolerance]),
+            ]
         ),
         EffectDefinition(.missing, "Missing Effect", .foundations, "questionmark.square.dashed", controls: [], isHidden: true),
     ]
@@ -575,5 +592,13 @@ enum BuiltInEffects {
         ControlDefinition(.stiffness, "Stiffness", .overshoot, defaults: [200], range: 1...10_000),
         ControlDefinition(.damping, "Damping", .overshoot, defaults: [8], range: 0...1000),
         ControlDefinition(.mass, "Mass", .overshoot, defaults: [1], dragStep: 0.1, range: 0.01...100),
+        // Expression: four inputs the code reads as a, b, c and d, and how
+        // its samples become keyframes. Seed and Tolerance are Wiggler's.
+        ControlDefinition(.inputA, "A", .expression, defaults: [0]),
+        ControlDefinition(.inputB, "B", .expression, defaults: [0]),
+        ControlDefinition(.inputC, "C", .expression, defaults: [0]),
+        ControlDefinition(.inputD, "D", .expression, defaults: [0]),
+        ControlDefinition(.expressionKeys, "Keyframes", .expression, choice: ExpressionKeys.smooth),
+        ControlDefinition(.betweenFrames, "Between Frames", .expression, choice: BetweenFrames.auto),
     ]
 }

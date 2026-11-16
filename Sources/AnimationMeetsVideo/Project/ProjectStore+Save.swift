@@ -60,6 +60,7 @@ extension ProjectStore {
                 for: project.clips.filter { !$0.referenceForgotten }.map(\.id),
                 from: previousPackageURL, to: packageURL
             )
+            try copyScripts(from: previousPackageURL, to: packageURL)
         }
 
         var project = project
@@ -112,6 +113,24 @@ extension ProjectStore {
             _ = try? MatroskaMedia.prepare(url, in: MatroskaMedia.folder(in: packageURL))
         }
         return project
+    }
+
+    /// Copies the files of a package's `Scripts/` folder, and what sits
+    /// beside them, into another's, as Save As copies `Media/`: what the
+    /// destination already holds under a name is kept.
+    static func copyScripts(from source: URL, to destination: URL) throws {
+        let same = source.standardizedFileURL.resolvingSymlinksInPath() == destination.standardizedFileURL.resolvingSymlinksInPath()
+        guard !same else { return }
+        let fileManager = FileManager.default
+        let from = source.appending(path: scriptsFolderName, directoryHint: .isDirectory)
+        guard let names = try? fileManager.contentsOfDirectory(atPath: from.path), !names.isEmpty else { return }
+        let to = destination.appending(path: scriptsFolderName, directoryHint: .isDirectory)
+        try fileManager.createDirectory(at: to, withIntermediateDirectories: true)
+        for name in names where !name.hasPrefix(".") {
+            let target = to.appending(path: name)
+            guard !fileManager.fileExists(atPath: target.path) else { continue }
+            try fileManager.copyItem(at: from.appending(path: name), to: target)
+        }
     }
 
     static func encode(_ project: EditingProject, packageURL: URL) throws -> Data {

@@ -2,20 +2,27 @@ import CoreServices
 import Foundation
 
 /// Watches a folder of effect packages and says which packages changed in
-/// it: edited, added, removed or renamed. FSEvents sees a change anywhere
+/// it: edited, added, removed or renamed. With another `itemExtension` it
+/// watches the files of that kind in a folder instead, as a project's
+/// `Scripts/` folder is watched for its `.py` files (`ScriptLibrary`). FSEvents sees a change anywhere
 /// inside a package, such as an editor saving kernel.metal by putting a new
 /// file in its place, which a source on the folder itself wouldn't. Events
 /// are gathered for `latency` before they are delivered, so a save that
 /// writes several files reads the package once.
 final class EffectFolderWatcher {
     private let folder: URL
+    private let itemExtension: String
     private let changed: @MainActor ([URL]) -> Void
     private var stream: FSEventStreamRef?
 
     /// Starts watching `folder`, made first if there is none yet, and
     /// calls `changed` on the main thread with the packages changed.
-    init(folder: URL, latency: TimeInterval = 0.3, changed: @escaping @MainActor ([URL]) -> Void) {
+    init(
+        folder: URL, itemExtension: String = EffectPackage.fileExtension, latency: TimeInterval = 0.3,
+        changed: @escaping @MainActor ([URL]) -> Void
+    ) {
         self.folder = folder
+        self.itemExtension = itemExtension
         self.changed = changed
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var context = FSEventStreamContext(
@@ -34,7 +41,7 @@ final class EffectFolderWatcher {
         guard let stream = FSEventStreamCreate(
             nil, callback, &context, [folder.path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags
         ) else {
-            NSLog("The Effects folder can't be watched; a package changed in it is read at the next launch.")
+            NSLog("\(folder.lastPathComponent) can't be watched; what changes in it is read the next time it is opened.")
             return
         }
         FSEventStreamSetDispatchQueue(stream, .main)
@@ -61,13 +68,14 @@ final class EffectFolderWatcher {
             guard components.starts(with: base) else { continue }
             if components.count == base.count {
                 let listed = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-                names += listed.filter { $0.hasSuffix(".\(EffectPackage.fileExtension)") && !$0.hasPrefix(".") }.sorted()
+                names += listed.filter { $0.hasSuffix(".\(itemExtension)") && !$0.hasPrefix(".") }.sorted()
             } else {
                 let name = components[base.count]
-                if name.hasSuffix(".\(EffectPackage.fileExtension)"), !name.hasPrefix(".") { names.append(name) }
+                if name.hasSuffix(".\(itemExtension)"), !name.hasPrefix(".") { names.append(name) }
             }
         }
         var seen = Set<String>()
-        return names.filter { seen.insert($0).inserted }.map { folder.appending(path: $0, directoryHint: .isDirectory) }
+        let hint: URL.DirectoryHint = itemExtension == EffectPackage.fileExtension ? .isDirectory : .notDirectory
+        return names.filter { seen.insert($0).inserted }.map { folder.appending(path: $0, directoryHint: hint) }
     }
 }

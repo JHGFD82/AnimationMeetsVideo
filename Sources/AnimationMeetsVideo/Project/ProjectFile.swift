@@ -568,6 +568,8 @@ struct ProjectFile: Codable {
         /// precision; absent until it has written.
         var readPrint: String?
         var writtenPrint: String?
+        /// Expression only: what its last run read; absent when nothing.
+        var reads: [ReadEntry]?
 
         init(_ setup: KeyframingSetup) {
             switch setup.target {
@@ -591,6 +593,7 @@ struct ProjectFile: Codable {
             }
             readPrint = setup.readPrint.map { String($0, radix: 16) }
             writtenPrint = setup.writtenPrint.map { String($0, radix: 16) }
+            reads = setup.reads.isEmpty ? nil : setup.reads.map(ReadEntry.init)
         }
 
         var setup: KeyframingSetup {
@@ -608,8 +611,81 @@ struct ProjectFile: Codable {
             setup.audioSource = listensToLayer.map { .layer($0) } ?? listensToClip.map { .clip($0) } ?? (listensToMix == true ? .mix : nil)
             setup.readPrint = readPrint.flatMap { UInt64($0, radix: 16) }
             setup.writtenPrint = writtenPrint.flatMap { UInt64($0, radix: 16) }
+            setup.reads = (reads ?? []).compactMap(\.read)
             return setup
         }
+    }
+
+    /// One thing an expression read: its timeline, and one of a control
+    /// (with its effect and clip), a clip's volume, a clip, a layer, the
+    /// timeline's settings, its layers' names, what Audio Keys would hear,
+    /// or a layer's beats.
+    struct ReadEntry: Codable {
+        var timeline: UUID
+        var clip: UUID?
+        var effect: UUID?
+        var control: UUID?
+        var volume: UUID?
+        var layer: UUID?
+        var settings: Bool?
+        var layerNames: Bool?
+        var heardMix: Bool?
+        var heardLayer: UUID?
+        var heardClip: UUID?
+        var beats: UUID?
+
+        init(_ read: KeyframingRead) {
+            timeline = read.timeline
+            switch read.kind {
+            case .control(let clip, let effect, let control):
+                self.clip = clip
+                self.effect = effect
+                self.control = control
+            case .volume(let clip): volume = clip
+            case .clip(let id): clip = id
+            case .layer(let id): layer = id
+            case .settings: settings = true
+            case .layerNames: layerNames = true
+            case .heard(.mix): heardMix = true
+            case .heard(.layer(let id)): heardLayer = id
+            case .heard(.clip(let id)): heardClip = id
+            case .beats(let id): beats = id
+            }
+        }
+
+        var read: KeyframingRead? {
+            let kind: KeyframingRead.Kind
+            if let clip, let effect, let control {
+                kind = .control(clip: clip, effect: effect, control: control)
+            } else if let volume {
+                kind = .volume(clip: volume)
+            } else if let clip {
+                kind = .clip(clip)
+            } else if let layer {
+                kind = .layer(layer)
+            } else if settings == true {
+                kind = .settings
+            } else if layerNames == true {
+                kind = .layerNames
+            } else if heardMix == true {
+                kind = .heard(.mix)
+            } else if let heardLayer {
+                kind = .heard(.layer(heardLayer))
+            } else if let heardClip {
+                kind = .heard(.clip(heardClip))
+            } else if let beats {
+                kind = .beats(layer: beats)
+            } else {
+                return nil
+            }
+            return KeyframingRead(timeline: timeline, kind: kind)
+        }
+
+        static let shape = JSONShape.object(JSONObjectShape(fields: [
+            .required("timeline", .uuid), .optional("clip", .uuid), .optional("effect", .uuid), .optional("control", .uuid),
+            .optional("volume", .uuid), .optional("layer", .uuid), .optional("settings", .bool), .optional("layerNames", .bool),
+            .optional("heardMix", .bool), .optional("heardLayer", .uuid), .optional("heardClip", .uuid), .optional("beats", .uuid),
+        ]))
     }
 
     /// A Text effect's words, the PostScript name of its font, and its
@@ -771,6 +847,8 @@ struct ProjectFile: Codable {
         var keyframing: KeyframingEntry?
         /// For a Text effect, its words and font.
         var text: TextEntry?
+        /// For an Expression, its Python code.
+        var expression: String?
         /// Absent unless some are unresolved.
         var pasteChanges: [PasteChangeRecord]?
         /// Presets only: what the effect's input and Against were called
@@ -783,7 +861,7 @@ struct ProjectFile: Codable {
         var saved: JSONValue?
 
         private enum CodingKeys: String, CodingKey {
-            case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, pasteChanges, inputName, againstName, controls
+            case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, expression, pasteChanges, inputName, againstName, controls
         }
 
         init(_ effect: Effect) {
@@ -807,6 +885,7 @@ struct ProjectFile: Codable {
             input = effect.kind.takesInput ? effect.input.map(InputEntry.init) : nil
             keyframing = effect.keyframing.map(KeyframingEntry.init)
             text = effect.kind == .text ? effect.text.map(TextEntry.init) : nil
+            expression = effect.kind == .expression ? effect.expression ?? "" : nil
             pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
             // A control its package stopped listing while the app ran is
             // left out, as the package no longer reads it (see
@@ -835,6 +914,7 @@ struct ProjectFile: Codable {
             input = try container.decodeIfPresent(InputEntry.self, forKey: .input)
             keyframing = try container.decodeIfPresent(KeyframingEntry.self, forKey: .keyframing)
             text = try container.decodeIfPresent(TextEntry.self, forKey: .text)
+            expression = try container.decodeIfPresent(String.self, forKey: .expression)
             pasteChanges = try container.decodeIfPresent([PasteChangeRecord].self, forKey: .pasteChanges)
             inputName = try container.decodeIfPresent(String.self, forKey: .inputName)
             againstName = try container.decodeIfPresent(String.self, forKey: .againstName)
@@ -862,6 +942,7 @@ struct ProjectFile: Codable {
             try container.encodeIfPresent(input, forKey: .input)
             try container.encodeIfPresent(keyframing, forKey: .keyframing)
             try container.encodeIfPresent(text, forKey: .text)
+            try container.encodeIfPresent(expression, forKey: .expression)
             try container.encodeIfPresent(pasteChanges, forKey: .pasteChanges)
             try container.encodeIfPresent(inputName, forKey: .inputName)
             try container.encodeIfPresent(againstName, forKey: .againstName)
@@ -895,6 +976,7 @@ struct ProjectFile: Codable {
             effect.input = input?.input
             if kind.isKeyframing { effect.keyframing = keyframing?.setup ?? KeyframingSetup() }
             if kind == .text { effect.text = text?.content ?? TextContent() }
+            if kind == .expression { effect.expression = expression ?? "" }
             effect.pasteChanges = (pasteChanges ?? []).compactMap(\.change)
             if let saved, case .array(let entries)? = saved["controls"] {
                 // A saved control that didn't read as one of the package's,
@@ -1162,7 +1244,14 @@ extension ProjectFile {
                 .optional("easeIn", ease), .optional("easeOut", ease), .optional("generatedBy", .uuid), .optional("hold", .bool),
             ]))
         }
-        static let keyframing = object([
+        /// A Keyframing effect's setup; only an Expression's has `reads`.
+        static func keyframingShape(for kind: EffectKind) -> JSONObjectShape {
+            kind == .expression ? object(keyframingFields + [.optional("reads", .array(ReadEntry.shape))]) : keyframing
+        }
+
+        static let keyframing = object(keyframingFields)
+
+        static let keyframingFields: [O.Field] = [
             .optional("effect", .uuid), .optional("control", .uuid), .optional("volume", .bool),
             .optional("component", .integer),
             .optional("combine", .choice(KeyframingCombine.allCases.map(\.rawValue), noun: "combine mode")),
@@ -1170,7 +1259,7 @@ extension ProjectFile {
             .optional("base", property(.numberOrNumbers)), .optional("beatLayer", .uuid),
             .optional("readPrint", .string), .optional("writtenPrint", .string),
             .optional("listensToMix", .bool), .optional("listensToLayer", .uuid), .optional("listensToClip", .uuid),
-        ])
+        ]
         static func property(_ value: JSONShape) -> JSONShape {
             .object(object([.optional("value", value), .optional("keyframes", .array(keyframe(value)))], oneOf: [["value", "keyframes"]]))
         }
@@ -1210,7 +1299,8 @@ extension ProjectFile {
                     .optional("offset", .time), .optional("loops", .bool),
                 ], oneOf: [["asset", "timeline"]]))))
             }
-            if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframing))) }
+            if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframingShape(for: kind)))) }
+            if kind == .expression { fields.append(.optional("expression", .string)) }
             if kind == .text {
                 fields.append(.optional("text", .object(object([
                     .required("string", .string), .required("font", .string), .optional("runs", .array(TextRunEntry.shape)),

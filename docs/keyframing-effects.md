@@ -4,15 +4,19 @@ Status: **built** (see [Building it](#building-it) for what each step
 does and leaves out). A **Keyframing** category of effects that draw
 nothing and instead write keyframes onto other controls, from a sound
 (Audio Keys, as Trapcode Sound Keys does in After Effects), from a song's
-beats, from noise (Wiggler, as After Effects' Wiggler) or from the
-control's own keyframes (Smoother, Looper). They are picked for a control
+beats, from noise (Wiggler, as After Effects' Wiggler), from the
+control's own keyframes (Smoother, Looper) or from Python (Expression,
+see [python-scripting.md](python-scripting.md)). They are picked for a control
 in the [Keyframe Designer](#the-keyframe-designer), opened from an
 effect's ⋯ menu, rather than from the Effects Library.
 
 ## The idea: they write real keyframes
 
-The app has no expressions, and should not need them for this. A
-Keyframing effect **generates ordinary keyframes** on a target control.
+A Keyframing effect **generates ordinary keyframes** on a target
+control. Even expressions do: Expression is a Keyframing method whose
+Python code works out the value, and its result is written as keyframes
+like any method's, rather than evaluated while drawing (see
+[python-scripting.md](python-scripting.md#the-idea-expressions-write-keyframes)).
 Everything else already works with those: the graph editor, eases,
 copying, saving, the render key and the render cache, and the audio taps
 for a volume or EQ target. Drawing, playback and export need no new path,
@@ -148,9 +152,16 @@ as heard, not as stored.
 | **Looper** | Repeats the target's keyframes past their end (or before their start). | Mode: cycle, ping-pong, offset (each cycle continues from the last), continue (at the last speed) |
 | **Time Step** | Holds each value for N frames, for a stop-motion or "on twos" look. | Hold (2 frames) |
 | **Overshoot** | Adds spring bounce after each keyframe of the target, as if the move had weight. | Stiffness, damping, mass |
+| **Expression** | Whatever its Python code works out at each frame (and, under motion blur, between frames), which can read other controls in any timeline, the sound and the beats. See [python-scripting.md](python-scripting.md). | Its code; inputs A to D; seed; keyframes: smooth or stepped; between frames: auto, off, 2, 4 or 8; tolerance |
 
 Smoother, Looper, Time Step and Overshoot read the target's own keyframes
 (the base curve above), so they are not out of date until those change.
+
+Expression differs from the rest in three ways. Its samples come from a
+run of its code in a confined Python helper, which arrives a moment
+later, as Audio Keys' sound does, so its note says "Running…" until
+then. Combine is fixed to Replace, since the code says how its result
+meets `value`. And it runs only once its code is allowed on this Mac.
 
 ## Audio Keys in detail
 
@@ -235,7 +246,11 @@ its first.
   by hand, its note when it can't write, Regenerate and Keep Edits when
   it is out of date with hand edits, **Applies To** (Component, Combine,
   Listen To or Beats From, and the Range, from the playhead), and its
-  **Settings** as fields and pop-ups, set at the playhead.
+  **Settings** as fields and pop-ups, set at the playhead. Expression
+  has its **Code** above Applies To (`ExpressionEditor`): a draft until
+  Command-Return or Apply, its error under it with Details, or, for
+  code from elsewhere, the code read-only with Allow; its Applies To
+  has Component, Listen To, Beats From and the Range, and no Combine.
 - **Filling the right**: the control's graph (`KeyframeGraphView`, with
   its time row to drag the playhead along), which every change redraws as
   the keyframes are made again. Audio Keys puts the sound's spectrum and
@@ -273,7 +288,9 @@ method can't write (no beats yet, the sound gone) or waits on the person
 (out of date after hand edits, for Regenerate or Keep Edits), the badge
 turns to a warning triangle in the warning tone, and its help and
 VoiceOver say why. VoiceOver reads it as "Keyframes made by Wiggler"; the
-Volume row has one too.
+Volume row has one too. An expression's badge warns while its code
+isn't allowed yet ("Expression not allowed yet") or it has an error
+("Expression has an error").
 
 ## Saving
 
@@ -286,7 +303,9 @@ layer's beats) and of the target as it left it (see step 3 of
 [Building it](#building-it)). The generated keyframes are saved on the
 target as usual, with `"generatedBy"` holding the effect's ID. A
 project opened by an app that ignores Keyframing effects still plays
-the same.
+the same. An Expression adds its code (`"expression"`) and what its
+last run read (`"reads"`, in its `"keyframing"`), whose values are in
+its fingerprint (see [python-scripting.md](python-scripting.md#model-and-saving)).
 
 ## Testing
 
@@ -311,9 +330,6 @@ the same.
 
 ## Not yet
 
-- Expressions, or linking a control to another live. Planned as a
-  ninth method, Expression, whose Python code can read other controls
-  (see [python-scripting.md](python-scripting.md)).
 - Driving a control on another clip directly, without an adjustment or
   nested clip.
 - Audio Keys from a sound that isn't on the timeline (an input from the

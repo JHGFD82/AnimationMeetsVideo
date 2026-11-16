@@ -95,6 +95,24 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | F9 | Easy ease the keyframes at the playhead; Shift for ease in, ⌘⇧ for ease out |
 | ⌃⌥H | Hold the keyframes at the playhead |
 
+Scripts and expressions (see [python-scripting.md](python-scripting.md#accessibility))
+have these, with every command in the Scripts menu or a labeled button:
+
+| Keys | Does |
+| --- | --- |
+| ⌥⌘Y | Open the Python Console |
+| Return / ↑ / ↓ | Console: run the line; an earlier or later line typed |
+| ⌘Return | Expression editor: apply the code, which also allows it on this Mac |
+| Escape | Expression editor: put back the applied code. A script running (its sheet) or a console line: stop it |
+| ⌘. | Stop a script or console line running |
+
+The console's output is a system text view, read by character, word or
+line and selectable across entries, and what each line gave is
+announced. Only errors are in the error tone, and a problem the app
+reports starts with "Error:"; text printed to stderr is in the primary
+tone, as red alone would call it an error; an expression's error is announced when it appears and is
+the last line of its editor's value.
+
 The motion designer has keys of its own for everything its drags do
 (markers and clips a frame at a time, M, L, E, Delete); see
 [motion-designer.md](motion-designer.md#the-panel).

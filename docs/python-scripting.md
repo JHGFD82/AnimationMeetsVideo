@@ -1,10 +1,18 @@
 # Python scripting
 
-Status: **planned, not implemented**. Nothing here is built. This
-document is written for whoever builds it: it says what the person sees,
-then how it works, then where each piece goes in the code as it stands
-today, then the order to build it in. Choices made while writing it that
-the request didn't settle are listed under
+Status: **built**, but for NumPy (step 12 of [Building it](#building-it)),
+which step 10's measurement doesn't call for. Steps 1 to 8 have been
+built and tried on a Mac; steps 9 to 11 (Between Frames, re-running only
+the changed samples, following a held drag), the accessibility review
+(13) and these docs (14) were written since and haven't been built yet.
+No Python release is pinned in the repository: `scripts/fetch-python.sh
+--pin`, run on the Mac that builds the app, writes the pin to
+`scripts/python-pin`, which git ignores.
+
+The document was written as the plan, before the build: it says what
+the person sees, then how it works, then where each piece goes in the
+code, then the order to build it in. Where the build differs, a note
+**As built** says how; choices made while writing it are under
 [Decisions made here](#decisions-made-here).
 
 Two ways to work on a project in Python, on one framework:
@@ -242,6 +250,12 @@ person's rights. Each runs one thing at a time.
   `Contents/Resources/Python/`, as Blender keeps its own. Everyone on
   one version of the app has one Python, so an expression gives the same
   keyframes on every Mac.
+  **As built**, the pin is kept on the Mac that builds the app, in
+  `scripts/python-pin`, which `scripts/fetch-python.sh --pin` writes and
+  git ignores, so two builds can carry different Pythons, and an
+  expression's keyframes are the same only between apps built with the
+  same pin. Without a pin the app is built without a Python, and asks
+  for one in Settings > Scripting.
 - **Chosen.** Settings can point at another interpreter. The helper's
   own code uses only the standard library, so anything 3.11 or later
   runs it. The built-in one has no third-party packages; this is the way
@@ -327,6 +341,16 @@ What differs:
 | `linear`, `ease`, `clamp` | Mapping one range onto another |
 | `sin`, `cos`, `sqrt`, `pi`, `tau`, … | Everything in `math` |
 | `random()` | Seeded from Seed, the effect and the sample: the same every run |
+
+**As built**: `audio(low, high, floor=-48, ceiling=0)`; `noise(x,
+dimension=0)` and `wiggle(frequency, amount, octaves=1, dimension=0)`
+are Wiggler's noise for the expression's Seed, worked out by the app,
+`wiggle` from the start of the expression's range, as Wiggler starts,
+and `dimension` another stream, as Wiggler moves each component on its
+own. `beats.since` and `beats.until` are None where there is no beat
+before or after; `beats.phase` is 0 there; `beats.times` lists them
+all. `prev` is a number, or a Vector for several. Everything in `math`
+is in scope, `pow` included, which takes the place of the built-in one.
 
 Vectors add, subtract, multiply and divide with numbers and with each
 other, by component. The result is a number, or as many numbers as the
@@ -420,9 +444,14 @@ over the **time limit** (5 seconds) is stopped, with the note "Took
 longer than 5 seconds, so it was stopped."
 
 During a held drag (`ProjectState.hold`) of something an expression
-reads, the expression follows when the drag ends, like everything but
-the viewer and the dragged row. Following each step is a later step of
-[Building it](#building-it).
+reads, such as one of its inputs in the Keyframe Designer, the
+expression runs against the drag as it goes (`held`), and what lands is
+written into the drag, as what follows from it rather than an edit, so
+the viewer follows each step; only the samples the step changed are run
+again. The project is untouched until the drag ends, when its last
+step is committed and the edit that commits it finds the result
+already made. A view of its own watches the drag, so the rest of the
+editor doesn't run again at each step.
 
 ### Doing less work
 
@@ -447,6 +476,25 @@ multiplies it by up to 8. What keeps runs few and short:
   sample to the end, since each sample follows from the one before, and
   code that read a control at another moment (`.at`) runs whole when
   that control changed.
+- **As built**, two things differ from the above. The app sends every
+  row each run, and the helper compares them with the rows it kept, so
+  a helper started afresh can never use rows it doesn't have; sending
+  is cheap, and the calls are what cost. And code that uses `state`
+  runs whole, rather than from the first changed sample, which would
+  need `state` kept as it was at every sample. The helper uses its last
+  run only when the app says nothing that run read has changed since,
+  and when the code, the tables' shape and a key of what else the
+  samples depend on (what `audio()` hears and `beats` follows, the
+  component, where the clip is, the frame rate) are the same; a partial
+  run's reads join the whole run's. `prev` is the sample before as a
+  number or a Vector, the same in a whole run and a partial one.
+- **Measured** on the helper alone (Python 3.13 on Linux, with the app's
+  answers stood in for), for `value + [a * sin(t * tau * b), 0]` on a
+  Position: a three-minute clip at 30 fps (5,400 samples) runs whole in
+  about 0.14 s, and in 16 ms after one input keyframe moves; with 8
+  moments between frames (48,600 samples), 0.8 s and 0.19 s. Well inside
+  the 5 second limit, so NumPy (below) isn't called for yet. To measure
+  again on a Mac, in the real app, with projects' own expressions.
 - **A whole clip in one call**, only if measuring says the rest isn't
   enough. With NumPy in the built-in Python, `t`, `value` and the tables
   are arrays, and the code is called once, its arithmetic running over
@@ -735,6 +783,16 @@ By the rules in [accessibility.md](accessibility.md):
   menu or a labeled button; Stop answers to Escape and Command-Period.
 - Code is set in `Design.Typeface.numeric`, the monospaced face numbers
   use, in `Design`'s text tones.
+- As built: the console's output is a read-only system text view on the
+  well surface, where the error tone reads at 5.2:1 (3.1:1 on the
+  panel's own surface), and a problem the app reports reads "Error:";
+  text a script prints to stderr is in the primary tone like stdout,
+  since it is often a warning and red alone mustn't say "error";
+  what each line gave is announced. Its input line stays enabled while
+  a line runs, so Escape reaches it. The run sheet's Stop answers to
+  Escape and Command-Period. Review Expressions' rows keep their Allow
+  buttons, named for their expression. The keys are in Help > Keyboard
+  Shortcuts and [accessibility.md](accessibility.md#keyboard).
 
 ## Tests
 
@@ -765,7 +823,7 @@ faked.
   docstring; a file added or changed is picked up; Save As and a backup
   carry the folder.
 - `Scripting/PythonHelperTests`, with a real interpreter
-  (`AMV_PYTHON=<python3> swift test --filter Scripting`; skipped when
+  (`AMV_PYTHON=<python3> swift test --filter "PythonHelper|Confinement"`; skipped when
   the variable isn't set): the names in scope against hand-worked
   values; an error's line; the time limit and Stop; a helper killed
   mid-run; output over the cap; the same seed giving the same samples;
@@ -851,39 +909,40 @@ build starts; the first two shape everything after them.
 
 In order, each step usable on its own:
 
-1. **Runtime and helper.** `PythonRuntime`, `PythonHelper`, the frames,
+1. **Runtime and helper** (done). `PythonRuntime`, `PythonHelper`, the frames,
    `amv_host` answering a ping; the time limit and Stop;
    `fetch-python.sh` and the bundle; the Settings tab showing the
    version. Usable as: Settings says which Python the app has.
-2. **Reading, and the console.** `ProjectBridge`'s reads, the `amv`
+2. **Reading, and the console** (done). `ProjectBridge`'s reads, the `amv`
    module's objects, `ScriptConsole`. Usable as: look around a project
    in Python.
-3. **Scripts that edit.** The working copy, the changes in the table,
+3. **Scripts that edit** (done). The working copy, the changes in the table,
    refusals, the one named undo step; `ScriptLibrary` and the package's
    `Scripts/`, with Save As and backups; allowing a project's scripts
    (`CodeApproval`); the Scripts menu and the run sheet.
-4. **The expression model**, with no Python: the kind, `expression`,
+4. **The expression model** (done), with no Python: the kind, `expression`,
    `reads` across timelines and their readers, saving,
    `ExpressionResults`, `regenerateKeyframes` and the fingerprints,
    loops. Tested with results put in the store by hand.
-5. **Allowing expressions.** Hashes in `CodeApproval`, the badge's and
+5. **Allowing expressions** (done). Hashes in `CodeApproval`, the badge's and
    designer's states, Review Expressions.
-6. **The confined helper**: the profile, on a Mac, and its tests.
-7. **Running expressions.** `ExpressionRunner`, the helper's evaluator
+6. **The confined helper** (done; tried on a Mac, which found that the
+   helper must start in a folder its sandbox can read): the profile, on a Mac, and its tests.
+7. **Running expressions** (done). `ExpressionRunner`, the helper's evaluator
    and tables, the names in scope, errors, `ExpressionEditor` and the
    chip. Not before steps 5 and 6: from the first build that runs an
    expression, it runs only allowed code, confined.
-8. **Listen To and Beats From** for expressions: `audio` and `beats`.
-9. **Between frames**: the shutter's moments, the setting, the
+8. **Listen To and Beats From** (done, with `noise()` and `wiggle()`) for expressions: `audio` and `beats`.
+9. **Between frames** (done): the shutter's moments, the setting, the
    fingerprint.
-10. **Doing less work**: re-running the changed samples alone. Then
+10. **Doing less work** (done; measured under "Doing less work"): re-running the changed samples alone. Then
     measure a run on real projects, with Between Frames on.
-11. **Following a held drag**: running against `ProjectState.held`, for
+11. **Following a held drag** (done, for every held drag): running against `ProjectState.held`, for
     the inputs' sliders in the designer first.
-12. **Whole-clip calls with NumPy**, only if step 10's measurement
+12. **Whole-clip calls with NumPy** (not done: not called for), only if step 10's measurement
     shows runs that are still slow.
-13. Accessibility, checked with the `accessibility-reviewer` agent.
-14. Docs, once built: this document's status; the README's row and the
+13. Accessibility (done), checked with the `accessibility-reviewer` agent.
+14. Docs (done), once built: this document's status; the README's row and the
     milestones; [keyframing-effects.md](keyframing-effects.md) (the
     kinds table, "The idea", "Not yet");
     [project-package.md](project-package.md) (`Scripts/` in the layout,

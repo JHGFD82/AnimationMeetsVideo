@@ -500,6 +500,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     var keyframing: KeyframingSetup?
     /// For a Text effect: its words and font (nil for every other kind).
     var text: TextContent?
+    /// For an Expression: its Python code (nil for every other kind), kept
+    /// in the project file so undo, copying and presets carry it.
+    var expression: String?
     /// What pasting or applying a preset couldn't bring over, until each is
     /// marked resolved (see docs/effects.md, "Paste changes").
     var pasteChanges: [PasteChange] = []
@@ -519,6 +522,7 @@ struct Effect: Identifiable, Equatable, Sendable {
         keyframing = kind.isKeyframing ? KeyframingSetup() : nil
         if kind == .audioKeys { keyframing?.audioSource = .mix }
         text = kind == .text ? TextContent() : nil
+        expression = kind == .expression ? "value" : nil
     }
 
     var displayName: String { missing?.name ?? name ?? kind.name }
