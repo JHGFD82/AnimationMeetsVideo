@@ -2083,4 +2083,21 @@ struct UISnapshots {
         )
         try SnapshotSupport.render(editor, "music-points", size: CGSize(width: 1500, height: 900))
     }
+
+    /// The Python Console after a few lines: one typed and its value, text
+    /// printed, and a traceback.
+    @Test func scriptConsole() throws {
+        let transcript = ScriptTranscript()
+        transcript.append(.input("[c.name for c in amv.selection]"))
+        transcript.append(.result("['Skate', 'Skate 2']"))
+        transcript.append(.input("for c in amv.selection: print(c.start)"))
+        transcript.append(ScriptOutput(stream: .stdout, text: "0\n5/2\n"))
+        transcript.append(.input("amv.timeline.layer('Logo')"))
+        transcript.append(.failure(ScriptFailure(
+            exception: "LookupError", message: "\u{201C}Main\u{201D} has no layer called \u{201C}Logo\u{201D}", line: 1,
+            traceback: "Traceback (most recent call last):\n  File \"<console>\", line 1, in <module>\nLookupError: \u{201C}Main\u{201D} has no layer called \u{201C}Logo\u{201D}\n"
+        )))
+        let console = ScriptConsole(transcript: transcript, runner: ScriptRunner(helper: PythonHelper(interpreter: { nil }), transcript: transcript))
+        try SnapshotSupport.render(console, "script-console", size: CGSize(width: 620, height: 380))
+    }
 }

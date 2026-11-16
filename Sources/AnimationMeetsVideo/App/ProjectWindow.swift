@@ -44,6 +44,7 @@ struct ProjectWindow: View {
             .equatable()
             .environment(session.projectState)
             .environment(session.autosaveStatus)
+            .environment(\.scriptWindow, session.scriptWindow)
             .projectDialogs(session: session, window: nil)
             .newEffectPackagePrompt(isHost: NewEffectPackagePrompt.shared.hostWindow == windowID)
             .onExternalProjectChange { session.checkForExternalProjectChange() }

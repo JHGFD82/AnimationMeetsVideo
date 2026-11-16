@@ -30,6 +30,9 @@ struct EditorView: View {
     /// The project's state, shared by its windows, which refuses edits to
     /// clips the motion designer has open (`ProjectState.lock`).
     @Environment(ProjectState.self) private var projectState: ProjectState?
+    /// Where scripts read what this window shows; set only in the
+    /// project's own window.
+    @Environment(\.scriptWindow) private var scriptWindow
     @State private var activeTimelineID: UUID
     @State private var selection: TimelineSelection?
     @State private var playback = PlaybackModel()
@@ -203,6 +206,12 @@ struct EditorView: View {
         }
         // A timeline opened is shown at its playhead, not under a skim of
         // the browser.
+        .onChange(of: activeTimeline.wrappedValue, initial: true) { _, id in
+            scriptWindow?.timelineID = id
+        }
+        .onChange(of: selection, initial: true) { _, picked in
+            scriptWindow?.selection = picked
+        }
         .onChange(of: activeTimeline.wrappedValue) { _, id in
             onTimelineChange?(id)
             skim.end()
@@ -242,6 +251,7 @@ struct EditorView: View {
         // Closing it, or its project, asks before stopping an export.
         .background(WindowReader { [exportWindow] in exportWindow.editorWindow = $0 })
         .onAppear {
+            scriptWindow?.playhead = { [playback] in playback.currentTime }
             let live = liveProject
             beatMatch.onEdit = live.edit
             beatMatch.onOpen = { [playback] in playback.player.pause() }

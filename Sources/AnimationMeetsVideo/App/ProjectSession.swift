@@ -25,6 +25,9 @@ final class ProjectSession {
     /// Where each timeline was left in the window, saved in the package
     /// beside the project (`ViewStateFile`), never as an edit.
     @ObservationIgnored let viewMemory = TimelineViewMemory()
+    /// What the project's window shows, for scripts' `amv.timeline`,
+    /// `amv.selection` and `amv.playhead`.
+    @ObservationIgnored let scriptWindow = ScriptWindowState()
     /// The project's own window, whose undo its timeline windows share
     /// (see `TimelineWindow`).
     @ObservationIgnored weak var editorWindow: NSWindow?
