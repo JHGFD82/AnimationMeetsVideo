@@ -36,7 +36,7 @@ struct DeclaredHandles: ViewerHandleSet {
 
     /// What the expressions read: the controls at the playhead, the frame's
     /// size, and while dragging, where to.
-    private static func readings(_ located: Located, _ effect: Effect? = nil, _ context: HandleContext, extra: [String: Double] = [:]) -> ControlReadings {
+    private static func readings(_ located: Located, _ context: HandleContext, effect: Effect? = nil, extra: [String: Double] = [:]) -> ControlReadings {
         let frame = ["frameWidth": Double(context.frameSize.width), "frameHeight": Double(context.frameSize.height), "scale": 1.0]
         return ControlReadings(
             effect: effect ?? located.effect, package: located.package, time: context.sourceTime,
