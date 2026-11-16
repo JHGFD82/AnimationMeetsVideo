@@ -37,6 +37,8 @@ struct ExpressionEditor: View {
                     .font(Design.Typeface.micro)
                     .foregroundStyle(Design.statusWarning)
                     .fixedSize(horizontal: false, vertical: true)
+                    // To copy whole, as a report needs it.
+                    .textSelection(.enabled)
                     .accessibilityLabel("Error: \(failure)")
             }
         }

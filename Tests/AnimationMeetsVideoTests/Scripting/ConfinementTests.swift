@@ -46,6 +46,31 @@ struct ConfinementTests {
         #expect(try await run("import math, json, fractions, random\nmath.sqrt(16)") == "4.0")
     }
 
+    /// An expression asks the app for what it reads while it runs, as
+    /// audio() and reading another control do: those calls work confined.
+    @Test func callsToTheAppWorkMidRun() async throws {
+        let helper = helper()
+        defer { Task { await helper.shutDown() } }
+        var request = HelperRequest(kind: .expression, code: "audio(20, 150) + noise(0.5)")
+        let tables: [(String, Int, [Double])] = [
+            ("time", 1, [0, 1.0 / 24]), ("t", 1, [0, 1.0 / 24]), ("frame", 1, [0, 1]), ("source_time", 1, [0, 1.0 / 24]),
+            ("value", 1, [0, 0]), ("a", 1, [0, 0]), ("b", 1, [0, 0]), ("c", 1, [0, 0]), ("d", 1, [0, 0]),
+        ]
+        request.payload = PythonHelper.payload(tables.flatMap { $0.2 })
+        request.fields = [
+            "count": 2, "width": 1, "tables": .array(tables.map { [.string($0.0), .number(Double($0.1))] }),
+            "fps": 24, "duration": 0.04, "seed": 1, "effect": "E",
+        ]
+        let end = try await helper.run(request, output: { _ in }, answer: { call in
+            switch call.method {
+            case "audio_levels": .value([0.25, 0.5])
+            case "noise": .value([1])
+            default: .error(.value("no \(call.method)"))
+            }
+        })
+        #expect(end == .samples([1.25, 1.5]))
+    }
+
     @Test func theNetworkIsRefused() async throws {
         let result = try await outcome("import socket\nsocket.create_connection((\"1.1.1.1\", 53), timeout=3).close()")
         #expect(result != "'allowed'")
