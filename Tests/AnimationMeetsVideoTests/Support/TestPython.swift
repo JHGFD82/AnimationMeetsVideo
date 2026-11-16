@@ -1,7 +1,7 @@
 import Foundation
 
 /// The real interpreter the scripting suites run on, from `AMV_PYTHON`:
-/// `AMV_PYTHON=<python3> swift test --filter Scripting`. Nil when the
+/// `AMV_PYTHON=<python3> swift test --filter "PythonHelper|Confinement"`. Nil when the
 /// variable isn't set, and those suites are skipped.
 ///
 /// It lives outside the suites so their `@Suite(.enabled(if:))` traits

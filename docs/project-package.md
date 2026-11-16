@@ -351,6 +351,7 @@ lengths now, and a damaged one is left out.
 | `Reference/` | No, only through an explicit "forget original" action, applied at the next save. It may be the only record of a replaced file, so Save As copies each asset's folder into the new package. |
 | `Cache/` | Yes. `Renders/` has a size cap and evicts oldest-first; its entries are keyed by a hash of the exact content they render, so any upstream edit invalidates them. `References/` holds one movie per Matroska file, named by a hash of the file's path, size and date; opening the project deletes those no asset uses, and remakes any missing. |
 | `Backups/` | Yes, by count: each autosave deletes all but the newest 20. |
+| `Scripts/` | No: it is the person's work, like `project.json`. The app writes to it only for New Script… (through `PackageCoordinator`), and Save As and backups copy it whole. |
 
 `Cache/` is marked excluded from backup and sync, and should be kept out of
 version control. Settings to move the cache elsewhere come later.
