@@ -106,7 +106,7 @@ struct LoopBar: View {
     /// outline.
     private func chip(_ shown: LoopRegion, selected: Bool = false) -> some View {
         let bounds = span(shown)
-        let tone = Design.loop
+        let tone = shown.color.map(Design.color) ?? Design.loop
         let outline = selected ? Design.textOnColor.opacity(0.95) : (shown.isOn ? tone : tone.greyed()).opacity(0.85)
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
@@ -134,7 +134,7 @@ struct LoopBar: View {
                 Color.clear
                     .frame(width: 0, height: 0)
             }
-            .foregroundStyle(Design.textOnColor)
+            .foregroundStyle(Design.ink(on: shown.color, selected: selected, enabled: shown.isOn, over: .rail))
             .lineLimit(1)
             .accessibilityHidden(true)
         }
@@ -218,8 +218,9 @@ struct LoopBar: View {
                 let target = snap(time(value.location.x))
                 onSnapIndicator(target)
                 let moving = target ?? time(value.location.x)
+                // A new region keeps the color of the one it replaces.
                 draft = timeline.resolvedLoop(from: anchor, to: moving, within: limits)
-                    .map { LoopRegion(start: $0.start, end: $0.end) }
+                    .map { LoopRegion(start: $0.start, end: $0.end, color: region?.color) }
                 if let draft {
                     // The end that follows the pointer, and how far from the other.
                     let followsEnd = moving >= anchor

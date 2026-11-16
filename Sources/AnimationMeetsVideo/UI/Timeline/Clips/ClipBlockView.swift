@@ -464,7 +464,8 @@ struct ClipBlockView: View {
                 passesThrough: model.passesThrough,
                 timeHelp: shown.time.isDefault ? nil
                     : shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings",
-                hasShutter: !shown.shutter.isOff
+                hasShutter: !shown.shutter.isOff,
+                ink: Design.ink(on: model.clip.color, selected: model.isSelected, enabled: model.clip.enabled, over: .track)
             )
             .equatable()
             // Where a retimed clip's speed is set, along the bar.

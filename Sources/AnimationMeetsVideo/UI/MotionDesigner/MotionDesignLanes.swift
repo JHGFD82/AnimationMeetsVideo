@@ -267,7 +267,7 @@ struct MotionDesignLanes: View {
             context.stroke(gap, with: .color(Design.textTertiary.opacity(0.6)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
         }
         for (index, clip) in drafts.enumerated() {
-            let tone = Design.ClipTone.of(session.project.resolvedInfo(for: clip.source), streams: clip.streams).color
+            let tone = clip.color.map(Design.color) ?? Design.ClipTone.of(session.project.resolvedInfo(for: clip.source), streams: clip.streams).color
             let x0 = max(0, session.x(of: clip.startOffset.seconds)), x1 = min(size.width, session.x(of: clip.endOffset.seconds))
             guard x1 > x0 else { continue }
             var line = Path()

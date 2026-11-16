@@ -1555,6 +1555,73 @@ struct UISnapshots {
         try await SnapshotSupport.render(lockedView, "clip-blocks-locked", size: CGSize(width: 560, height: 340), settle: .seconds(2))
     }
 
+    /// Bars in colors a person gave them (docs/bar-colors.md): clips in a
+    /// light, a middle and a dark preset, each plain and selected, with
+    /// their names in the ink that reads (black on the light one); one
+    /// turned off, greyed whatever its color; then a section and the loop
+    /// region in the same color, which is allowed, and still readable.
+    @Test func coloredBars() throws {
+        func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600) }
+        let light = BarColor(0xFED2CD), middle = BarColor(0x05A7A7), dark = BarColor(0x174276)
+        func clip(_ color: BarColor, enabled: Bool = true) -> TimelineClip {
+            var clip = TimelineClip(source: .graphic, startOffset: seconds(0.2), trimStart: .zero, trimEnd: seconds(4))
+            clip.color = color
+            clip.enabled = enabled
+            return clip
+        }
+        func block(_ clip: TimelineClip, selected: Bool = false) -> some View {
+            let info = ResolvedClipInfo.graphic(title: clip.color?.name ?? "Title")
+            return ClipBlockView(
+                model: .sample(clip, info: info, color: Design.tone(of: clip, info: info, on: .video), selected: selected),
+                handlers: LiveClipHandlers(.inert())
+            )
+            .frame(width: 240, height: 40, alignment: .topLeading)
+        }
+        func row(@ViewBuilder _ blocks: () -> some View) -> some View {
+            HStack(spacing: 20) { blocks() }.frame(height: 40)
+        }
+
+        var project = EditingProject.empty
+        let added = project.addSection(named: "Chorus", in: project.rootTimelineID, from: .zero, to: CMTime(value: 4, timescale: 1))
+        let sectionID = try #require(added)
+        project.setColor(middle, ofSection: sectionID, in: project.rootTimelineID)
+        let timeline = project.timelines[0]
+        let width: CGFloat = 480
+        let viewport = TimelineViewport(durationSeconds: 8, frameRate: 24, width: width, requestedPixelsPerSecond: nil, requestedScrollX: 0)
+        let loop = LoopBar(
+            region: LoopRegion(start: CMTime(value: 4, timescale: 1), end: CMTime(value: 7, timescale: 1), color: middle),
+            timeline: timeline, limits: CMTimeRange(start: .zero, end: CMTime(value: 8, timescale: 1)),
+            x: { viewport.x(atSeconds: $0.seconds) },
+            time: { CMTime(seconds: viewport.seconds(atX: $0), preferredTimescale: 600) },
+            snap: { _ in nil }, onSnapIndicator: { _ in },
+            onDraw: { _ in }, onAdjust: { _ in }, onRemove: {}, onToggle: {},
+            isSelected: false, onSelect: {}
+        )
+        let sections = SectionLane(
+            sections: timeline.sections, viewport: viewport, selectedID: nil,
+            snap: { _, _ in nil }, resolveMove: { _, _ in nil }, resolveEdge: { _, _, _ in nil },
+            onSelect: { _ in }, onCreate: { _, _ in nil }, onMove: { _, _ in },
+            resolveCopy: { _, _ in nil }, onCopy: { _, _ in }, onSetEdge: { _, _, _ in },
+            onRename: { _, _ in }, onDelete: { _ in }, onSnapIndicator: { _ in }
+        )
+
+        let view = VStack(alignment: .leading, spacing: 14) {
+            row { block(clip(light)); block(clip(light), selected: true) }
+            row { block(clip(middle)); block(clip(middle), selected: true) }
+            row { block(clip(dark)); block(clip(dark), selected: true) }
+            row { block(clip(middle, enabled: false)) }
+            VStack(spacing: 0) {
+                loop.frame(width: width, height: LoopBar.height)
+                sections
+            }
+            .background(Design.Surface.raised.color)
+        }
+        .padding(20)
+        .background(Design.Surface.sunken.color)
+        .preferredColorScheme(.dark)
+        try SnapshotSupport.render(view, "colored-bars", size: CGSize(width: 560, height: 320))
+    }
+
     /// Nested timeline clips showing the timeline's own frames, as video
     /// clips show their file's: the second plays a second later into the
     /// same timeline, so its pictures sit a second further left, as a slip
