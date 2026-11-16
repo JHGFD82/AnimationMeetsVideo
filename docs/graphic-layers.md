@@ -516,19 +516,34 @@ Built (step 3a):
 
 Still to come:
 
-- **Editing in the viewer.** Typing in place, and a handle for the wrap
-  width.
+- **Editing in the viewer.** Typing in place. The wrap width has a
+  handle (see [Editing in the viewer](#editing-in-the-viewer)).
 
 ## Editing in the viewer
 
-Planned: none of this is built yet (see step 4 of
-[Building it](#building-it)). Shapes and text are moved and reshaped by
-handles drawn over the viewer: vertices and tangents, a primitive's size
-and corners, a text box's width. The freehand ink of the external
-display (`Annotations.swift`) can be turned into a shape. Following
-[accessibility.md](accessibility.md), every handle is an accessibility
-element with actions, and the selected vertex can be nudged by the
-arrow keys (ten pixels with Shift).
+Partly built: a primitive's and a text block's handles are; vertices
+and tangents, which need free paths, and selecting a clip by clicking
+it in the viewer aren't. With nothing selected in the effects panel a
+graphic clip gets the Transform handles, whose box is the rectangle
+round what its shapes draw. With a shape or text effect selected, it
+gets that effect's own handles instead (`ShapeHandles`, a handle set of
+the viewer canvas of [viewer-handles.md](viewer-handles.md)), with the
+shape's outline drawn dashed:
+
+| Shape | Handles |
+| --- | --- |
+| Rectangle, Ellipse | Position at the middle; Size's width at the right edge, height at the bottom, both at the bottom right corner (Shift keeps the proportion; a linked Size keeps it from an edge too); a rectangle's Corners along its top edge, from the top left, no rounder than half the shorter side |
+| Polygon, Star | Position; Radius and Rotation at the first point, turned as it is dragged round (Shift keeps the turn); a star's Inner Radius at its first notch |
+| Text | Position; Wrap Width at the block's right edge, or its left while its anchor is on the right, the anchored side staying put. A block on a path has none. |
+
+They work in the effect's coordinates at its place in the stack, mapped
+through the Transform effects below it, so they stay on the shape. Each
+edit is one undo step and sets a keyframe at the playhead where the
+value is animated. Following [accessibility.md](accessibility.md), each
+is an adjustable VoiceOver element, and Tab and the arrow keys pick and
+nudge them (ten with Shift, a tenth with Option). The pen tool, which
+draws shapes rather than ink over the picture where the external
+display's markup once was, waits on free paths.
 
 ## Saving
 
@@ -605,8 +620,12 @@ arrow keys (ten pixels with Shift).
    its offset, turning with it, centering on it, and following the shape
    above in a stack; `textOnPathDrawing` draws words round a circle with
    an animator.
-4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for
-   vertices and primitives, and their keyboard paths.
+4. **Viewer handles.** (a, done) Handles for primitives and a text
+   block's wrap width, with their keyboard paths; `ShapeHandlesTests`
+   checks each, through a Transform below, with a linked Size, and the
+   keyframe rule. (b) Vertices and tangents, with free paths. Selecting a
+   clip by clicking it in the viewer is left out
+   ([viewer-handles.md](viewer-handles.md#not-in-this-plan)).
 5. **Stills as effect inputs**, so a PNG can be a Matte's input.
 
 ## Not in this plan

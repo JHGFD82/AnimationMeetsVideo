@@ -13,5 +13,10 @@
     {"id": "maskKeep", "name": "Keep", "type": "choice", "default": "start", "options": [{"id": "start", "name": "Start"}, {"id": "end", "name": "End"}]}
   ],
   "amount": true,
-  "arguments": ["index(gradientShape)", "center(gradientStart)", "center(gradientEnd)", "index(maskKeep)"]
+  "arguments": ["index(gradientShape)", "center(gradientStart)", "center(gradientEnd)", "index(maskKeep)"],
+  "viewer": {
+    "guides": [
+      {"line": ["gradientStart", "gradientEnd"]}
+    ]
+  }
 }

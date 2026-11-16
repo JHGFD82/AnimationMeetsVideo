@@ -332,6 +332,12 @@ struct ControlDefinition: Sendable {
     var curveTint = CurveTint.white
     /// For an EQ band's control: the band.
     var equalizerBand: EqualizerBand?
+    /// Whether it is a package's `point`: a position from the middle of
+    /// the frame, in the timeline's pixels, down positive.
+    var isPoint = false
+    /// For a point: whether the viewer shows a handle for it (its
+    /// package's `"handle": false` leaves it out).
+    var showsViewerHandle = true
 
     // Worked out from the rest when the registry is made (see
     // `ControlKind`).

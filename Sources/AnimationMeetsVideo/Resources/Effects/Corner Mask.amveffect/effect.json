@@ -15,5 +15,10 @@
     {"id": "maskKeep", "name": "Keep", "type": "choice", "default": "inside", "options": [{"id": "inside", "name": "Inside"}, {"id": "outside", "name": "Outside"}]}
   ],
   "amount": true,
-  "arguments": ["center(cornerTopLeft)", "center(cornerTopRight)", "center(cornerBottomRight)", "center(cornerBottomLeft)", "maskFeather * scale", "index(maskKeep)"]
+  "arguments": ["center(cornerTopLeft)", "center(cornerTopRight)", "center(cornerBottomRight)", "center(cornerBottomLeft)", "maskFeather * scale", "index(maskKeep)"],
+  "viewer": {
+    "guides": [
+      {"polygon": ["cornerTopLeft", "cornerTopRight", "cornerBottomRight", "cornerBottomLeft"]}
+    ]
+  }
 }

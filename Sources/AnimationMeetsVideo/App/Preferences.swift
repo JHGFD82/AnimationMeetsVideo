@@ -13,6 +13,9 @@ enum Preferences {
     /// A `PreviewQuality` raw value.
     static let previewQuality = "previewQuality"
     static let motionBlurInPreview = "motionBlurInPreview"
+    /// Whether the viewer shows handles on the clip selected in the
+    /// timeline (Show Handles, H). Off until asked for.
+    static let viewerHandles = "viewerHandles"
 
     // MARK: Timeline
 

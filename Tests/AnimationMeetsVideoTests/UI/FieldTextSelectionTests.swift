@@ -8,7 +8,7 @@ import Testing
 /// real events (see `EventHarness`; run with `UI_EVENTS=1`): each starts
 /// with its whole value selected (`FieldTextSelection`).
 @MainActor
-@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .timeLimit(.minutes(1)))
+@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .eventsOneAtATime, .timeLimit(.minutes(1)))
 struct FieldTextSelectionTests {
     @MainActor @Observable
     final class Renaming {

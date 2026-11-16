@@ -29,6 +29,9 @@ struct TimelineEditorSurface<Library: View>: View {
     /// The window's own controls, at the right end of the header, so the
     /// project window has one bar above the viewer rather than two.
     var headerActions: AnyView? = nil
+    /// The viewer's handles' state, shared with the external display; the
+    /// surface keeps its own when not given one.
+    var canvasState: ViewerCanvasState? = nil
     @ViewBuilder let library: () -> Library
     /// Renders in the background; absent in windows that don't render.
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
@@ -93,6 +96,10 @@ struct TimelineEditorSurface<Library: View>: View {
     @AppStorage(Preferences.inspectorPanelWidth) private var inspectorPanelWidth = 280.0
     @AppStorage(Preferences.browserWidth) private var browserWidth = 260.0
     @State private var effectsState = EffectsPanelState()
+    /// The viewer's handles: their tool, what the arrows change, and the
+    /// drag in progress (see `canvasState`).
+    @State private var ownCanvasState = ViewerCanvasState()
+    private var canvas: ViewerCanvasState { canvasState ?? ownCanvasState }
     /// The panel last clicked in, which wears a light border and gets the
     /// keys and the Edit menu first.
     @State private var activePanel = ActivePanel()
@@ -268,7 +275,11 @@ struct TimelineEditorSurface<Library: View>: View {
                         offlineNotice: offlineNotice,
                         trimPreview: trimPreview,
                         banner: partialBanner,
-                        onClearBanner: { effectsState.showUpTo = nil }
+                        onClearBanner: { effectsState.showUpTo = nil },
+                        handles: ViewerHandlesSource(
+                            project: $project, timelineID: timelineID, selection: selection,
+                            effectsState: effectsState, playhead: playhead, state: canvas
+                        )
                     )
                     .editorPanel(.viewer, activePanel)
                     if showsSidePanel {
@@ -413,6 +424,7 @@ struct TimelineEditorSurface<Library: View>: View {
         // hash in the composition's key.
         .onChange(of: EffectPackageStatus.shared.revision) { showProject() }
         .onAppear {
+            canvas.follow(playhead: playhead, effects: effectsState)
             trail = project.containingTimelines(of: timelineID)
             playhead.liveTime = { [playback] in playback.isPlaying ? playback.player.currentTime() : nil }
             let project = $project
@@ -426,6 +438,7 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onChange(of: undoManager) { _, manager in graphs.undoManager = manager }
         .onDisappear {
+            canvas.stopFollowing(playhead)
             park(timelineID)
             graphs.closeAll()
             // These hold this surface, whose state holds them: kept, they

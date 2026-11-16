@@ -546,14 +546,10 @@ extension CompositionExporter {
         return (picture, url, fitTransform(from: picture.size, to: timeline.frameSize))
     }
 
-    /// Scales `source` to fit inside `target` (aspect-preserving) and centers it.
+    /// Scales `source` to fit inside `target` (aspect-preserving) and centers
+    /// it (`CGAffineTransform.fitting`, which the viewer's handles share).
     static func fitTransform(from source: CGSize, to target: CGSize) -> CGAffineTransform {
-        guard source.width > 0, source.height > 0, target.width > 0, target.height > 0 else { return .identity }
-        let scale = min(target.width / source.width, target.height / source.height)
-        return CGAffineTransform(scaleX: scale, y: scale).concatenating(CGAffineTransform(
-            translationX: (target.width - source.width * scale) / 2,
-            y: (target.height - source.height * scale) / 2
-        ))
+        .fitting(source, into: target)
     }
 
     /// The footage an effect takes, for the stretch of the timeline `visible`

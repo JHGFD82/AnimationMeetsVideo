@@ -281,6 +281,14 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// The color a curve's line is drawn in.
     var curveTint: CurveTint { definition.curveTint }
 
+    /// Whether it is a position in the frame that the viewer shows a
+    /// handle for (`PointControlHandles`): a package's `point` that
+    /// doesn't opt out.
+    var hasViewerHandle: Bool {
+        let definition = definition
+        return definition.isPoint && definition.showsViewerHandle
+    }
+
     /// The names of its components, for a graph's legend; none for a
     /// curve, whose numbers are its points, not values to graph.
     var componentNames: [String] { definition.legend }

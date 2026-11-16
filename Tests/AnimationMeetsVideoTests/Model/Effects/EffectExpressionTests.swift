@@ -60,6 +60,28 @@ import Testing
         #expect(try value("glow != 50", values) == [0])
     }
 
+    @Test func aVectorOrPointIsReadAPartAtATime() throws {
+        var values = Values()
+        values.numbers = ["tint": [0.1, 0.2, 0.3], "middle": [40, -20]]
+        #expect(try EffectExpression("tint.y", names: names).type == .number)
+        #expect(try value("tint.z * 10", values) == [3])
+        #expect(try value("middle.x + middle.y", values) == [20])
+        #expect(problem("tint.w")?.contains("3 parts") == true)
+        #expect(problem("angle.x")?.contains("one number") == true)
+        // A name that only starts like a part is a name.
+        #expect(problem("tint.xy") != nil)
+    }
+
+    @Test func theTurningFunctionsWork() throws {
+        #expect(try value("deg(pi)", Values(numbers: ["pi": [.pi]])) == [180])
+        #expect(abs(try value("sin(rad(30))")[0] - 0.5) < 1e-12)
+        #expect(abs(try value("cos(0)")[0] - 1) < 1e-12)
+        #expect(abs(try value("deg(atan2(1, 0))")[0] - 90) < 1e-9)
+        #expect(try value("atan2(0, 0)") == [0])
+        #expect(try value("sqrt(16)") == [4])
+        #expect(try value("sqrt(-1)") == [0])
+    }
+
     @Test func vectorsArePassedWhole() throws {
         var values = Values()
         values.numbers = ["tint": [0.1, 0.2, 0.3]]
@@ -74,7 +96,7 @@ import Testing
 
     @Test func mistakesAreFoundWhenTheExpressionIsRead() {
         #expect(problem("spped * 2") == "Unknown name \"spped\"")
-        #expect(problem("sin(angle)") == "Unknown function \"sin\"")
+        #expect(problem("tan(angle)") == "Unknown function \"tan\"")
         #expect(problem("min(angle)") == "min takes 2 numbers, not 1")
         #expect(problem("tint * 2") == "Only numbers can be multiplied, not 3 numbers")
         #expect(problem("shape") == "\"shape\" is a choice; read it as index(shape)")

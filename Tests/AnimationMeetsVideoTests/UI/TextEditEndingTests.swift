@@ -8,7 +8,7 @@ import Testing
 /// `TextEditEnding` directly: local monitors aren't sent events that skip
 /// the event queue.
 @MainActor
-@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .timeLimit(.minutes(1)))
+@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .eventsOneAtATime, .timeLimit(.minutes(1)))
 struct TextEditEndingTests {
     @MainActor @Observable
     final class Words {

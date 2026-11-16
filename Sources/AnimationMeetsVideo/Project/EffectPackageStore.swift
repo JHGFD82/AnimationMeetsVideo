@@ -508,7 +508,7 @@ enum EffectPackageStore {
                 .required("components", .array(.string)), .required("default", .numbers(count: nil)),
                 .optional("range", .numbers(count: 2)), .optional("unit", unit), .optional("step", .number),
             ]),
-            "point": object(common + [.optional("default", .numbers(count: 2))]),
+            "point": object(common + [.optional("default", .numbers(count: 2)), .optional("handle", .bool)]),
             "color": object(common + [.required("default", .numbers(count: nil))]),
             "curve": object(common + [
                 .optional("default", .array(.numbers(count: 2))),
@@ -549,6 +549,12 @@ enum EffectPackageStore {
                 .optional("handles", .array(.object(object([
                     .required("name", .string), .required("x", .string), .required("y", .string), .required("set", .any),
                 ])))),
+            ]))),
+            .optional("viewer", .object(object([
+                .optional("handles", .array(.object(object([
+                    .required("name", .string), .required("x", .string), .required("y", .string), .required("set", .any),
+                ])))),
+                .optional("guides", .array(.any)),
             ]))),
             .optional("drawsWhen", .string),
             .optional("repeat", .object(object([
@@ -794,6 +800,7 @@ enum EffectPackageStore {
             }
 
             let graph = try (json["graph"] as? [String: Any]).map { try self.graph($0, package: id, names: names) }
+            let viewer = try (json["viewer"] as? [String: Any]).map { try self.viewer($0, package: id, names: names) }
 
             // Last, so a more particular problem is said first.
             let hasAmount = amountIndex != nil || json["amount"] as? Bool == true
@@ -824,7 +831,7 @@ enum EffectPackageStore {
                 dependsOnPixelSize: json["dependsOnPixelSize"] as? Bool ?? false, flashes: flashes,
                 rateControls: rates, reach: reach, pictures: pictures, drawsWhen: drawsWhen, repeats: repeats,
                 edges: (json["input"] as? String).flatMap(EffectPackage.Edges.init(rawValue:)) ?? .clear, after: after,
-                linear: json["linear"] as? Bool ?? false, graph: graph, readsOnlyItsPixel: perPixel
+                linear: json["linear"] as? Bool ?? false, graph: graph, viewer: viewer, readsOnlyItsPixel: perPixel
             )
         }
 
@@ -877,6 +884,124 @@ enum EffectPackageStore {
                 ))
             }
             return graph
+        }
+
+        /// The viewer's handles and guides `entry` describes. Places are
+        /// expressions of the controls; a handle's sets name number,
+        /// vector and point controls, or one part of one (`spotSize.x`),
+        /// and read the controls and `x` and `y`, where it is dragged to.
+        private func viewer(_ entry: [String: Any], package: String, names: [String: EffectExpression.ValueType]) throws -> EffectPackage.Viewer {
+            var viewer = EffectPackage.Viewer()
+            let handles = entry["handles"] as? [[String: Any]] ?? []
+            guard handles.isEmpty || (names["x"] == nil && names["y"] == nil) else {
+                throw JSONShapeError(message: "A handle's sets read x and y as where it is dragged to, so no control can be called x or y", path: "viewer.handles")
+            }
+            var dragged = names
+            dragged["x"] = .number
+            dragged["y"] = .number
+            func parsed(_ text: String, _ names: [String: EffectExpression.ValueType], _ path: String) throws -> EffectExpression {
+                do {
+                    return try EffectExpression(text, names: names)
+                } catch {
+                    throw JSONShapeError(message: error.message, path: path)
+                }
+            }
+            func number(_ text: String, _ names: [String: EffectExpression.ValueType], _ path: String) throws -> EffectExpression {
+                let expression = try parsed(text, names, path)
+                guard expression.type == .number else { throw JSONShapeError(message: "Expected one number, not \(expression.type.noun)", path: path) }
+                return expression
+            }
+            /// `[x, y]`, or one expression giving two numbers.
+            func place(_ value: Any?, _ path: String) throws -> EffectPackage.Viewer.Place {
+                if let pair = value as? [Any] {
+                    guard pair.count == 2, let x = pair[0] as? String, let y = pair[1] as? String else {
+                        throw JSONShapeError(message: "Expected a place: [x, y], two expressions, or one giving two numbers", path: path)
+                    }
+                    return .pair(try number(x, names, path + "[0]"), try number(y, names, path + "[1]"))
+                }
+                guard let text = value as? String else {
+                    throw JSONShapeError(message: "Expected a place: [x, y], two expressions, or one giving two numbers", path: path)
+                }
+                let expression = try parsed(text, names, path)
+                guard expression.type == .vector(2) else { throw JSONShapeError(message: "Expected two numbers, not \(expression.type.noun)", path: path) }
+                return .vector(expression)
+            }
+
+            for (index, handle) in handles.enumerated() {
+                let path = "viewer.handles[\(index)]"
+                guard let given = handle["set"] as? [String: Any], !given.isEmpty else {
+                    throw JSONShapeError(message: "Expected an object naming the controls a drag sets", path: path + ".set")
+                }
+                var sets: [EffectPackage.Viewer.Setting] = []
+                for (key, value) in given.sorted(by: { $0.key < $1.key }) {
+                    let at = path + ".set." + key
+                    var control = key
+                    var component: Int?
+                    if let dot = key.firstIndex(of: "."), let letter = key[key.index(after: dot)...].first,
+                       key.index(after: dot) == key.index(before: key.endIndex) {
+                        control = String(key[..<dot])
+                        guard let part = EffectExpression.componentNames.firstIndex(of: letter) else {
+                            throw JSONShapeError(message: "A part is .x, .y, .z or .w", path: at)
+                        }
+                        component = part
+                    }
+                    let count: Int
+                    switch names[control] {
+                    case .number?: count = 1
+                    case .point?: count = 2
+                    case .vector(let parts)?: count = parts
+                    default: throw JSONShapeError(message: "\"\(control)\" isn't one of its number, vector or point controls", path: at)
+                    }
+                    if let component {
+                        guard count > 1, component < count else {
+                            throw JSONShapeError(message: "\"\(control)\" has no part .\(EffectExpression.componentNames[component])", path: at)
+                        }
+                    } else if count > 1 {
+                        throw JSONShapeError(message: "\"\(control)\" has \(count) parts: set one at a time, as \(control).x", path: at)
+                    }
+                    guard let text = value as? String else { throw JSONShapeError(message: "Expected text", path: at) }
+                    sets.append(EffectPackage.Viewer.Setting(
+                        control: ControlKind(package: package, control: control), component: component, value: try number(text, dragged, at)
+                    ))
+                }
+                viewer.handles.append(EffectPackage.Viewer.Handle(
+                    name: handle["name"] as! String,
+                    place: .pair(try number(handle["x"] as! String, names, path + ".x"), try number(handle["y"] as! String, names, path + ".y")),
+                    sets: sets
+                ))
+            }
+
+            for (index, value) in (entry["guides"] as? [Any] ?? []).enumerated() {
+                let path = "viewer.guides[\(index)]"
+                guard let guide = value as? [String: Any], guide.count == 1, let only = guide.first else {
+                    throw JSONShapeError(message: "Expected one of line, polygon, ellipse or rectangle", path: path)
+                }
+                let kind = only.key, body = only.value
+                let at = path + "." + kind
+                switch kind {
+                case "line", "polygon":
+                    guard let list = body as? [Any], list.count >= 2 else {
+                        throw JSONShapeError(message: "Expected a list of two or more places", path: at)
+                    }
+                    let places = try list.enumerated().map { try place($0.element, at + "[\($0.offset)]") }
+                    viewer.guides.append(kind == "line" ? .line(places) : .polygon(places))
+                case "ellipse", "rectangle":
+                    guard let shape = body as? [String: Any], Set(shape.keys).isSubset(of: ["center", "size", "angle"]),
+                          shape["center"] != nil, shape["size"] != nil
+                    else {
+                        throw JSONShapeError(message: "Expected center and size, and angle if it turns", path: at)
+                    }
+                    let center = try place(shape["center"], at + ".center"), size = try place(shape["size"], at + ".size")
+                    let angle = try (shape["angle"]).map { value -> EffectExpression in
+                        guard let text = value as? String else { throw JSONShapeError(message: "Expected text", path: at + ".angle") }
+                        return try number(text, names, at + ".angle")
+                    }
+                    viewer.guides.append(kind == "ellipse" ? .ellipse(center: center, size: size, angle: angle) : .rectangle(center: center, size: size, angle: angle))
+                default:
+                    throw JSONShapeError(message: "\"\(kind)\" isn't a guide: line, polygon, ellipse or rectangle", path: path)
+                }
+            }
+            return viewer
         }
 
         /// Each Core Image filter's input keys, by name, or nil for a name
@@ -969,9 +1094,12 @@ enum EffectPackageStore {
                     range: range, componentNames: components
                 )
             case "point":
-                return ControlDefinition(
+                var definition = ControlDefinition(
                     kind, name, owner, defaults: StrictJSON.numbers(entry["default"]) ?? [0, 0], unit: " px", componentNames: ["Δx", "Δy"]
                 )
+                definition.isPoint = true
+                definition.showsViewerHandle = entry["handle"] as? Bool ?? true
+                return definition
             case "curve":
                 let points = try (entry["default"] as? [Any])?.map { item in
                     guard let pair = StrictJSON.numbers(item), pair.count == 2 else {

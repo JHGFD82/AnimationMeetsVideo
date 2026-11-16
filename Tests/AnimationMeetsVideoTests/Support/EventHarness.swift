@@ -23,9 +23,9 @@ final class EventHarness {
     }
 
     init(_ view: some View, size: CGSize) {
-        let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height, alignment: .topLeading))
+        let host = FirstMouseHostingView(rootView: AnyView(view.frame(width: size.width, height: size.height, alignment: .topLeading)))
         host.frame = CGRect(origin: .zero, size: size)
-        window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window = KeyableWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = host
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
@@ -94,4 +94,20 @@ final class EventHarness {
             try await settle(30)
         }
     }
+}
+
+/// A borderless window that can be the key window, which a plain
+/// borderless `NSWindow` refuses (`canBecomeKey` is false): without it
+/// the harness's key events, which the app sends to the key window, go
+/// nowhere, while its mouse events, sent to the window itself, still land.
+private final class KeyableWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+}
+
+/// A hosting view that takes a click on its window while the app isn't
+/// active, as the test process never is: otherwise, in a window that can
+/// be key, AppKit spends the first press on bringing the window forward
+/// and the view never sees it.
+private final class FirstMouseHostingView: NSHostingView<AnyView> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

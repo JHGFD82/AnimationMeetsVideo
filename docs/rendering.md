@@ -265,7 +265,9 @@ emptied timeline or a slow frame never shows black in between.
   `RENDER_BENCHMARK=all`, in release; see the test for the commands).
 - **Values without a build.** An edit that leaves the project's
   `StructureKey` the same (effect controls and anchor points, which the
-  compositor takes, and volume and pan, which the sound taps read) never
+  compositor takes, Transform effects whole, which it folds as it draws,
+  so one added, removed or switched off is a value too, and volume and
+  pan, which the sound taps read) never
   builds anything, paused or playing. Its values go into `LiveValues`, the
   player's own store, which the compositor reads for every frame it draws
   and puts into each clip's drawing (`DrawClip.withValues`). Paused, the

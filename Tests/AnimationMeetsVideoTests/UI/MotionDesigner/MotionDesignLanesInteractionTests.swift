@@ -7,7 +7,7 @@ import Testing
 /// The motion designer's time graph clicked with real events (see
 /// `EventHarness`; run with `UI_EVENTS=1`).
 @MainActor
-@Suite(.serialized, .enabled(if: EventHarness.isEnabled))
+@Suite(.serialized, .enabled(if: EventHarness.isEnabled), .eventsOneAtATime)
 struct MotionDesignLanesInteractionTests {
     /// A four-second clip at 2 s, at 100%, in lanes 800 by 400 points.
     private static let size = CGSize(width: 800, height: 400)

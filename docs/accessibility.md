@@ -94,6 +94,16 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ⇧F | Show the selected clip's footage in the browser's Clips tab |
 | F9 | Easy ease the keyframes at the playhead; Shift for ease in, ⌘⇧ for ease out |
 | ⌃⌥H | Hold the keyframes at the playhead |
+| H | Show or hide handles in the viewer on the selected clip (also View > Show Handles) |
+| ⌘+ / ⌘− / ⌘0 / ⇧⌘0 | Zoom the viewer in, out, to fit, or center its frame (View menu; ⌘= zooms in too) |
+
+The viewer's handles take keys of their own once the viewer is clicked
+while they show (see [viewer-handles.md](viewer-handles.md#keys)): Tab
+and ⇧Tab pick what the arrows change (Position, Scale, Rotation, Anchor,
+Opacity), and the arrows nudge it, ten with Shift and a tenth with
+Option. Escape gives the keys back to the timeline. They are claimed
+(`claimsKeys`) only meanwhile, so the arrows step the playhead
+everywhere else.
 
 Scripts and expressions (see [python-scripting.md](python-scripting.md#accessibility))
 have these, with every command in the Scripts menu or a labeled button:
@@ -153,6 +163,29 @@ playhead to the middle of the view when it lands out of view.
 - **Property values** in the rows and the inspector read as what they are
   ("Position X") and their value; pressing one opens it for typing
   (`NumericField`'s `accessibilityName`).
+
+### Viewer handles
+
+- **The handles** are a group named "Handles of *clip name*", holding an
+  adjustable element for each thing a drag changes: Position X, Position
+  Y, Scale, Rotation, Anchor X, Anchor Y and Opacity, with the number as
+  its value ("120 pixels", "150 percent"). Increment and decrement are
+  the arrow keys' nudges; named actions take ten-fold steps (Move 10
+  pixels left, Turn 15 degrees clockwise…) and Reset; the anchor's also
+  move it to the box's center, corners and edge middles, keeping the
+  picture still. With an effect selected that has point controls, the
+  group holds each point's X and Y instead ("Center X, 120 pixels"),
+  and Tab picks among the points.
+- **The loupe** a held press opens is decoration, as the readout is;
+  the arrow keys' Option steps are the keyboard's way to the same
+  fineness.
+- **Scrolling** the group (VoiceOver's scroll actions) moves the picture
+  half a well that way; ⌘+, ⌘−, ⌘0 and ⇧⌘0 zoom and center it.
+- **Show Handles** in the viewer's rail is a toggle with an on or off
+  value; the Center and Fit chips are buttons, Fit's value the zoom.
+- **The external display**, synced, has the same canvas and elements
+  over its picture, and a Show Handles switch in its top bar; the zoom
+  keys work there too, since the canvas takes them itself.
 
 ### Effects panel lanes
 
@@ -265,11 +298,6 @@ the snap line's arrival.
 - **Announcements**: VoiceOver isn't told when a timeline edit lands (a
   split, a nudge refused at a neighbor), so the result must be found by
   reading.
-- **Annotations** on the external display are drawn with the pointer only;
-  VoiceOver can remove the last stroke or clear them (Remove last stroke
-  and Clear annotations actions, also the Remove last stroke and Clear
-  markup buttons in the window's top bar) but not draw. ⌘Z and ⇧⌘Z undo
-  and redo strokes while the window shows them.
 - **Dialogs and alerts** use standard controls and should work, but have
   not been checked with VoiceOver.
 - Nothing here has been tested with VoiceOver on a real machine yet; the

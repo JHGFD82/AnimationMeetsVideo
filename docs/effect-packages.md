@@ -101,7 +101,7 @@ expression calls the control, and what a project saves as the control's
 | --- | --- | --- |
 | `number` | One number | `default`, `range`, `unit`, `step`, `whole` |
 | `vector` | 2 to 4 numbers | `components` (their names, e.g. `["X", "Y"]`), `default`, `range`, `unit`, `step` |
-| `point` | A position from the middle of the frame, in the timeline's pixels | `default` (`[0, 0]`) |
+| `point` | A position from the middle of the frame, in the timeline's pixels, down positive; a handle in the viewer while the effect is selected ([viewer-handles.md](viewer-handles.md#an-effects-own-handles)) | `default` (`[0, 0]`), `handle` (`false` for no handle) |
 | `color` | Red, green and blue, 0–1, and alpha (1 if left out) | `default` |
 | `choice` | One of a list | `options` (`[{ "id": "bayer4", "name": "Bayer 4×4" }, …]`), `default` |
 | `curve` | A tone curve: points from black to white (see [Curves](#curves)) | `default` (`[[0, 0], [1, 1]]`, the points), `tint` (`white`, `red`, `green` or `blue`: its line's color on the graph) |
@@ -135,6 +135,8 @@ It may use these names:
 - each control's `id`: its value now; a vector or point is a `float2`,
   `float3` or `float4` by its count, a color a `float4`. A choice is read
   only through `index`
+- `id.x`, `id.y`, `id.z`, `id.w`: one part of a vector or point, as a
+  number (`spotSize.x`, the width)
 - `seconds`: the clip's source time; `frame`: its frame number, for seeds
 - `scale`: output pixels per timeline pixel, for sizes given in the
   timeline's pixels
@@ -145,13 +147,17 @@ It may use these names:
 - `rad(x)`, `fract(x)`, `floor(x)`, `min`, `max`, `abs`, `pi`
 - `pow(x, y)` and `log(x)` (the natural logarithm), each 0 where it has
   no real value (a logarithm of 0 or less), as dividing by zero is
+- `sin(x)`, `cos(x)` (of radians), `atan2(y, x)` (radians, 0 when both
+  are 0), `deg(x)` (radians to degrees) and `sqrt(x)` (0 below 0), for a
+  viewer handle that turns or measures (see [Viewer](#viewer))
 
 Posterize's `"levels"` is the simplest case. Kaleidoscope's angle, which
 combines two controls and the time, is
 `"-(rad(angle) + spinSpeed * seconds * 2 * pi)"`. Expressions are checked
 when the package loads: an unknown name or function, a wrong count of
 arguments, or arithmetic on a vector refuses it. A vector, point or color
-can only be an argument's whole value, never part of a sum.
+can only be an argument's whole value, never part of a sum, though one
+of its parts can (`spotSize.x * scale`).
 
 They are only arithmetic, never code: no loops, no reading files, no
 calls but those listed. Anything more belongs in the kernel.
@@ -568,6 +574,47 @@ and no control may be called `x` or `y`. Set values are limited to the
 control's range as any edit is. The graph is part of the panel, not of
 the picture: it changes nothing drawn, so a package's `version` needn't
 rise for one.
+
+### Viewer
+
+Status: **built**. `viewer` gives the effect handles and guides in the
+viewer, shown while it is selected in the effects panel, beside the
+round handles its point controls get anyway (see
+[viewer-handles.md](viewer-handles.md#an-effects-own-handles)).
+Spotlight's size and angle:
+
+```json
+"viewer": {
+  "handles": [
+    { "name": "Width",
+      "x": "spotCenter.x + spotSize.x / 2 * cos(rad(spotAngle))",
+      "y": "spotCenter.y + spotSize.x / 2 * sin(rad(spotAngle))",
+      "set": { "spotSize.x": "2 * abs((x - spotCenter.x) * cos(rad(spotAngle)) + (y - spotCenter.y) * sin(rad(spotAngle)))" } }
+  ],
+  "guides": [
+    { "ellipse": { "center": "spotCenter", "size": "spotSize", "angle": "spotAngle" } }
+  ]
+}
+```
+
+Places are offsets from the middle of the frame in the timeline's
+pixels, down positive, as a point control's value is, and angles are
+degrees clockwise. The viewer maps them through the Transform effects
+below the effect, so they stay on what it draws.
+
+| Key | Meaning |
+| --- | --- |
+| `handles` | Diamonds on the picture that move controls. `x` and `y` say where one is, as expressions of the controls. `set` names each control a drag sets, or one part of a vector or point (`spotSize.x`), and its new value: an expression of the controls as they were when the drag began, and of `x` and `y`, the place the handle is dragged to. A vector or point is set a part at a time. |
+| `guides` | Dashed lines drawn with the handles, each one of: `line` (a list of places, open), `polygon` (the same, closed), `ellipse` and `rectangle` (`center` and `size`, each a place, and `angle`, an expression, if it turns). A place is `[x, y]`, two expressions, or one expression giving two numbers, such as a point control's name. |
+
+Handles are checked when the package loads, as the graph's are: `x`, `y`
+and the guides read only the controls, `set` names only number, vector
+and point controls, and no control may be called `x` or `y`. Set values
+are limited to the control's range as any edit is. Like the graph, it
+changes nothing drawn, so `version` needn't rise for it. Shipped:
+Spotlight, Ellipse Mask and Box Mask (width, height and angle, with
+their outline and a line to the angle handle), Corner Mask (its four
+points joined) and Gradient Mask (a line from start to end).
 
 ### Repeating
 

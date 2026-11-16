@@ -42,6 +42,9 @@ Follow Google's change-description conventions for every commit.
   `ClipBlockInteractionTests`). Those suites use `EventHarness` in
   `Tests/AnimationMeetsVideoTests/Support/`, which opens a key window
   and so takes the focus; they are skipped when the variable isn't set.
+  A new suite of them takes `.eventsOneAtATime` beside `.serialized`,
+  so its tests don't run alongside another suite's and fight over the
+  key window; with it, `UI_EVENTS=1 swift test` runs them all at once.
 - New UI follows the rules in `docs/accessibility.md`: drawn or gesture-
   driven views need an accessibility element with actions, icon-only
   buttons need labels, and anything a drag does needs a keyboard path.

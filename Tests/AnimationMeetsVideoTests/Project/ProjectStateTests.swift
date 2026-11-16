@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import AnimationMeetsVideo
 
@@ -57,5 +58,22 @@ struct ProjectStateTests {
         #expect(state.value.name == "So far")
         state.hold { state.value.name = "After" }
         #expect(state.value.name == "After")
+    }
+
+    @Test func heldPartsLastOnlyWhileTheDragIsHeld() {
+        let state = ProjectState(.empty)
+        let effectID = UUID()
+        state.showHeld([effectID])
+        // Without a hold there is nothing held to show.
+        #expect(state.heldParts.isEmpty)
+        state.beginHold()
+        state.showHeld([effectID])
+        #expect(state.heldParts == [effectID])
+        state.endHold()
+        #expect(state.heldParts.isEmpty)
+        state.beginHold()
+        state.showHeld([effectID])
+        state.letGo()
+        #expect(state.heldParts.isEmpty)
     }
 }

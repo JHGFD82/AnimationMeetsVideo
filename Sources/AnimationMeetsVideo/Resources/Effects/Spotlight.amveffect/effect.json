@@ -19,5 +19,16 @@
   "arguments": [
     "center(spotCenter)", "spotSize", "scale", "rad(spotAngle)", "spotFeather / 100", "spotBrightness / 100", "spotAmbient / 100",
     "spotColor"
-  ]
+  ],
+  "viewer": {
+    "handles": [
+      {"name": "Width", "x": "spotCenter.x + spotSize.x / 2 * cos(rad(spotAngle))", "y": "spotCenter.y + spotSize.x / 2 * sin(rad(spotAngle))", "set": {"spotSize.x": "2 * abs((x - spotCenter.x) * cos(rad(spotAngle)) + (y - spotCenter.y) * sin(rad(spotAngle)))"}},
+      {"name": "Height", "x": "spotCenter.x - spotSize.y / 2 * sin(rad(spotAngle))", "y": "spotCenter.y + spotSize.y / 2 * cos(rad(spotAngle))", "set": {"spotSize.y": "2 * abs((y - spotCenter.y) * cos(rad(spotAngle)) - (x - spotCenter.x) * sin(rad(spotAngle)))"}},
+      {"name": "Angle", "x": "spotCenter.x + (spotSize.x / 2 + 48) * cos(rad(spotAngle))", "y": "spotCenter.y + (spotSize.x / 2 + 48) * sin(rad(spotAngle))", "set": {"spotAngle": "spotAngle + (deg(atan2(y - spotCenter.y, x - spotCenter.x)) - spotAngle) - 360 * round((deg(atan2(y - spotCenter.y, x - spotCenter.x)) - spotAngle) / 360)"}}
+    ],
+    "guides": [
+      {"ellipse": {"center": "spotCenter", "size": "spotSize", "angle": "spotAngle"}},
+      {"line": ["spotCenter", ["spotCenter.x + (spotSize.x / 2 + 48) * cos(rad(spotAngle))", "spotCenter.y + (spotSize.x / 2 + 48) * sin(rad(spotAngle))"]]}
+    ]
+  }
 }

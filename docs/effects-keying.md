@@ -136,6 +136,9 @@ check that every kernel compiles and the library keeps its order.
 
 - **Picking the key color from the viewer** with an eyedropper; for now
   it is set with the color control.
-- **On-screen handles** for the masks' centers, sizes and corners.
+- **On-screen handles** for a mask's feather and roundness. Its center,
+  corners, size and angle have handles in the viewer while the mask is
+  selected, with its outline drawn
+  ([viewer-handles.md](viewer-handles.md#an-effects-own-handles)).
 - **Free-form masks** of many points, drawn as Bezier paths.
 - **Light wrap** and edge color correction for composites.

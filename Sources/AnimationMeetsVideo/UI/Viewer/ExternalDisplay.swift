@@ -7,6 +7,12 @@ import SwiftUI
 /// its own independent timeline/selection while editing the same shared
 /// project ("independent") — a second display can act as a reference view
 /// while edits from either window land in the one project.
+///
+/// Synced, the picture has the viewer's canvas over it (`ViewerCanvas`),
+/// with the primary's timeline and selection and the editor's
+/// `ViewerCanvasState`, so its handles edit the selected clip and a drag
+/// on either display is drawn on both. Its zoom and place are its own;
+/// Fit fills the screen.
 @MainActor
 @Observable
 final class ExternalDisplayController {
@@ -21,8 +27,9 @@ final class ExternalDisplayController {
         primaryTimelineID: Binding<UUID>,
         primarySelection: Binding<TimelineSelection?>,
         sharedPlayback: PlaybackModel,
-        annotations: AnnotationModel,
+        canvasState: ViewerCanvasState,
         analysis: AssetAnalysis,
+        history: ProjectHistory?,
         undoManager: UndoManager?
     ) {
         stop()
@@ -47,14 +54,14 @@ final class ExternalDisplayController {
             primaryTimelineID: primaryTimelineID,
             primarySelection: primarySelection,
             sharedPlayback: sharedPlayback,
-            annotations: annotations,
+            canvasState: canvasState,
             analysis: analysis,
-            onSyncChange: { [weak window] synced in window?.markupUndoManager = synced ? annotations.undoManager : nil },
             onClose: { [weak self] in self?.stop() }
         )
         // Its own window, so the editor's environment doesn't reach it: a
-        // drag held in either window is drawn in both.
-        window.contentView = NSHostingView(rootView: content.environment(projectState))
+        // drag held in either window is drawn in both, and one made here is
+        // a step of the project's history.
+        window.contentView = NSHostingView(rootView: content.environment(projectState).environment(\.projectHistory, history))
         window.makeKeyAndOrderFront(nil)
 
         windowController = NSWindowController(window: window)
@@ -67,7 +74,7 @@ final class ExternalDisplayController {
 }
 
 /// Borderless windows refuse key status by default, which would prevent the
-/// annotation overlay (and the independent editor surface) from reliably
+/// viewer's canvas (and the independent editor surface) from reliably
 /// receiving mouse/keyboard events.
 private final class KeyableBorderlessWindow: NSWindow {
     override var canBecomeKey: Bool { true }
@@ -77,44 +84,44 @@ private final class KeyableBorderlessWindow: NSWindow {
     /// this window land in the same project and its history, and the
     /// window's own undo manager had nothing on it.
     weak var editorUndoManager: UndoManager?
-    /// The markup's undo, used instead while the window shows the markup
-    /// (synced), where the strokes are what is edited.
-    weak var markupUndoManager: UndoManager?
-    override var undoManager: UndoManager? { markupUndoManager ?? editorUndoManager ?? super.undoManager }
+    override var undoManager: UndoManager? { editorUndoManager ?? super.undoManager }
 }
 
-private struct ExternalViewerContent: View {
+/// The external display's window: its top bar, and the synced picture
+/// with the viewer's canvas, or a second editor.
+struct ExternalViewerContent: View {
     @Binding var project: EditingProject
     @Binding var primaryTimelineID: UUID
     @Binding var primarySelection: TimelineSelection?
     let sharedPlayback: PlaybackModel
-    let annotations: AnnotationModel
+    let canvasState: ViewerCanvasState
     let analysis: AssetAnalysis
-    /// Whether the window shows the synced viewer and its markup, or a
-    /// second editor; it undoes the one it shows.
-    let onSyncChange: (Bool) -> Void
     let onClose: () -> Void
 
     @State private var isSynced = true
     @State private var independentPlayback = PlaybackModel()
     @State private var independentTimelineID: UUID?
     @State private var independentSelection: TimelineSelection?
+    /// The synced picture's zoom and place, this display's own. Fit fills
+    /// the screen, with no margin.
+    @State private var framing = ViewerFraming(fitMargin: 0)
+    /// Stand-ins while the editor's surface isn't shown to follow (see
+    /// `ViewerCanvasState.follow`).
+    @State private var ownPlayhead = PlayheadState()
+    @State private var ownEffects = EffectsPanelState()
+    @AppStorage(Preferences.viewerHandles) private var showsHandles = false
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Toggle("Sync with primary", isOn: $isSynced)
                     .toggleStyle(.switch)
-                Spacer()
                 if isSynced {
-                    Button("Remove last stroke") { annotations.removeLastStroke() }
-                        .buttonStyle(.bordered)
-                        .disabled(annotations.strokes.isEmpty)
-                        .help("Undo with ⌘Z, redo with ⇧⌘Z")
-                    Button("Clear markup") { annotations.clear() }
-                        .buttonStyle(.bordered)
-                        .disabled(annotations.strokes.isEmpty)
+                    Toggle("Show Handles", isOn: $showsHandles)
+                        .toggleStyle(.switch)
+                        .help("Show handles on the clip selected in the timeline (H)")
                 }
+                Spacer()
                 Button("Close") { onClose() }
                     .buttonStyle(.bordered)
             }
@@ -125,13 +132,7 @@ private struct ExternalViewerContent: View {
             .rail(.raised)
 
             if isSynced {
-                ZStack {
-                    Color.black.ignoresSafeArea()
-                    ViewerLayerView(display: sharedPlayback.display)
-                        .ignoresSafeArea()
-                    AnnotationOverlay(model: annotations)
-                        .ignoresSafeArea()
-                }
+                synced
             } else {
                 TimelineEditorSurface(
                     project: $project,
@@ -153,8 +154,30 @@ private struct ExternalViewerContent: View {
             if independentTimelineID == nil {
                 independentTimelineID = primaryTimelineID
             }
-            onSyncChange(isSynced)
         }
-        .onChange(of: isSynced) { _, synced in onSyncChange(synced) }
+    }
+
+    /// The primary's picture with the viewer's canvas over it, edge to edge.
+    private var synced: some View {
+        let timeline = project.timeline(id: primaryTimelineID)
+        let frameSize = timeline?.frameSize ?? CGSize(width: 16, height: 9)
+        return ZStack {
+            Color.black
+            FramedPicture(
+                playback: sharedPlayback, frameRate: timeline?.frameRate ?? 24, frameSize: frameSize, framing: framing,
+                showsEdge: false
+            )
+            ViewerCanvas(
+                framing: framing, frameSize: frameSize, playback: sharedPlayback,
+                handles: ViewerHandlesSource(
+                    project: $project, timelineID: primaryTimelineID, selection: primarySelection,
+                    effectsState: canvasState.effects ?? ownEffects, playhead: canvasState.playhead ?? ownPlayhead,
+                    state: canvasState
+                )
+            )
+            ViewerFramingChips(framing: framing)
+        }
+        .clipped()
+        .ignoresSafeArea()
     }
 }
