@@ -410,6 +410,11 @@ struct TimelineEditorSurface<Library: View>: View {
             playback.mixCurves.replace(with: MixCurves.of(project))
             playback.scrubAudio.forget()
             playback.tapeScrub.forget()
+            // The loop stays where it is; what it may loop follows the
+            // timeline's length and frames.
+            if let timeline = project.timeline(id: timelineID) {
+                playback.loop.update(duration: timeline.duration, frameDuration: timeline.frameDuration)
+            }
             // The browser's timeline filmstrips, values included, which the
             // browser itself isn't redrawn for.
             TimelinePreviews.shared.projectChanged(project)
@@ -694,37 +699,49 @@ struct TimelineEditorSurface<Library: View>: View {
     }
 
     /// Keeps where `timelineID` was left: the playhead (where playing had
-    /// reached, if it was) and the clip selected in it.
+    /// reached, if it was), the clip selected in it and its loop region.
     private func park(_ timelineID: UUID) {
-        Self.park(timelineID, playhead: playhead, selection: selection, in: viewMemory)
+        Self.park(timelineID, playhead: playhead, selection: selection, loop: playback.loop.region, in: viewMemory)
     }
 
-    private static func park(_ timelineID: UUID, playhead: PlayheadState, selection: TimelineSelection?, in memory: TimelineViewMemory) {
+    private static func park(
+        _ timelineID: UUID, playhead: PlayheadState, selection: TimelineSelection?, loop: LoopRegion?,
+        in memory: TimelineViewMemory
+    ) {
         let time = playhead.actionTime
         memory.update(timelineID) { parked in
             parked.time = time
             parked.selection = selection?.timelineID == timelineID ? selection : nil
+            parked.loop = loop
         }
     }
 
     /// Shows `timelineID` where it was left: the playhead there (its start
     /// the first time, held back to its end if an edit since shortened
-    /// it), and the clip selected then, unless one in it is selected
-    /// already (from Find All). Returns the playhead's time. While it is
-    /// shown, saving reads them from here.
+    /// it), its loop region, and the clip selected then, unless one in it
+    /// is selected already (from Find All). Returns the playhead's time.
+    /// While it is shown, saving reads them from here.
     @discardableResult
     private func showParked(_ timelineID: UUID) -> CMTime {
         let memory = viewMemory
         let time = memory.time(in: timelineID, of: project)
         playback.showTimeline(from: time)
+        if let timeline = project.timeline(id: timelineID) {
+            // The same region as the project's other windows on it.
+            playback.loop.shared = projectState?.loopRegions
+            playback.loop.show(
+                memory.parked(timelineID)?.loop, duration: timeline.duration, frameDuration: timeline.frameDuration,
+                timelineID: timelineID
+            )
+        }
         playheadTime = time
         if selection?.timelineID != timelineID {
             selection = memory.selection(in: timelineID, of: project)
         }
         memory.noteOpen(timelineID)
         let selection = $selection
-        memory.register("surface") { [playhead, memory] in
-            Self.park(timelineID, playhead: playhead, selection: selection.wrappedValue, in: memory)
+        memory.register("surface") { [playhead, memory, loop = playback.loop] in
+            Self.park(timelineID, playhead: playhead, selection: selection.wrappedValue, loop: loop.region, in: memory)
         }
         return time
     }

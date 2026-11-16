@@ -33,6 +33,16 @@ struct LayerHeaderRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
+    /// Whether a clip of the layer is open in the Motion Designer, which
+    /// holds back Clear Layer as it does Delete.
+    var hasLockedClip = false
+    /// The layer's Color menu: every clip it has now takes the color (the
+    /// layer keeps none of its own), and Other… opens the color picker
+    /// on them.
+    var onSetColor: (BarColor?) -> Void = { _ in }
+    var onPickColor: () -> Void = {}
+    /// Clear Layer: every clip deleted, the layer kept.
+    var onClear: () -> Void = {}
 
     @State private var isEditingName = false
     @State private var draftName: String = ""
@@ -154,6 +164,11 @@ struct LayerHeaderRow: View {
                 Button(isChannelsExpanded ? "Hide Channels" : "Show Channels", action: onToggleChannels)
             }
             Divider()
+            BarColorMenu(current: clipsColor.color, isMixed: clipsColor.isMixed, onSet: onSetColor, onPickOther: onPickColor)
+                .disabled(layer.clips.isEmpty)
+            Divider()
+            Button("Clear Layer", role: .destructive, action: onClear)
+                .disabled(!canClear)
             Button("Delete Layer", role: .destructive, action: onDelete)
         }
         // A group, so its buttons stay reachable inside it, with the
@@ -168,9 +183,25 @@ struct LayerHeaderRow: View {
             Button("Rename layer") {
                 beginRename()
             }
+            if !layer.clips.isEmpty {
+                Button("Choose color for its clips…", action: onPickColor)
+                Button("Use default color for its clips") { onSetColor(nil) }
+            }
+            if canClear { Button("Clear layer", action: onClear) }
             Button("Delete layer", action: onDelete)
         }
     }
+
+    /// The color the layer's clips share, for its Color menu: nil when
+    /// none has one; mixed when they differ, which marks nothing.
+    var clipsColor: (color: BarColor?, isMixed: Bool) {
+        let colors = Set(layer.clips.map(\.color))
+        return colors.count == 1 ? (colors.first ?? nil, false) : (nil, colors.count > 1)
+    }
+
+    /// Clear Layer is offered with clips to clear, none of them open in
+    /// the Motion Designer.
+    var canClear: Bool { !layer.clips.isEmpty && !hasLockedClip }
 
     /// The field starts with the name shown, default or not, for its
     /// whole value to be selected and typed over.
@@ -199,6 +230,7 @@ extension LayerHeaderRow: Equatable {
                 && lhs.height == rhs.height && lhs.canMoveUp == rhs.canMoveUp && lhs.canMoveDown == rhs.canMoveDown
                 && lhs.isExpanded == rhs.isExpanded && lhs.isAudioExpanded == rhs.isAudioExpanded
                 && lhs.isChannelsExpanded == rhs.isChannelsExpanded && lhs.isSelected == rhs.isSelected
+                && lhs.hasLockedClip == rhs.hasLockedClip
         }
     }
 }

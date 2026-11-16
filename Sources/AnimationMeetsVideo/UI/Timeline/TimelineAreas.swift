@@ -253,7 +253,14 @@ extension TimelineView {
                             groupSelection = []
                             host.dispatch(TimelineAction.selectLayer)
                         },
-                        onDelete: { deleteLayer(layer.id) }
+                        onDelete: { deleteLayer(layer.id) },
+                        hasLockedClip: !lockedClipIDs.isEmpty && layer.clips.contains { lockedClipIDs.contains($0.id) },
+                        onSetColor: { color in
+                            let ids = Set(layer.clips.map(\.id))
+                            host.dispatch(TimelineAction.editProject { $0.setColor(color, ofClips: ids, in: timelineID) })
+                        },
+                        onPickColor: { pickColor(ofLayer: layer.id) },
+                        onClear: { clearLayer(layer.id) }
                     )
                     .equatable()
                     if let joint = block.joint {
@@ -621,7 +628,8 @@ extension TimelineView {
                             let ids = groupSelection.contains(clipID) ? groupSelection : [clipID]
                             motionDesign?.open(clips: ids, in: timelineID, of: project)
                         },
-                        onConformTimeline: { clip in conformTimeline(to: clip) }
+                        onConformTimeline: { clip in conformTimeline(to: clip) },
+                        onPickColor: { clipID in pickColor(ofClips: clipsActedOn(clipID), like: clipID) }
                     )
                     // Rows that would draw the same aren't redrawn, so
                     // dragging one clip's value redraws only its layer.

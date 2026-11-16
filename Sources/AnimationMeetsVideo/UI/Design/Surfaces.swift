@@ -95,8 +95,10 @@ extension Design {
     ///
     /// Clip names and badges are drawn on it in `textOnColor`, at least 90%
     /// strong. Over the track's rows, plain or lit as a drop target, that
-    /// reads at 4.5:1 or better for every tone where the text sits (the
-    /// middle of the block). Unselected it does as it is; selected, the
+    /// reads at 4.5:1 or better for every default tone where the text sits
+    /// (the middle of the block). A bar given a color of its own takes
+    /// white or black instead, whichever reads (`Design.ink`), since
+    /// `textOnColor` can't be read on a pale one. Unselected it does as it is; selected, the
     /// brighter fill only managed 3.3:1, so it is shaded by a fifth, the
     /// same as laying 20% black over it. It stays brighter than unselected,
     /// and the selected outline still marks it.

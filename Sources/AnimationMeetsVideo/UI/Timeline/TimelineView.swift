@@ -148,6 +148,9 @@ struct TimelineView: View {
     @State var tool: TimelineTool = .arrow
     /// The section selected in the lane under the ruler, for Delete.
     @State var selectedSectionID: UUID?
+    /// Whether the loop region is selected in its bar, for Delete.
+    /// Selecting anything else lets go of it.
+    @State var isLoopSelected = false
     @AppStorage(Preferences.snapping) var snapping = true
     /// Whether the view pages along with the playhead while playing.
     @AppStorage(Preferences.followsPlayhead) var followsPlayhead = true
@@ -317,6 +320,20 @@ struct TimelineView: View {
                             clickVolume: $beatClickVolume, onPreviewClick: { beatClicks.preview() }
                         )
                     }
+                    // Into the layout a gesture is changing too, if any, which
+                    // is the one drawn: written to the defaults alone, the
+                    // bar stayed until the gesture's layout was let go.
+                    Toggle(isOn: Binding(
+                        get: { shownAreaLayout.showsLoop },
+                        set: { shown in
+                            areaLayout.showsLoop = shown
+                            liveAreaLayout?.showsLoop = shown
+                        }
+                    )) {
+                        Image(systemName: Design.Symbol.loop)
+                    }
+                    .help(shownAreaLayout.showsLoop ? "Hide the loop row and turn the loop off" : "Show the loop row and turn the loop on")
+                    .accessibilityLabel("Loop row")
                     Toggle(isOn: $areaLayout.showsSections) {
                         Image(systemName: "rectangle.split.3x1")
                     }
@@ -414,6 +431,17 @@ struct TimelineView: View {
         .focusedSceneValueUnlessDrafting(\.timelineActions, actions)
         // Which of its items the Timeline menu offers.
         .background {
+            TimelineLoopVisibility(loop: playback.loop, isShown: shownAreaLayout.showsLoop)
+        }
+        // Anything else selected lets go of the loop region, and so does
+        // hiding its bar: Delete mustn't take away a region out of sight.
+        .onChange(of: hasOtherThanLoopSelected) { _, picked in
+            if picked { isLoopSelected = false }
+        }
+        .onChange(of: shownAreaLayout.showsLoop) { _, shown in
+            if !shown { isLoopSelected = false }
+        }
+        .background {
             TimelineMenuStatePublisher(
                 timeline: timeline, selection: menuSelection, playhead: playhead, playback: playback,
                 viewportModel: viewportModel, viewport: { currentViewport },
@@ -493,6 +521,7 @@ struct TimelineView: View {
             showParkedViewport(of: newID)
             expandedJoint = nil
             groupSelection = []
+            isLoopSelected = false
             highlightedFocus = nil
         }
         // After this update, so a focus that also switched the timeline
@@ -540,7 +569,9 @@ struct TimelineView: View {
                 host.dispatch(.editProject { $0.deleteSection(id, in: timelineID) })
                 if selectedSectionID == id { selectedSectionID = nil }
             },
-            onSnapIndicator: { viewportModel.snapIndicator = $0 }
+            onSnapIndicator: { viewportModel.snapIndicator = $0 },
+            onSetColor: { id, color in host.dispatch(.editProject { $0.setColor(color, ofSection: id, in: timelineID) }) },
+            onPickColor: { id in pickColor(ofSection: id) }
         )
     }
 

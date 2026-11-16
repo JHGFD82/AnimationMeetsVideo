@@ -302,7 +302,9 @@ Requirements for the file:
   `canvasMargin` only when it isn't 0.5. A transition's `audioCrossfade`
   (`"sCurve"`, `"equalPower"` or `"linear"`) is written only when it
   chooses its own, and the project's `jointAudioCrossfade` only when it
-  isn't `"sCurve"`.
+  isn't `"sCurve"`. A clip's and a section's `color` (`"#RRGGBB"`,
+  uppercase) is written only once the person has given it one (see
+  [bar-colors.md](bar-colors.md#saving)).
 - Written atomically so a crash cannot leave a half-written file.
 
 ## View state
@@ -310,10 +312,14 @@ Requirements for the file:
 `view-state.json` holds where the project's window was left: the timeline
 open, and for each timeline shown, its playhead (an exact rational, as in
 `project.json`), its zoom and sideways scroll, how far down each area of
-layers was scrolled, and the clip (or transition) selected, which the
-inspector and effects panel show. Opening the project opens that timeline
-and puts each back as it was (see [timeline.md](timeline.md), "Each
-timeline keeps its place").
+layers was scrolled, the clip (or transition) selected, which the
+inspector and effects panel show, and its loop region (`loop`: `start`
+and `end` as exact rationals, `on`, and `color` when it has one; see
+[loop-region.md](loop-region.md), "Saving"). Opening the project opens
+that timeline and puts each back as it was (see
+[timeline.md](timeline.md), "Each timeline keeps its place"). A file
+without `loop`, written before there were loop regions, reads as none,
+and a damaged one is dropped on its own.
 
 It also holds what the browser remembers (`browser`, left out when there
 is nothing): the range last picked of each clip and of each timeline's

@@ -22,6 +22,14 @@ struct TimelineMenuState: Equatable {
     var enabledToggle: EnabledToggle?
     var canZoomIn = false
     var canZoomOut = false
+    /// The loop region (docs/loop-region.md): Loop Playback is checked
+    /// while it is on, and offered while there is one or one could be
+    /// made; the Set items where they would change or make one.
+    var hasLoop = false
+    var isLooping = false
+    var canToggleLoop = false
+    var canSetLoopStart = false
+    var canSetLoopEnd = false
 
     enum EnabledToggle: Equatable {
         case turnOff(count: Int)
@@ -48,10 +56,10 @@ struct TimelineMenuState: Equatable {
     /// nil, with no time to go by, offers every playhead item. `locked`
     /// are clips the motion designer has open, which nothing here may
     /// change (`ProjectState.lockedClipIDs`): an item that would touch one
-    /// isn't offered.
+    /// isn't offered. `loop` is the timeline's loop region.
     static func make(
         timeline: Timeline, selection: Selection, parkedAt time: CMTime?,
-        zoomFraction: Double, isFitted: Bool, locked: Set<UUID> = []
+        zoomFraction: Double, isFitted: Bool, locked: Set<UUID> = [], loop: LoopRegion? = nil
     ) -> TimelineMenuState {
         var state = TimelineMenuState()
         let hasLength = timeline.duration > .zero
@@ -74,6 +82,8 @@ struct TimelineMenuState: Equatable {
             state.hasNextEdit = edges.contains { $0 > now }
             state.canSplit = canSplit(timeline.clipsToSplit(at: now, selected: selection.clips, everyClip: false))
             state.canSplitAll = canSplit(timeline.clipsToSplit(at: now, selected: selection.clips, everyClip: true))
+            state.canSetLoopStart = timeline.loopSettingStart(of: loop, to: now) != nil
+            state.canSetLoopEnd = timeline.loopSettingEnd(of: loop, to: now) != nil
         } else {
             state.canGoBack = hasLength
             state.canGoForward = hasLength
@@ -81,7 +91,12 @@ struct TimelineMenuState: Equatable {
             state.hasNextEdit = hasLength
             state.canSplit = clips.contains { !locked.contains($0.id) }
             state.canSplitAll = state.canSplit
+            state.canSetLoopStart = hasLength
+            state.canSetLoopEnd = hasLength
         }
+        state.hasLoop = loop != nil
+        state.isLooping = loop?.isOn ?? false
+        state.canToggleLoop = loop != nil || timeline.defaultLoop(over: selection.clips) != nil
         if !chosen.isEmpty, !touchesLocked {
             // Clips move no further back than the timeline's start.
             state.canNudgeEarlier = chosen.map(\.startOffset).min().map { $0 > .zero } ?? false
@@ -123,6 +138,8 @@ struct TimelineMenuStatePublisher: View {
     let timeline: Timeline
     let selection: TimelineMenuState.Selection
     let playhead: PlayheadState
+    /// Its loop is read here, not by the timeline, so the menu follows
+    /// the loop without the timeline's body.
     let playback: PlaybackModel
     let viewportModel: TimelineViewportModel
     let viewport: () -> TimelineViewport
@@ -147,7 +164,7 @@ struct TimelineMenuStatePublisher: View {
             timeline: timeline, selection: selection, parkedAt: time,
             zoomFraction: viewport().zoomFraction,
             isFitted: viewportModel.zoomedPixelsPerSecond == nil,
-            locked: locked
+            locked: locked, loop: playback.loop.region
         )
         return Color.clear
             .frame(width: 0, height: 0)

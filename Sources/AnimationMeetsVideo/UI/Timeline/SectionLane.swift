@@ -29,6 +29,10 @@ struct SectionLane: View {
     let onRename: (UUID, String) -> Void
     let onDelete: (UUID) -> Void
     let onSnapIndicator: (CMTime?) -> Void
+    /// Its Color menu: a color for a section, or nil for its tone, and
+    /// Other…, the color picker on it.
+    var onSetColor: (UUID, BarColor?) -> Void = { _, _ in }
+    var onPickColor: (UUID) -> Void = { _ in }
 
     static let height: CGFloat = 20
 
@@ -111,12 +115,13 @@ struct SectionLane: View {
         // Narrow sections keep a middle to grab for moving.
         let handle = min(handleWidth, max(2, (maxX - minX) / 3))
         let isSelected = selectedID == section.id
+        let tone = Self.tone(of: shown)
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                .fill(Design.clipFill(Design.section, selected: isSelected))
+                .fill(Design.clipFill(tone, selected: isSelected))
                 .overlay {
                     RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                        .strokeBorder(isSelected ? Design.textOnColor.opacity(0.95) : Design.section.opacity(0.85), lineWidth: isSelected ? 1.5 : 1)
+                        .strokeBorder(isSelected ? Design.textOnColor.opacity(0.95) : tone.opacity(0.85), lineWidth: isSelected ? 1.5 : 1)
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
@@ -136,7 +141,7 @@ struct SectionLane: View {
             } else {
                 Text(section.name)
                     .font(Design.Typeface.label.weight(.medium))
-                    .foregroundStyle(Design.textOnColor)
+                    .foregroundStyle(Design.ink(on: shown.color, selected: isSelected, over: .rail))
                     .lineLimit(1)
                     .padding(.horizontal, Design.Space.tight)
             }
@@ -163,6 +168,12 @@ struct SectionLane: View {
         )
         .contextMenu {
             Button("Rename…") { beginRename(section.id, name: section.name) }
+            BarColorMenu(
+                current: section.color,
+                onSet: { onSetColor(section.id, $0) },
+                onPickOther: { onPickColor(section.id) }
+            )
+            Divider()
             Button("Delete Section", role: .destructive) { onDelete(section.id) }
         }
         .accessibilityElement(children: editingID == section.id ? .contain : .ignore)
@@ -172,6 +183,8 @@ struct SectionLane: View {
         .accessibilityAction { onSelect(section.id) }
         .accessibilityActions {
             Button("Rename section") { beginRename(section.id, name: section.name) }
+            Button("Choose color…") { onPickColor(section.id) }
+            if section.color != nil { Button("Use default color") { onSetColor(section.id, nil) } }
             Button("Delete section") { onDelete(section.id) }
         }
         .offset(x: minX, y: 2)
@@ -209,13 +222,18 @@ struct SectionLane: View {
             .pointerStyle(.columnResize)
     }
 
+    /// A section's own color, else the sections' tone.
+    private static func tone(of section: TimelineSection) -> Color {
+        section.color.map(Design.color) ?? Design.section
+    }
+
     /// An Option-drag's copy where it would land: the section's colour,
     /// lighter and outlined in dashes, as a clip's is.
     private func copyPreview(_ copy: TimelineSection) -> some View {
         let minX = viewport.x(atSeconds: copy.start.seconds)
         let maxX = viewport.x(atSeconds: copy.end.seconds)
         return RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-            .fill(Design.section.opacity(0.45))
+            .fill(Self.tone(of: copy).opacity(0.45))
             .overlay {
                 RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                     .strokeBorder(Design.textOnColor.opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
@@ -223,7 +241,7 @@ struct SectionLane: View {
             .overlay(alignment: .leading) {
                 Text(copy.name)
                     .font(Design.Typeface.label.weight(.medium))
-                    .foregroundStyle(Design.textOnColor)
+                    .foregroundStyle(Design.ink(on: copy.color, selected: false, over: .rail))
                     .lineLimit(1)
                     .padding(.horizontal, Design.Space.tight)
             }

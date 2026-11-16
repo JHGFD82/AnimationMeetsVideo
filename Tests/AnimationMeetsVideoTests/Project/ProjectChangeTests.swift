@@ -165,6 +165,31 @@ import Testing
         #expect(moveA?.identity != moveB?.identity)
     }
 
+    /// docs/bar-colors.md, "Undo names": recolors are named for what they
+    /// recolor, and a quick run of them on the same bars is one step.
+    @Test func namesColorsAndClearLayer() throws {
+        var (project, layerID, clipID) = Self.oneClip()
+        let timelineID = project.rootTimelineID
+        let red = BarColor(0xDF6862), teal = BarColor(0x05A7A7)
+        #expect(name(project) { $0.setColor(red, ofClips: [clipID], in: timelineID) } == "Change Color of Interview")
+
+        project.split(clipID, in: timelineID, layer: layerID, atTimelineTime: Self.second)
+        let ids = try #require(project.timeline(id: timelineID)?.layer(id: layerID)?.clips.map(\.id))
+        #expect(name(project) { $0.setColor(red, ofClips: Set(ids), in: timelineID) } == "Change Color of 2 Clips")
+        #expect(name(project) { $0.clearLayer(layerID, in: timelineID) } == "Clear Layer \u{201C}Video 1\u{201D}")
+
+        // Two colors one after the other on the same clips: the same identity.
+        var once = project
+        once.setColor(red, ofClips: Set(ids), in: timelineID)
+        let first = ProjectChange.step(from: project, to: once)
+        let second = step(once) { $0.setColor(teal, ofClips: Set(ids), in: timelineID) }
+        #expect(first?.identity == second?.identity)
+
+        let made = project.addSection(named: "Chorus", in: timelineID, from: .zero, to: Self.second)
+        let section = try #require(made)
+        #expect(name(project) { $0.setColor(teal, ofSection: section, in: timelineID) } == "Change Color of Section \u{201C}Chorus\u{201D}")
+    }
+
     @Test func theSameEditToTheSameClipKeepsItsIdentity() {
         let (project, layerID, clipID) = Self.oneClip()
         let timelineID = project.rootTimelineID

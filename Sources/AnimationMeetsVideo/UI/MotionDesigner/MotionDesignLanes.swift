@@ -1,7 +1,8 @@
 import CoreMedia
 import SwiftUI
 
-/// The footage, time graph and music on one timeline. Every clip is a
+/// The ruler, the loop bar, the footage, time graph and music on one
+/// timeline. Every clip is a
 /// chain of markers: clicking toggles a lock, dragging retimes, and
 /// Option-dragging pulls out a handle. Locked markers have a pin through
 /// the lanes and stay while the other picked markers move. Handles shape
@@ -10,6 +11,11 @@ struct MotionDesignLanes: View {
     @Bindable var session: MotionDesignSession
 
     static let rulerHeight: CGFloat = 20
+    /// Where the footage starts: under the ruler, and the loop bar while
+    /// it shows.
+    static func filmTop(showsLoop: Bool) -> CGFloat {
+        rulerHeight + (showsLoop ? LoopBar.height : 0)
+    }
     static let filmHeight: CGFloat = 56
     static let musicHeight: CGFloat = 96
     /// Room above and below the line, so points at its ends stay whole.
@@ -48,13 +54,21 @@ struct MotionDesignLanes: View {
     /// Where the drag snapped, to draw.
     @State private var snapTime: Double?
     @State private var graphModifiers: NSEvent.ModifierFlags = []
+    /// Whether the loop bar shows: the timeline's setting, which the
+    /// designer's loop button changes too.
+    @AppStorage(Preferences.timelineAreaLayout) private var areaLayout = TimelineAreaLayout()
+
+    private var filmTop: CGFloat { Self.filmTop(showsLoop: areaLayout.showsLoop) }
 
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
-            let graphHeight = max(120, geometry.size.height - Self.rulerHeight - Self.filmHeight - musicHeight)
+            let graphHeight = max(120, geometry.size.height - filmTop - Self.filmHeight - musicHeight)
             VStack(spacing: 0) {
                 ruler(width: width)
+                if areaLayout.showsLoop {
+                    MotionLoopLane(session: session, width: width) { snapTime = $0 }
+                }
                 RetimedFilmstrip(session: session, width: width, height: Self.filmHeight)
                 graph(width: width, height: graphHeight)
                 musicLane(width: width)
@@ -109,7 +123,7 @@ struct MotionDesignLanes: View {
                     .floatingSurface(radius: Design.Radius.chip)
                     .frame(maxWidth: 460)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, Self.rulerHeight + Self.filmHeight + Design.Space.step)
+                    .padding(.top, filmTop + Self.filmHeight + Design.Space.step)
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
@@ -253,7 +267,7 @@ struct MotionDesignLanes: View {
             context.stroke(gap, with: .color(Design.textTertiary.opacity(0.6)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
         }
         for (index, clip) in drafts.enumerated() {
-            let tone = Design.ClipTone.of(session.project.resolvedInfo(for: clip.source), streams: clip.streams).color
+            let tone = clip.color.map(Design.color) ?? Design.ClipTone.of(session.project.resolvedInfo(for: clip.source), streams: clip.streams).color
             let x0 = max(0, session.x(of: clip.startOffset.seconds)), x1 = min(size.width, session.x(of: clip.endOffset.seconds))
             guard x1 > x0 else { continue }
             var line = Path()
@@ -868,14 +882,15 @@ struct MotionDesignLanes: View {
     /// drag snapped, drawn over the lanes.
     private func markings(width: CGFloat, height: CGFloat, graphHeight: CGFloat) -> some View {
         let stack = stack(height: graphHeight, width: width)
-        let graphTop = Self.rulerHeight + Self.filmHeight
+        let pinTop = filmTop
+        let graphTop = pinTop + Self.filmHeight
         return ZStack(alignment: .topLeading) {
             Canvas { context, size in
                 for (index, piece) in session.run.pieces.enumerated() {
                     for point in piece.map.points where point.locked {
                         let at = location(of: point, piece: index, stack: stack)
                         var pin = Path()
-                        pin.move(to: CGPoint(x: at.x, y: Self.rulerHeight))
+                        pin.move(to: CGPoint(x: at.x, y: pinTop))
                         pin.addLine(to: CGPoint(x: at.x, y: graphTop + at.y - 8))
                         pin.move(to: CGPoint(x: at.x, y: graphTop + at.y + 8))
                         pin.addLine(to: CGPoint(x: at.x, y: size.height))
@@ -902,7 +917,7 @@ struct MotionDesignLanes: View {
                         pixelsPerSecond: CGFloat(1 / session.secondsPerPoint),
                         originX: session.x(of: 0),
                         seconds: session.window.end,
-                        generation: session.playback.itemSwaps
+                        generation: session.playback.followGeneration
                     )
                     : nil
             )
@@ -912,6 +927,47 @@ struct MotionDesignLanes: View {
         .frame(width: width, height: height, alignment: .topLeading)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// The loop bar between the ruler and the footage: the loop region of
+/// the timeline, which the designer plays through the editor's player,
+/// held to the designer's window. A view of its own, reading the loop in
+/// its body, so a change to the loop doesn't redraw the lanes. See
+/// docs/loop-region.md, "Motion Designer".
+private struct MotionLoopLane: View {
+    let session: MotionDesignSession
+    let width: CGFloat
+    /// Where a drag of the region snapped, for the lanes' snap line.
+    let onSnapIndicator: (Double?) -> Void
+
+    /// How far a time snaps, as the lanes' own drags do: 8 points.
+    private static let snapDistance: CGFloat = 8
+
+    var body: some View {
+        let loop = session.playback.loop
+        let tolerance = Double(Self.snapDistance) * session.secondsPerPoint
+        LoopBar(
+            region: loop.region,
+            timeline: session.timeline,
+            limits: session.loopLimits,
+            x: { session.x(of: $0.seconds) },
+            time: { CMTime(seconds: session.seconds(atX: $0), preferredTimescale: 600) },
+            snap: { time in
+                session.snapped(time.seconds, tolerance: tolerance).map { CMTime(seconds: $0, preferredTimescale: 600) }
+            },
+            onSnapIndicator: { onSnapIndicator($0?.seconds) },
+            onDraw: { session.drawLoop($0) },
+            onAdjust: { loop.adjust(to: $0) },
+            onRemove: { session.deleteLoop() },
+            onToggle: { session.toggleLoop() },
+            isSelected: session.isLoopSelected,
+            onSelect: { session.selectLoop() },
+            onSetColor: { loop.setColor($0) },
+            onPickColor: { loop.pickColor() }
+        )
+        .frame(width: width, height: LoopBar.height)
+        .background(Design.Surface.raised.color)
     }
 }
 

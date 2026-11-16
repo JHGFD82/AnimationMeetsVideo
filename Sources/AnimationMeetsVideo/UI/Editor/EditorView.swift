@@ -222,6 +222,9 @@ struct EditorView: View {
             Task { viewMemory?.save(for: project) }
         }
         .onDisappear {
+            // A color picker left open mustn't go on recoloring a project
+            // no longer on screen.
+            BarColorPanel.shared.end()
             tapeScrubber.close()
             sceneSplitter.close()
             usesFinder.close()

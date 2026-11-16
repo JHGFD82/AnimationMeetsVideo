@@ -1,9 +1,13 @@
 # Bar colors and Clear Layer
 
-Status: **planned, not implemented**. Nothing here is built. This
-document is written for whoever builds it: what the person sees, where
-each piece goes in the code as it stands today, and the order to build
-it in. Choices the request didn't settle are listed under
+Status: **built, not yet run**. Everything below is built
+(`Model/BarColor.swift`, `UI/Design/BarColors.swift`,
+`UI/Components/BarColorMenu.swift`, `UI/Components/BarColorPanel.swift`,
+`UI/Timeline/TimelineColors.swift`), but it was written where there is
+no Xcode: it hasn't been compiled, its tests haven't run, and the
+swatch grid in a context menu hasn't been looked at on screen (see "Not
+tried"). Where the build differs from the plan, this document says so.
+Choices the request didn't settle are listed under
 [Decisions made here](#decisions-made-here).
 
 Two additions to right-click menus:
@@ -303,15 +307,19 @@ which was checked against the seven default tones only
 (`Design.clipFill`'s comment). On a pale custom color white text can't
 be read, so the ink is chosen per bar:
 
-- `Design.ink(on fill: Color, over surface: Color) -> Color`: white or
-  black, whichever has the higher contrast with the fill **as drawn
-  where the label sits**: the fill's top stop (the tone at 62%, or the
-  selected fill) laid over the surface under it (`Surface.sunken` for
-  the tracks; the lane's black 22% over `Surface.raised` for the rail).
-- For any color at all, the better of white and black reaches at least
-  4.58:1, so names hold the 4.5:1 that
-  [accessibility.md](accessibility.md) asks for. (The 64 presets, taken
-  solid, are 4.62:1 or better.)
+- `Design.ink(on color: BarColor?, selected:, enabled:, over: InkSurface) -> Color`:
+  white or black, whichever has the higher contrast with the fill **as
+  drawn where the label sits**: the fill's top stop (the tone at 62%,
+  or the selected fill; greyed when off) laid over the surface under it
+  (`.track`, `Surface.sunken`; `.rail`, the lane's black 22% over
+  `Surface.raised`). `Design.inkContrast` gives both contrasts, for
+  the tests.
+- For any color at all, the better of **pure** white and black reaches
+  at least 4.58:1, so names hold the 4.5:1 that
+  [accessibility.md](accessibility.md) asks for. The white is pure
+  white, not `textOnColor`: that is slightly off-white (`#F7F9FC`), and
+  the better of it and black dips to about 4.47:1 on the worst
+  mid-tones. (The 64 presets, taken solid, are 4.62:1 or better.)
 - A bar with **no** color of its own keeps `textOnColor` exactly as
   now, so nothing about today's timeline changes.
 - Where to apply it: `ClipLabelRow` (the name and the badges, which
@@ -331,7 +339,8 @@ be read, so the ink is chosen per bar:
   section's `JSONShape`. `JSONShape` has no case for a color; add
   `case color` (a string that is `#` and six hex digits), so a bad
   value is refused with a message that names it and where it is
-  ("`#12` isn't a color: use # and six hex digits"), like every other
+  ("\"#12\" isn't a color, written as # and six hex digits such as
+  #3DB8D0 at timelines[0].layers[0].clips[0].color"), like every other
   field.
 - `formatVersion` stays 2. An older build refuses a project that has a
   `color` key, naming the key, as it does any key it doesn't know;
@@ -374,14 +383,20 @@ only clip reads as that clip's deletion, which it is.
 
 ## Tests
 
+Written (`Model/BarColorTests`, `UI/BarColorInkTests`,
+`Model/BarColorEditTests`, `Project/ProjectStoreTests`,
+`Project/ProjectChangeTests`, `UI/LayerHeaderMenuTests`, the
+`coloredBars` snapshot), not yet run.
+
 - `Model/BarColorTests`: hex in and out, bad strings refused; 64
-  presets, all different, eight by eight; the ink rule gives at least
-  4.5:1 for every preset over the track and the rail surfaces, plain
-  and selected, and for a sweep of grays (the worst case).
-- `Model/` tests for `setColor(_:ofClips:in:)`, `setColor(_:ofSection:in:)`
-  and `clearLayer`: the layer and its settings stay, other layers are
-  untouched, an empty layer is a no-op; a split and a paste keep the
-  color.
+  presets, all different, eight by eight. `UI/BarColorInkTests`: the
+  ink rule gives at least 4.5:1 for every preset over the track and
+  the rail surfaces, plain, selected and turned off, and for a sweep of
+  grays (the worst case).
+- `Model/BarColorEditTests` for `setColor(_:ofClips:in:)`,
+  `setColor(_:ofSection:in:)` and `clearLayer`: the layer and its
+  settings stay, other layers are untouched, an empty layer is a no-op;
+  a split, a paste and a section's copy keep the color.
 - `Project/ProjectStoreTests`: a clip's and a section's color survive
   a save and load; a project without colors saves without the key; a
   malformed color is refused with its message.
@@ -392,9 +407,9 @@ only clip reads as that clip's deletion, which it is.
   and a dark preset, selected and not, one turned off, a colored
   section, and the loop region colored the same as a section (to see
   that it is allowed and still legible).
-- `UI/TimelineMenuStateTests` or a new test for the layer menu's
-  state: Clear Layer disabled when empty or locked; the layer's Color
-  menu marking Default, one swatch, or nothing.
+- `UI/LayerHeaderMenuTests` for the layer menu's state: Clear Layer
+  disabled when empty or locked; the layer's Color menu marking
+  Default, one swatch, or nothing (`BarColorMenu`'s `isMixed`).
 
 ## Decisions made here
 
@@ -420,6 +435,10 @@ build starts.
    loop is an edit.
 
 ## Building it
+
+Steps 1 to 7 and 9 are built; step 8's actions are there, not yet
+checked with the `accessibility-reviewer` agent. What is left is to
+build and run it on a Mac and look at the swatch grid.
 
 1. `BarColor` with its presets and `BarColorTests`.
 2. The fields, the three edits, saving and strict loading, with their

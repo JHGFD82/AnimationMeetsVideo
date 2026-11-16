@@ -28,6 +28,8 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "← →", does: "Step a frame; ten with ⇧"),
             Shortcut(keys: "↑ ↓", does: "Previous or next edit"),
             Shortcut(keys: "Home End", does: "Go to the start or the end"),
+            Shortcut(keys: "C", does: "Loop playback over the loop region; makes one over the selection if there is none"),
+            Shortcut(keys: "[ ]", does: "Move the loop region's start or end to the playhead"),
         ]),
         Group(title: "Editing clips", shortcuts: [
             Shortcut(keys: "⌘B", does: "Split the selected clips at the playhead"),
@@ -117,6 +119,7 @@ struct KeyboardShortcutsView: View {
             "←": "Left Arrow", "→": "Right Arrow", "↑": "Up Arrow", "↓": "Down Arrow",
             "⌫": "Delete", "Esc": "Escape", ",": "Comma", ".": "Period",
             "=": "Equals", "−": "Minus", "+": "Plus", "\\": "Backslash",
+            "[": "Left Bracket", "]": "Right Bracket",
         ]
         return keys.split(separator: " ").map { key in
             var words: [String] = []

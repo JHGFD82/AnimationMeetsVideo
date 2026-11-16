@@ -78,6 +78,9 @@ extension ClipBlockView {
         if model.playsSound {
             Button(model.clip.soundMuted ? "Unmute sound" : "Mute sound") { handlers.onEditClip { [muted = !model.clip.soundMuted] in $0.soundMuted = muted } }
         }
+        // Two, not the menu's 64 swatches: the color picker has its own.
+        Button("Choose color…", action: handlers.onPickColor)
+        if model.clip.color != nil { Button("Use default color") { handlers.onEditClip { $0.color = nil } } }
         Button(model.isInGroup ? "Cut selection" : "Cut") { handlers.onClipboard(.cut) }
         Button(model.isInGroup ? "Copy selection" : "Copy") { handlers.onClipboard(.copy) }
         Button(model.isInGroup ? "Duplicate selection" : "Duplicate") { handlers.onClipboard(.duplicate) }

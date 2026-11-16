@@ -39,6 +39,52 @@ final class KeyframeGraphHUDs {
         }
     }
 
+    /// Whether the loop region is selected in a graph's loop bar, for
+    /// Delete. Picking keyframes in a graph lets go of it.
+    var isLoopSelected = false
+
+    /// C in a panel, and the region's own menu: the loop on or off, or with
+    /// no region, one over `limits` (the parameter's clip, or the whole
+    /// timeline), turned on, which shows the loop bars. Says which to
+    /// VoiceOver.
+    func toggleLoop(over limits: CMTimeRange, timeline: Timeline) {
+        guard let loop = playback?.loop else { return }
+        if loop.region != nil {
+            loop.toggle()
+        } else if let made = timeline.resolvedLoop(from: limits.start, to: limits.end, within: limits) {
+            loop.draw(LoopRegion(start: made.start, end: made.end))
+        } else {
+            return
+        }
+        if loop.isOn { TimelineAreaLayout.showLoopRow() }
+        AccessibilityNotification.Announcement(loop.isOn ? "Loop on" : "Loop off").post()
+    }
+
+    /// Delete with the region selected, and its menu's Delete Loop Region.
+    func deleteLoop() {
+        playback?.loop.remove()
+        isLoopSelected = false
+    }
+
+    /// Where C in a panel makes a region when there is none: over the clip
+    /// of the panel's (first) parameter, or the whole timeline for a
+    /// layer's.
+    private func loopLimits(of subject: Subject) -> (limits: CMTimeRange, timeline: Timeline)? {
+        let timelineID: UUID
+        let clip: TimelineClip?
+        switch subject {
+        case .graphs(let id):
+            guard let key = links[id]?.keys.first, let axis = project.timeAxis(of: key) else { return nil }
+            timelineID = key.timelineID
+            clip = axis.clip
+        case .designer(let key):
+            timelineID = key.timelineID
+            clip = project.clipAndLayer(key.clipID, in: key.timelineID)?.clip
+        }
+        guard let timeline = project.timeline(id: timelineID) else { return nil }
+        return (GraphLoopBar.limits(clip: clip, timeline: timeline), timeline)
+    }
+
     /// Shows the frame at `time` (a timeline time, on a frame) in the
     /// viewer while skimming is on; nil (the pointer gone from the plot)
     /// goes back to the playhead.
@@ -222,15 +268,46 @@ final class KeyframeGraphHUDs {
     // MARK: Panels
 
     /// Starts listening for Space in the graphs' panels, once.
+    /// Space plays or pauses, C turns the loop on or off, [ and ] move
+    /// its start or end to the playhead, and while the loop region is
+    /// selected, Delete deletes it and Escape lets go of it: in a panel,
+    /// not while text is typed or a control has the keys. Delete and
+    /// Escape otherwise go on to the graph, for its keyframes.
     private func watchSpace() {
         guard spaceMonitor == nil else { return }
         spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 49, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+            enum Key { case space, loop, edge(LoopRegion.Edge), delete, escape }
+            let character = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            let key: Key? = switch (event.keyCode, character) {
+            case (49, _): .space
+            case (51, _), (117, _): .delete
+            case (53, _): .escape
+            case (_, "c"): .loop
+            case (_, "["): .edge(.start)
+            case (_, "]"): .edge(.end)
+            default: nil
+            }
+            guard let key, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
                   let window = event.window, !(window.firstResponder is NSText), !event.isForFocusedControl
             else { return event }
             let handled = MainActor.assumeIsolated { () -> Bool in
-                guard let self, self.panels.values.contains(where: { $0 === window }) else { return false }
-                self.onTogglePlayback()
+                guard let self, let subject = self.panels.first(where: { $0.value === window })?.key else { return false }
+                switch key {
+                case .space:
+                    self.onTogglePlayback()
+                case .loop:
+                    guard let found = self.loopLimits(of: subject) else { return false }
+                    self.toggleLoop(over: found.limits, timeline: found.timeline)
+                case .edge(let edge):
+                    guard let found = self.loopLimits(of: subject), let loop = self.playback?.loop else { return false }
+                    loop.setEdge(edge, to: found.timeline.snappedToFrame(self.playhead), on: found.timeline, within: found.limits)
+                case .delete:
+                    guard self.isLoopSelected, self.playback?.loop.region != nil else { return false }
+                    self.deleteLoop()
+                case .escape:
+                    guard self.isLoopSelected else { return false }
+                    self.isLoopSelected = false
+                }
                 return true
             }
             return handled ? nil : event

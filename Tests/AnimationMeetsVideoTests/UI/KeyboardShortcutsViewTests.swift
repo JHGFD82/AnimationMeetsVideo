@@ -18,6 +18,7 @@ struct KeyboardShortcutsViewTests {
         #expect(KeyboardShortcutsView.spokenKeys("⌘+ ⌘−") == "Command Plus, Command Minus")
         #expect(KeyboardShortcutsView.spokenKeys(", .") == "Comma, Period")
         #expect(KeyboardShortcutsView.spokenKeys("A B Y") == "A, B, Y")
+        #expect(KeyboardShortcutsView.spokenKeys("[ ]") == "Left Bracket, Right Bracket")
         #expect(KeyboardShortcutsView.spokenKeys("⇧F9  ⇧⌘F9") == "Shift F9, Shift Command F9")
     }
 
@@ -30,7 +31,7 @@ struct KeyboardShortcutsViewTests {
 
     @Test func everyGlyphInTheWindowHasAName() {
         // A glyph left unnamed would be read as a symbol or skipped.
-        let glyphs = Set("←→↑↓⌘⇧⌥⌃⌫=−\\")
+        let glyphs = Set("←→↑↓⌘⇧⌥⌃⌫=−\\[]")
         for group in KeyboardShortcutsView.groups {
             for shortcut in group.shortcuts {
                 let spoken = KeyboardShortcutsView.spokenKeys(shortcut.keys)

@@ -111,7 +111,8 @@ extension ProjectStore {
                                 enabled: clipEntry.enabled ?? true,
                                 soundMuted: clipEntry.soundMuted ?? false,
                                 music: clipEntry.followsMusic == false ? nil : clipEntry.music?.attachment,
-                                followsMusic: clipEntry.followsMusic ?? true
+                                followsMusic: clipEntry.followsMusic ?? true,
+                                color: clipEntry.color.flatMap(BarColor.init(hex:))
                             )
                         },
                         volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),
@@ -124,7 +125,7 @@ extension ProjectStore {
                 frameRate: entry.frameRate,
                 colorSpace: ProjectColorSpace(rawValue: entry.colorSpace) ?? .rec709,
                 sections: (entry.sections ?? [])
-                    .map { TimelineSection(id: $0.id, name: $0.name, start: $0.start.time, end: $0.end.time) }
+                    .map { TimelineSection(id: $0.id, name: $0.name, start: $0.start.time, end: $0.end.time, color: $0.color.flatMap(BarColor.init(hex:))) }
                     .filter { $0.end > $0.start }
                     .sorted { $0.start < $1.start },
                 previewBackground: entry.previewBackground.map { $0.map { $0.clamped(between: 0, and: 1) } }

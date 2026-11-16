@@ -77,6 +77,10 @@ struct TimelineClip: Identifiable, Equatable {
     /// Off, the clip is never attached to the music and stays put when
     /// songs move.
     var followsMusic = true
+    /// The color the person gave it; nil for its tone by kind. Copies of
+    /// the clip (a split's halves, a paste, a duplicate, detached audio)
+    /// keep it. See docs/bar-colors.md.
+    var color: BarColor?
 
     /// The length of the part of the source the clip plays. How long it lasts
     /// on the timeline is `placedDuration`, which differs when it is retimed.

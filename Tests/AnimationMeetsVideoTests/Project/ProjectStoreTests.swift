@@ -193,6 +193,26 @@ private struct Sandbox {
         #expect(loaded.project.timeline(id: timelineID)?.previewBackground == nil)
     }
 
+    /// docs/bar-colors.md, "Saving".
+    @Test func roundTripKeepsClipAndSectionColors() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        let red = BarColor(0xDF6862)
+        project.setColor(red, ofClips: [clipID], in: timelineID)
+        let added = project.addSection(named: "Chorus", in: timelineID, from: .zero, to: CMTime(value: 2, timescale: 1))
+        let sectionID = try #require(added)
+        project.setColor(BarColor(0x05A7A7), ofSection: sectionID, in: timelineID)
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(json.contains("\"#DF6862\"") && json.contains("\"#05A7A7\""))
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip.color == red)
+        #expect(loaded.project.timeline(id: timelineID)?.sections.first?.color == BarColor(0x05A7A7))
+    }
+
     @Test func roundTripKeepsAnEffectsInput() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
@@ -358,7 +378,7 @@ private struct Sandbox {
         let (project, _, _) = sandbox.makeProject()
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
-        for key in ["effects", "anchorPoint", "volume", "transform", "canvasMargin", "passThrough", "shutter", "\"time\" : {"] {
+        for key in ["effects", "anchorPoint", "volume", "transform", "canvasMargin", "passThrough", "shutter", "\"time\" : {", "\"color\""] {
             #expect(!json.contains(key))
         }
     }
@@ -1722,6 +1742,11 @@ private struct Sandbox {
         let message = try await loadingMessage { editClip(&$0) { $0["trimStart"] = "soon" } }
         #expect(message.hasPrefix("The project can't be opened. \"soon\" isn't a valid time"))
         #expect(message.hasSuffix("at timelines[0].layers[0].clips[0].trimStart."))
+    }
+
+    @Test func aMalformedColorIsRejectedWithItsPath() async throws {
+        let message = try await loadingMessage { editClip(&$0) { $0["color"] = "#12" } }
+        #expect(message == "The project can't be opened. \"#12\" isn't a color, written as # and six hex digits such as #3DB8D0 at timelines[0].layers[0].clips[0].color.")
     }
 
     @Test func anUnknownKeyAtTheTopIsReportedThere() async throws {

@@ -20,6 +20,8 @@ final class MotionDesignSession: SecondsViewport {
             guard run.pieces != oldValue.pieces else { return }
             let run = run
             onDraftChange { run.write(into: &$0, over: oldValue) }
+            // The window follows the run, and the loop with it.
+            narrowLoop()
         }
     }
     /// The run as it opened, which Cancel writes back (`writeOpened`).
@@ -44,14 +46,22 @@ final class MotionDesignSession: SecondsViewport {
 
     // MARK: Editing
 
-    /// The points picked, one or several (see `SelectClick`).
-    var pickedPoints = SelectionSet<UUID>()
+    /// The points picked, one or several (see `SelectClick`). Picking
+    /// any lets go of the loop region.
+    var pickedPoints = SelectionSet<UUID>() {
+        didSet { if !pickedPoints.isEmpty { isLoopSelected = false } }
+    }
     /// The point picked alone, whose settings and handles show.
     var selectedPointID: UUID? {
         get { pickedPoints.single }
         set { pickedPoints.set(newValue.map { [$0] } ?? [], anchor: newValue) }
     }
-    var selectedPieceID: UUID?
+    var selectedPieceID: UUID? {
+        didSet { if selectedPieceID != nil { isLoopSelected = false } }
+    }
+    /// Whether the loop region is selected in its bar, for Delete. Picking
+    /// a marker or a clip lets go of it (`selectLoop` lets go of them).
+    var isLoopSelected = false
     /// Shows the beats, and lets points and clips snap to them. Kept
     /// between sessions, as the timeline keeps its beat markers.
     var showsBeats = UserDefaults.standard.object(forKey: Preferences.motionDesignerShowsBeats) as? Bool ?? true {
@@ -142,6 +152,7 @@ final class MotionDesignSession: SecondsViewport {
         beats = project.musicBeats(in: timeline, tracks: DetectedBeats.shared.tracks)
         self.playback = playback
         playback.seek(to: span.start)
+        narrowLoop()
     }
 
     func end() {
@@ -149,6 +160,8 @@ final class MotionDesignSession: SecondsViewport {
         if playback.isPlaying { playback.player.pause() }
         if let windowEndObserver { playback.player.removeTimeObserver(windowEndObserver) }
         windowEndObserver = nil
+        // The timeline plays whole again, and loops over all its region.
+        playback.loop.narrow(to: nil)
     }
 
     /// Puts the clips the run changed back as they were when the panel
@@ -581,14 +594,20 @@ final class MotionDesignSession: SecondsViewport {
         playback.togglePlayback()
     }
 
-    /// Pauses the player when it reaches `end`.
+    /// Pauses the player when it reaches `end`, unless a loop is on,
+    /// which holds playing in its region (cut to the window) and turns it
+    /// back there instead: the two would fire together at a region running
+    /// to the window's end, and a pause would end the loop.
     private func stopsAtWindowEnd(_ end: Double) {
         let player = playback.player
         if let windowEndObserver { player.removeTimeObserver(windowEndObserver) }
         windowEndObserver = player.addBoundaryTimeObserver(
             forTimes: [NSValue(time: CMTime(seconds: end, preferredTimescale: 48_000))], queue: .main
-        ) { [weak player] in
-            player?.pause()
+        ) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.playback.loop.activeRange == nil else { return }
+                self.playback.player.pause()
+            }
         }
     }
 

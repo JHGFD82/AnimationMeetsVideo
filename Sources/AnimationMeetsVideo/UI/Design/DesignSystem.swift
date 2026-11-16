@@ -19,7 +19,11 @@ import SwiftUI
 ///    so no clip type shouts over another; everything that marks a *time*
 ///    (playhead, snap, beats, keyframes) is one warm family at three
 ///    brightnesses; structure and status are desaturated so they stay
-///    ambient. Nothing else gets a colour.
+///    ambient, except the loop region, a cool cyan so it never reads as
+///    a section. Nothing else gets a colour, but what the person picks:
+///    a clip, a section or the loop region can be given any color of
+///    their own (`BarColor`, docs/bar-colors.md), with no rule about
+///    which go together; those bars take readable ink (`Design.ink`).
 /// 3. **Quantities are monospaced.** Any number that can change under the
 ///    pointer — timecode, frame counts, field values — is set in `Font`'s
 ///    mono faces so it doesn't jitter while it updates.
@@ -142,6 +146,10 @@ enum Design {
     /// Named sections under the ruler: warm, but bronzed and low-chroma so
     /// they read as labelling rather than as content.
     static let section = hex(0xB08A52)
+    /// The loop region, in the bar under the ruler: a cyan, far from the
+    /// sections' bronze so the two rows never read as one, and cool as
+    /// Beat Match's loop is. See docs/loop-region.md.
+    static let loop = hex(0x3DB8D0)
 
     static let statusPending = hex(0xC8923A)
     static let statusDone = hex(0x4FA86B)

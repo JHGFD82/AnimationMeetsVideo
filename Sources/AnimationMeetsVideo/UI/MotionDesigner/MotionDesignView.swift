@@ -9,6 +9,8 @@ struct MotionDesignView: View {
     @Bindable var session: MotionDesignSession
     let onDone: () -> Void
     let onCancel: () -> Void
+    /// Whether the loop bar shows, here and in the timeline.
+    @AppStorage(Preferences.timelineAreaLayout) private var areaLayout = TimelineAreaLayout()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +30,14 @@ struct MotionDesignView: View {
         .preferredColorScheme(.dark)
         .tint(Design.accent)
         .background(KeyPressMonitor(handler: handleKey))
+        // The loop is on only while its bar shows, as in the timeline.
+        .background {
+            TimelineLoopVisibility(loop: session.playback.loop, isShown: areaLayout.showsLoop)
+        }
+        // Delete mustn't take away a region out of sight.
+        .onChange(of: areaLayout.showsLoop) { _, shown in
+            if !shown { session.isLoopSelected = false }
+        }
     }
 
     // MARK: Transport
@@ -66,6 +76,13 @@ struct MotionDesignView: View {
                 }
                 .help(session.snaps ? "Snapping on: points and clips snap to beats, the playhead and clip edges (N)" : "Snapping off (N)")
                 .accessibilityLabel("Snapping")
+                // The timeline's loop row and this bar are one setting:
+                // shown, the region loops; hidden, it doesn't.
+                Toggle(isOn: $areaLayout.showsLoop) {
+                    Image(systemName: Design.Symbol.loop)
+                }
+                .help(areaLayout.showsLoop ? "Hide the loop row and turn the loop off" : "Show the loop row and turn the loop on")
+                .accessibilityLabel("Loop row")
                 Toggle(isOn: $session.showsBeats) {
                     Image(systemName: Design.Symbol.beats)
                 }
@@ -86,7 +103,8 @@ struct MotionDesignView: View {
 
     // MARK: Keys
 
-    /// L toggles marker locks, M adds a marker, E eases, and arrows nudge.
+    /// L toggles marker locks, M adds a marker, E eases, C loops, [ and ]
+    /// set the loop's ends at the playhead, and arrows nudge.
     private func handleKey(_ event: NSEvent) -> Bool {
         if NSApp.keyWindow?.firstResponder is NSTextView { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -126,10 +144,16 @@ struct MotionDesignView: View {
             }
             return true
         case 51, 117:
-            session.deleteSelected()
+            if session.isLoopSelected { session.deleteLoop() } else { session.deleteSelected() }
             return true
         case 53:
-            if session.isDragging { session.cancelDrag() } else { session.select(point: nil); session.selectedPieceID = nil }
+            if session.isDragging {
+                session.cancelDrag()
+            } else {
+                session.select(point: nil)
+                session.selectedPieceID = nil
+                session.isLoopSelected = false
+            }
             return true
         default:
             break
@@ -138,6 +162,9 @@ struct MotionDesignView: View {
         case " ": session.togglePlayback()
         case "m": session.addMarkerAtPlayhead()
         case "n": session.snaps.toggle()
+        case "c": session.toggleLoop()
+        case "[": session.setLoopEdgeToPlayhead(.start)
+        case "]": session.setLoopEdgeToPlayhead(.end)
         case "l": session.togglePickedLocks()
         case "e":
             // Easy Ease, or Linear again, as F9 eases a keyframe.

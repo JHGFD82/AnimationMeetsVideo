@@ -80,6 +80,8 @@ struct KeyframeGraphView: View {
     /// The keyframes and what is worked out from them, kept while
     /// scrolling and zooming redraw the graph.
     @State private var cache = KeyframeGraphCache()
+    /// Whether the loop bar shows, here as in the timeline.
+    @AppStorage(Preferences.timelineAreaLayout) private var areaLayout = TimelineAreaLayout()
 
     private enum Target: Equatable {
         case keyframe(CMTime, component: Int)
@@ -148,12 +150,19 @@ struct KeyframeGraphView: View {
     }
 
     /// The selected keyframes, kept in the link for the panel's presets.
+    /// Picking others lets go of the loop region.
     private var picked: SelectionSet<CMTime> {
         get { link.map { $0.selected[key] ?? SelectionSet() } ?? ownSelected }
         nonmutating set {
+            let changed = newValue != picked
             if let link { link.selected[key] = newValue } else { ownSelected = newValue }
+            if changed, hud.isLoopSelected { hud.isLoopSelected = false }
         }
     }
+
+    /// Whether the loop bar is under the time row: on the graph with the
+    /// row, with a player to loop, while the loop row shows.
+    private var showsLoopBar: Bool { showsTimeRow && hud.playback != nil && areaLayout.showsLoop }
 
     /// The keyframe selected on its own, whose handles show.
     private var selected: CMTime? { picked.single }
@@ -181,13 +190,21 @@ struct KeyframeGraphView: View {
                 }
                 GeometryReader { geometry in
                     // The time row over the first graph of a panel, to
-                    // drag the playhead along whether or not it skims.
-                    let row = showsTimeRow ? GraphTimeRow.height : 0
+                    // drag the playhead along whether or not it skims,
+                    // and the loop bar under it.
+                    let row = (showsTimeRow ? GraphTimeRow.height : 0) + (showsLoopBar ? LoopBar.height : 0)
                     let size = CGSize(width: geometry.size.width, height: max(1, geometry.size.height - row))
                     let layout = drag?.layout ?? layout(c, size: size)
                     VStack(spacing: 0) {
                         if showsTimeRow {
                             GraphTimeRow(hud: hud, axis: c.axis, timeline: c.timeline, layout: layout)
+                        }
+                        if showsLoopBar, let playback = hud.playback {
+                            GraphLoopBar(
+                                hud: hud, playback: playback, axis: c.axis, timeline: c.timeline, layout: layout,
+                                keyframes: c.value.keyframes.map(\.time),
+                                onSelect: { picked.clear() }
+                            )
                         }
                         graph(c, layout: layout)
                             .rubberBand(timeBandBinding, axis: .horizontal)
@@ -631,7 +648,10 @@ struct KeyframeGraphView: View {
                 }
             }
             // Linked, the panel's top row has it, for every graph.
-            if shared == nil && !isInDesigner { GraphSkimToggle(hud: hud) }
+            if shared == nil && !isInDesigner {
+                GraphSkimToggle(hud: hud)
+                GraphLoopToggle()
+            }
             if names.count > 1 {
                 Toggle(isOn: $viewport.separateScales) { Image(systemName: "arrow.up.and.down.text.horizontal") }
                     .toggleStyle(.icon)

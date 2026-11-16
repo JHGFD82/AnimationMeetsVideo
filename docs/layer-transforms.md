@@ -133,6 +133,19 @@ window, and **⌘Z** and **⇧⌘Z** undo and redo the editor's steps, the
 panel sharing its window's undo (as the external display's window
 does).
 
+Under the time row, the **loop bar** holds the timeline's loop region,
+the same one as the timeline's and every other window's
+([loop-region.md](loop-region.md)): drag across it to draw one, drag
+its edges or middle to resize or move it (snapping, with the timeline's
+snapping on, to clip and section edges, the playhead and the graph's
+keyframes), click it to select it and Delete to delete it. Over a
+clip's parameter it follows the clip's source time, as the time row
+does, and stays within the clip. The loop button beside Skimming shows
+or hides it (the timeline's loop row too; hidden, the loop is off), and
+**C** turns the loop on or off, with no region making one over the
+clip; **[** and **]** move its start or end to the playhead, and with
+the region selected, **Escape** lets go of it.
+
 **Skimming** is on unless turned off: as the pointer moves over the plot,
 the viewer shows the frame under it (on a frame of the timeline), without
 moving the playhead, as the timeline's skimming does, grains of sound

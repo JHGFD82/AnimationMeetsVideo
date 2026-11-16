@@ -19,12 +19,37 @@ import Testing
 
     private func state(
         _ timeline: Timeline, clips: Set<UUID> = [], canDelete: Bool = false, at time: Double? = 0,
-        zoom: Double = 0, fitted: Bool = true, locked: Set<UUID> = []
+        zoom: Double = 0, fitted: Bool = true, locked: Set<UUID> = [], loop: LoopRegion? = nil
     ) -> TimelineMenuState {
         TimelineMenuState.make(
             timeline: timeline, selection: .init(clips: clips, canDelete: canDelete),
-            parkedAt: time.map { seconds($0) }, zoomFraction: zoom, isFitted: fitted, locked: locked
+            parkedAt: time.map { seconds($0) }, zoomFraction: zoom, isFitted: fitted, locked: locked, loop: loop
         )
+    }
+
+    /// Loop Playback is checked while the region is on, and offered with
+    /// one or with room to make one; the Set items where they would change
+    /// or make one; Remove with one.
+    @Test func theLoopItemsFollowTheRegionAndThePlayhead() throws {
+        let (timeline, _) = try timeline()
+        let none = state(timeline, at: 5)
+        #expect(none.canToggleLoop && !none.isLooping && !none.hasLoop)
+        #expect(none.canSetLoopStart && none.canSetLoopEnd)
+        // At the start, a region from the start to the playhead is nothing.
+        #expect(!state(timeline, at: 0).canSetLoopEnd)
+
+        let region = LoopRegion(start: seconds(2), end: seconds(6))
+        let on = state(timeline, at: 2, loop: region)
+        #expect(on.isLooping && on.hasLoop && on.canToggleLoop)
+        // The start is at the playhead already.
+        #expect(!on.canSetLoopStart && on.canSetLoopEnd)
+        var off = region
+        off.isOn = false
+        #expect(!state(timeline, at: 2, loop: off).isLooping)
+
+        // An empty timeline has nothing to loop.
+        let empty = EditingProject.empty.timelines[0]
+        #expect(!state(empty, at: 0).canToggleLoop)
     }
 
     @Test func aClipOpenInTheMotionDesignerIsOfferedNothing() throws {

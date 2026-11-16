@@ -48,6 +48,9 @@ struct ViewOptionsPopover: View {
             Groove()
 
             SheetSection("Areas") {
+                Toggle("Loop row", isOn: $areaLayout.showsLoop)
+                    .toggleStyle(.checkbox)
+                    .help("The bar under the ruler for drawing the stretch that playback repeats")
                 Toggle("Sections row", isOn: $areaLayout.showsSections)
                     .toggleStyle(.checkbox)
                 ForEach(TimelineAreaLayout.order) { kind in

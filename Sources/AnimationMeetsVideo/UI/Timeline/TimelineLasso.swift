@@ -378,17 +378,25 @@ extension TimelineView {
     }
 
     /// Nothing selected: no clip, no clips picked together, no layer, no
-    /// section. A click in empty track space does this, and Escape.
+    /// section, not the loop region. A click in empty track space does
+    /// this, and Escape.
     func clearSelection() {
         groupSelection = []
         selectedLayerID = nil
         selectedSectionID = nil
+        isLoopSelected = false
         host.dispatch(.selectLayer)
     }
 
     /// Whether anything is selected in this timeline for `clearSelection`
     /// to let go of.
     var hasAnythingSelected: Bool {
+        isLoopSelected || hasOtherThanLoopSelected
+    }
+
+    /// Whether a clip, clips, a layer or a section is selected: what
+    /// selecting lets go of the loop region.
+    var hasOtherThanLoopSelected: Bool {
         !groupSelection.isEmpty || selectedLayerID != nil || selectedSectionID != nil || selection?.timelineID == timelineID
     }
 

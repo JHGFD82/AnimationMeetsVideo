@@ -47,7 +47,7 @@ struct RetimedFilmstrip: View {
         let drafted = session.drafted(piece)
         let x0 = session.x(of: drafted.startOffset.seconds), x1 = session.x(of: drafted.endOffset.seconds)
         let info = session.project.resolvedInfo(for: piece.clip.source)
-        let tone = Design.ClipTone.of(info, streams: piece.clip.streams).color
+        let tone = piece.clip.color.map(Design.color) ?? Design.ClipTone.of(info, streams: piece.clip.streams).color
         let isSelected = session.selectedPieceID == piece.id && session.selectedPointID == nil
         if x1 > 0, x0 < width {
             ZStack(alignment: .topLeading) {
@@ -63,7 +63,8 @@ struct RetimedFilmstrip: View {
                 }
                 Text(info?.name ?? "Clip")
                     .font(Design.Typeface.tag)
-                    .foregroundStyle(Design.textOnColor)
+                    // On its own fill, the tone at 85% (below).
+                    .foregroundStyle(Design.ink(on: piece.clip.color, selected: false, over: .track, fillOpacity: 0.85))
                     .lineLimit(1)
                     .padding(.horizontal, Design.Space.tight)
                     .background(tone.opacity(0.85), in: RoundedRectangle(cornerRadius: Design.Radius.chip))

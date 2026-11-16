@@ -17,6 +17,10 @@ struct ClipLabelRow: View, Equatable {
     /// The clock's help text, nil for a clip with default time settings.
     var timeHelp: String?
     var hasShutter: Bool
+    /// The name's and badges' color: `textOnColor`, or on a color the
+    /// person gave the clip, whichever of white and black reads
+    /// (`Design.ink`).
+    var ink: Color = Design.textOnColor
 
     var body: some View {
         HStack(spacing: Design.Space.tight) {
@@ -72,8 +76,8 @@ struct ClipLabelRow: View, Equatable {
             }
             // Quieter than the name, but no lower than 90%:
             // dimmer fails 4.5:1 on the fill (see `clipFill`).
-            .foregroundStyle(Design.textOnColor.opacity(0.9))
+            .foregroundStyle(ink.opacity(0.9))
         }
-        .foregroundStyle(Design.textOnColor)
+        .foregroundStyle(ink)
     }
 }

@@ -78,11 +78,13 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ← / → | Step the playhead a frame; ten with Shift |
 | ↑ / ↓ | Go to the previous or next edit (any clip's start or end, or the end of the timeline) |
 | Home / End | Go to the start or the end |
+| C | Loop playback over the loop region, on or off; with no region, make one over the selected clips, else the whole timeline (also Timeline > Loop Playback) |
+| [ / ] | Move the loop region's start or end to the playhead; with no region, make one from the playhead to the end, or from the start to the playhead (also Timeline > Set Loop Start and End to Playhead). The Motion Designer and the graph panels take C, [ and ] too |
 | ⌘B | Split the selected clip (or the clips picked together) at the playhead; with nothing selected, every clip the playhead is in |
 | ⇧⌘B | Split every clip the playhead is in, on every layer |
 | , / . | Nudge the selected clip a frame earlier or later; ten with Shift |
-| Delete | Delete the selected section, layer, transition, clip, or the clips picked together |
-| Escape | Select nothing (no clip, layer, section or lasso); not during a value drag, a drag in the tracks (a clip, lasso, section, keyframe, transition side, music point or layer header), or a drag on an EQ or tone graph, a curve's edge slider or a Keyframing range handle, which it cancels |
+| Delete | Delete the selected loop region, section, layer, transition, clip, or the clips picked together |
+| Escape | Select nothing (no clip, layer, section, loop region or lasso); not during a value drag, a drag in the tracks (a clip, lasso, section, keyframe, transition side, music point or layer header), or a drag on an EQ or tone graph, a curve's edge slider or a Keyframing range handle, which it cancels |
 | ⌘A | Pick every clip of the timeline together, for Cut, Copy, Duplicate, Delete, the nudge keys and Put Selection in New Timeline (a lasso, Command-click and Shift-click pick some with the pointer; a clip's VoiceOver actions Add to selection and Remove from selection do it one clip at a time, and Move selection one frame earlier or later moves them) |
 | ⌘X / ⌘C / ⌘V / ⌘D | Cut, copy, paste at the playhead, or duplicate the selected clip, or all the clips picked together (or the selected effect in the effects panel); also in the Edit menu |
 | A / B / Y | Arrow, blade and slip tools |
@@ -124,7 +126,9 @@ tone, as red alone would call it an error; an expression's error is announced wh
 the last line of its editor's value.
 
 The motion designer has keys of its own for everything its drags do
-(markers and clips a frame at a time, M, L, E, Delete); see
+(markers and clips a frame at a time, M, L, E, C, [ and ] for the loop,
+Delete);
+see
 [motion-designer.md](motion-designer.md#the-panel).
 
 The Tape Scrubber (Window menu) runs the sound like tape while the Left
@@ -155,7 +159,20 @@ playhead to the middle of the view when it lands out of view.
   toggles. Pressing one selects the layer; its actions move it up or
   down, rename it and delete it.
 - **Sections** read their name and span; pressing selects, and actions
-  rename and delete.
+  rename, choose a color (the Mac's color picker, which has its own
+  swatches), use the default color, and delete. Clips and the loop
+  region have Choose color… and Use default color too, rather than an
+  action per swatch.
+- **Layer headers** also have Choose color for its clips…, Use default
+  color for its clips, and Clear layer.
+- **The loop bar** is a group named "Loop". The region in it reads "Loop
+  region" and whether it is on, with its span ("On, from 00:00:04:00 to
+  00:00:08:00"); pressing selects it, for Delete, and its actions turn
+  it on or off, move either end or the whole region a frame earlier or
+  later and delete it. C and the Timeline menu turn it on or off
+  without the bar, which is announced ("Loop on"). The header's "Loop
+  row" toggle shows or hides the bar, turning the loop on or off with
+  it.
 - **Keyframes** read their time and ease; pressing moves the playhead to
   one, and actions apply an ease or delete it.
 - **Joined transitions** read their kind, length and curve; pressing
@@ -216,7 +233,13 @@ playhead to the middle of the view when it lands out of view.
   keyframe opens native sliders for reach and text fields for speed,
   with a checkbox to add or remove each side independently. Held
   stretches and sides with no neighbor explain why no handle is available.
-- Its **keys** (arrows, Delete, Escape) are listed in
+- **The loop bar** under the time row reads as the timeline's does
+  (see Timeline above): its region is pressed to select it, and its
+  actions turn it on or off, move either end or the whole region a
+  frame and delete it; on an empty bar, Create loop region. C turns the
+  loop on or off in a panel, [ and ] move its ends to the playhead, and
+  Delete deletes the region while it is selected (Escape lets go of it).
+- Its **keys** (arrows, Delete, Escape, C, [ and ]) are listed in
   [layer-transforms.md](layer-transforms.md#graph-editor).
 - The component chips, zoom sliders and Fit button read as controls. In a
   linked panel each graph's name is a button that has the panel's presets
@@ -245,6 +268,14 @@ surface from `well` to `overlay` (`Design.textPrimary`, `textSecondary`,
 sheet surface, so sheets use `textSecondary` for their notes. Colour never
 carries meaning alone: clip kinds also differ by icon and name, and
 render states by position on the ruler strip.
+
+A bar with a color the person gave it (a clip, a section, the loop
+region) has its name and glyphs in white or black, whichever stands out
+more from its fill as drawn where the label sits (`Design.ink`): the
+better of the two reaches 4.5:1 on any color, plain, selected or turned
+off ([bar-colors.md](bar-colors.md#ink)). A bar without one keeps
+`textOnColor`. A bar's color is never read out: it is decoration the
+person chose, and the bar's label already says what it is.
 
 ## Reduced motion
 

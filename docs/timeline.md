@@ -92,6 +92,14 @@ from the top ("Video 2", "Music 1"), so the names follow the stack as it is
 reordered. Double-click the name to give it a custom one, which is saved as
 the layer's `customName`; clearing it brings the default back.
 
+A layer's header menu has **Color**, which gives every clip the layer has
+now one color (the layer keeps none of its own: a clip put there later
+keeps whatever it has), and **Clear Layer**, above **Delete Layer**,
+which deletes every clip on the layer as one undoable edit and keeps the
+layer with its name, kind, height and sound. Clear Layer asks nothing,
+and is held back on an empty layer and on one with a clip open in the
+Motion Designer. See [bar-colors.md](bar-colors.md).
+
 Dragging a layer's header (its number and name) up or down reorders the
 layers of its area; a line (`InsertionLine`) shows where it will land, and
 it goes there on release (`moveLayer(_:in:toPositionInKind:)`). With
@@ -408,14 +416,61 @@ composition otherwise ends with its last media).
   (else the other), cut short to fit. The copy is selected.
 - Click a section to select it, then Delete removes it (also in its menu).
   Selecting a section clears any clip or layer selection.
+- Its menu's **Color** gives it a color of its own, or Default its
+  bronze back ([bar-colors.md](bar-colors.md)); a copy keeps it.
 
 Sections land on frames, are at least a frame long and never overlap:
 moving or resizing one stops at its neighbors, and a new one is cut short
 by the next. With snapping on their edges snap like everything else, and
 other edges snap to them. Section names don't affect the picture, so
 renaming doesn't rebuild playback. They're saved in `project.json` under
-each timeline as `sections` (`id`, `name`, `start`, `end`), left out while a
-timeline has none.
+each timeline as `sections` (`id`, `name`, `start`, `end`, and `color`
+as `"#RRGGBB"` when it has one), left out while a timeline has none.
+
+## Loop region
+
+A slim bar between the ruler and the sections, parted from them by a
+groove, holds the timeline's **loop region**, a stretch that playback repeats, as Logic Pro's cycle
+range (`LoopBar`, `PlaybackLoop`; the whole design is in
+[loop-region.md](loop-region.md)). There is at most one per timeline,
+the same in every window that shows the timeline (a timeline window,
+the external display's own editor), the Motion Designer and the graph
+editors: changed in one, it changes in all. It
+is drawn in cyan with the loop glyph and its length, and greyed while
+off.
+
+- Drag across empty bar to draw one (the pointer is a crosshair there,
+  as over the keyframe graph); it is turned on, and replaces any
+  region there was (that one stays, dimmed, until the release, and
+  Escape brings it back). Too short a drag, under a quarter second,
+  makes nothing.
+- Drag an edge to resize it, or the middle to move it. Edges snap as
+  everything else does (below), and the region lands on frames, stays
+  at least a quarter second long and within the timeline.
+- Click it to select it, then Delete removes it (also in its
+  right-click menu, which turns it on or off too, and gives it a color,
+  in every window that shows it; not undoable, as nothing about the
+  loop is an edit). Escape, or selecting
+  anything else, lets go of it.
+- **C** and **Timeline > Loop Playback** do the same, and with no
+  region make one over the selected clips, else the whole timeline. **Set Loop Start to Playhead** and
+  **Set Loop End to Playhead** in the same menu move an end (or make a
+  region from the playhead to the end, or the start to the playhead),
+  and **Delete Loop Region** takes it away.
+- The loop button in the header, beside the sections button, shows or
+  hides the bar, as does **Loop row** in the view options. The loop is
+  on only while the bar shows: hiding it turns the loop off, showing it
+  turns the region on again, and turning the loop on with C or the menu
+  shows the bar.
+
+While it is on, playing that reaches its end goes back to its start.
+Play starts at the playhead when that is inside the region, else at its
+start; turning it on while playing goes to its start at once, and
+turning it off plays on. Moving the playhead by hand pauses as ever. It
+doesn't change what is exported or the timeline's length, and while a
+take records over the playing timeline it plays straight on. It is
+where the timeline was left, not an edit: no undo step, kept in
+`view-state.json` with the playhead.
 
 ## Tools
 
@@ -464,6 +519,8 @@ beat is drawn, and only those snap).
 - **The blade** cuts at a target near the pointer, so it can cut exactly at
   the playhead or another clip's edge.
 - **Scrubbing** in the ruler snaps the playhead to clip edges and beats.
+- **The loop region**'s edges snap when drawn, resized or moved (a move
+  by whichever end is nearer). Nothing snaps to the loop region.
 
 A clip never snaps to its own edges. While a drag has snapped, a yellow
 line runs through the layers at the target. The usual placement rules still
@@ -868,7 +925,11 @@ A clip with effects shows a small badge with how many, and a nested clip
 that passes through shows a mark. Dragging an effect from the effects panel
 onto a clip adds it to the end of the clip's stack. The clip's menu has
 **Cut**, **Copy**, **Paste** and **Duplicate** at its top, and **Pass
-Through** for nested clips.
+Through** for nested clips. Its **Color** menu gives the clip, and every
+clip picked with it, one of 64 colors or any other from the Mac's color
+picker, or its tone by kind back (Default); the name on a pale color is
+drawn in black so it stays readable. A clip's color is saved with it and
+kept by its copies. See [bar-colors.md](bar-colors.md).
 
 ## Turning clips off
 
@@ -1036,8 +1097,3 @@ as it would before it was rendered.
 - Thumbnails of the frames in the transition footage lane.
 - Trimming at a joined cut from the clips themselves (the transition box
   covers the edges; roll the cut instead).
-- A loop region: a bar under the ruler to draw a stretch that playback
-  repeats. Planned in [loop-region.md](loop-region.md).
-- Colors for clips, sections and a whole layer's clips from their
-  right-click menus, and Clear Layer. Planned in
-  [bar-colors.md](bar-colors.md).

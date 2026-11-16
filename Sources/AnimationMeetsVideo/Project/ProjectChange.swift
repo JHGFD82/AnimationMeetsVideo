@@ -152,6 +152,11 @@ private struct Describer {
             return Found(name: "Delete Section \(quoted(removed[0].name))", what: "delete-section", ids: [removed[0].id])
         case (0, 0, 1):
             let (was, now) = changed[0]
+            var recolored = was
+            recolored.color = now.color
+            if recolored == now {
+                return Found(name: "Change Color of Section \(quoted(now.name))", what: "section-color", ids: [now.id])
+            }
             if was.name != now.name, was.start == now.start, was.end == now.end {
                 return Found(name: "Rename Section \(quoted(was.name)) to \(quoted(now.name))", what: "rename-section", ids: [now.id])
             }
@@ -259,6 +264,14 @@ private struct Describer {
         }
         let removedIDs = removed.map(\.clip.id)
         if added.isEmpty {
+            // Every clip of one layer, two or more, gone and the layer
+            // still there: Clear Layer. A layer of one clip reads as that
+            // clip's deletion, which it is.
+            if removed.count >= 2, let layerID = removed.first?.layerID, removed.allSatisfy({ $0.layerID == layerID }),
+               let layer = timeline.layer(id: layerID), layer.clips.isEmpty,
+               before.timeline(id: timeline.id)?.layer(id: layerID)?.clips.count == removed.count {
+                return Found(name: "Clear Layer \(quoted(after.displayName(of: layer, in: timeline)))", what: "clear-layer", ids: [layerID])
+            }
             return Found(name: "Delete \(clipsLabel(removed, in: before))", what: "delete-clips", ids: removedIDs)
         }
         // Splitting and joining give the pieces new IDs, from the same
@@ -285,6 +298,9 @@ private struct Describer {
         if a.enabled != b.enabled {
             return b.enabled ? ClipEdit(template: "Turn On %@", what: "turn-on") : ClipEdit(template: "Turn Off %@", what: "turn-off")
         }
+        // Without the color in its identity, so the color panel's stream
+        // of changes to the same clips is one step.
+        if a.changingOnly(b, \.color) { return ClipEdit(template: "Change Color of %@", what: "clip-color") }
         if a.changingOnly(b, \.startOffset) { return ClipEdit(template: "Move %@", what: "move") }
         var timing = a
         timing.startOffset = b.startOffset
