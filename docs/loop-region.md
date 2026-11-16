@@ -1,10 +1,19 @@
 # Loop region
 
-Status: **planned, not implemented**. Nothing here is built. This
-document is written for whoever builds it: it says what the person sees,
-then where each piece goes in the code as it stands today, then the
-order to build it in. Choices made while writing it that the request
-didn't settle are listed under [Decisions made here](#decisions-made-here).
+Status: **partly built, nothing to see yet**. Built: the model and its
+rules (`Model/LoopRegion.swift`), the loop in the player
+(`Playback/PlaybackLoop.swift`, `PlaybackModel.jump(to:)` and the play
+rule), saving it in the view state with the editor surface's park and
+show, and its suspension while a take records. Not built: the bar, the
+buttons, the key and the menu items in every host, and the region's
+color, which waits for `BarColor` ([bar-colors.md](bar-colors.md)).
+Until the bar or a button is built nothing makes a region, so the app
+looks and plays as before. See [Building it](#building-it) for what is
+left. The rest of this document is written for whoever builds it: it
+says what the person sees, then where each piece goes in the code, then
+the order to build it in. Choices made while writing it that the
+request didn't settle are listed under
+[Decisions made here](#decisions-made-here).
 
 A **loop region** is a stretch of a timeline that playback repeats, as
 the cycle range in Logic Pro does. It is drawn in a slim bar of its own,
@@ -180,16 +189,19 @@ struct LoopRegion: Equatable {
     var start: CMTime
     var end: CMTime
     var isOn = true
-    /// Nil for `Design.loop`. See docs/bar-colors.md.
+    /// Nil for `Design.loop`. See docs/bar-colors.md. Not built yet.
     var color: BarColor?
 
     enum Edge { case start, end }
     var duration: CMTime { CMTimeSubtract(end, start) }
+    /// A quarter second in whole frames, at a frame length.
+    static func minimumDuration(frameDuration: CMTime) -> CMTime
 }
 ```
 
-`BarColor` comes from [bar-colors.md](bar-colors.md); build that
-document's model step first, or leave `color` out until it exists.
+`BarColor` comes from [bar-colors.md](bar-colors.md). It isn't built
+yet, so `color` is left out of `LoopRegion`, of `PlaybackLoop` and of
+the view state; add it to all three with that document's model step.
 
 Pure functions in an extension on `Timeline`, each taking the `limits`
 (a `CMTimeRange`) the host allows, so they can be unit tested without a
@@ -200,7 +212,11 @@ view. Model them on the section functions in `TimelineSections.swift`
   (6 frames at 24 fps, 8 at 30).
 - `resolvedLoop(from: CMTime, to: CMTime, within limits: CMTimeRange) -> (start: CMTime, end: CMTime)?`:
   orders the two times, puts each on a frame, clamps them to the
-  limits; nil when what is left is shorter than the minimum.
+  limits; nil when what is left is shorter than the minimum. The
+  limits are first rounded inward to whole frames, since a timeline's
+  duration can end between frames.
+- In all three, nothing past the limits' frames is allowed; a region
+  longer than the limits keeps its start at theirs on a move.
 - `resolvedLoopEdge(_ region: LoopRegion, edge: LoopRegion.Edge, to: CMTime, within: CMTimeRange) -> LoopRegion`:
   the dragged edge on a frame, within the limits, never closer to the
   other edge than the minimum.
@@ -229,7 +245,7 @@ final class PlaybackLoop {
     private(set) var region: LoopRegion?
     /// What may play here: the whole timeline, or less while a
     /// designer narrows it.
-    private(set) var limits: CMTimeRange
+    var limits: CMTimeRange { … }
     private(set) var frameDuration: CMTime
     /// A take is recording over the playing timeline.
     var isSuspended = false
@@ -238,12 +254,15 @@ final class PlaybackLoop {
     /// it is on, not suspended, and still at least the minimum long.
     var activeRange: CMTimeRange? { … }
 
-    /// Another timeline is shown: its region, with no jump.
-    func show(_ region: LoopRegion?, limits: CMTimeRange, frameDuration: CMTime)
+    /// Another timeline is shown, 0 to `duration`: its region, with no
+    /// jump. A designer's window is kept; the designer gives it back.
+    func show(_ region: LoopRegion?, duration: CMTime, frameDuration: CMTime)
     /// The timeline's length or frame rate changed.
-    func update(limits: CMTimeRange, frameDuration: CMTime)
+    func update(duration: CMTime, frameDuration: CMTime)
     /// A designer plays only part of the timeline; nil gives it back.
     func narrow(to window: CMTimeRange?)
+    /// Where play starts from `time`: see the play rule below.
+    func playStart(from time: CMTime) -> CMTime?
 
     /// A region drawn, in place of any there was. It is on.
     func draw(_ region: LoopRegion)
@@ -255,7 +274,8 @@ final class PlaybackLoop {
 ```
 
 `PlaybackModel` makes it in `init`, beside `beatClicks`, handing it the
-player and a way to jump (`BeatClickPlayer(player:)` is the pattern).
+player, and sets its `jump` to `jump(to:)`. Tests set `jump` and
+`playerTime` to stand in for the player.
 
 **The jump.** `PlaybackModel.seek(to:)` can't be used: it pauses
 ("the playhead is the master"). Add:
@@ -314,9 +334,11 @@ composed twice, which isn't worth it for a working aid.
 - `PlaybackModel.togglePlayback()`, before `player.play()`: when
   `loop.activeRange` exists and the time it is about to play from
   (after the skim rule already there) is before its start or within a
-  frame of its end, seek the player to the start first. This replaces
-  the "at the item's end, start from zero" rule only while a loop is
-  active.
+  frame of its end, the playhead moves to the start first
+  (`loop.playStart(from:)`). This replaces the "at the item's end,
+  start from zero" rule only while a loop is active.
+- Where the item's end is: the timeline's duration, or the player
+  item's own duration when that is shorter.
 
 ## Saving
 
@@ -342,11 +364,12 @@ backups.
   it (the file is decoded with `Codable`, not the strict loader).
 - `TimelineEditorSurface` already parks and shows each timeline's
   playhead through `TimelineViewMemory`. It does the same for the loop:
-  - `showParked(_:)`: `playback.loop.show(memory.parked(id)?.loop, limits: 0...duration, frameDuration:)`.
+  - `showParked(_:)`: `playback.loop.show(memory.parked(id)?.loop, duration:, frameDuration:)`.
   - `park(_:playhead:selection:in:)` and the `"surface"` capture
     registered in `showParked`: `parked.loop = playback.loop.region`.
   - When the shown timeline's duration or frame rate changes (an edit),
-    `playback.loop.update(limits:frameDuration:)`.
+    `playback.loop.update(duration:frameDuration:)`, from the surface's
+    `onChange(of: project)`.
 - An edit never moves the region: it is two times, not tied to clips. A
   timeline made shorter than the region leaves it where it is;
   `activeRange` cuts it to the timeline, and it stops looping if too
@@ -514,8 +537,9 @@ Mirror the source folders (`Tests/AnimationMeetsVideoTests/…`):
   playing; turning on while playing jumps; resizing with the playhead
   inside doesn't; a range to the item's end is watched 20 ms short;
   the start rule for play.
-- `UI/TimelineViewMemoryTests`: a loop survives a write and read; a
-  file without `loop` reads as none; a damaged one is dropped.
+- `Project/ViewStateFileTests`: a loop survives a write and read; a
+  file without `loop` reads as none; a damaged one is dropped, and the
+  rest of the file still reads.
 - `UI/LoopBarInteractionTests` with `EventHarness` (`UI_EVENTS=1`):
   a drag draws; a drag on an edge resizes and snaps; a click toggles
   and a drag doesn't; Escape cancels.
@@ -552,13 +576,21 @@ build starts.
 
 ## Building it
 
+Steps 2 to 4 are built, without the region's color, and the recording
+suspension from step 5 with them. None of it has been compiled or run
+yet: it was written where there is no Xcode.
+
 1. `BarColor` from [bar-colors.md](bar-colors.md) (its model step).
-2. `LoopRegion` and the `Timeline` rules, with `LoopRegionTests`.
-3. `PlaybackLoop`, `PlaybackModel.jump(to:)`, the play rule, with
+   Not built; then add `color` to `LoopRegion`, `PlaybackLoop.adjust`
+   and the view state's `loop`.
+2. Built: `LoopRegion` and the `Timeline` rules, with `LoopRegionTests`.
+3. Built: `PlaybackLoop`, `PlaybackModel.jump(to:)`, the play rule, with
    `PlaybackLoopTests`.
-4. Saving in the view state and the surface's park and show.
+4. Built: saving in the view state and the surface's park and show,
+   with `ViewStateFileTests`.
 5. `Design.loop`, `LoopBar`, and the main timeline's row, button, key
-   and menu items; the snapshot case and the event tests.
+   and menu items; the snapshot case and the event tests. Built of it:
+   `TimelineRecording` suspending the loop while a take records.
 6. The Motion Designer's bar, button and key.
 7. The graph editors' and the Keyframe Designer's bar, toggle and key.
 8. Accessibility, checked with the `accessibility-reviewer` agent.
