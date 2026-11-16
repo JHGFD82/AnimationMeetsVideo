@@ -1,11 +1,12 @@
 # Viewer handles
 
-Status: **partly implemented**. Steps 1 to 9 of
+Status: **partly implemented**. Steps 1 to 10 of
 [Building it](#building-it) are built: the handles, the zoom and scroll,
 the keys and VoiceOver, and the opacity chip, in every editor surface's
 viewer and on the synced external display, whose markup is gone; the
-point controls' handles; and the loupe a held press opens. Steps 10
-and 11 (`viewer` in packages, shape and text handles) are not. Where the code differs from what follows is listed
+point controls' handles; the loupe a held press opens; and the handles
+and guides packages declare in `viewer`. Step 11 (shape and text
+handles) is not. Where the code differs from what follows is listed
 under [As built](#as-built). The document says what the person sees,
 then the framework the handles are built on, then where each piece goes
 in the code, then the order to build it in. Choices made while writing
@@ -661,8 +662,8 @@ picture follows.
 
 ## An effect's own handles
 
-Point controls are built (step 8); the rest are later stages, which
-the framework above is shaped for.
+Point controls and declared handles are built (steps 8 and 10); the
+rest are later stages, which the framework above is shaped for.
 
 - **Point controls** (step 8, built). A package's `point` control is "a
   position from the middle of the frame, in the timeline's pixels"
@@ -679,7 +680,7 @@ the framework above is shaped for.
   the fold of the effects above `i`
   (`StackFolding.placement(after:)`, new). Every handle set says which
   effect it belongs to and works in that effect's coordinates.
-- **Declared handles** (step 10). A `viewer` key in effect.json, the
+- **Declared handles** (step 10, built). A `viewer` key in effect.json, the
   sibling of `graph` ([effect-packages.md](effect-packages.md#graph)):
   handles whose `x` and `y` are expressions of the controls, a `set` of
   controls to expressions of where the handle was dragged, and guides
@@ -898,7 +899,7 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 
 ## As built
 
-Where the code (steps 1 to 9) differs from the plan above:
+Where the code (steps 1 to 10) differs from the plan above:
 
 - **`HandleContext`** carries the clip's picture before its stack
   (`pictureRect`, worked out by `TransformHandles.pictureRect`), Show Up
@@ -952,8 +953,17 @@ Where the code (steps 1 to 9) differs from the plan above:
   actions (the anchor's moves), and `reset` and `refusal` are the set's
   too, so the canvas has no code of its own for a set. What the arrows
   change is kept by handle (`ViewerCanvasState.picked`).
+- **Declared handles** are their own set (`DeclaredHandles`), shown
+  with the point handles for the effect selected: drawn as diamonds,
+  over the round points, and asked first for a press. Guides are drawn
+  dashed, apart from the clip's box. A handle with Shift moves on one
+  axis and with Option a tenth, as a point does. Places are offsets
+  from the frame's middle, as point controls are, and expressions gain
+  `sin`, `cos`, `atan2`, `deg` and `sqrt` for turning ones. VoiceOver
+  adjusts a handle across and down, for the axes its sets read.
 - Not run yet: the code was written without a Swift toolchain, so the
   tests (`TransformHandlesTests`, `PointControlHandlesTests`,
+  `DeclaredHandlesTests`, `ViewerPackageTests`,
   `FineDragTests`, `ViewerMappingTests`,
   `ViewerCanvasInteractionTests`, the new `StructureKeyTests` case and
   the `viewerHandles`, `viewerZoomed` and `externalDisplaySynced`
@@ -961,7 +971,7 @@ Where the code (steps 1 to 9) differs from the plan above:
 
 ## Building it
 
-Steps 1 to 9 are built (see [As built](#as-built)).
+Steps 1 to 10 are built (see [As built](#as-built)).
 
 1. `ViewerMapping` with zoom and place, `ViewerHandleSet` and its types,
    the bounding box (moving `fitTransform`), and `TransformHandles` for
