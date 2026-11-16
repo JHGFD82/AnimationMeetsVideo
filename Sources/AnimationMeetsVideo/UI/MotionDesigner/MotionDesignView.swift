@@ -103,8 +103,8 @@ struct MotionDesignView: View {
 
     // MARK: Keys
 
-    /// L toggles marker locks, M adds a marker, E eases, C loops, and
-    /// arrows nudge.
+    /// L toggles marker locks, M adds a marker, E eases, C loops, [ and ]
+    /// set the loop's ends at the playhead, and arrows nudge.
     private func handleKey(_ event: NSEvent) -> Bool {
         if NSApp.keyWindow?.firstResponder is NSTextView { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -163,6 +163,8 @@ struct MotionDesignView: View {
         case "m": session.addMarkerAtPlayhead()
         case "n": session.snaps.toggle()
         case "c": session.toggleLoop()
+        case "[": session.setLoopEdgeToPlayhead(.start)
+        case "]": session.setLoopEdgeToPlayhead(.end)
         case "l": session.togglePickedLocks()
         case "e":
             // Easy Ease, or Linear again, as F9 eases a keyframe.

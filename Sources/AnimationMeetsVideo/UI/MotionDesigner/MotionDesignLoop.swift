@@ -36,6 +36,14 @@ extension MotionDesignSession {
         AccessibilityNotification.Announcement(loop.isOn ? "Loop on" : "Loop off").post()
     }
 
+    /// [ and ]: an end of the region to the playhead, within the window;
+    /// with no region, one from the playhead to the window's end, or from
+    /// its start to the playhead.
+    func setLoopEdgeToPlayhead(_ edge: LoopRegion.Edge) {
+        let time = timeline.snappedToFrame(CMTime(seconds: playhead, preferredTimescale: 600))
+        playback.loop.setEdge(edge, to: time, on: timeline, within: loopLimits)
+    }
+
     /// A region drawn in the designer's bar, which is on.
     func drawLoop(_ region: LoopRegion) {
         playback.loop.draw(region)

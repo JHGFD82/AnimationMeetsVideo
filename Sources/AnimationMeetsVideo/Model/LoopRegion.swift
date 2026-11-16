@@ -75,25 +75,27 @@ extension Timeline {
         return moved
     }
 
-    /// What Set Loop Start to Playhead makes of `region`: its start at
+    /// What Set Loop Start to Playhead ([) makes of `region`: its start at
     /// `time` by the resize rules, or with no region, one from `time` to
-    /// the timeline's end. Nil where it would change or make nothing.
-    func loopSettingStart(of region: LoopRegion?, to time: CMTime) -> LoopRegion? {
-        let limits = CMTimeRange(start: .zero, end: duration)
+    /// the end of `limits` (the whole timeline when nil). Nil where it
+    /// would change or make nothing.
+    func loopSettingStart(of region: LoopRegion?, to time: CMTime, within limits: CMTimeRange? = nil) -> LoopRegion? {
+        let limits = limits ?? CMTimeRange(start: .zero, end: duration)
         guard let region else {
-            return resolvedLoop(from: time, to: duration, within: limits).map { LoopRegion(start: $0.start, end: $0.end) }
+            return resolvedLoop(from: time, to: limits.end, within: limits).map { LoopRegion(start: $0.start, end: $0.end) }
         }
         let resized = resolvedLoopEdge(region, edge: .start, to: time, within: limits)
         return resized == region ? nil : resized
     }
 
-    /// What Set Loop End to Playhead makes of `region`: its end at `time`
-    /// by the resize rules, or with no region, one from the timeline's
-    /// start to `time`. Nil where it would change or make nothing.
-    func loopSettingEnd(of region: LoopRegion?, to time: CMTime) -> LoopRegion? {
-        let limits = CMTimeRange(start: .zero, end: duration)
+    /// What Set Loop End to Playhead (]) makes of `region`: its end at
+    /// `time` by the resize rules, or with no region, one from the start
+    /// of `limits` (the whole timeline when nil) to `time`. Nil where it
+    /// would change or make nothing.
+    func loopSettingEnd(of region: LoopRegion?, to time: CMTime, within limits: CMTimeRange? = nil) -> LoopRegion? {
+        let limits = limits ?? CMTimeRange(start: .zero, end: duration)
         guard let region else {
-            return resolvedLoop(from: .zero, to: time, within: limits).map { LoopRegion(start: $0.start, end: $0.end) }
+            return resolvedLoop(from: limits.start, to: time, within: limits).map { LoopRegion(start: $0.start, end: $0.end) }
         }
         let resized = resolvedLoopEdge(region, edge: .end, to: time, within: limits)
         return resized == region ? nil : resized

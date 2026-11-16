@@ -111,6 +111,12 @@ extension TimelineView {
             toggleLoop()
             return true
         }
+        // [ and ], as Beat Match's: an end of the loop region to the
+        // playhead, the keyboard path for drawing and resizing it.
+        if key == "[" || key == "]" {
+            if key == "[" { setLoopStartToPlayhead() } else { setLoopEndToPlayhead() }
+            return true
+        }
         if let chosen = TimelineTool(shortcutKey: key), !flags.contains(.shift) {
             tool = chosen
             return true

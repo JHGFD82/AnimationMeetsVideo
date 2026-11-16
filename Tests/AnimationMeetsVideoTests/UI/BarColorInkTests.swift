@@ -30,6 +30,15 @@ import Testing
         }
     }
 
+    /// The Motion Designer's filmstrip names sit on their color at 85%.
+    @Test(arguments: [Design.InkSurface.track, .rail])
+    func aLabelOnItsOwnFillHoldsFourAndAHalf(surface: Design.InkSurface) {
+        for preset in BarColor.presets {
+            let contrast = Design.inkContrast(on: preset.color, selected: false, over: surface, fillOpacity: 0.85)
+            #expect(max(contrast.white, contrast.black) >= 4.5, "\(preset.name)")
+        }
+    }
+
     @Test func paleColorsTakeBlackAndDarkOnesWhite() {
         #expect(Design.ink(on: BarColor(0xFED2CD), selected: false, over: .track) == .black)
         #expect(Design.ink(on: BarColor(0x17501D), selected: false, over: .track) == .white)

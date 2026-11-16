@@ -69,6 +69,9 @@ struct GraphLoopBar: View {
             Spacer(minLength: 0)
         }
         .frame(height: LoopBar.height)
+        // The rail the bar's ink is worked out over (`Design.InkSurface.rail`),
+        // as the timeline's and the Motion Designer's bars sit on.
+        .background(Design.Surface.raised.color)
     }
 
     /// Where timeline time `time` is across the graph.

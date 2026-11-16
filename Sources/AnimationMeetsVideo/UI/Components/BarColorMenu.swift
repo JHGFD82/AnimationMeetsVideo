@@ -28,7 +28,7 @@ struct BarColorMenu: View {
             ))
             Divider()
             ForEach(BarColor.presetRows.indices, id: \.self) { row in
-                Picker("Row \(row + 1)", selection: Binding<BarColor?>(
+                Picker("Colors, row \(row + 1)", selection: Binding<BarColor?>(
                     get: { isMixed ? nil : current },
                     set: { if let color = $0 { onSet(color) } }
                 )) {

@@ -117,21 +117,13 @@ extension TimelineView {
         AccessibilityNotification.Announcement(loop.isOn ? "Loop on" : "Loop off").post()
     }
 
-    /// Set Loop Start to Playhead.
+    /// Set Loop Start to Playhead ([).
     func setLoopStartToPlayhead() {
-        setLoop(timeline.loopSettingStart(of: playback.loop.region, to: timeline.snappedToFrame(livePlayheadTime)))
+        playback.loop.setEdge(.start, to: timeline.snappedToFrame(livePlayheadTime), on: timeline)
     }
 
-    /// Set Loop End to Playhead.
+    /// Set Loop End to Playhead (]).
     func setLoopEndToPlayhead() {
-        setLoop(timeline.loopSettingEnd(of: playback.loop.region, to: timeline.snappedToFrame(livePlayheadTime)))
-    }
-
-    /// A region made, or the one there adjusted, by the menu.
-    private func setLoop(_ region: LoopRegion?) {
-        guard let region else { return }
-        let loop = playback.loop
-        if loop.region == nil { loop.draw(region) } else { loop.adjust(to: region) }
-        if loop.isOn { showLoopRow() }
+        playback.loop.setEdge(.end, to: timeline.snappedToFrame(livePlayheadTime), on: timeline)
     }
 }

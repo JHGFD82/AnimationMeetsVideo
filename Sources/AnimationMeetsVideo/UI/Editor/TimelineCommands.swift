@@ -105,9 +105,9 @@ struct TimelineCommands: Commands {
                 set: { _ in actions?.toggleLoop() }
             ))
             .disabled(!offers(\.canToggleLoop))
-            Button("Set Loop Start to Playhead") { actions?.setLoopStart() }
+            Button("Set Loop Start to Playhead  [") { actions?.setLoopStart() }
                 .disabled(!offers(\.canSetLoopStart))
-            Button("Set Loop End to Playhead") { actions?.setLoopEnd() }
+            Button("Set Loop End to Playhead  ]") { actions?.setLoopEnd() }
                 .disabled(!offers(\.canSetLoopEnd))
             Button("Delete Loop Region") { actions?.removeLoop() }
                 .disabled(!offers(\.hasLoop))

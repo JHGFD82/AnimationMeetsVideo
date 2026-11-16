@@ -63,7 +63,8 @@ struct RetimedFilmstrip: View {
                 }
                 Text(info?.name ?? "Clip")
                     .font(Design.Typeface.tag)
-                    .foregroundStyle(Design.ink(on: piece.clip.color, selected: false, over: .track))
+                    // On its own fill, the tone at 85% (below).
+                    .foregroundStyle(Design.ink(on: piece.clip.color, selected: false, over: .track, fillOpacity: 0.85))
                     .lineLimit(1)
                     .padding(.horizontal, Design.Space.tight)
                     .background(tone.opacity(0.85), in: RoundedRectangle(cornerRadius: Design.Radius.chip))

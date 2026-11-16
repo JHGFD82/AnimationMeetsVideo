@@ -180,13 +180,17 @@ group after Play/Pause:
 | Item | Does |
 | --- | --- |
 | Loop Playback  C | Toggles, with a checkmark while on; makes a region when there is none |
-| Set Loop Start to Playhead | Moves the region's start to the playhead; with no region, makes one from the playhead to the timeline's end |
-| Set Loop End to Playhead | Moves its end to the playhead; with no region, makes one from the start of the timeline to the playhead |
+| Set Loop Start to Playhead  [ | Moves the region's start to the playhead; with no region, makes one from the playhead to the timeline's end |
+| Set Loop End to Playhead  ] | Moves its end to the playhead; with no region, makes one from the start of the timeline to the playhead |
 | Delete Loop Region | Enabled while there is one. Delete Selection (⌫) removes it too while it is selected |
 
 The two Set items follow the resize rules (frames, minimum length,
-limits) and are disabled where they would do nothing. They are the
-keyboard path for drawing and resizing.
+limits) and are disabled where they would do nothing. With their keys,
+**[** and **]** (Beat Match's keys for the same), they are the keyboard
+path for drawing and resizing; the Motion Designer and the graph panels
+take [ and ] too, within what they show (`PlaybackLoop.setEdge`),
+since the Timeline menu rests while they are open. An empty bar also
+has a Create loop region action for VoiceOver.
 
 ## Where it appears
 

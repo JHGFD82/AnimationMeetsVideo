@@ -32,15 +32,22 @@ extension Design {
     /// stop over `surface`): white text can't be read on a pale color.
     /// Pure white, not `textOnColor`, so the better of the two holds 4.5:1
     /// whatever the color.
-    static func ink(on color: BarColor?, selected: Bool, enabled: Bool = true, over surface: InkSurface) -> Color {
+    /// `fillOpacity` is for a label on a fill of its own rather than
+    /// `clipFill` (the Motion Designer's filmstrip names): the color at
+    /// that opacity over `surface`.
+    static func ink(
+        on color: BarColor?, selected: Bool, enabled: Bool = true, over surface: InkSurface, fillOpacity: Double? = nil
+    ) -> Color {
         guard let color else { return textOnColor }
-        let contrast = inkContrast(on: color, selected: selected, enabled: enabled, over: surface)
+        let contrast = inkContrast(on: color, selected: selected, enabled: enabled, over: surface, fillOpacity: fillOpacity)
         return contrast.white >= contrast.black ? .white : .black
     }
 
     /// The contrast of white and black text with `color` drawn as a bar's
     /// fill over `surface`, for `ink` and its tests.
-    static func inkContrast(on color: BarColor, selected: Bool, enabled: Bool = true, over surface: InkSurface) -> (white: Double, black: Double) {
+    static func inkContrast(
+        on color: BarColor, selected: Bool, enabled: Bool = true, over surface: InkSurface, fillOpacity: Double? = nil
+    ) -> (white: Double, black: Double) {
         var tone = color.components
         if !enabled {
             // As `Color.greyed()`: its luma, in every channel.
@@ -48,9 +55,9 @@ extension Design {
             tone = (luma, luma, luma)
         }
         // `clipFill`'s top stop: the tone at 62%, or selected, darkened to
-        // 78.6% at 93.6%.
-        let scale = selected ? 0.786 : 1
-        let alpha = selected ? 0.936 : 0.62
+        // 78.6% at 93.6%; or the label's own fill.
+        let scale = selected && fillOpacity == nil ? 0.786 : 1
+        let alpha = fillOpacity ?? (selected ? 0.936 : 0.62)
         let under = surfaceComponents(surface)
         func blend(_ top: Double, _ bottom: Double) -> Double { top * scale * alpha + bottom * (1 - alpha) }
         let luminance = BarColor.luminance(

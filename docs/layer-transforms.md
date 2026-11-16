@@ -143,7 +143,8 @@ clip's parameter it follows the clip's source time, as the time row
 does, and stays within the clip. The loop button beside Skimming shows
 or hides it (the timeline's loop row too; hidden, the loop is off), and
 **C** turns the loop on or off, with no region making one over the
-clip.
+clip; **[** and **]** move its start or end to the playhead, and with
+the region selected, **Escape** lets go of it.
 
 **Skimming** is on unless turned off: as the pointer moves over the plot,
 the viewer shows the frame under it (on a frame of the timeline), without

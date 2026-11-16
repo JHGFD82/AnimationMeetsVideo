@@ -152,7 +152,8 @@ music.
   locks (all locked if any is unlocked), E toggles Easy Ease and Linear,
   Delete removes (the loop region, when it is selected), arrows nudge
   picked unlocked markers or the playhead by one frame (Shift ten), N
-  toggles snapping, C turns the loop on or off, Escape lets go.
+  toggles snapping, C turns the loop on or off, [ and ] move its start
+  or end to the playhead, Escape lets go.
   ⌘A picks all, ⌘= / ⌘- / ⌘0 zoom, ⌘Z / ⇧⌘Z undo and redo,
   ⌘Return keeps the draft and ⌘. cancels. Keys wait while typing.
 - Skimming shows the hovered frame without moving the playhead, never

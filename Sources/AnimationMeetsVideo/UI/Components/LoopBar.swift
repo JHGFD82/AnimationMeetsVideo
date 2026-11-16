@@ -97,9 +97,14 @@ struct LoopBar: View {
         .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .topLeading)
         .clipped()
         .coordinateSpace(.named(space))
-        .help("Loop: drag across the bar to draw a stretch that playback repeats; click it to turn it on or off")
+        .help("Loop: drag across the bar to draw a stretch that playback repeats; click it to select it, right-click for more")
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Loop")
+        // Empty, the bar would read as nothing to act on: what C does,
+        // a region over what the host is about, turned on.
+        .accessibilityActions {
+            if region == nil { Button("Create loop region", action: onToggle) }
+        }
     }
 
     // MARK: Drawing
@@ -122,6 +127,7 @@ struct LoopBar: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                         .strokeBorder(Design.bevelEdge, lineWidth: 1)
+                        .decorative()
                 }
             // The glyph and the length where they fit, else the glyph
             // alone, else nothing: a label cut off at the chip's edge ran
@@ -352,6 +358,20 @@ struct LoopBar: View {
 }
 
 extension PlaybackLoop {
+    /// [ and ] (and the Timeline menu's Set Loop Start and End to
+    /// Playhead): one end of the region to `time`, by the resize rules
+    /// within `limits`, or with no region, one from `time` to the end of
+    /// the limits, or from their start to `time`, turned on. A loop on
+    /// shows its bar (`TimelineAreaLayout.showLoopRow`).
+    func setEdge(_ edge: LoopRegion.Edge, to time: CMTime, on timeline: Timeline, within limits: CMTimeRange? = nil) {
+        let made = edge == .start
+            ? timeline.loopSettingStart(of: region, to: time, within: limits)
+            : timeline.loopSettingEnd(of: region, to: time, within: limits)
+        guard let made else { return }
+        if region == nil { draw(made) } else { adjust(to: made) }
+        if isOn { TimelineAreaLayout.showLoopRow() }
+    }
+
     /// Gives the region a color, or with nil its tone back. View state,
     /// as the region is: no undo. Every window on the timeline shows it.
     func setColor(_ color: BarColor?) {

@@ -268,29 +268,45 @@ final class KeyframeGraphHUDs {
     // MARK: Panels
 
     /// Starts listening for Space in the graphs' panels, once.
-    /// Space plays or pauses, C turns the loop on or off, and Delete,
-    /// while the loop region is selected, deletes it: in a panel, not
-    /// while text is typed or a control has the keys. Delete otherwise
-    /// goes on to the graph, which deletes keyframes.
+    /// Space plays or pauses, C turns the loop on or off, [ and ] move
+    /// its start or end to the playhead, and while the loop region is
+    /// selected, Delete deletes it and Escape lets go of it: in a panel,
+    /// not while text is typed or a control has the keys. Delete and
+    /// Escape otherwise go on to the graph, for its keyframes.
     private func watchSpace() {
         guard spaceMonitor == nil else { return }
         spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            let isSpace = event.keyCode == 49
-            let isC = event.charactersIgnoringModifiers?.lowercased() == "c"
-            let isDelete = [51, 117].contains(event.keyCode)
-            guard isSpace || isC || isDelete, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+            enum Key { case space, loop, edge(LoopRegion.Edge), delete, escape }
+            let character = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            let key: Key? = switch (event.keyCode, character) {
+            case (49, _): .space
+            case (51, _), (117, _): .delete
+            case (53, _): .escape
+            case (_, "c"): .loop
+            case (_, "["): .edge(.start)
+            case (_, "]"): .edge(.end)
+            default: nil
+            }
+            guard let key, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
                   let window = event.window, !(window.firstResponder is NSText), !event.isForFocusedControl
             else { return event }
             let handled = MainActor.assumeIsolated { () -> Bool in
                 guard let self, let subject = self.panels.first(where: { $0.value === window })?.key else { return false }
-                if isSpace {
+                switch key {
+                case .space:
                     self.onTogglePlayback()
-                } else if isC {
+                case .loop:
                     guard let found = self.loopLimits(of: subject) else { return false }
                     self.toggleLoop(over: found.limits, timeline: found.timeline)
-                } else {
+                case .edge(let edge):
+                    guard let found = self.loopLimits(of: subject), let loop = self.playback?.loop else { return false }
+                    loop.setEdge(edge, to: found.timeline.snappedToFrame(self.playhead), on: found.timeline, within: found.limits)
+                case .delete:
                     guard self.isLoopSelected, self.playback?.loop.region != nil else { return false }
                     self.deleteLoop()
+                case .escape:
+                    guard self.isLoopSelected else { return false }
+                    self.isLoopSelected = false
                 }
                 return true
             }

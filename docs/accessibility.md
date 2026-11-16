@@ -78,7 +78,8 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ← / → | Step the playhead a frame; ten with Shift |
 | ↑ / ↓ | Go to the previous or next edit (any clip's start or end, or the end of the timeline) |
 | Home / End | Go to the start or the end |
-| C | Loop playback over the loop region, on or off; with no region, make one over the selected clips, else the whole timeline (also Timeline > Loop Playback, with Set Loop Start and End to Playhead beside it) |
+| C | Loop playback over the loop region, on or off; with no region, make one over the selected clips, else the whole timeline (also Timeline > Loop Playback) |
+| [ / ] | Move the loop region's start or end to the playhead; with no region, make one from the playhead to the end, or from the start to the playhead (also Timeline > Set Loop Start and End to Playhead). The Motion Designer and the graph panels take C, [ and ] too |
 | ⌘B | Split the selected clip (or the clips picked together) at the playhead; with nothing selected, every clip the playhead is in |
 | ⇧⌘B | Split every clip the playhead is in, on every layer |
 | , / . | Nudge the selected clip a frame earlier or later; ten with Shift |
@@ -125,7 +126,8 @@ tone, as red alone would call it an error; an expression's error is announced wh
 the last line of its editor's value.
 
 The motion designer has keys of its own for everything its drags do
-(markers and clips a frame at a time, M, L, E, C for the loop, Delete);
+(markers and clips a frame at a time, M, L, E, C, [ and ] for the loop,
+Delete);
 see
 [motion-designer.md](motion-designer.md#the-panel).
 
@@ -234,9 +236,10 @@ playhead to the middle of the view when it lands out of view.
 - **The loop bar** under the time row reads as the timeline's does
   (see Timeline above): its region is pressed to select it, and its
   actions turn it on or off, move either end or the whole region a
-  frame and delete it. C turns the loop on or off in a panel, and
-  Delete deletes the region while it is selected.
-- Its **keys** (arrows, Delete, Escape, C) are listed in
+  frame and delete it; on an empty bar, Create loop region. C turns the
+  loop on or off in a panel, [ and ] move its ends to the playhead, and
+  Delete deletes the region while it is selected (Escape lets go of it).
+- Its **keys** (arrows, Delete, Escape, C, [ and ]) are listed in
   [layer-transforms.md](layer-transforms.md#graph-editor).
 - The component chips, zoom sliders and Fit button read as controls. In a
   linked panel each graph's name is a button that has the panel's presets
