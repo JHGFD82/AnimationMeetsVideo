@@ -1,11 +1,20 @@
 # Python scripting
 
-Status: **planned, not implemented**. Nothing here is built. This
-document is written for whoever builds it: it says what the person sees,
-then how it works, then where each piece goes in the code as it stands
-today, then the order to build it in. Choices made while writing it that
-the request didn't settle are listed under
-[Decisions made here](#decisions-made-here).
+Status: **partly built, not yet tried on a Mac.** Steps 1 to 5 of
+[Building it](#building-it) are written: the helper, the runtime and the
+Settings tab; reading the project and the console; scripts that edit,
+the Scripts menu and `Scripts/`; the expression model; and allowing
+expressions, with Review Expressions. They were written without a build
+(on Linux, with no Xcode), so none of the Swift has been compiled or
+run; the helper's own Python tests pass. No Python release is pinned in
+`scripts/fetch-python.sh` yet, so the app is built without one of its
+own until it is. Steps 6 on remain: the confined helper must be written
+and tried on a Mac before expressions run (step 7), and the Keyframe
+Designer doesn't offer Expression until then. The rest of this document
+was written for whoever builds it: it says what the person sees, then
+how it works, then where each piece goes in the code, then the order to
+build it in. Choices made while writing it that the request didn't
+settle are listed under [Decisions made here](#decisions-made-here).
 
 Two ways to work on a project in Python, on one framework:
 

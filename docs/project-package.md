@@ -39,6 +39,7 @@ MyProject.amv/
   project.json        the edit: assets, timelines, layers, clips
   view-state.json     where each timeline was left (see "View state")
   Media/              optional: assets copied in by choice
+  Scripts/            the project's Python scripts (see python-scripting.md)
   Reference/          per-asset reference data (never auto-deleted)
     <assetID>/
       reference.json      metadata snapshot of the original file
@@ -192,6 +193,7 @@ Name 2026-10-24 14.30.05.amvbackup/
   backup.json    the package it was taken of, its name, and when
   Media/         the media copied into the project
   Reference/     what was learned about each original file
+  Scripts/       the project's Python scripts
 ```
 
 so it opens on its own even if the project's package is gone. Media the
@@ -226,8 +228,8 @@ deleted at once. Forgetting an original still waits for the save so it can
 be undone.
 
 Saving writes `project.json` and copies nothing, since imports are already
-in place. Save As copies what the old package holds in `Media/` and
-`Reference/` into the new one; media referenced from elsewhere stays where
+in place. Save As copies what the old package holds in `Media/`,
+`Reference/` and `Scripts/` into the new one; media referenced from elsewhere stays where
 it is. Saving as a package that already exists, once the save panel's
 replace prompt is confirmed, moves the old package to the Trash first (as
 New Project does), so none of its media, backups or render cache end up in
