@@ -419,14 +419,15 @@ timeline has none.
 
 ## Loop region
 
-A slim bar between the ruler and the sections holds the timeline's
-**loop region**, a stretch that playback repeats, as Logic Pro's cycle
+A slim bar between the ruler and the sections, parted from them by a
+groove, holds the timeline's **loop region**, a stretch that playback repeats, as Logic Pro's cycle
 range (`LoopBar`, `PlaybackLoop`; the whole design is in
 [loop-region.md](loop-region.md)). There is at most one per timeline. It
 is drawn in cyan with the loop glyph and its length, and greyed while
 off.
 
-- Drag across empty bar to draw one; it is turned on, and replaces any
+- Drag across empty bar to draw one (the pointer is a crosshair there,
+  as over the keyframe graph); it is turned on, and replaces any
   region there was (that one stays, dimmed, until the release, and
   Escape brings it back). Too short a drag, under a quarter second,
   makes nothing.
@@ -435,13 +436,14 @@ off.
   at least a quarter second long and within the timeline.
 - Click it to turn it on or off. Its right-click menu turns it on or off
   and removes it.
-- The loop button beside snapping, **C**, and **Timeline > Loop
-  Playback** do the same, and with no region make one over the selected
-  clips, else the whole timeline. **Set Loop Start to Playhead** and
+- **C** and **Timeline > Loop Playback** do the same, and with no
+  region make one over the selected clips, else the whole timeline. **Set Loop Start to Playhead** and
   **Set Loop End to Playhead** in the same menu move an end (or make a
   region from the playhead to the end, or the start to the playhead),
   and **Remove Loop Region** takes it away.
-- **Loop row** in the view options shows or hides the bar.
+- The loop button in the header, beside the sections button, shows or
+  hides the bar, as does **Loop row** in the view options. Hiding it
+  doesn't turn the loop off.
 
 While it is on, playing that reaches its end goes back to its start.
 Play starts at the playhead when that is inside the region, else at its

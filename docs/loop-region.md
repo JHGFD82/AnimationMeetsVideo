@@ -5,8 +5,8 @@ model and its rules (`Model/LoopRegion.swift`), the loop in the player
 (`Playback/PlaybackLoop.swift`, `PlaybackModel.jump(to:)` and the play
 rule), saving it in the view state, its suspension while a take
 records, and in the main timeline the bar (`UI/Components/LoopBar.swift`),
-the loop button, C and the Timeline menu's items
-(`UI/Timeline/TimelineLoop.swift`). Not built: the bar, button and key
+the header button that shows or hides it, C and the Timeline menu's
+items (`UI/Timeline/TimelineLoop.swift`). Not built: the bar, button and key
 in the Motion Designer, the graph editors and the Keyframe Designer, and
 the region's color, which waits for `BarColor`
 ([bar-colors.md](bar-colors.md)). See [Building it](#building-it) for
@@ -112,9 +112,9 @@ the targets are depends on the host; see each under
 - **Pressing play** with the region on: if the playhead is inside it
   (from its start up to a frame before its end), playing starts where
   the playhead is. Anywhere else, playing starts at the region's start.
-- **Turning it on while playing** (a click on the region, the loop
-  button, C): the playhead goes to the region's start at once and plays
-  on from there, wherever it was.
+- **Turning it on while playing** (a click on the region, C, the
+  menu): the playhead goes to the region's start at once and plays on
+  from there, wherever it was.
 - **Drawing a new region while playing** does the same on release,
   since a new region is on.
 - **Turning it off while playing**: playing carries on from where it
@@ -137,11 +137,18 @@ Clicking and dragging need a path without the pointer
 ([accessibility.md](accessibility.md), "Rules for new UI"), and the main
 timeline's bar can be hidden, so each host also has:
 
-- A **loop button**: an icon toggle with `Design.Symbol.loop`, on while
-  the region is on. Help: "Loop playback over the loop region (C)".
-- **C** does the same (Logic's key). Not while text is being typed.
-- With **no region yet**, the button and C make one and turn it on:
-  over the stretch the host is about (each host says which, below).
+- **C** turns the loop on or off (Logic's key). Not while text is being
+  typed.
+- With **no region yet**, C makes one and turns it on: over the stretch
+  the host is about (each host says which, below).
+- In the **main timeline**, a **loop button** in the header shows or
+  hides the loop bar, as the sections button beside it does its row
+  (an icon toggle with `Design.Symbol.loop`; help "Hide the loop row" /
+  "Show the loop row"). It doesn't turn the loop on or off: hidden, a
+  region that is on goes on looping, and the Timeline menu's checkmark
+  still says so. The other hosts don't hide their bar, so there a loop
+  button would turn the loop on or off, as C does; settle that when
+  building them.
 
 The main timeline's **Timeline** menu (`TimelineCommands`) gets, in a
 group after Play/Pause:
@@ -290,11 +297,20 @@ func jump(to time: CMTime) {
 ```
 
 It skips the paused-seek queue (`pendingSeek`, `drainSeeks`), which is
-for scrubbing. What follows a jump already works, since each watches the
-player rather than a caller:
+for scrubbing.
 
-- the playhead line (`PlayheadRail.Following`, an `AVSynchronizedLayer`)
-  and the page turn when it lands out of view (its
+The playhead line (`PlayheadRail.Following`, an `AVSynchronizedLayer`
+bound to the item) did **not** follow the jump: tried in the app, the
+sound and picture turned back and the line ran on, as it had after an
+item swapped in while playing. So once the jump's seek has landed,
+`jump(to:)` counts it (`PlaybackModel.playingJumps`), and the line's
+`Following.generation` is `followGeneration`, the swaps and the jumps
+together, which binds it to the item again.
+
+What else follows a jump already works, since each watches the player
+rather than a caller:
+
+- the page turn when the playhead lands out of view (the rail's
   `AVPlayerItem.timeJumpedNotification` observer calls `checkInView`);
 - the beat tick (`BeatClickPlayer` restarts on the same notification);
 - the audio taps, which reset on a jump in time
@@ -444,16 +460,20 @@ Differences from `SectionLane`:
   `TimelineLoopLane(parent:width:)` beside `TimelineSectionLane`, with
   the same `rubberBandStretch`, `rubberBandScroll` and `clipped`.
 - `TimelineLoopLane` (`TimelineLoop.swift`) reads
-  `parent.playback.loop.region` in its own body. `TimelineView` is `Equatable` and must not read the loop as its
-  body is built, or toggling would rebuild the whole timeline; that is
-  why the playhead has `PlayheadReader`.
+  `parent.playback.loop.region` in its own body. `TimelineView` is
+  `Equatable` and must not read the loop as its body is built, or
+  toggling would rebuild the whole timeline; that is why the playhead
+  has `PlayheadReader`.
 - Mapping: `viewport.x(atSeconds:)` and `viewport.seconds(atX:)`.
   Limits: `0...timeline.duration`. Snap:
   `liveSnap.targets?.nearest(to:within:)` with `snapTolerance(viewport)`.
   Snap indicator: `viewportModel.snapIndicator`.
-- The loop button goes in the header beside the snapping toggle, as a
-  small view of its own that reads the loop (`TimelineLoopButton`), not
-  in `TimelineView.body`.
+- The loop button goes in the header beside the sections toggle, bound
+  to `areaLayout.showsLoop` as that one is to `showsSections`.
+- With both the loop bar and the sections shown, a `Groove` parts them,
+  `separatorHeight` high, counted in `railHeight`.
+- Over empty bar the pointer is the crosshair (`.pointerStyle(.rectSelection)`),
+  as over the keyframe graph, to say that a drag there draws.
 - `TimelineKeyboard.handleKey`: `c` without modifiers toggles; with no
   region it makes one over the selected clips (`selection` or
   `groupSelection`: earliest start to latest end), else `0...duration`
@@ -526,7 +546,8 @@ Following [accessibility.md](accessibility.md), "Rules for new UI":
   the drags a frame at a time: Move start one frame earlier / later,
   Move end one frame earlier / later, Move region one frame earlier /
   later, Remove loop region, Choose color…, Use default color.
-- The loop button: `accessibilityLabel("Loop")`, value On or Off.
+- The main timeline's loop button: `accessibilityLabel("Loop row")`,
+  as the sections button is "Sections row".
 - The chip's fill and rim are `.decorative()` where they sit over the
   edge handles.
 - Turning the loop on or off posts an announcement ("Loop on",
@@ -580,6 +601,10 @@ build starts.
 8. **The loop button, C and the menu items** are added so the feature
    works without a pointer and with the timeline's bar hidden.
 9. **Beat Match keeps its own loop.**
+10. **The main timeline's loop button shows or hides the bar**, as the
+    sections button does its row, rather than turning the loop on or
+    off; asked for once the bar was tried. C and the menu turn it on or
+    off.
 
 ## Building it
 

@@ -161,8 +161,9 @@ playhead to the middle of the view when it lands out of view.
   region" and whether it is on, with its span ("On, from 00:00:04:00 to
   00:00:08:00"); pressing turns it on or off, and its actions move
   either end or the whole region a frame earlier or later and remove
-  it. The header's Loop button, C and the Timeline menu do the same
-  without the bar, and turning it on or off is announced ("Loop on").
+  it. C and the Timeline menu do the same without the bar, and turning
+  it on or off is announced ("Loop on"). The header's "Loop row" toggle
+  shows or hides the bar.
 - **Keyframes** read their time and ease; pressing moves the playhead to
   one, and actions apply an ease or delete it.
 - **Joined transitions** read their kind, length and curve; pressing
