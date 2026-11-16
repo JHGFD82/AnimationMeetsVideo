@@ -51,7 +51,9 @@ struct PlayheadRail: NSViewRepresentable {
         /// How many seconds the animation spans: at least the item's length.
         let seconds: Double
         /// Changes when the player's item was swapped and has since seeked,
-        /// which binds the playhead to it again.
+        /// or the player jumped in time while playing (a loop's turn back),
+        /// which binds the playhead to it again
+        /// (`PlaybackModel.followGeneration`).
         var generation = 0
         /// Called with the player's time when the playhead leaves the rail's
         /// width (or is already outside it when following starts), so the

@@ -25,6 +25,14 @@ final class PlaybackModel {
     /// player binds as the item is replaced, before the seek, and binds
     /// again when this changes.
     private(set) var itemSwaps = 0
+    /// How many times the player jumped in time while playing (a loop's
+    /// turn back), after its seek. A playhead bound to the item kept
+    /// running on as if no seek had happened, as after a swap, so it
+    /// binds again when this changes too.
+    private(set) var playingJumps = 0
+    /// What a playhead following the player (`PlayheadRail.Following`)
+    /// binds again on: an item swapped in or a jump, while playing.
+    var followGeneration: Int { itemSwaps &+ playingJumps }
     /// The structure (`StructureKey`) of the project the player's item was
     /// built from, and whether any of it plays from a render. An edit that
     /// leaves the key the same is drawn by the item as it is, with the
@@ -695,12 +703,16 @@ final class PlaybackModel {
 
     /// A loop's turn back while playing: the player seeks and plays on.
     /// Not `seek(to:)`, which pauses (the playhead is the master), nor the
-    /// paused-seek queue, which is for scrubbing. The playhead, the page
-    /// turn, the beat tick and the audio taps follow the player's jump in
-    /// time on their own.
+    /// paused-seek queue, which is for scrubbing. The beat tick, the audio
+    /// taps and the page turn follow the player's jump in time on their
+    /// own; the playhead binds to the item again once the seek has landed
+    /// (`playingJumps`).
     func jump(to time: CMTime) {
         currentTime = time
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            guard finished else { return }
+            Task { @MainActor in self?.playingJumps += 1 }
+        }
     }
 
     // MARK: Tape scrubbing

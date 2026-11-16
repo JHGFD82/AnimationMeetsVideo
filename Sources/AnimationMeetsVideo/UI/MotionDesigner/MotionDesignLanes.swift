@@ -902,7 +902,7 @@ struct MotionDesignLanes: View {
                         pixelsPerSecond: CGFloat(1 / session.secondsPerPoint),
                         originX: session.x(of: 0),
                         seconds: session.window.end,
-                        generation: session.playback.itemSwaps
+                        generation: session.playback.followGeneration
                     )
                     : nil
             )
