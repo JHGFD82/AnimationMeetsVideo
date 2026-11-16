@@ -226,7 +226,12 @@ playhead to the middle of the view when it lands out of view.
   keyframe opens native sliders for reach and text fields for speed,
   with a checkbox to add or remove each side independently. Held
   stretches and sides with no neighbor explain why no handle is available.
-- Its **keys** (arrows, Delete, Escape) are listed in
+- **The loop bar** under the time row reads as the timeline's does
+  (see Timeline above): its region is pressed to select it, and its
+  actions turn it on or off, move either end or the whole region a
+  frame and delete it. C turns the loop on or off in a panel, and
+  Delete deletes the region while it is selected.
+- Its **keys** (arrows, Delete, Escape, C) are listed in
   [layer-transforms.md](layer-transforms.md#graph-editor).
 - The component chips, zoom sliders and Fit button read as controls. In a
   linked panel each graph's name is a button that has the panel's presets

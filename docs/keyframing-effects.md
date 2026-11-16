@@ -232,8 +232,10 @@ editors, one per clip (`KeyframeDesigner`,
 from: the one asked for, else the effect's first a method drives, else
 its first.
 
-- **Along the top**: Play/Pause, the playhead's timecode and skimming,
-  as in the other designers. Space plays unless a focused field or
+- **Along the top**: Play/Pause, the playhead's timecode, skimming and
+  the loop button, as in the other designers; the graph has the loop
+  bar under its time row, and C turns the loop on or off, as in the
+  graph editors ([loop-region.md](loop-region.md)). Space plays unless a focused field or
   control uses it. A note says **Changes apply immediately**: closing
   keeps the edits, and Undo reverts them; there is no draft to accept or
   cancel. Below, Control is a picker of every control of the clip a

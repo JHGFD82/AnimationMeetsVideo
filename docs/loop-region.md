@@ -1,16 +1,17 @@
 # Loop region
 
-Status: **built in the main timeline and the Motion Designer; planned
-in the graph editors**. Built: the model and its rules
+Status: **built**, but for the region's color. Built: the model and its rules
 (`Model/LoopRegion.swift`), the loop in the player
 (`Playback/PlaybackLoop.swift`, `PlaybackModel.jump(to:)` and the play
 rule), saving it in the view state, its suspension while a take
 records; in the main timeline the bar (`UI/Components/LoopBar.swift`),
 the header button that shows or hides it, C and the Timeline menu's
-items (`UI/Timeline/TimelineLoop.swift`); and in the Motion Designer the
-bar, its loop button and C (`UI/MotionDesigner/MotionDesignLoop.swift`).
-Not built: the bar, toggle and key in the graph editors and the Keyframe
-Designer, and the region's color, which waits for `BarColor`
+items (`UI/Timeline/TimelineLoop.swift`); in the Motion Designer the
+bar, its loop button and C (`UI/MotionDesigner/MotionDesignLoop.swift`);
+in the graph editors and the Keyframe Designer the bar, its toggle, C
+and Delete (`UI/Keyframes/GraphLoopBar.swift`); and one region per
+timeline in every window of the project (`Playback/LoopRegions.swift`).
+Not built: the region's color, which waits for `BarColor`
 ([bar-colors.md](bar-colors.md)). See [Building it](#building-it) for
 what is left. The rest of this document is written for whoever builds
 it: it says what the person sees, then where each piece goes in the
@@ -167,8 +168,10 @@ timeline's bar can be hidden, so each host also has:
   rule with its own `TimelineLoopVisibility`; both can act on one
   change, which is why they use `PlaybackLoop.setOn`, where asking
   twice does nothing, rather than `toggle`. Turning the loop on there
-  with C, or drawing a region, shows the bars. The graph editors'
-  toggle is to be settled when they are built.
+  with C, or drawing a region, shows the bars.
+- The **graph editors** and the **Keyframe Designer** have the same
+  loop button (`GraphLoopToggle`), beside their Skimming toggle: it
+  shows or hides their loop bar, the same setting again.
 
 The main timeline's **Timeline** menu (`TimelineCommands`) gets, in a
 group after Play/Pause:
@@ -261,7 +264,8 @@ The region lives with the player, because the player is what every host
 already shares: `TimelineView.playback`, `KeyframeGraphHUDs.playback`
 and `MotionDesignSession.playback` are the same `PlaybackModel` for one
 editor surface. A second window on the timeline, or the external
-display's own editor, has its own player and so its own loop.
+display's own editor, has its own player; their loops are kept the same
+region (see [In every window](#in-every-window)).
 
 New file `Sources/AnimationMeetsVideo/Playback/PlaybackLoop.swift`:
 
@@ -376,6 +380,38 @@ composed twice, which isn't worth it for a working aid.
   start from zero" rule only while a loop is active.
 - Where the item's end is: the timeline's duration, or the player
   item's own duration when that is shorter.
+
+## In every window
+
+Built (`Playback/LoopRegions.swift`). One region per timeline, the same
+in every window of the project that shows it: the project window, a
+timeline window, and the external display's own editor (synced, the
+external display shares the project window's player already).
+
+- `ProjectState`, which the project's windows share, holds a
+  `LoopRegions`: each timeline's region, and the `PlaybackLoop` of every
+  player. `TimelineEditorSurface.showParked` joins its player's loop to
+  it (`PlaybackLoop.shared`) and shows the timeline with its ID.
+- A change through one loop (`draw`, `adjust`, `setOn` or `toggle`,
+  `remove`) goes through `PlaybackLoop.apply(_:publishing:)`, which
+  hands it to `LoopRegions.changed`; that keeps the region and applies
+  the same change, not published again, to every other loop showing
+  that timeline. So a player in another window turns back as its own
+  change would have it: a region drawn, or turned on, while it plays
+  takes it to the start; one moved around where it plays doesn't.
+- A timeline shown for the first time seeds the shared region from what
+  the window showing it saved (`region(of:seeding:)`); after that, a
+  window opening it shows the shared region, not its own older one.
+  The project window parks the region it shows, so the one saved in
+  `view-state.json` is the shared one.
+- What stays each player's own: whether it plays, a designer's window
+  (`narrow`), and the suspension while a take records. Selection stays
+  each view's own, too.
+- "On only while its bar shows" is one app setting
+  (`TimelineAreaLayout.showsLoop`) for every bar, and each host keeps
+  it with `setOn`, which does nothing when asked twice, so two windows
+  acting on one change don't undo each other.
+- Players are held weakly; a closed window's is let go.
 
 ## Saving
 
@@ -542,29 +578,40 @@ Built (`MotionDesignLanes`, `MotionDesignLoop.swift`, `MotionDesignView`).
 
 ### Graph editors and the Keyframe Designer
 
+Built (`GraphLoopBar.swift`, `KeyframeGraphView`, `KeyframeGraphHUDs`).
+
 - `KeyframeGraphView` puts `GraphTimeRow` over the first graph of a
   panel (`showsTimeRow`). The `LoopBar` goes right under it, under the
   same condition, so a linked panel has one bar and the Keyframe
-  Designer, which embeds a `KeyframeGraphView`, gets it for free. The
-  height it takes from the plot becomes
-  `GraphTimeRow.height + LoopBar.height`.
+  Designer, which embeds a `KeyframeGraphView`, gets it for free; and
+  only while the loop row shows. The height it takes from the plot
+  becomes `GraphTimeRow.height + LoopBar.height`. The bar spans the plot
+  alone (`GraphLoopBar`), so a region can't be drawn in its margins.
 - Mapping, as `GraphTimeRow` does it: x is
   `layout.x(axis.keyTime(atTimeline: t).seconds)`; time is
   `timeline.snappedToFrame(axis.timelineTime(atKey: layout.seconds(atX: x)))`
   with x held inside `layout.plot`.
 - Limits: the clip's `startOffset...endOffset` for a clip's parameter,
   `0...timeline.duration` for a layer's, cut to the timeline.
-- Snap: on when `UserDefaults` has `Preferences.snapping` on (absent
-  means on). Targets: `hud.project.snapTargets(in:playhead:markers: [])`
-  plus the keyframe times of the panel's graphs in timeline time. The
-  nearest one within 8 points, measured in x through the mapping.
+- Snap: on with the timeline's snapping (`Preferences.snapping`, on
+  when absent). Targets: `hud.project.snapTargets(in:playhead:markers: [])`,
+  the parked playhead, and the keyframes of the graph with the bar (the
+  top one of a linked panel), in timeline time. The nearest within 8
+  points, measured in x through the mapping.
 - Hidden when `hud.playback` is nil.
-- A `GraphLoopToggle(hud:)` beside each `GraphSkimToggle(hud:)`: the
+- A `GraphLoopToggle()` beside each `GraphSkimToggle(hud:)`: the
   graph's toolbar, the linked panel's `presetBar`, and
-  `KeyframeDesignerTransport`.
-- `KeyframeGraphHUDs.watchSpace` already listens for Space in the
-  panels; have it take `c` too (same guards: no modifiers, not while a
-  text view has the keyboard, not for a focused control).
+  `KeyframeDesignerTransport`. It shows or hides the bar, as the
+  timeline's loop button does.
+- Selecting: a click on the region selects it
+  (`KeyframeGraphHUDs.isLoopSelected`) and lets go of the graph's
+  keyframes; picking keyframes lets go of it.
+- `KeyframeGraphHUDs.watchSpace` listens in the panels for Space, `c`
+  (with no region, one over the panel's parameter's clip, or the whole
+  timeline for a layer's) and, while the region is selected, Delete,
+  which otherwise goes on to the graph's keyframes. Same guards: no
+  modifiers, not while a text view has the keyboard, not for a focused
+  control.
 
 ## Accessibility
 
@@ -648,7 +695,8 @@ build starts.
 
 ## Building it
 
-Steps 2 to 6 are built, without the region's color. None of it has
+Steps 2 to 7 are built, without the region's color, and the region
+is the same in every window ([In every window](#in-every-window)). None of it has
 been compiled or run yet: it was written where there is no Xcode, so
 build it, run the tests and look at the snapshot before going on.
 
@@ -667,7 +715,8 @@ build it, run the tests and look at the snapshot before going on.
 6. Built: the Motion Designer's bar, button and key, with
    `MotionDesignLoopTests`; `MotionDesignLanesInteractionTests` measure
    from `filmTop`.
-7. The graph editors' and the Keyframe Designer's bar, toggle and key.
+7. Built: the graph editors' and the Keyframe Designer's bar, toggle
+   and key; and `LoopRegions`, with `LoopRegionsTests`.
 8. Accessibility, checked with the `accessibility-reviewer` agent.
 9. Docs, once built: this document's status; the README's row;
    [timeline.md](timeline.md) (a "Loop region" section after Sections,

@@ -422,7 +422,10 @@ timeline has none.
 A slim bar between the ruler and the sections, parted from them by a
 groove, holds the timeline's **loop region**, a stretch that playback repeats, as Logic Pro's cycle
 range (`LoopBar`, `PlaybackLoop`; the whole design is in
-[loop-region.md](loop-region.md)). There is at most one per timeline. It
+[loop-region.md](loop-region.md)). There is at most one per timeline,
+the same in every window that shows the timeline (a timeline window,
+the external display's own editor), the Motion Designer and the graph
+editors: changed in one, it changes in all. It
 is drawn in cyan with the loop glyph and its length, and greyed while
 off.
 
@@ -1078,8 +1081,7 @@ as it would before it was rendered.
 - Thumbnails of the frames in the transition footage lane.
 - Trimming at a joined cut from the clips themselves (the transition box
   covers the edges; roll the cut instead).
-- The loop bar in the graph editors and the Keyframe Designer, and the
-  loop region's color. Planned in
+- The loop region's color. Planned in
   [loop-region.md](loop-region.md).
 - Colors for clips, sections and a whole layer's clips from their
   right-click menus, and Clear Layer. Planned in
