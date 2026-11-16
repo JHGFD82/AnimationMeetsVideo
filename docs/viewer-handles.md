@@ -62,7 +62,14 @@ With Show Handles on, handles show for the clip selected in the timeline
   picked together.
 
 Scrubbing or stepping the playhead keeps them: they follow the clip's
-keyframes as its values change.
+keyframes as its values change. They follow a value dragged in the
+effects panel too, step by step as the picture does (they are drawn
+from `ProjectState.held` while it is there), not only once it is let go.
+
+A footage or still clip's handles appear once its picture's size has
+been read from the file (`MediaFile.pictureSize`), so the box doesn't
+show at the frame's size first and jump to the picture's. A file whose
+size can't be read gets the frame's box.
 
 A clip the Motion Designer has locked (`ProjectState.lockedClipIDs`)
 shows its box without handles, and a press on it gives the locked-clip

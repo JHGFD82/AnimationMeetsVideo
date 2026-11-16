@@ -47,6 +47,9 @@ struct ViewerHandlesOverlay: View {
     @Environment(ActivePanel.self) private var activePanel: ActivePanel?
     /// Footage's and stills' sizes as shown, read from their files.
     @State private var pictureSizes: [UUID: CGSize] = [:]
+    /// Media whose size was looked for and couldn't be read (no file, no
+    /// picture): its box is the frame's.
+    @State private var unmeasurable: Set<UUID> = []
     @State private var book = HandleDragBook()
     @State private var hovered: HandleID?
     /// Where the pointer rests on a handle with hover text (the anchor, a
@@ -141,15 +144,25 @@ struct ViewerHandlesOverlay: View {
             for: original, on: layer, in: project, selectedEffectID: source.effectsState.selectedEffectID
         )
         guard !sets.isEmpty else { return nil }
-        let drawn = source.state.drag.flatMap { $0.clipID == original.id ? $0.clip : nil } ?? original
+        // The box follows a drag as it goes: the canvas's own, or one held
+        // elsewhere (a value dragged in the effects panel), which the
+        // viewer's picture follows too.
+        let held = projectState?.held
+        let drawn = Self.drawnClip(original, drag: source.state.drag, held: held, timelineID: source.timelineID)
         let sourceTime = original.sourceTime(atTimelineTime: time)
         var pictureSize: CGSize?
-        if case .media(let id) = original.source { pictureSize = pictureSizes[id] }
+        if case .media(let id) = original.source {
+            // Until the picture's size is read the box would be the
+            // frame's, and jump to the picture's a moment later: nothing
+            // shows until it is known.
+            guard Self.isMeasured(id, sizes: pictureSizes, unmeasurable: unmeasurable) else { return nil }
+            pictureSize = pictureSizes[id]
+        }
         let showing = source.effectsState.showUpTo
         let context = HandleContext(
             clip: drawn, sourceTime: sourceTime, frameSize: timeline.frameSize,
             pictureRect: TransformHandles.pictureRect(
-                of: drawn, in: project, frameSize: timeline.frameSize, pictureSize: pictureSize, at: sourceTime
+                of: drawn, in: held ?? project, frameSize: timeline.frameSize, pictureSize: pictureSize, at: sourceTime
             ),
             selectedEffectID: source.effectsState.selectedEffectID,
             shownUpTo: showing?.clipID == original.id ? showing?.effectID : nil,
@@ -157,6 +170,21 @@ struct ViewerHandlesOverlay: View {
             isLocked: projectState?.lockedClipIDs.contains(original.id) ?? false
         )
         return Shown(clip: drawn, original: original, context: context, sets: sets, name: project.clipName(original.id, in: source.timelineID))
+    }
+
+    /// The clip as the handles draw it: as the canvas's drag has it, or
+    /// as a drag held elsewhere has it, or as the project has it.
+    static func drawnClip(
+        _ original: TimelineClip, drag: ViewerCanvasState.Drag?, held: EditingProject?, timelineID: UUID
+    ) -> TimelineClip {
+        if let drag, drag.clipID == original.id { return drag.clip }
+        return held?.clipAndLayer(original.id, in: timelineID)?.clip ?? original
+    }
+
+    /// Whether a media's size has been looked for, so its box can be drawn
+    /// where the picture is.
+    static func isMeasured(_ id: UUID, sizes: [UUID: CGSize], unmeasurable: Set<UUID>) -> Bool {
+        sizes[id] != nil || unmeasurable.contains(id)
     }
 
     /// Every set's handles, in the order a press is given to them: the last
@@ -195,8 +223,16 @@ struct ViewerHandlesOverlay: View {
     }
 
     private func measure() async {
-        guard let id = mediaToMeasure, pictureSizes[id] == nil, let media = project.mediaClip(id: id) else { return }
-        if let size = await MediaFile.pictureSize(of: media) { pictureSizes[id] = size }
+        guard let id = mediaToMeasure, !Self.isMeasured(id, sizes: pictureSizes, unmeasurable: unmeasurable) else { return }
+        guard let media = project.mediaClip(id: id) else {
+            unmeasurable.insert(id)
+            return
+        }
+        if let size = await MediaFile.pictureSize(of: media) {
+            pictureSizes[id] = size
+        } else if !Task.isCancelled {
+            unmeasurable.insert(id)
+        }
     }
 
     // MARK: Drawing
