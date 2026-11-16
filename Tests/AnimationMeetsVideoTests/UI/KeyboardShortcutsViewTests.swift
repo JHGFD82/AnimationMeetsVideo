@@ -11,6 +11,7 @@ struct KeyboardShortcutsViewTests {
 
     @Test func eachKeyOfARowIsSeparated() {
         #expect(KeyboardShortcutsView.spokenKeys("= −") == "Equals, Minus")
+        #expect(KeyboardShortcutsView.spokenKeys("⌘+ ⌘−") == "Command Plus, Command Minus")
         #expect(KeyboardShortcutsView.spokenKeys(", .") == "Comma, Period")
         #expect(KeyboardShortcutsView.spokenKeys("A B Y") == "A, B, Y")
         #expect(KeyboardShortcutsView.spokenKeys("⇧F9  ⇧⌘F9") == "Shift F9, Shift Command F9")

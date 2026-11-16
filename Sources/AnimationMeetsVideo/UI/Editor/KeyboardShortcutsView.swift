@@ -48,6 +48,14 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "⇧E", does: "Show the selected clip's effects"),
             Shortcut(keys: "⇧F", does: "Show the selected clip's footage in the Clips list"),
         ]),
+        Group(title: "Viewer", shortcuts: [
+            Shortcut(keys: "H", does: "Show or hide handles on the clip selected in the timeline"),
+            Shortcut(keys: "⌘+ ⌘−", does: "Zoom the viewer in or out"),
+            Shortcut(keys: "⌘0", does: "Zoom the viewer to fit"),
+            Shortcut(keys: "⇧⌘0", does: "Center the frame in the viewer"),
+            Shortcut(keys: "Tab", does: "Viewer, once clicked: pick what the arrows change"),
+            Shortcut(keys: "← → ↑ ↓", does: "Viewer, once clicked: nudge it; ten with ⇧, a tenth with ⌥"),
+        ]),
         Group(title: "Keyframes", shortcuts: [
             Shortcut(keys: "F9", does: "Easy ease the keyframes at the playhead"),
             Shortcut(keys: "⇧F9  ⇧⌘F9", does: "Ease in, ease out"),
@@ -100,7 +108,7 @@ struct KeyboardShortcutsView: View {
         let names = [
             "←": "Left Arrow", "→": "Right Arrow", "↑": "Up Arrow", "↓": "Down Arrow",
             "⌫": "Delete", "Esc": "Escape", ",": "Comma", ".": "Period",
-            "=": "Equals", "−": "Minus", "\\": "Backslash",
+            "=": "Equals", "−": "Minus", "+": "Plus", "\\": "Backslash",
         ]
         return keys.split(separator: " ").map { key in
             var words: [String] = []
@@ -133,7 +141,7 @@ struct KeyboardShortcutsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Self.spokenKeys(shortcut.keys) + ", " + shortcut.does.replacingOccurrences(of: "⇧", with: "Shift"))
+                .accessibilityLabel(Self.spokenKeys(shortcut.keys) + ", " + shortcut.does.replacingOccurrences(of: "⇧", with: "Shift").replacingOccurrences(of: "⌥", with: "Option"))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
