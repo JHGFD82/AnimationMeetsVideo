@@ -39,27 +39,41 @@ struct ViewerCanvasInteractionTests {
 
         var clip: TimelineClip? { state.value.clipAndLayer(clipID, in: timelineID)?.clip }
 
-        var view: some View {
-            ViewerCanvas(
-                framing: framing, frameSize: frameSize, playback: playback,
-                handles: ViewerHandlesSource(
-                    project: Binding(get: { self.state.value }, set: { self.state.value = $0 }), timelineID: timelineID,
-                    selection: selection, effectsState: effects, playhead: playhead, state: canvas
-                )
-            )
-            .environment(state)
-        }
+        var view: some View { Host(rig: self).environment(state) }
 
-        /// The middle of the clip's box, in the canvas's points.
-        func boxMiddle() throws -> CGPoint {
+        /// A place inside the clip's box, in the canvas's points, where a
+        /// press moves the clip: a quarter of the way in from its top left,
+        /// clear of the anchor's crosshair at the middle (which a press
+        /// there would take first) and of the scale handles on the edges.
+        func boxInside() throws -> CGPoint {
             let clip = try #require(self.clip)
             let rect = TransformHandles.pictureRect(of: clip, in: state.value, frameSize: frameSize, pictureSize: nil, at: .zero)
             let mapping = ViewerMapping(frameSize: frameSize, wellSize: ViewerCanvasInteractionTests.well)
-            return mapping.toView(CGPoint(x: rect.midX, y: rect.midY))
+            return mapping.toView(CGPoint(x: rect.minX + rect.width / 4, y: rect.minY + rect.height / 4))
         }
 
         var pixelsPerPoint: Double {
             ViewerMapping(frameSize: frameSize, wellSize: ViewerCanvasInteractionTests.well).pixelsPerPoint
+        }
+    }
+
+    /// The canvas as the editor holds it: the editor reads the project in
+    /// its body, so every edit draws it again and hands the canvas a fresh
+    /// binding. A binding kept in a view gives the value from when the view
+    /// was last drawn, so built once, the canvas would edit from the clip
+    /// as it first was every time.
+    private struct Host: View {
+        let rig: Rig
+
+        var body: some View {
+            let project = rig.state.value
+            ViewerCanvas(
+                framing: rig.framing, frameSize: rig.frameSize, playback: rig.playback,
+                handles: ViewerHandlesSource(
+                    project: Binding(get: { project }, set: { rig.state.value = $0 }), timelineID: rig.timelineID,
+                    selection: rig.selection, effectsState: rig.effects, playhead: rig.playhead, state: rig.canvas
+                )
+            )
         }
     }
 
@@ -79,9 +93,9 @@ struct ViewerCanvasInteractionTests {
         try await withHandles(false) {
             let rig = try Rig()
             let harness = EventHarness(rig.view, size: Self.well)
-            let middle = try rig.boxMiddle()
-            try await harness.press(at: middle, dragTo: CGPoint(x: middle.x + 50, y: middle.y))
-            harness.mouse(.leftMouseUp, at: CGPoint(x: middle.x + 50, y: middle.y))
+            let inside = try rig.boxInside()
+            try await harness.press(at: inside, dragTo: CGPoint(x: inside.x + 50, y: inside.y))
+            harness.mouse(.leftMouseUp, at: CGPoint(x: inside.x + 50, y: inside.y))
             try await harness.settle(200)
             #expect(rig.clip?.effects.contains { $0.kind == .transform } == false)
         }
@@ -92,9 +106,9 @@ struct ViewerCanvasInteractionTests {
             let rig = try Rig()
             let harness = EventHarness(rig.view, size: Self.well)
             try await harness.settle(200)
-            let middle = try rig.boxMiddle()
-            let end = CGPoint(x: middle.x + 50, y: middle.y - 20)
-            try await harness.press(at: middle, dragTo: end)
+            let inside = try rig.boxInside()
+            let end = CGPoint(x: inside.x + 50, y: inside.y - 20)
+            try await harness.press(at: inside, dragTo: end)
             // Held while dragging: the project is as it was.
             #expect(rig.state.held != nil)
             harness.mouse(.leftMouseUp, at: end)
@@ -111,9 +125,9 @@ struct ViewerCanvasInteractionTests {
             let rig = try Rig()
             let harness = EventHarness(rig.view, size: Self.well)
             try await harness.settle(200)
-            let middle = try rig.boxMiddle()
-            try await harness.press(at: middle, dragTo: CGPoint(x: middle.x + 2, y: middle.y), steps: 2)
-            harness.mouse(.leftMouseUp, at: CGPoint(x: middle.x + 2, y: middle.y))
+            let inside = try rig.boxInside()
+            try await harness.press(at: inside, dragTo: CGPoint(x: inside.x + 2, y: inside.y), steps: 2)
+            harness.mouse(.leftMouseUp, at: CGPoint(x: inside.x + 2, y: inside.y))
             try await harness.settle(200)
             #expect(rig.clip?.effects.contains { $0.kind == .transform } == false)
         }
@@ -125,9 +139,9 @@ struct ViewerCanvasInteractionTests {
             let before = rig.clip
             let harness = EventHarness(rig.view, size: Self.well)
             try await harness.settle(200)
-            let middle = try rig.boxMiddle()
-            let end = CGPoint(x: middle.x + 60, y: middle.y)
-            try await harness.press(at: middle, dragTo: end)
+            let inside = try rig.boxInside()
+            let end = CGPoint(x: inside.x + 60, y: inside.y)
+            try await harness.press(at: inside, dragTo: end)
             harness.escape()
             try await harness.settle()
             harness.mouse(.leftMouseUp, at: end)
@@ -142,9 +156,9 @@ struct ViewerCanvasInteractionTests {
             let harness = EventHarness(rig.view, size: Self.well)
             rig.playback.togglePlayback()
             try await harness.settle(200)
-            let middle = try rig.boxMiddle()
-            try await harness.press(at: middle, dragTo: CGPoint(x: middle.x + 50, y: middle.y))
-            harness.mouse(.leftMouseUp, at: CGPoint(x: middle.x + 50, y: middle.y))
+            let inside = try rig.boxInside()
+            try await harness.press(at: inside, dragTo: CGPoint(x: inside.x + 50, y: inside.y))
+            harness.mouse(.leftMouseUp, at: CGPoint(x: inside.x + 50, y: inside.y))
             try await harness.settle(200)
             if rig.playback.isPlaying { rig.playback.togglePlayback() }
             #expect(rig.clip?.effects.contains { $0.kind == .transform } == false)
@@ -156,7 +170,7 @@ struct ViewerCanvasInteractionTests {
             let rig = try Rig()
             let harness = EventHarness(rig.view, size: Self.well)
             try await harness.settle(200)
-            try await harness.click(at: try rig.boxMiddle())
+            try await harness.click(at: try rig.boxInside())
             harness.key(code: 124, characters: "\u{F703}")
             try await harness.settle()
             harness.key(code: 125, characters: "\u{F701}", flags: .shift)
