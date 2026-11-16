@@ -143,6 +143,9 @@ struct LayerClipRow: View {
     let onMotionDesign: (UUID) -> Void
     /// Gives the timeline a clip's frame size, frame rate and colour space.
     let onConformTimeline: (TimelineClip) -> Void
+    /// Other… in a clip's Color menu: the color picker on it and the
+    /// clips picked with it.
+    var onPickColor: (UUID) -> Void = { _ in }
 
     /// While a slip shortens a clip: how far the clips after it move in.
     private struct FollowerShift: Equatable {
@@ -371,7 +374,8 @@ struct LayerClipRow: View {
             onAttachToMusic: layer.kind == .music ? nil : { onAttachToMusic(clip.id, nil) },
             onSetMusicPoint: layer.kind == .music ? nil : { time in onAttachToMusic(clip.id, time) },
             onMotionDesign: layer.kind == .music || clip.isReversed ? nil : { onMotionDesign(clip.id) },
-            onConformTimeline: conformAction(for: clip, info: project.resolvedInfo(for: clip))
+            onConformTimeline: conformAction(for: clip, info: project.resolvedInfo(for: clip)),
+            onPickColor: { onPickColor(clip.id) }
         )
     }
 

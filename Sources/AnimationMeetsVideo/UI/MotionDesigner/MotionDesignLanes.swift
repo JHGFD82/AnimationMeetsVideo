@@ -962,7 +962,9 @@ private struct MotionLoopLane: View {
             onRemove: { session.deleteLoop() },
             onToggle: { session.toggleLoop() },
             isSelected: session.isLoopSelected,
-            onSelect: { session.selectLoop() }
+            onSelect: { session.selectLoop() },
+            onSetColor: { loop.setColor($0) },
+            onPickColor: { loop.pickColor() }
         )
         .frame(width: width, height: LoopBar.height)
         .background(Design.Surface.raised.color)

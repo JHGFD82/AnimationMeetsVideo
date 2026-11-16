@@ -61,7 +61,9 @@ struct GraphLoopBar: View {
                 onSelect: {
                     onSelect()
                     hud.isLoopSelected = true
-                }
+                },
+                onSetColor: { loop.setColor($0) },
+                onPickColor: { loop.pickColor() }
             )
             .frame(width: max(0, plot.width))
             Spacer(minLength: 0)

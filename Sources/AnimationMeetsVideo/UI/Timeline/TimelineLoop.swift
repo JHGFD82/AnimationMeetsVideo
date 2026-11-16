@@ -71,7 +71,9 @@ extension TimelineView {
             onRemove: { deleteLoop() },
             onToggle: { toggleLoop() },
             isSelected: isLoopSelected,
-            onSelect: { selectLoop() }
+            onSelect: { selectLoop() },
+            onSetColor: { loop.setColor($0) },
+            onPickColor: { loop.pickColor() }
         )
     }
 

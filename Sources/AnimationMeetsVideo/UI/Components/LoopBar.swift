@@ -36,6 +36,10 @@ struct LoopBar: View {
     let isSelected: Bool
     /// The region pressed: the host selects it, and nothing else.
     let onSelect: () -> Void
+    /// Its Color menu: a color, or nil for its tone (`PlaybackLoop.setColor`),
+    /// and Other…, the color picker (`PlaybackLoop.pickColor`).
+    var onSetColor: (BarColor?) -> Void = { _ in }
+    var onPickColor: () -> Void = {}
 
     static let height: CGFloat = SectionLane.height
     /// How far a press moves before it is a drag rather than a click.
@@ -170,6 +174,7 @@ struct LoopBar: View {
             .gesture(regionGesture(region, grabbed: .move))
             .contextMenu {
                 Button(region.isOn ? "Turn Loop Off" : "Turn Loop On", action: onToggle)
+                BarColorMenu(current: region.color, onSet: onSetColor, onPickOther: onPickColor)
                 Divider()
                 Button("Delete Loop Region", role: .destructive, action: onRemove)
             }
@@ -188,6 +193,8 @@ struct LoopBar: View {
                 Button("Move end one frame later") { step(region, .edge(.end), by: 1) }
                 Button("Move region one frame earlier") { step(region, .move, by: -1) }
                 Button("Move region one frame later") { step(region, .move, by: 1) }
+                Button("Choose color…", action: onPickColor)
+                if region.color != nil { Button("Use default color") { onSetColor(nil) } }
                 Button("Delete loop region", action: onRemove)
             }
             .offset(x: bounds.min, y: 2)
@@ -341,5 +348,24 @@ struct LoopBar: View {
 
     private func timecode(_ time: CMTime) -> String {
         time.timecode(frameRate: timeline.frameRate)
+    }
+}
+
+extension PlaybackLoop {
+    /// Gives the region a color, or with nil its tone back. View state,
+    /// as the region is: no undo. Every window on the timeline shows it.
+    func setColor(_ color: BarColor?) {
+        guard var colored = region, colored.color != color else { return }
+        colored.color = color
+        adjust(to: colored)
+    }
+
+    /// The color picker on the region, recoloring it through this loop
+    /// (not a view, gone by the time a color arrives).
+    func pickColor() {
+        guard let region else { return }
+        BarColorPanel.shared.show(current: region.color ?? BarColor(Design.loop) ?? BarColor(0x3DB8D0)) { [weak self] color in
+            self?.setColor(color)
+        }
     }
 }

@@ -29,6 +29,10 @@ struct SectionLane: View {
     let onRename: (UUID, String) -> Void
     let onDelete: (UUID) -> Void
     let onSnapIndicator: (CMTime?) -> Void
+    /// Its Color menu: a color for a section, or nil for its tone, and
+    /// Other…, the color picker on it.
+    var onSetColor: (UUID, BarColor?) -> Void = { _, _ in }
+    var onPickColor: (UUID) -> Void = { _ in }
 
     static let height: CGFloat = 20
 
@@ -164,6 +168,12 @@ struct SectionLane: View {
         )
         .contextMenu {
             Button("Rename…") { beginRename(section.id, name: section.name) }
+            BarColorMenu(
+                current: section.color,
+                onSet: { onSetColor(section.id, $0) },
+                onPickOther: { onPickColor(section.id) }
+            )
+            Divider()
             Button("Delete Section", role: .destructive) { onDelete(section.id) }
         }
         .accessibilityElement(children: editingID == section.id ? .contain : .ignore)
@@ -173,6 +183,8 @@ struct SectionLane: View {
         .accessibilityAction { onSelect(section.id) }
         .accessibilityActions {
             Button("Rename section") { beginRename(section.id, name: section.name) }
+            Button("Choose color…") { onPickColor(section.id) }
+            if section.color != nil { Button("Use default color") { onSetColor(section.id, nil) } }
             Button("Delete section") { onDelete(section.id) }
         }
         .offset(x: minX, y: 2)

@@ -569,7 +569,9 @@ struct TimelineView: View {
                 host.dispatch(.editProject { $0.deleteSection(id, in: timelineID) })
                 if selectedSectionID == id { selectedSectionID = nil }
             },
-            onSnapIndicator: { viewportModel.snapIndicator = $0 }
+            onSnapIndicator: { viewportModel.snapIndicator = $0 },
+            onSetColor: { id, color in host.dispatch(.editProject { $0.setColor(color, ofSection: id, in: timelineID) }) },
+            onPickColor: { id in pickColor(ofSection: id) }
         )
     }
 

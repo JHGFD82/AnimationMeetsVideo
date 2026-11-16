@@ -169,6 +169,9 @@ struct ClipBlockHandlers {
     /// Gives the timeline the clip's frame size, frame rate and colour
     /// space; nil for clips without pictures of their own.
     var onConformTimeline: (() -> Void)?
+    /// Other… in the Color menu: the Mac's color picker, recoloring the
+    /// clip and those picked with it (`BarColorPanel`).
+    var onPickColor: () -> Void = {}
 
     /// Which of the optional actions are there. They change what the block
     /// draws and offers (its menu, its music point, its VoiceOver actions),

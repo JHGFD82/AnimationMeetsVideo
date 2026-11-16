@@ -111,6 +111,12 @@ extension ClipBlockView {
         if model.playsSound {
             Button(model.clip.soundMuted ? "Unmute Sound" : "Mute Sound") { handlers.onEditClip { [muted = !model.clip.soundMuted] in $0.soundMuted = muted } }
         }
+        // Every clip picked with this one takes the color, as one edit.
+        BarColorMenu(
+            current: model.clip.color,
+            onSet: { color in handlers.onEditClip { $0.color = color } },
+            onPickOther: handlers.onPickColor
+        )
         Divider()
         if let reach = model.reach {
             reachMenu(reach)
