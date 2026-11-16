@@ -32,6 +32,12 @@ import Testing
         #expect(close(free.letGo(about: .zero), CGPoint(x: 30, y: 40)))
     }
 
+    @Test func thePointerComesBackInsideTheWell() {
+        let well = CGRect(x: 0, y: 0, width: 800, height: 450)
+        #expect(close(FreePointer.kept(CGPoint(x: 5000, y: -300), within: well), CGPoint(x: 796, y: 4)))
+        #expect(close(FreePointer.kept(CGPoint(x: 120, y: 200), within: well), CGPoint(x: 120, y: 200)))
+    }
+
     @Test func fartherFromTheAnchorTheSameMovementTurnsLess() {
         let pivot = CGPoint.zero
         func turned(from distance: Double) -> Double {

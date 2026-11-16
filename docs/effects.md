@@ -674,8 +674,9 @@ where a value is animated, as typing does. With an effect selected that
 has point controls (Spotlight's Center, a mask's corners), each point
 gets a round handle instead. A handle pressed and held still opens a
 loupe, in which the drag goes at a quarter of the pointer's pace, a
-sixteenth with Option; a turn opens none, and hides the pointer so the
-drag can go far from the anchor, where it turns finer. See [viewer-handles.md](viewer-handles.md).
+sixteenth with Option; a turn opens none. A turn or a scale hides the
+pointer, so the drag can go on past the screen's edge, and a turn goes
+finer the farther it is from the anchor. See [viewer-handles.md](viewer-handles.md).
 
 ### Keyframes in the panel
 

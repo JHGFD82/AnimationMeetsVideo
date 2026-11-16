@@ -1,12 +1,13 @@
 import CoreGraphics
 import Foundation
 
-/// The pointer a turn follows (see docs/viewer-handles.md, "Turning"):
-/// while a rotation zone is dragged the system pointer is hidden and held
-/// still, and the mouse's movement is added up here instead, so the drag
-/// can go on past the well's and the screen's edges. The farther it goes
-/// from the anchor, the less each point of movement turns the picture,
-/// which is how a turn gets fine.
+/// The pointer a turn or a scale follows (see docs/viewer-handles.md,
+/// "Turning and scaling"): while a rotation zone or a scale handle is
+/// dragged the system pointer is hidden and held still, and the mouse's
+/// movement is added up here instead, so the drag can go on past the
+/// well's and the screen's edges. The farther a turn goes from the
+/// anchor, the less each point of movement turns the picture, which is
+/// how a turn gets fine.
 struct FreePointer: Equatable, Sendable {
     /// Where the drag has got to, in view points; anywhere, off the well
     /// included.
@@ -37,5 +38,12 @@ struct FreePointer: Equatable, Sendable {
         guard reach > 1e-6 else { return grabbed }
         let radius = Double(hypot(grabbed.x - pivot.x, grabbed.y - pivot.y))
         return CGPoint(x: Double(pivot.x) + dx / reach * radius, y: Double(pivot.y) + dy / reach * radius)
+    }
+
+    /// `point` moved into `bounds`, an inset of 4 points in from its
+    /// edges, so the pointer shows again where it can be seen.
+    static func kept(_ point: CGPoint, within bounds: CGRect) -> CGPoint {
+        let inner = bounds.insetBy(dx: min(4, bounds.width / 2), dy: min(4, bounds.height / 2))
+        return CGPoint(x: min(max(point.x, inner.minX), inner.maxX), y: min(max(point.y, inner.minY), inner.maxY))
     }
 }

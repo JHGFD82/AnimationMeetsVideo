@@ -21,10 +21,10 @@ import SwiftUI
 /// It opens only as a handle is first grabbed, never when a drag under
 /// way pauses, and never for a turn.
 ///
-/// A turn hides the pointer and follows the mouse's own movement instead
-/// (`FreePointer`), so it can go on past the screen's edge; the farther
-/// from the anchor, the finer it turns. The pointer comes back by the
-/// box's edge as the drag ends.
+/// A turn or a scale hides the pointer and follows the mouse's own
+/// movement instead (`FreePointer`), so it can go on past the screen's
+/// edge; the farther from the anchor, the finer a turn goes. The pointer
+/// comes back by the box as the drag ends.
 ///
 /// A click gives the canvas the keys: Tab picks what the arrows change,
 /// and the arrows nudge it. VoiceOver reaches each value as an adjustable
@@ -571,7 +571,7 @@ struct ViewerHandlesOverlay: View {
             // Moved first: an ordinary drag, which never opens the loupe.
             book.cancelHold()
             begin(id)
-            if Self.isTurn(id) { takePointer(at: value.location) }
+            if Self.takesPointer(id) { takePointer(at: value.location) }
         } else if book.free != nil {
             // The pointer is held still; the mouse's movement comes from
             // the book's monitor.
@@ -584,18 +584,32 @@ struct ViewerHandlesOverlay: View {
         if case .rotate = id { true } else { false }
     }
 
-    /// A turn: the pointer hides and stays put, and the drag follows the
-    /// mouse's movement from here, as far as it goes.
+    /// A turn or a scale: what works about the anchor, which a pointer
+    /// held to the screen would cut short.
+    private static func takesPointer(_ id: HandleID?) -> Bool {
+        switch id {
+        case .rotate, .scale: true
+        default: false
+        }
+    }
+
+    /// A turn or a scale: the pointer hides and stays put, and the drag
+    /// follows the mouse's movement from here, as far as it goes.
     private func takePointer(at location: CGPoint) {
         book.takePointer(at: location) { point in move(to: point) }
     }
 
-    /// Where the pointer shows again as a turn ends, in view points.
+    /// Where the pointer shows again as a turn or a scale ends, in view
+    /// points: by the zone a turn grabbed, as it has turned; on the handle
+    /// a scale dragged, as far as the well goes.
     private func pointerComingBack() -> CGPoint? {
-        guard let free = book.free, let drag = book.drag, let context = book.shown, let set = book.set,
-              let pivot = set.pivot(of: drag.handle, context)
-        else { return nil }
-        return free.letGo(about: mapping.toView(pivot))
+        guard let free = book.free, let drag = book.drag else { return nil }
+        let well = CGRect(origin: .zero, size: mapping.wellSize)
+        if Self.isTurn(drag.handle), let context = book.shown, let set = book.set,
+           let pivot = set.pivot(of: drag.handle, context) {
+            return FreePointer.kept(free.letGo(about: mapping.toView(pivot)), within: well)
+        }
+        return FreePointer.kept(mapping.toView(drag.now), within: well)
     }
 
     /// The press has held still on its handle: the drag begins, in the
@@ -604,6 +618,8 @@ struct ViewerHandlesOverlay: View {
         guard book.isPressed, !book.isDead, !book.began, let id = book.handle else { return }
         book.fine = FineDrag(at: book.startView, finer: NSEvent.modifierFlags.contains(.option))
         begin(id)
+        // A scale in the loupe goes on past the screen's edge too.
+        if Self.takesPointer(id) { takePointer(at: book.startView) }
         move(to: book.startView)
     }
 
