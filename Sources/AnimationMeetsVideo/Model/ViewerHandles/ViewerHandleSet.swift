@@ -221,6 +221,10 @@ struct HandleDrag: Equatable {
     var now: CGPoint
     var shift = false
     var option = false
+    /// The drag is in the loupe (`FineDrag`), which slows the pointer
+    /// itself: values go in their finest steps (tenths of a pixel for the
+    /// anchor and a point), and the anchor doesn't catch.
+    var fine = false
     private(set) var swept = 0.0
     /// The last point the sweep was measured from; nil while the pointer
     /// is too near the pivot to say which way it points.

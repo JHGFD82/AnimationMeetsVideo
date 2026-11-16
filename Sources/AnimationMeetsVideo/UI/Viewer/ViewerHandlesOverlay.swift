@@ -15,6 +15,12 @@ import SwiftUI
 /// copy of the clip; Shift and Option are read as they change; Escape puts
 /// everything back; letting go writes it as one undo step.
 ///
+/// A press held still on a handle opens the loupe (`FineDrag`): a
+/// magnified view of where the handle is, by the pointer, in which the
+/// drag goes at a quarter of the pointer's pace, a sixteenth with Option.
+/// It opens only as a handle is first grabbed, never when a drag under
+/// way pauses.
+///
 /// A click gives the canvas the keys: Tab picks what the arrows change,
 /// and the arrows nudge it. VoiceOver reaches each value as an adjustable
 /// element with the same steps. Both come from the handle sets
@@ -76,6 +82,9 @@ struct ViewerHandlesOverlay: View {
                 Canvas { context, _ in draw(shown, list, through: mapping, in: &context) }
                     .decorative()
                 readouts(shown, list)
+                if let drag = source.state.drag, drag.clipID == shown.original.id, let loupe = drag.loupe, book.began {
+                    loupeView(shown, list, drag, loupe)
+                }
                 chips(shown)
                 accessibilityElements(shown)
             }
@@ -187,9 +196,11 @@ struct ViewerHandlesOverlay: View {
 
     // MARK: Drawing
 
-    /// The outlines and handles through `map`, the handles hidden during a
-    /// drag.
-    private func draw(_ shown: Shown, _ list: [ViewerHandle], through map: ViewerMapping, in context: inout GraphicsContext) {
+    /// The outlines and handles through `map` (the canvas's, or the
+    /// loupe's), the handles hidden during a drag but in the loupe.
+    private func draw(
+        _ shown: Shown, _ list: [ViewerHandle], through map: ViewerMapping, inLoupe: Bool = false, in context: inout GraphicsContext
+    ) {
         let drag = source.state.drag.flatMap { $0.clipID == shown.original.id ? $0 : nil }
         for set in shown.sets {
             for outline in set.outlines(shown.context) {
@@ -206,7 +217,7 @@ struct ViewerHandlesOverlay: View {
         // running off the edge toward an anchor out of view.
         // Its pointer is in the points of the display the drag is on; the
         // other display draws the clip moving, without it.
-        if let drag, levered, book.began, let anchor = list.first(where: { $0.id == .anchor }) {
+        if let drag, levered, book.began, !inLoupe, let anchor = list.first(where: { $0.id == .anchor }) {
             var lever = Path()
             lever.move(to: map.toView(anchor.place))
             lever.addLine(to: drag.pointer)
@@ -216,10 +227,10 @@ struct ViewerHandlesOverlay: View {
         let litPivot = levered || (drag == nil && hovered.map { id in list.contains { $0.id == id && $0.isPivot } } == true)
         for handle in list {
             // While dragging, only the crosshair stays, for a scale or a
-            // turn.
+            // turn; the loupe shows them all, for what is near.
             // A point being dragged stays, as it is all there is to see.
             let isDraggedPoint = handle.glyph == .round && handle.id == drag?.handle
-            if drag != nil, !(levered && handle.id == .anchor), !isDraggedPoint { continue }
+            if drag != nil, !inLoupe, !(levered && handle.id == .anchor), !isDraggedPoint { continue }
             let place = map.toView(handle.place)
             let alpha = handle.isEnabled ? 1.0 : 0.4
             switch handle.glyph {
@@ -284,6 +295,84 @@ struct ViewerHandlesOverlay: View {
             .beveledChip(fill: Design.Surface.overlay.color, radius: Design.Radius.control, strong: true)
             .shadow(color: .black.opacity(0.45), radius: 6, y: 2)
             .decorative()
+    }
+
+    // MARK: The loupe
+
+    /// Its side, in points, and the hint's strip under the picture.
+    private static let loupeSide = 168.0
+    private static let hintHeight = 20.0
+
+    /// The magnified view of where the drag is, by the pointer: the
+    /// picture, the box and the handles enlarged, a reticle at the spot
+    /// the drag has reached, and the hint about Option. Shown only on the
+    /// display the drag is on.
+    private func loupeView(_ shown: Shown, _ list: [ViewerHandle], _ drag: ViewerCanvasState.Drag, _ loupe: ViewerCanvasState.Loupe) -> some View {
+        let side = Self.loupeSide
+        // Enlarged as much as the drag is slowed, so in it the handle keeps
+        // up with the pointer; kept to a picture the layer can draw.
+        let widest = 12_000 / max(Double(mapping.frameSize.width) * mapping.pointsPerPixel, 1)
+        let enlarged = min(FineDrag.magnification, max(widest, 1))
+        let lens = ViewerMapping(
+            frameSize: mapping.frameSize, wellSize: CGSize(width: side, height: side), backingScale: mapping.backingScale,
+            fitMargin: 0, zoom: mapping.effectiveZoom * enlarged, center: loupe.center
+        )
+        let picture = lens.pictureRect
+        return VStack(spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                Color.black
+                ViewerLayerView(display: playback.display)
+                    .frame(width: max(picture.width, 1), height: max(picture.height, 1))
+                    .position(x: picture.midX, y: picture.midY)
+                Canvas { context, size in
+                    draw(shown, list, through: lens, inLoupe: true, in: &context)
+                    // Where the drag has got to.
+                    let middle = CGPoint(x: size.width / 2, y: size.height / 2)
+                    var reticle = Path()
+                    reticle.move(to: CGPoint(x: middle.x - 9, y: middle.y))
+                    reticle.addLine(to: CGPoint(x: middle.x - 3, y: middle.y))
+                    reticle.move(to: CGPoint(x: middle.x + 3, y: middle.y))
+                    reticle.addLine(to: CGPoint(x: middle.x + 9, y: middle.y))
+                    reticle.move(to: CGPoint(x: middle.x, y: middle.y - 9))
+                    reticle.addLine(to: CGPoint(x: middle.x, y: middle.y - 3))
+                    reticle.move(to: CGPoint(x: middle.x, y: middle.y + 3))
+                    reticle.addLine(to: CGPoint(x: middle.x, y: middle.y + 9))
+                    context.stroke(reticle, with: .color(.black.opacity(0.6)), lineWidth: 3)
+                    context.stroke(reticle, with: .color(Design.accent), lineWidth: 1)
+                }
+            }
+            .frame(width: side, height: side)
+            .clipped()
+            Text(loupe.isFiner ? "Finer, with \u{2325}" : "Hold \u{2325} for finer control")
+                .font(Design.Typeface.micro)
+                .foregroundStyle(Design.textSecondary)
+                .frame(width: side, height: Self.hintHeight)
+                .background(Design.Surface.overlay.color)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.panel, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Design.Radius.panel, style: .continuous)
+                .strokeBorder(Design.accent.opacity(0.8), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.5), radius: 10, y: 3)
+        .position(loupePlace(near: drag.pointer))
+        .decorative()
+    }
+
+    /// Above and to the right of the pointer, or wherever there is room,
+    /// kept in the well and clear of the readout below the pointer.
+    private func loupePlace(near point: CGPoint) -> CGPoint {
+        let half = Self.loupeSide / 2, height = Self.loupeSide + Self.hintHeight
+        let gap = 28.0
+        let well = mapping.wellSize
+        var x = Double(point.x) + gap + half
+        if x + half > Double(well.width) { x = Double(point.x) - gap - half }
+        var y = Double(point.y) - gap - height / 2
+        if y - height / 2 < 0 { y = Double(point.y) + gap + height / 2 + 24 }
+        return CGPoint(
+            x: x.clamped(between: half, and: max(half, Double(well.width) - half)),
+            y: y.clamped(between: height / 2, and: max(height / 2, Double(well.height) - height / 2))
+        )
     }
 
     /// Below and to the right of the pointer, kept in the well.
@@ -436,16 +525,35 @@ struct ViewerHandlesOverlay: View {
                 // The arrow tool: a press on nothing does nothing.
                 book.isDead = true
             }
+            // Held still on a handle that is a place on the picture, the
+            // press opens the loupe; the opacity chip has nothing to show.
+            if !book.isDead, id != .opacity {
+                book.hold = Task { @MainActor in
+                    try? await Task.sleep(for: FineDrag.holdDelay)
+                    guard !Task.isCancelled else { return }
+                    openLoupe()
+                }
+            }
         }
         guard !book.isDead, let id = book.handle else { return }
         if !book.began {
             let moved = hypot(value.location.x - book.startView.x, value.location.y - book.startView.y)
             guard Double(moved) >= Self.slop else { return }
+            // Moved first: an ordinary drag, which never opens the loupe.
+            book.cancelHold()
             begin(id)
         }
         move(to: value.location)
     }
 
+    /// The press has held still on its handle: the drag begins, in the
+    /// loupe.
+    private func openLoupe() {
+        guard book.isPressed, !book.isDead, !book.began, let id = book.handle else { return }
+        book.fine = FineDrag(at: book.startView, finer: NSEvent.modifierFlags.contains(.option))
+        begin(id)
+        move(to: book.startView)
+    }
 
     private func begin(_ id: HandleID) {
         guard var context = book.shown else { return }
@@ -463,10 +571,15 @@ struct ViewerHandlesOverlay: View {
     private func move(to location: CGPoint) {
         guard var drag = book.drag, let context = book.shown, let set = book.set else { return }
         let flags = NSEvent.modifierFlags
+        // In the loupe, Option slows the pointer further, from here on;
+        // the handle set sees the drag as fine instead.
+        book.fine?.setFiner(flags.contains(.option), pointer: location)
+        let effective = book.fine?.effective(location) ?? location
         let pivot = set.pivot(of: drag.handle, context)
-        drag.move(to: mapping.toFrame(location), about: pivot, holdingWithin: context.pixels(TransformHandles.leverMinimum))
+        drag.move(to: mapping.toFrame(effective), about: pivot, holdingWithin: context.pixels(TransformHandles.leverMinimum))
         drag.shift = flags.contains(.shift)
-        drag.option = flags.contains(.option)
+        drag.option = book.fine == nil && flags.contains(.option)
+        drag.fine = book.fine != nil
         book.drag = drag
         book.pointer = location
         step()
@@ -475,8 +588,14 @@ struct ViewerHandlesOverlay: View {
     private func modifiersChanged(_ flags: NSEvent.ModifierFlags) {
         guard book.began, var drag = book.drag else { return }
         let shift = flags.contains(.shift), option = flags.contains(.option)
-        guard shift != drag.shift || option != drag.option else { return }
-        drag.option = option
+        if var fine = book.fine {
+            guard shift != drag.shift || option != fine.isFiner else { return }
+            fine.setFiner(option, pointer: book.pointer)
+            book.fine = fine
+        } else {
+            guard shift != drag.shift || option != drag.option else { return }
+            drag.option = option
+        }
         drag.shift = shift
         book.drag = drag
         step()
@@ -493,8 +612,9 @@ struct ViewerHandlesOverlay: View {
             ?? set.keyTargets(context).first(where: { $0.handle == drag.handle }).map { "\($0.name) \($0.value)" }
             ?? TransformHandles.Part(drag.handle).map { TransformHandles.text(of: $0, TransformHandles.reading(context)) }
             ?? ""
+        let loupe = book.fine.map { ViewerCanvasState.Loupe(center: drag.now, isFiner: $0.isFiner) }
         source.state.drag = ViewerCanvasState.Drag(
-            handle: drag.handle, clipID: start.id, clip: edited, readout: readout, pointer: book.pointer
+            handle: drag.handle, clipID: start.id, clip: edited, readout: readout, pointer: book.pointer, loupe: loupe
         )
         let binding = source.project, timelineID = source.timelineID
         let write = { binding.wrappedValue.editClip(start.id, in: timelineID) { $0 = edited } }
@@ -678,6 +798,10 @@ private final class HandleDragBook {
     var shown: HandleContext?
     /// The set the pressed handle belongs to, which edits it.
     var set: (any ViewerHandleSet)?
+    /// While the press holds still: opens the loupe when it is up.
+    var hold: Task<Void, Never>?
+    /// The loupe, once a held press has opened it.
+    var fine: FineDrag?
     /// The press drags nothing: it hit nothing, was refused, or Escape
     /// cancelled it.
     var isDead = false
@@ -715,8 +839,15 @@ private final class HandleDragBook {
         onFlags = nil
     }
 
+    func cancelHold() {
+        hold?.cancel()
+        hold = nil
+    }
+
     /// The drag is over; the press goes on until the button comes up.
     func endDrag() {
+        cancelHold()
+        fine = nil
         escape?.end()
         escape = nil
         stopWatching()
@@ -736,6 +867,7 @@ private final class HandleDragBook {
     }
 
     isolated deinit {
+        hold?.cancel()
         if let monitor { NSEvent.removeMonitor(monitor) }
     }
 }

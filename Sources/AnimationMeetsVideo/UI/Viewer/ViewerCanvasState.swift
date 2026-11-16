@@ -51,6 +51,17 @@ final class ViewerCanvasState {
         var readout: String
         /// Where the pointer is, in view points.
         var pointer: CGPoint
+        /// The loupe, while a held press has opened it.
+        var loupe: Loupe?
+    }
+
+    /// What the loupe shows (see `FineDrag`).
+    struct Loupe: Equatable {
+        /// The spot the drag has reached, in the frame's pixels, which the
+        /// loupe is centered on.
+        var center: CGPoint
+        /// Whether Option slows it further.
+        var isFiner: Bool
     }
 }
 

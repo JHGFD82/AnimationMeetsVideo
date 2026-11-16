@@ -112,7 +112,7 @@ struct PointControlHandles: ViewerHandleSet {
         let change = CGPoint(x: delta.dx, y: delta.dy).applying(CGAffineTransform(a: back.a, b: back.b, c: back.c, d: back.d, tx: 0, ty: 0))
         let start = control.values(at: context.sourceTime)
         guard start.count == 2 else { return nil }
-        let step = drag.option ? 0.1 : 1
+        let step = drag.option || drag.fine ? 0.1 : 1
         let moved = [
             ((start[0] + Double(change.x)) / step).rounded() * step,
             ((start[1] + Double(change.y)) / step).rounded() * step,

@@ -487,7 +487,7 @@ struct TransformHandles: ViewerHandleSet {
     private static func opacityEdit(_ drag: HandleDrag, _ context: HandleContext) -> HandleEdit? {
         let points = Double(drag.now.x - drag.start.x) / max(context.pixelsPerPoint, 1e-9)
         let pace = drag.shift ? 10.0 : drag.option ? 0.1 : 1
-        return opacity(by: points * pace, fine: drag.option, context)
+        return opacity(by: points * pace, fine: drag.option || drag.fine, context)
     }
 
     private static func opacity(by change: Double, fine: Bool, _ context: HandleContext) -> HandleEdit? {
@@ -516,7 +516,7 @@ struct TransformHandles: ViewerHandleSet {
         }
         var wanted = CGPoint(x: placement.anchor.x + delta.dx, y: placement.anchor.y + delta.dy)
         var caught: BoxPoint?
-        if !drag.option {
+        if !drag.option, !drag.fine {
             let reach = context.pixels(anchorCatch)
             let nearest = BoxPoint.allCases
                 .map { ($0, screen($0, placement, context.pictureRect)) }
@@ -527,7 +527,7 @@ struct TransformHandles: ViewerHandleSet {
             }
         }
         guard let solved = anchorPoint(puttingAnchorAt: wanted, context) else { return nil }
-        let step = drag.shift ? 10.0 : drag.option ? 0.1 : 1
+        let step = drag.shift ? 10.0 : drag.option || drag.fine ? 0.1 : 1
         let rounded = Vector2(x: (solved.x / step).rounded() * step, y: (solved.y / step).rounded() * step)
         return anchorMove(to: rounded, caught: caught, context)
     }
