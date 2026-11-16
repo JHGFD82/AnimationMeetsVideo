@@ -74,8 +74,10 @@ actor ProjectBridge {
         do {
             return .value(try respond(to: call))
         } catch let error as ScriptCallError {
+            if readsOnly { NSLog("Expression run: the app refused %@: %@", call.method, error.message) }
             return .error(error)
         } catch {
+            NSLog("Expression run: the app failed to answer %@: %@", call.method, String(describing: error))
             return .error(.value(error.localizedDescription))
         }
     }

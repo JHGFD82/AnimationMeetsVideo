@@ -196,6 +196,8 @@ struct ScriptFailure: Equatable, Sendable {
     var traceback: String
     /// For an expression: the timeline time of the sample it happened at.
     var time: Double?
+    /// The traceback with the helper's own frames too, for the log.
+    var fullTraceback = ""
 
     init(exception: String, message: String, line: Int? = nil, traceback: String = "", time: Double? = nil) {
         self.exception = exception
@@ -211,6 +213,7 @@ struct ScriptFailure: Equatable, Sendable {
         line = header["line"]?.int
         traceback = header["traceback"]?.string ?? ""
         time = header["time"]?.number
+        fullTraceback = header["full_traceback"]?.string ?? traceback
     }
 
     /// Whether it was stopped: by Stop, or by the time limit.

@@ -217,6 +217,9 @@ def error_message(error, filename):
     else:
         shown = ["Traceback (most recent call last):\n"] + traceback.format_list(frames) if frames else []
         shown += traceback.format_exception_only(type(error), error)
+    # Every frame, the helper's too, for the app's log when a run fails
+    # where the reason isn't plain from the code alone.
+    full = "".join(traceback.format_exception(type(error), error, error.__traceback__))
     message = str(error)
     if isinstance(error, SyntaxError):
         message = error.msg or message
@@ -228,6 +231,7 @@ def error_message(error, filename):
         "message": message,
         "line": line,
         "traceback": "".join(shown),
+        "full_traceback": full,
     }
 
 

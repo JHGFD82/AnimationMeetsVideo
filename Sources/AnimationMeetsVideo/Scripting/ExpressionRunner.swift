@@ -85,12 +85,13 @@ final class ExpressionRunner {
             case .samples(let samples): values = samples
             case .failed(let error):
                 failure = ExpressionFailure(summary: error.summary, time: error.time)
-                // A mistake in the helper, not the code: the note has one
-                // line, so the whole traceback goes to the log to report.
-                if error.line == nil, !error.wasStopped { NSLog("Expression run failed in the helper:\n\(error.traceback)") }
+                // The note has one line; the whole traceback, the helper's
+                // frames too, goes to the log to report.
+                if !error.wasStopped { NSLog("Expression run failed: %@\n%@", error.summary, error.fullTraceback) }
             case .finished: failure = ExpressionFailure(summary: "The expression gave no samples.", time: nil)
             }
         } catch {
+            NSLog("Expression run failed before it could finish: %@ (%@)", error.localizedDescription, String(describing: error))
             failure = ExpressionFailure(summary: error.localizedDescription, time: nil)
         }
         let reads = await bridge.reads
