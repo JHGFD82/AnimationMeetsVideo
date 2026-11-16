@@ -15,7 +15,7 @@
 #       Looks up a release (the latest, or one such as 20251014), takes its
 #       newest CPython 3.14 (PYTHON_MINOR to choose another) and the
 #       archive's SHA-256 from the release's own checksums, and writes the
-#       three below. Review the change and commit it, so every build uses it.
+#       three to scripts/python-pin (ignored by git), for every build here.
 #   scripts/fetch-python.sh
 #       Bundles the pinned Python into the app, always at
 #       Contents/Resources/Python: build/AnimationMeetsVideo.app, which
@@ -28,11 +28,16 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-# The pinned archive, written by --pin. Overriding these from the
-# environment is for trying a release, never for shipping one.
-release="${PYTHON_RELEASE:-}"   # The release tag, such as 20251014.
-version="${PYTHON_VERSION:-}"   # The CPython version, such as 3.14.0.
-sha256="${PYTHON_SHA256:-}"     # The archive's SHA-256, in hex.
+# The pinned archive, kept in scripts/python-pin, which --pin writes and
+# git ignores: each Mac pins the Python it builds with. Setting these in
+# the environment overrides the file, for trying a release.
+pin_file="scripts/python-pin"
+pinned_value() {
+    if [ -f "$pin_file" ]; then sed -n "s/^$1=\\([^[:space:]]*\\)$/\\1/p" "$pin_file" | head -n 1; fi
+}
+release="${PYTHON_RELEASE:-$(pinned_value release)}"   # The release tag, such as 20251014.
+version="${PYTHON_VERSION:-$(pinned_value version)}"   # The CPython version, such as 3.14.0.
+sha256="${PYTHON_SHA256:-$(pinned_value sha256)}"      # The archive's SHA-256, in hex.
 
 releases="${PYTHON_RELEASES_API:-https://api.github.com/repos/astral-sh/python-build-standalone/releases}"
 suffix="aarch64-apple-darwin-install_only_stripped.tar.gz"
@@ -71,16 +76,10 @@ pin() {
         echo "fetch-python.sh: release $tag gives no SHA-256 for $name." >&2
         exit 1
     fi
-    pinned="$(mktemp)"
-    sed -e "s/^release=\"\\\${PYTHON_RELEASE:-[^}]*}\"/release=\"\\\${PYTHON_RELEASE:-$tag}\"/" \
-        -e "s/^version=\"\\\${PYTHON_VERSION:-[^}]*}\"/version=\"\\\${PYTHON_VERSION:-$found_version}\"/" \
-        -e "s/^sha256=\"\\\${PYTHON_SHA256:-[^}]*}\"/sha256=\"\\\${PYTHON_SHA256:-$found_sha}\"/" \
-        scripts/fetch-python.sh > "$pinned"
-    # Written over in place, so the file keeps being executable.
-    cat "$pinned" > scripts/fetch-python.sh
-    rm -f "$pinned"
+    printf '# The Python scripts/fetch-python.sh bundles, written by --pin.\nrelease=%s\nversion=%s\nsha256=%s\n' \
+        "$tag" "$found_version" "$found_sha" > "$pin_file"
     echo "Pinned CPython $found_version, release $tag, SHA-256 $found_sha."
-    echo "Review the change to scripts/fetch-python.sh and commit it."
+    echo "Written to $pin_file, which git ignores."
 }
 
 if [ "${1:-}" = "--pin" ]; then
@@ -98,7 +97,7 @@ app="${AMV_APP_BUNDLE:-build/AnimationMeetsVideo.app}"
 destination="$app/Contents/Resources/Python"
 
 if [ -z "$release" ] || [ -z "$version" ] || [ -z "$sha256" ]; then
-    echo "fetch-python.sh: no Python release is pinned yet. Run scripts/fetch-python.sh --pin to pin the latest, then commit the change." >&2
+    echo "fetch-python.sh: no Python release is pinned yet. Run scripts/fetch-python.sh --pin to pin the latest." >&2
     exit 3
 fi
 

@@ -1,6 +1,5 @@
 .DS_Store
 .build/
-__pycache__/
 DerivedData/
 *.xcuserstate
 xcuserdata/
@@ -15,3 +14,10 @@ xcuserdata/
 !.claude/agents/
 build/
 __pycache__/
+# The Python bundled into the app: the pin fetch-python.sh --pin writes,
+# the archives it fetches and what it unpacks (build/ covers those it
+# makes itself).
+scripts/python-pin
+cpython-*.tar.gz
+/Python/
+*.app/

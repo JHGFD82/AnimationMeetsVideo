@@ -69,7 +69,7 @@ Follow Google's change-description conventions for every commit.
   `scripts/build-app.sh` bundles the CPython that `scripts/fetch-python.sh`
   fetches by a pinned release and SHA-256, and builds without one while
   none is pinned; `scripts/fetch-python.sh --pin` looks up the latest
-  release and writes the pins, to review and commit. Run with no
+  release and writes the pins to `scripts/python-pin`, which git ignores. Run with no
   arguments it puts the pinned Python into the built app, always at
   `Contents/Resources/Python`.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the
