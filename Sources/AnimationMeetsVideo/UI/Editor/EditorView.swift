@@ -33,7 +33,9 @@ struct EditorView: View {
     @State private var activeTimelineID: UUID
     @State private var selection: TimelineSelection?
     @State private var playback = PlaybackModel()
-    @State private var annotations = AnnotationModel()
+    /// The viewer's handles, shared by the surface's viewer and the
+    /// external display (see `ViewerCanvasState`).
+    @State private var canvasState = ViewerCanvasState()
     @State private var externalDisplay = ExternalDisplayController()
     @State private var renderer = RenderScheduler()
     @State private var beatMatch = BeatMatchController()
@@ -131,12 +133,13 @@ struct EditorView: View {
                     activeTimelineID: activeTimeline,
                     selection: $selection,
                     playback: playback,
-                    annotations: annotations,
+                    canvasState: canvasState,
                     externalDisplay: externalDisplay,
                     analysis: analysis,
                     renderer: renderer,
                     exportWindow: exportWindow
-                ))
+                )),
+                canvasState: canvasState
             ) {
                 BrowserPanel(
                     access: browserProject, activeTimelineID: activeTimeline.wrappedValue, selection: $selection,

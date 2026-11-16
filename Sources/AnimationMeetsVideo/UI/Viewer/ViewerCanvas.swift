@@ -68,11 +68,28 @@ struct ViewerCanvas: View {
             .onEnded { _ in pinched = nil }
     }
 
-    /// ⌘= zooms in, as ⌘+ (the View menu's) does.
+    /// The zoom keys: ⌘+ (and ⌘=), ⌘−, ⌘0 and ⇧⌘0, for the viewer in this
+    /// window. The View menu lists them, but a window that isn't one of
+    /// the app's scenes (the external display's) isn't reached by it, so
+    /// the canvas takes them itself, before the menu, wherever it is.
+    /// Left alone while text is typed (`KeyPressMonitor`).
     private func zoomKey(_ event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags == .command, event.charactersIgnoringModifiers == "=" else { return false }
-        framing.zoomIn()
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let command = flags == .command
+        let shiftCommand = flags == [.command, .shift]
+        let key = event.keyCode
+        // = (+ with Shift) and the keypad's +, -, 0.
+        if key == 24 && (command || shiftCommand) || key == 69 && command {
+            framing.zoomIn()
+        } else if (key == 27 || key == 78) && command {
+            framing.zoomOut()
+        } else if (key == 29 || key == 82) && command {
+            framing.fit()
+        } else if (key == 29 || key == 82) && shiftCommand {
+            framing.centerFrame()
+        } else {
+            return false
+        }
         return true
     }
 }

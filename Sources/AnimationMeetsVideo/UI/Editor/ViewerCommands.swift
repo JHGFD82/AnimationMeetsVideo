@@ -2,8 +2,9 @@ import SwiftUI
 
 /// The viewer's items in the View menu: Show Handles, and the zoom and
 /// place of the viewer in the window that has the keys (see
-/// docs/viewer-handles.md). ⌘= zooms in as ⌘+ does (`ViewerCanvas`
-/// takes it); the timeline keeps its plain =, − and \.
+/// docs/viewer-handles.md). The canvas takes the keys itself before the
+/// menu (`ViewerCanvas`), so they also work on the external display and
+/// ⌘= zooms in as ⌘+ does; the timeline keeps its plain =, − and \.
 struct ViewerCommands: Commands {
     @FocusedValue(\.viewerActions) private var actions
     @AppStorage(Preferences.viewerHandles) private var showsHandles = false

@@ -1368,6 +1368,34 @@ struct UISnapshots {
         try SnapshotSupport.render(canvas(turning), "viewer-handles-turning", size: size)
     }
 
+    /// The external display synced, with handles on: the top bar with its
+    /// Show Handles switch, the frame filling the screen edge to edge, and
+    /// the selected clip's box, handles and opacity chip over it.
+    @Test func externalDisplaySynced() throws {
+        let key = Preferences.viewerHandles
+        let remembered = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(true, forKey: key)
+        defer { UserDefaults.standard.set(remembered, forKey: key) }
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let shape = try #require(project.addShapeLayer(.ellipse, to: timelineID))
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            var transform = Effect(kind: .transform)
+            transform.changeControl(.scale) { $0.number = AnimatedValue(ComponentValue(values: [60, 60])) }
+            transform.changeControl(.position) { $0.number = AnimatedValue(ComponentValue(values: [-200, 80])) }
+            clip.effects.append(transform)
+        }
+        let selection = TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID)
+        try SnapshotSupport.render(
+            ExternalViewerContent(
+                project: .constant(project), primaryTimelineID: .constant(timelineID), primarySelection: .constant(selection),
+                sharedPlayback: PlaybackModel(), canvasState: ViewerCanvasState(), analysis: AssetAnalysis(), onClose: {}
+            )
+            .environment(ProjectState(project)),
+            "external-display-synced", size: CGSize(width: 960, height: 600)
+        )
+    }
+
     /// The viewer's Center and Fit chips, zoomed in to 150% off center.
     @Test func viewerZoomed() throws {
         let framing = ViewerFraming()
@@ -1877,24 +1905,6 @@ struct UISnapshots {
             RecordPopover(recorder: AudioRecorder(), isSaving: true, onRecord: { _, _ in }, onStop: {}, error: nil)
                 .background(Design.Surface.overlay.color),
             "record-popover-saving", size: CGSize(width: 300, height: 200)
-        )
-    }
-
-    /// Annotation ink: two finished strokes and one being drawn.
-    @Test func annotations() throws {
-        let model = AnnotationModel()
-        model.beginStroke(at: CGPoint(x: 40, y: 60))
-        for x in stride(from: 50.0, through: 260, by: 10) { model.appendPoint(CGPoint(x: x, y: 60 + (x - 40) * 0.4)) }
-        model.endStroke()
-        model.beginStroke(at: CGPoint(x: 60, y: 200))
-        model.appendPoint(CGPoint(x: 160, y: 150))
-        model.appendPoint(CGPoint(x: 260, y: 200))
-        model.endStroke()
-        model.beginStroke(at: CGPoint(x: 300, y: 40))
-        for y in stride(from: 50.0, through: 220, by: 10) { model.appendPoint(CGPoint(x: 300 + sin(y / 20) * 30, y: y)) }
-        try SnapshotSupport.render(
-            AnnotationOverlay(model: model).background(Color.black),
-            "annotations", size: CGSize(width: 400, height: 260)
         )
     }
 

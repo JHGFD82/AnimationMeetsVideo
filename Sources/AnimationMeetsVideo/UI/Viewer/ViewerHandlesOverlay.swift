@@ -177,7 +177,9 @@ struct ViewerHandlesOverlay: View {
         let levered = drag.map { Self.worksAboutAnchor($0.handle) } ?? false
         // The lever: what a scale or a turn works about, in plain sight,
         // running off the edge toward an anchor out of view.
-        if let drag, levered, let anchor = list.first(where: { $0.id == .anchor }) {
+        // Its pointer is in the points of the display the drag is on; the
+        // other display draws the clip moving, without it.
+        if let drag, levered, book.began, let anchor = list.first(where: { $0.id == .anchor }) {
             var lever = Path()
             lever.move(to: mapping.toView(anchor.place))
             lever.addLine(to: drag.pointer)
@@ -233,7 +235,7 @@ struct ViewerHandlesOverlay: View {
     /// the pointer rests on it.
     @ViewBuilder
     private func readouts(_ shown: Shown, _ list: [ViewerHandle]) -> some View {
-        if let drag = source.state.drag, drag.clipID == shown.original.id, drag.handle != .opacity {
+        if let drag = source.state.drag, drag.clipID == shown.original.id, drag.handle != .opacity, book.began {
             readoutChip(drag.readout)
                 .position(chipPlace(near: drag.pointer))
         } else if hovered == .anchor, let anchorHover, let text = list.first(where: { $0.id == .anchor })?.hoverText {
@@ -266,6 +268,7 @@ struct ViewerHandlesOverlay: View {
     /// canvas has the keys, what the arrows change.
     private func chips(_ shown: Shown) -> some View {
         let reading = TransformHandles.reading(shown.context)
+        // A fade dragged on either display shows here as it goes.
         let dragged = source.state.drag.flatMap { $0.clipID == shown.original.id && $0.handle == .opacity ? $0.readout : nil }
         return HStack(spacing: Design.Space.close) {
             HStack(spacing: Design.Space.tight) {

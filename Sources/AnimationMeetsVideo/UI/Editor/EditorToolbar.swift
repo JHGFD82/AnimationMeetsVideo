@@ -10,7 +10,8 @@ struct EditorToolbar: View {
     @Binding var activeTimelineID: UUID
     @Binding var selection: TimelineSelection?
     let playback: PlaybackModel
-    let annotations: AnnotationModel
+    /// The viewer's handles, which the external display shows too.
+    let canvasState: ViewerCanvasState
     let externalDisplay: ExternalDisplayController
     let analysis: AssetAnalysis
     /// Pauses for an export, whose ProRes 422 output reuses its renders.
@@ -20,6 +21,9 @@ struct EditorToolbar: View {
     @Environment(ProjectState.self) private var projectState: ProjectState?
     /// The editor window's undo, which the external display shares.
     @Environment(\.undoManager) private var undoManager
+    /// The project's history, which edits on the external display are
+    /// steps of.
+    @Environment(\.projectHistory) private var history
     @State private var showsPasteChanges = false
     /// Whether the Paste Changes list was opened by trying to export.
     @State private var exportAfterAccepting = false
@@ -51,8 +55,9 @@ struct EditorToolbar: View {
                             primaryTimelineID: $activeTimelineID,
                             primarySelection: $selection,
                             sharedPlayback: playback,
-                            annotations: annotations,
+                            canvasState: canvasState,
                             analysis: analysis,
+                            history: history,
                             undoManager: undoManager
                         )
                     }
