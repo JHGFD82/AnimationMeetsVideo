@@ -1333,7 +1333,8 @@ struct UISnapshots {
         defer { UserDefaults.standard.set(remembered, forKey: key) }
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID
-        let shape = try #require(project.addShapeLayer(.rectangle, to: timelineID))
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
         project.editClip(shape.clipID, in: timelineID) { clip in
             var transform = Effect(kind: .transform)
             transform.changeControl(.scale) { $0.number = AnimatedValue(ComponentValue(values: [50, 40])) }
@@ -1378,7 +1379,8 @@ struct UISnapshots {
         defer { UserDefaults.standard.set(remembered, forKey: key) }
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID
-        let shape = try #require(project.addShapeLayer(.ellipse, to: timelineID))
+        let added = project.addShapeLayer(.ellipse, to: timelineID)
+        let shape = try #require(added)
         project.editClip(shape.clipID, in: timelineID) { clip in
             var transform = Effect(kind: .transform)
             transform.changeControl(.scale) { $0.number = AnimatedValue(ComponentValue(values: [60, 60])) }

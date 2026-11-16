@@ -80,7 +80,7 @@ import Testing
         #expect(problem(["guides": [["line": ["angle", "middle"]]]]) != nil)
         #expect(problem(["guides": [["circle": ["center": "middle"]]]])?.contains("isn't a guide") == true)
         #expect(problem(["guides": [["ellipse": ["center": "middle"]]]]) != nil)
-        #expect(problem(["guides": [["polygon": ["middle", "middle"]], "line": ["middle", "middle"]]]) != nil)
+        #expect(problem(["guides": [["polygon": ["middle", "middle"], "line": ["middle", "middle"]]]]) != nil)
     }
 
     @Test func aHandleReadsXAndYOnlyInItsSets() {

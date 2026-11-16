@@ -93,8 +93,10 @@ import Testing
         let turned = try dragged(.radius, by: CGVector(dx: 180, dy: 180), hexagon)
         #expect(turned?.control(.radius)?.values(at: .zero) == [180])
         #expect(turned?.control(.shapeRotation)?.values(at: .zero) == [90])
-        // Shift keeps the turn.
-        let grown = try dragged(.radius, by: CGVector(dx: 180, dy: 180), shift: true, hexagon)
+        // Shift keeps the turn: out to the right a little, where an
+        // unshifted drag would turn it nearly a quarter.
+        let grown = try dragged(.radius, by: CGVector(dx: 180, dy: 200), shift: true, hexagon)
+        #expect(grown?.control(.radius)?.values(at: .zero) == [181])
         #expect(grown?.control(.shapeRotation)?.values(at: .zero) == [0])
     }
 

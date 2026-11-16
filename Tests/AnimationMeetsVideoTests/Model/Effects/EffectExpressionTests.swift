@@ -96,7 +96,7 @@ import Testing
 
     @Test func mistakesAreFoundWhenTheExpressionIsRead() {
         #expect(problem("spped * 2") == "Unknown name \"spped\"")
-        #expect(problem("sin(angle)") == "Unknown function \"sin\"")
+        #expect(problem("tan(angle)") == "Unknown function \"tan\"")
         #expect(problem("min(angle)") == "min takes 2 numbers, not 1")
         #expect(problem("tint * 2") == "Only numbers can be multiplied, not 3 numbers")
         #expect(problem("shape") == "\"shape\" is a choice; read it as index(shape)")

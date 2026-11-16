@@ -29,7 +29,8 @@ struct ViewerCanvasInteractionTests {
         init() throws {
             var project = EditingProject.empty
             timelineID = project.rootTimelineID
-            let shape = try #require(project.addShapeLayer(.rectangle, to: timelineID))
+            let added = project.addShapeLayer(.rectangle, to: timelineID)
+            let shape = try #require(added)
             clipID = shape.clipID
             selection = TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID)
             frameSize = try #require(project.timeline(id: timelineID)).frameSize
