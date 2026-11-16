@@ -206,7 +206,8 @@ Still to come:
   whole: between two keyframes with the same number of vertices each point
   and tangent blends; with different counts it holds until the next.
   Converting a primitive to a free path keeps its current shape. Editing
-  vertices needs the viewer's handles (step 4).
+  vertices needs the viewer's handles (step 4). Planned in detail, with
+  the pen that draws them, in [pen-tool.md](pen-tool.md).
 - **Gradient fills** (linear and radial, with stops), for fills and
   strokes alike.
 - **Path operations.** Union, intersection, subtraction and exclusion of

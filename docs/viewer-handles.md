@@ -743,7 +743,8 @@ Point controls, declared handles and the shapes' handles are built
   plus a `PathHandles` set for vertices and tangents. It waits on free
   paths in the model ([graphic-layers.md](graphic-layers.md#saving)).
   Masks drawn the same way wait on a mask effect that takes a path
-  ([effects-keying.md](effects-keying.md)).
+  ([effects-keying.md](effects-keying.md)). All three are planned in
+  [pen-tool.md](pen-tool.md).
 
 An adjustment clip gets no Transform handles, but the effects on it can
 show their own: a Spotlight on an adjustment clip is placed in the

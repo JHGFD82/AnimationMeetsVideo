@@ -140,5 +140,6 @@ check that every kernel compiles and the library keeps its order.
   corners, size and angle have handles in the viewer while the mask is
   selected, with its outline drawn
   ([viewer-handles.md](viewer-handles.md#an-effects-own-handles)).
-- **Free-form masks** of many points, drawn as Bezier paths.
+- **Free-form masks** of many points, drawn as Bezier paths: a Path
+  Mask drawn with a pen, planned in [pen-tool.md](pen-tool.md).
 - **Light wrap** and edge color correction for composites.
