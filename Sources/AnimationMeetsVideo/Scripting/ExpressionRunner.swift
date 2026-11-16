@@ -142,7 +142,10 @@ final class ExpressionRunner {
         let base = setup.base ?? EditingProject.removingKeyframes(of: effect.id, from: current)
         let range = EditingProject.writtenRange(setup, of: clip)
         guard range.duration > .zero else { return nil }
-        let sampling = KeyframeSampling(clip: clip, range: range, frame: timeline.frameDuration)
+        // With Between Frames, also the moments motion blur draws.
+        let between = (effect.choice(.betweenFrames, as: BetweenFrames.self) ?? .auto)
+            .offsets(shutter: clip.shutter, frame: timeline.frameDuration.seconds)
+        let sampling = KeyframeSampling(clip: clip, range: range, frame: timeline.frameDuration, between: between)
         let (baseSamples, baseWidth) = base.flatValues(at: sampling.sources)
         guard baseWidth > 0 else { return nil }
         let count = sampling.sources.count

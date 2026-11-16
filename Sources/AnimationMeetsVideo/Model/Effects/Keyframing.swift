@@ -845,7 +845,11 @@ struct KeyframeSampling {
     var after: CMTime?
     var frameSeconds: Double
 
-    init(clip: TimelineClip, range: CMTimeRange, frame: CMTime) {
+    /// One sample per timeline frame of `range`, and, with `between`, one
+    /// more at each of those offsets in seconds from each frame, inside the
+    /// range: the moments motion blur draws (see `BetweenFrames`). Every
+    /// method samples on frames alone; an expression may ask for more.
+    init(clip: TimelineClip, range: CMTimeRange, frame: CMTime, between offsets: [Double] = []) {
         let a = clip.timelineTime(forSourceTime: range.start)
         let b = clip.timelineTime(forSourceTime: range.end)
         start = CMTimeMinimum(a, b)
@@ -863,6 +867,18 @@ struct KeyframeSampling {
         }
         // The end itself, when the range doesn't end on a frame.
         if let last = times.last, CMTimeSubtract(end, last).seconds > 1e-6 { times.append(end) }
+        let moments = offsets.filter { $0 != 0 && $0.isFinite }
+        if !moments.isEmpty {
+            let start = start
+            var between: [CMTime] = []
+            for time in times {
+                for offset in moments {
+                    let moment = CMTimeAdd(time, CMTime(seconds: offset, preferredTimescale: 240_000))
+                    if moment > start, moment < end { between.append(moment) }
+                }
+            }
+            times = (times + between).sorted()
+        }
         let start = start
         timelineTimes = times
         let sources = times.map { Self.clamp(clip.sourceTime(atTimelineTime: $0), to: range) }

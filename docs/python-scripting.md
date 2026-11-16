@@ -1,21 +1,18 @@
 # Python scripting
 
-Status: **partly built, not yet tried on a Mac.** Steps 1 to 8 of
-[Building it](#building-it) are written: the helper, the runtime and the
-Settings tab; reading the project and the console; scripts that edit,
-the Scripts menu and `Scripts/`; the expression model; allowing
-expressions, with Review Expressions; the confined helper; running
-expressions, with the code editor and the Expression chip in the
-Keyframe Designer; and Listen To and Beats From, with `audio()`,
-`beats`, `noise()` and `wiggle()`. They were written without a build
-(on Linux, with no Xcode), so none of the Swift has been compiled or
-run; the helper's own Python tests pass. The sandbox profile (step 6)
-has to pass `ConfinementTests` on a Mac before expressions can be relied
-on. No Python release is pinned in the repository: `scripts/fetch-python.sh
---pin`, run on the Mac that builds the app, writes the pin to
-`scripts/python-pin`, which git ignores. Still to come: Between Frames
-(step 9; the setting is saved but not yet followed), re-running only the
-changed samples (10), following a held drag (11) and NumPy (12).
+Status: **partly built.** Steps 1 to 9 of [Building it](#building-it)
+are written: the helper, the runtime and the Settings tab; reading the
+project and the console; scripts that edit, the Scripts menu and
+`Scripts/`; the expression model; allowing expressions, with Review
+Expressions; the confined helper; running expressions, with the code
+editor and the Expression chip in the Keyframe Designer; Listen To and
+Beats From, with `audio()`, `beats`, `noise()` and `wiggle()`; and
+Between Frames. Steps 1 to 8 have been built and tried on a Mac; step 9
+was written since and not yet built. No Python release is pinned in the
+repository: `scripts/fetch-python.sh --pin`, run on the Mac that builds
+the app, writes the pin to `scripts/python-pin`, which git ignores.
+Still to come: re-running only the changed samples (step 10), following
+a held drag (11) and NumPy (12).
 
 `noise(x, dimension=0)` and `wiggle(frequency, amount, octaves=1,
 dimension=0)` are Wiggler's noise for the expression's Seed, worked out

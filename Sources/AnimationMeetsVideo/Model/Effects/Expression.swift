@@ -47,6 +47,38 @@ enum BetweenFrames: String, CaseIterable, Identifiable, Sendable, ControlChoice 
     }
 }
 
+extension BetweenFrames {
+    /// The most moments inside a frame an expression is called at: past
+    /// them, motion blur's other moments read lines between these.
+    static let mostMoments = 8
+
+    /// The moments inside each frame an expression is also called at, in
+    /// seconds from the frame. Auto follows the clip's own motion blur, at
+    /// the compositor's own moments (`LayeredCompositor`): `n` of them
+    /// across the shutter, open for `angle / 360` of the frame around the
+    /// frame's time, at `shutter × ((i + 0.5) / n − 0.5)`, `n` up to 8; none
+    /// without motion blur. 2, 4 and 8 spread that many over the whole
+    /// frame, for readers Auto can't see (the blur on a clip nesting this
+    /// timeline, Trails, a nesting timeline at a higher frame rate).
+    func offsets(shutter: ClipShutter, frame: Double) -> [Double] {
+        let count: Int
+        var open = frame
+        switch self {
+        case .off:
+            return []
+        case .auto:
+            guard let blur = shutter.motionBlur?.clamped, blur.samples > 1, blur.angle > 0 else { return [] }
+            count = min(blur.samples, Self.mostMoments)
+            open = frame * blur.angle / 360
+        case .two: count = 2
+        case .four: count = 4
+        case .eight: count = 8
+        }
+        guard open > 0 else { return [] }
+        return (0..<count).map { open * ((Double($0) + 0.5) / Double(count) - 0.5) }
+    }
+}
+
 /// One thing an expression's last run read, in one timeline (any of the
 /// project's): what puts it out of date when it changes.
 struct KeyframingRead: Hashable, Sendable {
