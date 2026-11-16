@@ -197,6 +197,25 @@ extension TimelineAreaLayout: RawRepresentable {
     }
 }
 
+extension TimelineAreaLayout {
+    /// The layout as the app's defaults hold it now, which every
+    /// timeline's `@AppStorage` reads.
+    static var stored: TimelineAreaLayout {
+        UserDefaults.standard.string(forKey: Preferences.timelineAreaLayout).flatMap(Self.init(rawValue:)) ?? Self()
+    }
+
+    /// Shows the timeline's loop row, which a loop turned on needs: the
+    /// loop is on only while it shows (`TimelineLoopVisibility`). Written
+    /// to the defaults at once, so that is what the check reads, from the
+    /// timeline or from another view such as the Motion Designer.
+    static func showLoopRow() {
+        var layout = stored
+        guard !layout.showsLoop else { return }
+        layout.showsLoop = true
+        UserDefaults.standard.set(layout.rawValue, forKey: Preferences.timelineAreaLayout)
+    }
+}
+
 extension LayerKind: Codable {
     /// The area's hue: the colour of its clips, its title and its "new
     /// layer" drop zone.

@@ -38,8 +38,11 @@ struct TimelineLoopVisibility: View {
                 loop.toggle()
                 AccessibilityNotification.Announcement(shown ? "Loop on" : "Loop off").post()
             }
+            // What the defaults hold now, not `isShown`: turning the loop
+            // on elsewhere (the Motion Designer) shows the row in the same
+            // step, before this view has been given the new layout.
             .onChange(of: loop.isOn, initial: true) { _, on in
-                if on, !isShown { loop.toggle() }
+                if on, !TimelineAreaLayout.stored.showsLoop { loop.toggle() }
             }
     }
 }
@@ -89,7 +92,7 @@ extension TimelineView {
     /// Shows the loop bar, which a loop turned on needs: hidden, it would
     /// be turned off again (`TimelineLoopVisibility`).
     func showLoopRow() {
-        if !areaLayout.showsLoop { areaLayout.showsLoop = true }
+        TimelineAreaLayout.showLoopRow()
     }
 
     /// C and Loop Playback: turns the region on or off, or with none,

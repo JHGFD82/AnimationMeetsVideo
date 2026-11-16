@@ -66,6 +66,7 @@ struct MotionDesignView: View {
                 }
                 .help(session.snaps ? "Snapping on: points and clips snap to beats, the playhead and clip edges (N)" : "Snapping off (N)")
                 .accessibilityLabel("Snapping")
+                MotionLoopToggle(session: session)
                 Toggle(isOn: $session.showsBeats) {
                     Image(systemName: Design.Symbol.beats)
                 }
@@ -86,7 +87,8 @@ struct MotionDesignView: View {
 
     // MARK: Keys
 
-    /// L toggles marker locks, M adds a marker, E eases, and arrows nudge.
+    /// L toggles marker locks, M adds a marker, E eases, C loops, and
+    /// arrows nudge.
     private func handleKey(_ event: NSEvent) -> Bool {
         if NSApp.keyWindow?.firstResponder is NSTextView { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -126,10 +128,16 @@ struct MotionDesignView: View {
             }
             return true
         case 51, 117:
-            session.deleteSelected()
+            if session.isLoopSelected { session.deleteLoop() } else { session.deleteSelected() }
             return true
         case 53:
-            if session.isDragging { session.cancelDrag() } else { session.select(point: nil); session.selectedPieceID = nil }
+            if session.isDragging {
+                session.cancelDrag()
+            } else {
+                session.select(point: nil)
+                session.selectedPieceID = nil
+                session.isLoopSelected = false
+            }
             return true
         default:
             break
@@ -138,6 +146,7 @@ struct MotionDesignView: View {
         case " ": session.togglePlayback()
         case "m": session.addMarkerAtPlayhead()
         case "n": session.snaps.toggle()
+        case "c": session.toggleLoop()
         case "l": session.togglePickedLocks()
         case "e":
             // Easy Ease, or Linear again, as F9 eases a keyframe.
@@ -151,5 +160,23 @@ struct MotionDesignView: View {
         default: return false
         }
         return true
+    }
+}
+
+/// The transport's loop button: on while the loop region is on. The
+/// designer's bar can't be hidden, so unlike the timeline's button this
+/// one turns the loop on or off, as C does; with no region it makes one
+/// over the clips. A view of its own, so the panel doesn't read the loop.
+private struct MotionLoopToggle: View {
+    let session: MotionDesignSession
+
+    var body: some View {
+        let isOn = session.playback.loop.isOn
+        Toggle(isOn: Binding(get: { isOn }, set: { _ in session.toggleLoop() })) {
+            Image(systemName: Design.Symbol.loop)
+        }
+        .help(isOn ? "Loop on: playing repeats the loop region (C)" : "Loop off (C)")
+        .accessibilityLabel("Loop")
+        .accessibilityValue(isOn ? "On" : "Off")
     }
 }

@@ -20,11 +20,11 @@ struct MotionDesignLanesInteractionTests {
         return MotionDesignSession(run: run, project: project, playback: PlaybackModel())
     }
 
-    /// Where the line is at `seconds`: the graph sits under the ruler and
-    /// the footage, above one music lane, with its inset either side; the
+    /// Where the line is at `seconds`: the graph sits under the ruler, the
+    /// loop bar and the footage, above one music lane, with its inset either side; the
     /// clip's four seconds of footage run up the whole of it.
     private func onLine(_ session: MotionDesignSession, at seconds: Double) -> CGPoint {
-        let top = MotionDesignLanes.rulerHeight + MotionDesignLanes.filmHeight + 14
+        let top = MotionDesignLanes.filmTop + MotionDesignLanes.filmHeight + 14
         let bottom = Self.size.height - MotionDesignLanes.musicHeight - 14
         return CGPoint(x: session.x(of: seconds), y: bottom - CGFloat((seconds - 2) / 4) * (bottom - top))
     }
@@ -49,7 +49,7 @@ struct MotionDesignLanesInteractionTests {
         try await harness.settle()
 
         // The clip's middle, in the footage strip under the ruler.
-        let grab = CGPoint(x: session.x(of: 4), y: MotionDesignLanes.rulerHeight + MotionDesignLanes.filmHeight / 2)
+        let grab = CGPoint(x: session.x(of: 4), y: MotionDesignLanes.filmTop + MotionDesignLanes.filmHeight / 2)
         try await harness.press(at: grab, dragTo: CGPoint(x: grab.x + 40, y: grab.y))
         #expect(session.run != before)
         harness.escape()
@@ -122,7 +122,7 @@ struct MotionDesignLanesInteractionTests {
         try await harness.settle()
         let before = points(session)
 
-        let top = MotionDesignLanes.rulerHeight + MotionDesignLanes.filmHeight + 14
+        let top = MotionDesignLanes.filmTop + MotionDesignLanes.filmHeight + 14
         let bottom = Self.size.height - MotionDesignLanes.musicHeight - 14
         // Halfway up the last second, where the line all but stands up.
         let steep = 102.5
