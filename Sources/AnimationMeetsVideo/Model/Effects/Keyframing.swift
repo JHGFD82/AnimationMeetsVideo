@@ -186,6 +186,10 @@ struct KeyframingSetup: Equatable, Sendable {
     /// A fingerprint of the target as it left it, so an edit by hand since
     /// shows.
     var writtenPrint: UInt64?
+    /// Expression: what its last run read, in whichever timelines, so a
+    /// change to any of them puts it out of date (see
+    /// docs/python-scripting.md, "What it reads").
+    var reads: [KeyframingRead] = []
 }
 
 /// Whether a Keyframing effect's keyframes still match what it reads.
@@ -390,6 +394,10 @@ extension EditingProject {
                 return EffectNote(text: "That layer has no beats yet: confirm a beat map in Beat Match, or wait for its beats to be found.", dims: true)
             }
         }
+        if effect.kind == .expression, let timeline = timeline ?? self.timeline(holdingClip: clip.id),
+           let note = expressionNote(for: effect, in: clip, of: timeline) {
+            return note
+        }
         if effect.kind.reshapesTarget, setup.base.map({ $0.keyframes.count < 2 }) ?? false {
             return EffectNote(text: "It reshapes the keyframes of the control it writes to, which has fewer than two.", dims: true)
         }
@@ -430,6 +438,10 @@ extension EditingProject {
     /// `tracks` are the detected beats, read from `DetectedBeats` when not
     /// given.
     func keyframingReadPrint(of effect: Effect, in clip: TimelineClip, of timeline: Timeline, tracks: [UUID: BeatTrack]? = nil) -> UInt64 {
+        if effect.kind == .expression, let setup = effect.keyframing {
+            let base = setup.base ?? setup.target.flatMap { clip.number(of: $0) }.map { Self.removingKeyframes(of: effect.id, from: $0) }
+            return expressionPrint(of: effect, in: clip, of: timeline, base: base, reads: setup.reads)
+        }
         var fingerprint = KeyframingPrint()
         for time in [clip.startOffset, clip.trimStart, clip.trimEnd, timeline.frameDuration] { fingerprint.add(time) }
         fingerprint.add(clip.time.speed)
@@ -510,7 +522,9 @@ extension EditingProject {
         guard !edited.isEmpty else { return false }
         let tracks = DetectedBeats.shared.tracks
         var changed = false
-        for timelineID in edited {
+        // Expressions elsewhere that read the timelines edited follow too.
+        let readers = expressionReaders(of: Set(edited))
+        for timelineID in edited + timelines.map(\.id).filter(readers.contains) {
             changed = refreshKeyframing(in: timelineID, clips: nil, tracks: tracks) || changed
         }
         return changed
@@ -586,6 +600,10 @@ extension EditingProject {
         let tracks = tracks ?? (setup.beatLayer != nil ? DetectedBeats.shared.tracks : [:])
         let base = setup.base ?? Self.removingKeyframes(of: effectID, from: current)
         setup.base = base
+        if effect.kind == .expression {
+            // Its samples come from a run, not from Swift.
+            return regenerateExpression(effect, setup: setup, base: base, target: target, clip: clip, timeline: timeline, current: current)
+        }
         setup.readPrint = readPrint ?? keyframingReadPrint(of: effect, in: clip, of: timeline, tracks: tracks)
         var heard: [[Double]]?
         if effect.kind == .audioKeys {

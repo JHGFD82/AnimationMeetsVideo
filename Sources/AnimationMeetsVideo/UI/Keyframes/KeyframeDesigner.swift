@@ -208,7 +208,9 @@ private struct KeyframeDesignerSidebar: View {
     let timeline: Timeline
 
     /// The methods, None first.
-    static let methods: [EffectKind?] = [nil] + EffectKind.all.filter(\.isKeyframing)
+    /// Expression's chip waits for expressions to run (see
+    /// docs/python-scripting.md, "Building it", step 7).
+    static let methods: [EffectKind?] = [nil] + EffectKind.all.filter { $0.isKeyframing && $0 != .expression }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.group) {
