@@ -159,7 +159,9 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
     @Test func aLoopOfTwoWritesNothingAndIsNamed() throws {
         var x = Fixture()
         let rotationTarget = KeyframingTarget.control(effectID: x.f.transformID, controlID: x.f.controlID(.rotation))
-        let other = try #require(x.f.project.setKeyframing(.expression, driving: rotationTarget, onClip: x.f.clipID, in: x.f.timelineID))
+        // Outside #require, whose expansion can't run a mutating call.
+        let added = x.f.project.setKeyframing(.expression, driving: rotationTarget, onClip: x.f.clipID, in: x.f.timelineID)
+        let other = try #require(added)
         let readsRotation = KeyframingRead(timeline: x.f.timelineID, kind: .control(clip: x.f.clipID, effect: x.f.transformID, control: x.f.controlID(.rotation)))
         let readsOpacity = KeyframingRead(timeline: x.f.timelineID, kind: .control(clip: x.f.clipID, effect: x.f.transformID, control: x.f.controlID(.opacity)))
         // As their saved reads would have them.

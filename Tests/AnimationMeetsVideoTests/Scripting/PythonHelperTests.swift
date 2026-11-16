@@ -4,9 +4,9 @@ import Testing
 
 /// The helper on a real interpreter: `AMV_PYTHON=<python3> swift test
 /// --filter Scripting`. Skipped when the variable isn't set.
-@Suite(.serialized, .enabled(if: PythonHelperTests.python != nil), .timeLimit(.minutes(2)))
+@Suite(.serialized, .enabled(if: TestPython.interpreter != nil), .timeLimit(.minutes(2)))
 struct PythonHelperTests {
-    static let python = ProcessInfo.processInfo.environment["AMV_PYTHON"].map { URL(filePath: $0) }
+    static let python = TestPython.interpreter
 
     private func helper() -> PythonHelper {
         let python = Self.python!

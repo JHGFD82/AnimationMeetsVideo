@@ -36,7 +36,9 @@ import Testing
         let result = try #require(await runner.run(job, in: f.project))
         #expect(result.failure == nil && result.values.count == count)
         ExpressionResults.shared.store(result, for: id)
-        #expect(f.project.applyExpressionResults())
+        // Outside #expect, whose expansion can't run a mutating call.
+        let applied = f.project.applyExpressionResults()
+        #expect(applied)
         let opacity = f.project.clipAndLayer(f.clipID, in: f.timelineID)!.clip.effect(id: f.transformID)!.control(.opacity)!.number
         #expect(opacity.keyframes.allSatisfy { $0.generatedBy == id } && !opacity.keyframes.isEmpty)
         #expect(f.project.waitingExpressions().isEmpty)

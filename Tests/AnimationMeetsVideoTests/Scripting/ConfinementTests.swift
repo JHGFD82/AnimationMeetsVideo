@@ -7,12 +7,10 @@ import Testing
 /// subprocess and a read in the home folder are each refused. Needs a Mac
 /// and a real interpreter: `AMV_PYTHON=<python3> swift test --filter
 /// Confinement`.
-@Suite(.serialized, .enabled(if: ConfinementTests.canRun), .timeLimit(.minutes(2)))
+@Suite(.serialized, .enabled(if: TestPython.interpreter != nil && HelperConfinement.isAvailable), .timeLimit(.minutes(2)))
 struct ConfinementTests {
-    static var canRun: Bool { PythonHelperTests.python != nil && HelperConfinement.isAvailable }
-
     private func helper() -> PythonHelper {
-        let python = PythonHelperTests.python!
+        let python = TestPython.interpreter!
         return PythonHelper(interpreter: { PythonInterpreter(executable: python, source: .development) }, confined: true)
     }
 
@@ -94,7 +92,7 @@ struct ConfinementTests {
     }
 
     @Test func theScriptsHelperIsntConfined() async throws {
-        let python = PythonHelperTests.python!
+        let python = TestPython.interpreter!
         let helper = PythonHelper(interpreter: { PythonInterpreter(executable: python, source: .development) })
         defer { Task { await helper.shutDown() } }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
