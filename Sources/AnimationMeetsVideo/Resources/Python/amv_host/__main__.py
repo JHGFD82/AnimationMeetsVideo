@@ -19,6 +19,9 @@ def _take_standard_streams():
     arrives on."""
     frames_in = os.fdopen(os.dup(0), "rb")
     frames_out = os.fdopen(os.dup(1), "wb")
+    # The app's own pipe for errors, kept for what can't go to a run: why
+    # the helper itself failed, which the app shows as the reason it ended.
+    fatal = os.fdopen(os.dup(2), "w", buffering=1)
     nothing = os.open(os.devnull, os.O_RDONLY)
     os.dup2(nothing, 0)
     os.close(nothing)
@@ -29,7 +32,7 @@ def _take_standard_streams():
         os.close(write_end)
         pipes[stream] = read_end
     sys.stdin = open(os.devnull)
-    return frames_in, frames_out, pipes
+    return frames_in, frames_out, pipes, fatal
 
 
 class StrayOutput:
@@ -90,7 +93,22 @@ class StrayOutput:
 
 
 def main():
-    frames_in, frames_out, pipes = _take_standard_streams()
+    frames_in, frames_out, pipes, fatal = _take_standard_streams()
+    try:
+        _serve(frames_in, frames_out, pipes, fatal)
+    except BaseException:  # noqa: B902 – the helper's own failure, said where the app reads it
+        import traceback
+
+        traceback.print_exc(file=fatal)
+        fatal.flush()
+        os._exit(1)
+
+
+def _serve(frames_in, frames_out, pipes, fatal):
+    import faulthandler
+
+    # A crash in C says where, to the app, too.
+    faulthandler.enable(file=fatal)
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     from amv_host import protocol, runner

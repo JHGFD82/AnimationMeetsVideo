@@ -419,6 +419,14 @@ class ExpressionTests(unittest.TestCase):
         self.assertEqual(self.run_expression("'tall'")["exception"], "TypeError")
         self.assertEqual(self.run_expression("[1, 2, 3]", width=2)["exception"], "ValueError")
 
+    def test_a_mistake_in_the_helper_ends_the_run_not_the_helper(self):
+        # A message it can't make sense of: no tables.
+        _, error = self.helper.run("expression", "1", self.app, count=1, width=1)
+        self.assertEqual(error["type"], "error")
+        self.assertTrue(error["message"].startswith("The Python helper failed: KeyError"))
+        self.assertIn("expressions.py", error["traceback"])
+        self.assertEqual(self.run_expression("frame"), [0, 1, 2, 3, 4])
+
     def test_the_last_line_must_be_a_value(self):
         self.assertEqual(self.run_expression("x = 1")["exception"], "SyntaxError")
 

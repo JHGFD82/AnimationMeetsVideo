@@ -231,6 +231,20 @@ def error_message(error, filename):
     }
 
 
+def internal_error(error):
+    """An `error` for a mistake in the helper itself, not in the code it
+    ran: with the whole traceback, the helper's own frames too, so it can
+    be reported."""
+    shown = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+    return {
+        "type": "error",
+        "exception": type(error).__name__,
+        "message": "The Python helper failed: %s: %s" % (type(error).__name__, error),
+        "line": None,
+        "traceback": shown,
+    }
+
+
 def _is_host(path):
     return os.path.abspath(path).startswith(HOST_FOLDER + os.sep)
 
@@ -273,3 +287,10 @@ def serve(channel, on_host=None):
                 host.end(error_message(KeyboardInterrupt(), "<stopped>"))
         except protocol.ClosedError:
             return host
+        except Exception as error:  # noqa: B902 – a mistake in the helper ends the run, not the helper
+            if host.run_id is None:
+                # It failed before the run began: it is still that run's.
+                if kind not in ("script", "line", "expression") or header.get("id") is None:
+                    raise
+                host.run_id = header["id"]
+            host.end(internal_error(error))

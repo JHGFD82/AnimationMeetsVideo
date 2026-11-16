@@ -331,6 +331,8 @@ struct EditorView: View {
     /// beats do. That is the analysis arriving, not an edit, so it is made
     /// in the undo baseline too rather than recorded.
     private func analysisArrived() {
+        // Expressions waiting on a sound or beats run now they are here.
+        ExpressionRunner.shared.runWaiting(in: project)
         var refreshed = project
         guard refreshed.refreshKeyframing() else { return }
         history.adopt { $0.refreshKeyframing() }
