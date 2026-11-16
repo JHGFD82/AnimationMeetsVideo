@@ -1,11 +1,11 @@
 # Viewer handles
 
-Status: **partly implemented**. Steps 1 to 7 of
+Status: **partly implemented**. Steps 1 to 9 of
 [Building it](#building-it) are built: the handles, the zoom and scroll,
 the keys and VoiceOver, and the opacity chip, in every editor surface's
-viewer and on the synced external display, whose markup is gone. Steps
-8 to 10 (an effect's own handles, `viewer` in packages, shape and text
-handles) are not. Where the code differs from what follows is listed
+viewer and on the synced external display, whose markup is gone; the
+point controls' handles; and the loupe a held press opens. Steps 10
+and 11 (`viewer` in packages, shape and text handles) are not. Where the code differs from what follows is listed
 under [As built](#as-built). The document says what the person sees,
 then the framework the handles are built on, then where each piece goes
 in the code, then the order to build it in. Choices made while writing
@@ -186,6 +186,33 @@ scroll during a drag is ignored.
   (`ProjectState.Refusal.drivenKeyframes`).
 - Starting playback mid-drag (Space) ends the drag as letting go would,
   and the handles go.
+
+### The loupe
+
+**A handle pressed and held still** for 450 ms opens a **loupe** beside
+the pointer: a box 168 points square showing the picture, the box and
+the handles round the handle enlarged four times, a reticle at the spot
+the drag has reached, and under it the hint "Hold ⌥ for finer control".
+The drag has begun: in the loupe it goes at **a quarter** of the
+pointer's pace, so the enlarged handle keeps up with the pointer, and
+at **a sixteenth** while Option is held (the hint then says "Finer,
+with ⌥"). Releasing saves it as any drag does, and Escape puts it back.
+
+- It opens **only as a handle is first grabbed**: a press that moves
+  past the 3 point slop first is an ordinary drag, and a drag that
+  pauses, however long, never opens it.
+- Option and the rate change where the pointer is when it goes down or
+  up, so the handle never jumps (`FineDrag`).
+- In the loupe the handle set sees the drag as **fine** rather than as
+  Option: each value goes in its finest steps (tenths of a pixel for the
+  anchor and a point, tenths of a percent for opacity) and the anchor
+  doesn't catch on the box's points. Shift keeps its meaning.
+- It sits above and to the right of the pointer, or wherever there is
+  room in the well, clear of the readout under the pointer, and is
+  drawn only on the display the drag is on.
+- The opacity chip has no place on the picture to enlarge, so a press
+  held on it opens none.
+- It is decoration: VoiceOver and the keys have their own steps.
 
 ### Scaling and turning about the anchor
 
@@ -634,9 +661,10 @@ picture follows.
 
 ## An effect's own handles
 
-Later stages; the framework above is shaped for them.
+Point controls are built (step 8); the rest are later stages, which
+the framework above is shaped for.
 
-- **Point controls** (stage 8). A package's `point` control is "a
+- **Point controls** (step 8, built). A package's `point` control is "a
   position from the middle of the frame, in the timeline's pixels"
   ([effect-packages.md](effect-packages.md#controls)), which is exactly
   a handle. `PointControlHandles` gives every point control of the
@@ -651,7 +679,7 @@ Later stages; the framework above is shaped for them.
   the fold of the effects above `i`
   (`StackFolding.placement(after:)`, new). Every handle set says which
   effect it belongs to and works in that effect's coordinates.
-- **Declared handles** (stage 9). A `viewer` key in effect.json, the
+- **Declared handles** (step 10). A `viewer` key in effect.json, the
   sibling of `graph` ([effect-packages.md](effect-packages.md#graph)):
   handles whose `x` and `y` are expressions of the controls, a `set` of
   controls to expressions of where the handle was dragged, and guides
@@ -870,7 +898,7 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 
 ## As built
 
-Where the code (steps 1 to 7) differs from the plan above:
+Where the code (steps 1 to 9) differs from the plan above:
 
 - **`HandleContext`** carries the clip's picture before its stack
   (`pictureRect`, worked out by `TransformHandles.pictureRect`), Show Up
@@ -912,15 +940,28 @@ Where the code (steps 1 to 7) differs from the plan above:
 - **The anchor drag** solves the anchor and Position together (the 4×4
   system), rounds the anchor, then solves Position again from one corner
   of the box, as planned; with no Transform on, the anchor moves alone.
+- **Point handles take the place of the Transform handles** while the
+  effect selected in the panel has a point with a handle
+  (`ViewerHandleSets.active`), on any clip, an adjustment clip's too.
+  Only points that are on get one. The point being dragged stays drawn
+  (the Transform rule hides every handle mid-drag), and a point's hover
+  text says where it is ("Center 120, −40"). Shift keeps a point's drag
+  to one axis and Option takes a tenth, as for the anchor.
+- **The keys and VoiceOver come from the handle sets**: `keyTargets`
+  says what Tab picks, with the axes VoiceOver adjusts and any extra
+  actions (the anchor's moves), and `reset` and `refusal` are the set's
+  too, so the canvas has no code of its own for a set. What the arrows
+  change is kept by handle (`ViewerCanvasState.picked`).
 - Not run yet: the code was written without a Swift toolchain, so the
-  tests (`TransformHandlesTests`, `ViewerMappingTests`,
+  tests (`TransformHandlesTests`, `PointControlHandlesTests`,
+  `FineDragTests`, `ViewerMappingTests`,
   `ViewerCanvasInteractionTests`, the new `StructureKeyTests` case and
   the `viewerHandles`, `viewerZoomed` and `externalDisplaySynced`
   snapshots) need a build on a Mac before this is taken as working.
 
 ## Building it
 
-Steps 1 to 7 are built (see [As built](#as-built)).
+Steps 1 to 9 are built (see [As built](#as-built)).
 
 1. `ViewerMapping` with zoom and place, `ViewerHandleSet` and its types,
    the bounding box (moving `fitTransform`), and `TransformHandles` for
@@ -942,11 +983,13 @@ Steps 1 to 7 are built (see [As built](#as-built)).
 7. The external display: the canvas in place of the markup, and the
    markup's removal.
 8. `StackFolding.placement(after:)` and `PointControlHandles`.
-9. `viewer` in effect packages, expressions reading parts of a vector,
-   and declarations for the shipped packages that gain from them.
-10. Shape and text handles through `EffectDefinition.viewerHandles`
+9. The loupe: a press held still opens it, and the drag is slowed in
+   it (`FineDrag`, `HandleDrag.fine`).
+10. `viewer` in effect packages, expressions reading parts of a vector,
+    and declarations for the shipped packages that gain from them.
+11. Shape and text handles through `EffectDefinition.viewerHandles`
     (step 4 of [graphic-layers.md](graphic-layers.md#building-it)).
-11. Docs, once built: this document's status; the README's row;
+12. Docs, once built: this document's status; the README's row;
     [effects.md](effects.md) ("Not in this plan", and a section on the
     handles after "Changing values by dragging");
     [layer-transforms.md](layer-transforms.md)'s list of open work;
@@ -960,6 +1003,6 @@ Steps 1 to 7 are built (see [As built](#as-built)).
     holds and how the viewer's picture is sized.
 
 Steps 1 to 5 are the feature as asked (step 3 alone gives the viewer
-its zoom, with no handles); 6 and 7 complete it; 8 to 10 are the
-framework's later users. This can't be built or run on Linux; it
+its zoom, with no handles); 6 and 7 complete it; 9, the loupe, was
+asked for later; 8, 10 and 11 are the framework's later users. This can't be built or run on Linux; it
 needs full Xcode on a Mac. CI runs only when started by hand.

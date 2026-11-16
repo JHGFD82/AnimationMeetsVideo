@@ -155,7 +155,12 @@ playhead to the middle of the view when it lands out of view.
   the arrow keys' nudges; named actions take ten-fold steps (Move 10
   pixels left, Turn 15 degrees clockwise…) and Reset; the anchor's also
   move it to the box's center, corners and edge middles, keeping the
-  picture still.
+  picture still. With an effect selected that has point controls, the
+  group holds each point's X and Y instead ("Center X, 120 pixels"),
+  and Tab picks among the points.
+- **The loupe** a held press opens is decoration, as the readout is;
+  the arrow keys' Option steps are the keyboard's way to the same
+  fineness.
 - **Scrolling** the group (VoiceOver's scroll actions) moves the picture
   half a well that way; ⌘+, ⌘−, ⌘0 and ⇧⌘0 zoom and center it.
 - **Show Handles** in the viewer's rail is a toggle with an on or off

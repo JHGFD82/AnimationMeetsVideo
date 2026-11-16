@@ -101,7 +101,7 @@ expression calls the control, and what a project saves as the control's
 | --- | --- | --- |
 | `number` | One number | `default`, `range`, `unit`, `step`, `whole` |
 | `vector` | 2 to 4 numbers | `components` (their names, e.g. `["X", "Y"]`), `default`, `range`, `unit`, `step` |
-| `point` | A position from the middle of the frame, in the timeline's pixels | `default` (`[0, 0]`) |
+| `point` | A position from the middle of the frame, in the timeline's pixels, down positive; a handle in the viewer while the effect is selected ([viewer-handles.md](viewer-handles.md#an-effects-own-handles)) | `default` (`[0, 0]`), `handle` (`false` for no handle) |
 | `color` | Red, green and blue, 0–1, and alpha (1 if left out) | `default` |
 | `choice` | One of a list | `options` (`[{ "id": "bayer4", "name": "Bayer 4×4" }, …]`), `default` |
 | `curve` | A tone curve: points from black to white (see [Curves](#curves)) | `default` (`[[0, 0], [1, 1]]`, the points), `tint` (`white`, `red`, `green` or `blue`: its line's color on the graph) |

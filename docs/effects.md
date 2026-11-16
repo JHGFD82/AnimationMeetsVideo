@@ -670,8 +670,11 @@ turns it about the anchor, the crosshair moves the anchor point keeping
 the picture still, and the chip in the well's corner fades it. They edit
 the Transform effect selected in the panel, else the last one in the
 stack, adding one when there is none, and set a keyframe at the playhead
-where a value is animated, as typing does. See
-[viewer-handles.md](viewer-handles.md).
+where a value is animated, as typing does. With an effect selected that
+has point controls (Spotlight's Center, a mask's corners), each point
+gets a round handle instead. A handle pressed and held still opens a
+loupe, in which the drag goes at a quarter of the pointer's pace, a
+sixteenth with Option. See [viewer-handles.md](viewer-handles.md).
 
 ### Keyframes in the panel
 
