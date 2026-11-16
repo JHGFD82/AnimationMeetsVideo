@@ -16,11 +16,13 @@
 #       newest CPython 3.14 (PYTHON_MINOR to choose another) and the
 #       archive's SHA-256 from the release's own checksums, and writes the
 #       three below. Review the change and commit it, so every build uses it.
-#   scripts/fetch-python.sh <AnimationMeetsVideo.app/Contents/Resources/Python>
-#       Bundles the pinned Python there; build-app.sh runs this. The folder
-#       is the app's own: it is replaced. A Python already installed on the
-#       Mac can't be bundled (it isn't relocatable); choose it in the app's
-#       Settings > Scripting instead.
+#   scripts/fetch-python.sh
+#       Bundles the pinned Python into the app, always at
+#       Contents/Resources/Python: build/AnimationMeetsVideo.app, which
+#       build-app.sh makes (and runs this for), and signs the app again.
+#       Before the app is built, it only fetches and checks the archive.
+#       A Python already on the Mac can't be bundled (it isn't
+#       relocatable); choose it in the app's Settings > Scripting instead.
 # Exit status 3: nothing is pinned yet, and nothing was copied.
 set -eu
 
@@ -86,16 +88,14 @@ if [ "${1:-}" = "--pin" ]; then
     exit 0
 fi
 
-destination="${1:?Usage: scripts/fetch-python.sh --pin [release], or scripts/fetch-python.sh <App.app/Contents/Resources/Python>}"
-# The folder is replaced, so only the app's own is taken: never a Python
-# that is already somewhere else.
-case "$destination" in
-    *.app/Contents/Resources/Python | *.app/Contents/Resources/Python/) ;;
-    *)
-        echo "fetch-python.sh: $destination isn't an app's Contents/Resources/Python, which this replaces. To use a Python you have, choose it in the app's Settings > Scripting." >&2
-        exit 2
-        ;;
-esac
+if [ $# -gt 0 ]; then
+    echo "fetch-python.sh: it takes no folder: the Python always goes into the app. Run it with no arguments, or with --pin." >&2
+    exit 2
+fi
+# The app, as build-app.sh makes it; build-app.sh names it when it builds
+# into another folder.
+app="${AMV_APP_BUNDLE:-build/AnimationMeetsVideo.app}"
+destination="$app/Contents/Resources/Python"
 
 if [ -z "$release" ] || [ -z "$version" ] || [ -z "$sha256" ]; then
     echo "fetch-python.sh: no Python release is pinned yet. Run scripts/fetch-python.sh --pin to pin the latest, then commit the change." >&2
@@ -131,6 +131,10 @@ rm -rf "$python"/lib/libtcl* "$python"/lib/libtk* "$python"/lib/tcl* "$python"/l
 rm -rf "$python/share" "$python/include"
 find "$python" -name '__pycache__' -type d -prune -exec rm -rf {} +
 
+if [ ! -d "$app/Contents" ]; then
+    echo "Fetched and checked Python $version ($release). scripts/build-app.sh puts it into the app."
+    exit 0
+fi
 rm -rf "$destination"
 mkdir -p "$(dirname "$destination")"
 cp -R "$python" "$destination"
@@ -142,4 +146,8 @@ find "$destination" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) 
     fi
 done
 
-echo "Bundled Python $version ($release)"
+# The app's signature covers its resources, so it is signed again around
+# the Python just put in (build-app.sh signs it once more, which is fine).
+codesign --force --sign - "$app"
+
+echo "Bundled Python $version ($release) into $app"

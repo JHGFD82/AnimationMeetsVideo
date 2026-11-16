@@ -36,7 +36,7 @@ printf 'APPL????' > "$app/Contents/PkgInfo"
 # fetch-python.sh the app is built without one, and Settings > Scripting
 # asks for one of the person's own.
 status=0
-scripts/fetch-python.sh "$app/Contents/Resources/Python" || status=$?
+AMV_APP_BUNDLE="$app" scripts/fetch-python.sh || status=$?
 if [ "$status" -eq 3 ]; then
     echo "warning: built without a Python of its own; see scripts/fetch-python.sh." >&2
 elif [ "$status" -ne 0 ]; then
