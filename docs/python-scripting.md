@@ -49,6 +49,12 @@ drop = 200 * beats.phase ** 2
 clip.effect("Transform")["position"].at(time - 0.5)
 ```
 
+```python
+# Scale with the logo, which is in another timeline.
+logo = project.timeline("Titles").layer("Logo").clip_at(time)
+logo.effect("Transform")["scale"].value
+```
+
 - The code is ordinary Python. **The value of its last line is the
   result**, as in a notebook; lines before it can set names.
 - **Command-Return**, or the **Apply** button, runs it. Until
@@ -64,18 +70,30 @@ clip.effect("Transform")["position"].at(time - 0.5)
   [badge](keyframing-effects.md#the-badge) turns to the warning.
 - Under the code: four **inputs**, A to D, ordinary numeric controls
   that the code reads as `a`, `b`, `c` and `d` and that can be
-  keyframed; **Seed**; **Keyframes** (Smooth or Stepped); and
-  **Tolerance**.
+  keyframed; **Seed**; **Keyframes** (Smooth or Stepped);
+  **Between Frames** (Auto, Off, 2, 4 or 8 moments a frame; see
+  [Between frames](#between-frames)); and **Tolerance**.
 - **Applies To** has Component, Range, Listen To and Beats From, as the
   other methods have between them. Combine isn't offered: the code says
   how its result meets `value`.
 
 ### A script
 
-A script is a `.py` file in
-`~/Library/Application Support/AnimationMeetsVideo/Scripts/`, beside the
-Effects and Presets folders. Each is listed in the **Scripts** menu
-under the first line of its docstring, or its file name.
+A script is a `.py` file in the project's own package, in `Scripts/`
+beside `project.json` and `Media/`, so it is kept, copied and sent
+with the project it works on. There is no folder of scripts for
+every project. Each is listed in the **Scripts** menu under the first
+line of its docstring, or its file name.
+
+```
+MyProject.amv/
+  project.json
+  Media/
+  Scripts/
+    stagger.py
+    blur-in.py
+    shots.csv         anything a script reads can sit beside it
+```
 
 ```python
 """Stagger Selected Clips"""
@@ -102,9 +120,14 @@ for clip in amv.selection:
 - While it runs, a sheet over the window names it, counts the seconds
   and has **Stop**. The window takes no other input meanwhile
   (`WindowInputBlock`).
-- The menu also has **Run Script File…**, **Show Scripts Folder**,
-  **Python Console** and **Review Expressions…**. A file added to or
-  changed in the folder is picked up without relaunching.
+- The menu also has **New Script…**, which makes a file in the
+  project's `Scripts/` and opens it in the Mac's editor for `.py` files;
+  **Show Scripts Folder**; **Run Script File…**, for a script kept
+  anywhere else, with the last few run that way listed under it;
+  **Python Console**; and **Review Expressions…**. A file added to or
+  changed in the folder is picked up without reopening the project.
+- A script runs with its folder as the working directory, so
+  `open("shots.csv")` reads the file beside it.
 
 ### The console
 
@@ -119,8 +142,13 @@ What scripts print, and their tracebacks, go here too.
 Python that came from somewhere else doesn't run until the person has
 seen and allowed it (see [Safety](#safety)).
 
-- Code typed into the designer's editor, the console or a script the
-  person runs is allowed by that act.
+- Code typed into the designer's editor or the console is allowed by
+  that act, and so are the scripts of a project made on this Mac.
+- **A script in a project that came from somewhere else** asks the first
+  time it is chosen: "“Stagger Selected Clips” came with this project.
+  A script can read and change files on this Mac." with **Run**,
+  **Always Run This Project's Scripts**, **Show Script** and Cancel. Run
+  allows that file as it is; changed, it asks again.
 - An expression that arrived another way (a project from someone else, a
   preset, `project.json` edited outside the app) plays exactly as saved,
   since its keyframes are in the project. It just isn't run again: its
@@ -134,8 +162,8 @@ seen and allowed it (see [Safety](#safety)).
 
 A **Scripting** tab in Settings: which Python runs (**Built In**, with
 its version, or **Choose…** for an interpreter of the person's own,
-3.11 or later, so their packages can be imported), **Show Scripts
-Folder**, and **Forget Allowed Code**.
+3.11 or later, so their packages can be imported) and **Forget Allowed
+Code**, which also forgets which projects' scripts were allowed.
 
 ## The idea: expressions write keyframes
 
@@ -159,9 +187,11 @@ the bargain pays for more:
 - **Everything that works on keyframes works**: the graph, eases after
   baking, copying, presets, the Motion Designer's retiming.
 
-What is given up is an expression evaluated between frames: it is
-sampled once per timeline frame, like every method, and straight lines
-join the samples.
+What an expression evaluated while drawing would give for free is its
+value at any moment, not only on frames. Here the code is called at
+chosen moments and straight lines join them, so the moments have to be
+chosen well: once per timeline frame, as every method, and more where
+something reads between frames (see [Between frames](#between-frames)).
 
 ## How it runs
 
@@ -289,7 +319,8 @@ What differs:
 | `prev` | The result at the sample before, `None` at the first |
 | `state` | A dictionary kept across the samples of one run, for anything that accumulates |
 | `a`, `b`, `c`, `d` | The four inputs, at this sample |
-| `clip`, `layer`, `timeline` | The same objects scripts get, to read only |
+| `clip`, `layer`, `timeline` | This clip, its layer and its timeline: the same objects scripts get, to read only |
+| `project` | Everything else: `project.timeline("Titles")`, and from there its layers, their clips, effects and controls |
 | `audio(low, high)` | How loud those frequencies are here, 0 to 1 between `floor=-48` and `ceiling=0` dB; what Listen To hears, by Audio Keys' arithmetic (`AudioKeysMath`) |
 | `beats` | From the layer under Beats From: `.index` (beats so far), `.since` and `.until` (seconds), `.phase` (0 to 1 between beats), `.downbeat` |
 | `noise(x)`, `wiggle(frequency, amount)` | Wiggler's noise (`KeyframeGenerators`) |
@@ -303,6 +334,13 @@ target has; with one component chosen, `value` and the result are
 numbers. A single number for a vector target sets every component. A
 result that isn't a finite number is an error.
 
+A control in another timeline is read on that timeline's own clock:
+`.value` is its value as many seconds from that timeline's start as
+`time` is from this one's, as After Effects reads another composition,
+and `.at(seconds)` is any other moment. Where one of the two timelines
+is nested in the other, the clip that nests it maps between them
+(`nest.source_time(time)`).
+
 Any module can be imported. Nothing is hidden from inside Python: the
 limits are the helper's (see [Safety](#safety)), since limits made in
 the language don't hold.
@@ -310,8 +348,9 @@ the language don't hold.
 ### A run
 
 1. The app sends the code, the sample times (`KeyframeSampling`: one per
-   timeline frame of the range, as every method), the base's value at
-   each, the inputs' values at each, and the seed.
+   timeline frame of the range, as every method, and the moments
+   [between frames](#between-frames) where those are on), the base's
+   value at each, the inputs' values at each, and the seed.
 2. The helper compiles the code once into a function and calls it per
    sample, in order.
 3. The first time the code touches something of the project, the helper
@@ -328,6 +367,35 @@ the language don't hold.
    keeps a held keyframe at each side of every jump
    (`KeyframeGenerators.steps`), so a value that switches on a beat
    stays flat between.
+
+### Between frames
+
+Motion Blur draws a clip at several moments inside one frame and
+averages them: `samples` moments across the shutter, which is open for
+`angle / 360` of the frame around the frame's own time
+(`LayeredCompositor`). Each reads the clip's controls at its moment.
+Keyframes on frames alone would give those moments a straight line from
+one frame's value to the next, whatever the code would have said.
+
+The code can say, so it is asked. With **Between Frames** on Auto and
+Motion Blur on for the expression's clip, the expression is also called
+at the shutter's own moments,
+`time + shutter × ((i + 0.5) / n − 0.5)` for `i` from 0 to `n − 1`,
+where `n` is the clip's sample count, up to 8. Those samples become
+keyframes like the rest, so the blur is averaged from values the code
+gave.
+
+- **Thinning still applies.** A move that is straight within the frame
+  keeps none of the extra keyframes; one that curves keeps them.
+- **Past 8 samples**, the shutter's other moments read the lines
+  between the eight.
+- **The clip's shutter joins the fingerprint**, so turning Motion Blur
+  on, or changing its angle or samples, makes the keyframes again.
+- **2, 4 or 8** are for readers Auto can't see: the blur is on a clip
+  that nests this timeline, on Trails, or the timeline is nested in one
+  with a higher frame rate. Those spread the moments evenly over the
+  whole frame.
+- **It costs calls**: `n` times as many.
 
 ### Arriving
 
@@ -353,20 +421,55 @@ longer than 5 seconds, so it was stopped."
 
 During a held drag (`ProjectState.hold`) of something an expression
 reads, the expression follows when the drag ends, like everything but
-the viewer and the dragged row. Following each step is step 9 of
+the viewer and the dragged row. Following each step is a later step of
 [Building it](#building-it).
+
+### Doing less work
+
+A run is one message each way, however many samples it has. The 5,400
+calls of a three-minute clip at 30 fps happen inside Python, one after
+another, with the tables already there. That is estimated at tens of
+milliseconds for the clip and hasn't been measured; Between Frames
+multiplies it by up to 8. What keeps runs few and short:
+
+- **The helper stays running** and keeps each expression's compiled
+  code by its hash, so a run starts with no launch and no compile.
+- **Results are kept by fingerprint** for the session
+  (`ExpressionResults`), several for each effect. Undo, redo and a value
+  set back to what it was find the result made before, and nothing
+  runs.
+- **Only the samples that changed are run again.** The helper keeps
+  each expression's last tables and results. The app sends a table's
+  rows only where they differ from the last it sent, and the helper
+  calls the code for those samples alone. Moving one keyframe of an
+  input then costs the samples around it, not the clip. Two cases run
+  more: code that used `prev` or `state` runs from the first changed
+  sample to the end, since each sample follows from the one before, and
+  code that read a control at another moment (`.at`) runs whole when
+  that control changed.
+- **A whole clip in one call**, only if measuring says the rest isn't
+  enough. With NumPy in the built-in Python, `t`, `value` and the tables
+  are arrays, and the code is called once, its arithmetic running over
+  every sample together: `value + 30 * sin(t * tau * 2)` works as
+  written. Code that decides per sample (`if`), or uses `prev` or
+  `state`, can't run that way and is called per sample as before. The
+  helper finds out by trying, and checks the arrays against a few plain
+  calls before using them. It costs NumPy in the bundle and two ways
+  for one expression to run, so it is the last step and may never be
+  needed.
 
 ### What it reads, and going out of date
 
 A method's `readPrint` is a fingerprint of what it read. For an
 expression that is: its code, its inputs and seed, the clip's place,
-trim and speed, the frame rate, its range, and **each of its reads**:
+trim and speed, the frame rate, its range, the clip's shutter where
+Between Frames follows it, and **each of its reads**:
 
 | Read | Out of date when |
 | --- | --- |
-| A control of a clip | Its value or keyframes change |
+| A control of a clip, in any timeline | Its value or keyframes change |
 | A clip's or layer's own properties | Its place, trim, speed or name changes |
-| The timeline | Its size, frame rate or sections change |
+| A timeline | Its size, frame rate or sections change, or which layers it has and what they are called |
 | `audio` | What it hears changes, as for Audio Keys (`addHeard`) |
 | `beats` | The layer's beats change, as for Beat Keys |
 
@@ -375,16 +478,24 @@ is current is arithmetic in Swift (`keyframingReadPrint`). **Opening a
 project never starts Python** unless something an expression read has
 changed since it was saved.
 
-- **Its own timeline only.** An expression can read its clip, the other
-  clips and layers of its timeline, and the timeline. That keeps
-  `refreshKeyframing(after:)` looking only in the timelines an edit
-  changed.
+- **Anything in the project.** An expression can read every timeline:
+  its layers, their clips, their effects and controls, its beats and
+  its sound. Each read is saved with its timeline, and
+  `EditingProject.expressionReaders` gives, for a timeline, the
+  expressions elsewhere that read it. After an edit,
+  `refreshKeyframing(after:)` looks in the timelines the edit changed,
+  as now, and at their readers.
+- **By name.** `layer("Logo")` is a read of the layer found and of
+  which layers its timeline has and their names. Renaming it, or adding
+  the layer a lookup failed to find, runs the expression again. Of two
+  layers with one name, the upper is found.
 - **Reading its own target** gives the base, which is `value`.
 - **Reading a control another method drives** gives the keyframes that
   method made. When they are made again, this expression is out of date
   and follows, so chains settle in order.
 - **A loop** (one expression reads a control whose expression reads it
-  back, directly or through others) writes nothing. Each one's note
+  back, directly or through others, in whichever timelines) writes
+  nothing. Each one's note
   names the next: "It reads Scale, whose expression reads it back."
   `EditingProject.expressionCycles` finds them from the saved reads
   before anything is run.
@@ -405,9 +516,9 @@ rounded to a frame of the timeline.
 
 | Object | Reads | Changes, and the `EditingProject` call behind each |
 | --- | --- | --- |
-| `amv.project` | `name`, `assets`, `timelines`, `document()` (the project as `project.json` has it, as a dictionary) | `add_timeline()` (`addTimeline`) |
-| `amv.timeline` (the one shown), any timeline | `name`, `frame_size`, `frame_rate`, `frame`, `duration`, `layers`, `sections` | `name` (`renameTimeline`), `place(asset)` (`placeAsset`) |
-| Layer | `name`, `kind`, `clips`, `beats` | `name` (`renameLayer`), `move()` (`moveLayer`), `delete()` (`deleteLayer`) |
+| `amv.project` | `name`, `assets`, `timelines`, `timeline(name)`, `document()` (the project as `project.json` has it, as a dictionary) | `add_timeline()` (`addTimeline`) |
+| `amv.timeline` (the one shown), any timeline | `name`, `frame_size`, `frame_rate`, `frame`, `duration`, `layers`, `layer(name)`, `sections` | `name` (`renameTimeline`), `place(asset)` (`placeAsset`) |
+| Layer | `name`, `kind`, `clips`, `clip_at(time)`, `beats` | `name` (`renameLayer`), `move()` (`moveLayer`), `delete()` (`deleteLayer`) |
 | Clip | `start`, `end`, `trim_start`, `trim_end`, `source`, `effects`, `sound_effects`, `volume`, `source_time(time)`, `timeline_time(time)` | `start` (`moveClip`), `trim_start`, `trim_end` (`trimClipStart`, `trimClipEnd`), `split(at)` (`split`), `delete()` (`deleteClip`) |
 | Effect | `kind`, `name`, `enabled`, its controls by `[…]` | `effects.add(kind)` (`addEffect`), `remove()` (`removeEffect`), `move()` (`moveEffect`), `name`, `enabled` (`editEffect`) |
 | Control | `value`, `keyframes`, `at(time)`, `driven_by` | `value`, `keyframes` (`editEffect`), `drive(method, …)` (`setKeyframing`), `bake()` (`bakeKeyframing`) |
@@ -445,23 +556,46 @@ gives it for a moment of the timeline.
 A script that raises, is stopped, or whose helper dies writes nothing.
 
 Scripts run with the person's rights: they can read a spreadsheet, write
-a file, call a service. That is the point of them, and it is why they
-only run when the person runs them.
+a file, call a service. That is the point of them. It is why one runs
+only when the person chooses it, and asks first when it came with a
+project from somewhere else.
+
+### Where scripts live
+
+In the project's package, in `Scripts/`: the person's work, like
+`project.json`, never deleted by the app.
+
+- `ScriptLibrary` lists the folder's `.py` files and watches it with
+  FSEvents while the project is open, as the Effects folder is watched.
+- **New Script…** writes its file through `PackageCoordinator`, as
+  every write to a package goes. Scripts are otherwise written by the
+  person's own editor.
+- **Save As** copies `Scripts/` into the new package, as it copies
+  `Media/` and `Reference/`.
+- A backup (`.amvbackup`) copies `Scripts/` too, as it copies `Media/`.
+  Autosaves in `Backups/` hold only the edit.
 
 ## Safety
 
 Python in a project is code from wherever the project came from. Three
 rules, in order of weight:
 
-1. **Nothing runs that wasn't allowed here.** The app keeps the SHA-256
-   of each piece of code the person allowed on this Mac
-   (`CodeApproval`, in
+1. **Nothing runs that wasn't allowed here.** `CodeApproval` keeps what
+   was allowed on this Mac in
    `~/Library/Application Support/AnimationMeetsVideo/AllowedCode.json`,
-   never in a project, which could then vouch for itself). An expression
-   is run only if its code's hash is there. Applying code typed in the
-   editor adds it. Changing one character outside the app makes it
-   unallowed again. Scripts aren't hashed: running one is the person's
-   act, as opening a file is.
+   never in a project, which could then vouch for itself: the SHA-256
+   of each piece of code, and the projects whose scripts may run.
+   - An **expression** runs only if its code's hash is there. Applying
+     code typed in the editor adds it; changing one character outside
+     the app makes it unallowed again.
+   - A **script in a project** runs when chosen if the project was made
+     on this Mac, or its scripts were allowed, or that file's hash was.
+     Otherwise it asks first.
+   - A project is known by its ID and where its package was when it was
+     allowed, so a copy arriving from elsewhere under the same ID asks
+     again.
+   - A file picked with **Run Script File…** runs: picking it is the
+     person's act, as opening a file is.
 2. **Expressions are confined.** Their helper runs under a sandbox
    profile: no network, no writing files, no starting processes, and no
    reading the home folder beyond the interpreter and the helper's own
@@ -483,12 +617,14 @@ installing an effect package does
 
 - `EffectKind.expression`, in BuiltInEffects.swift, with the controls
   `inputA` to `inputD`, `seed` (Wiggler's), `expressionKeys` (a choice:
-  `smooth`, `stepped`) and `tolerance`.
+  `smooth`, `stepped`), `betweenFrames` (a choice: `auto`, `off`, `2`,
+  `4`, `8`) and `tolerance`.
 - `Effect.expression: String?`, the code; nil for every other kind.
 - `KeyframingSetup.reads: [KeyframingRead]`, what the last run read.
-  `KeyframingRead` is an enum: `.control(clip:effect:control:)`,
-  `.volume(clip:)`, `.clip(UUID)`, `.layer(UUID)`, `.timeline`,
-  `.heard(AudioKeysSource)`, `.beats(layer:)`.
+  `KeyframingRead` is a timeline's ID and what was read in it:
+  `.control(clip:effect:control:)`, `.volume(clip:)`, `.clip(UUID)`,
+  `.layer(UUID)`, `.settings`, `.layerNames`,
+  `.heard(AudioKeysSource)` or `.beats(layer:)`.
 
 In `project.json`, an expression effect is a Keyframing effect with two
 additions:
@@ -502,8 +638,9 @@ additions:
     "effect": "…", "control": "…",
     "beatLayer": "…",
     "reads": [
-      { "control": "…", "effect": "…", "clip": "…" },
-      { "beats": "…" }
+      { "timeline": "…", "control": "…", "effect": "…", "clip": "…" },
+      { "timeline": "…", "layerNames": true },
+      { "timeline": "…", "beats": "…" }
     ],
     "readPrint": "9f3c…", "writtenPrint": "41aa…"
   },
@@ -517,8 +654,11 @@ strict. The format version stays 2: a project without expressions is
 unchanged, and one with them is refused by an earlier app as any kind it
 doesn't know is ("Unknown effect kind "expression" at …").
 
-The code is in the project file, not in files beside it, so undo, copy
-and paste, presets, autosave and backups carry it with no new work.
+An expression's code is in the project file, not in a file beside it,
+so undo, copy and paste, presets, autosave and backups carry it with no
+new work. Scripts are files, in the package's `Scripts/` (see
+[Where scripts live](#where-scripts-live)); `project.json` doesn't list
+them.
 
 ## Where it goes in the code
 
@@ -533,11 +673,12 @@ New, outside `UI/`, in a new folder,
 | `ProjectBridge.swift` | An actor: the snapshot, the working copy, each `call`'s answer, the reads |
 | `ExpressionRunner.swift` | The waiting expressions, newest wins; `ExpressionResults` |
 | `ScriptRunner.swift` | A script's or a console line's run and its one write |
-| `CodeApproval.swift` | The allowed hashes |
-| `ScriptLibrary.swift` | The Scripts folder's list, watched as the Effects folder is (`EffectFolderWatcher`, made to watch files as well as packages) |
+| `CodeApproval.swift` | The allowed hashes and projects |
+| `ScriptLibrary.swift` | A project's `Scripts/` folder: its list, watched as the Effects folder is (`EffectFolderWatcher`, made to watch files as well as packages) |
 
 - `Model/Effects/Expression.swift`: `KeyframingRead`, the fingerprint of
-  each read, `expressionCycles`.
+  each read, `expressionReaders`, `expressionCycles`, and the moments
+  between frames for a clip's shutter.
 - `Resources/Python/amv_host/`: the helper, in Python (`__main__.py`,
   `protocol.py`, `expressions.py`, and `amv/`, the module scripts
   import). `Package.swift` copies it as it copies `Resources/Effects`.
@@ -546,16 +687,22 @@ Changed:
 
 - `Model/Effects/Keyframing.swift`: `regenerateKeyframes` takes an
   expression's samples from `ExpressionResults` where it takes `heard`
-  for Audio Keys; `keyframingReadPrint` adds the code and the reads;
-  `keyframingNote` gains "Running…", the error, not allowed, no Python
-  and the loop.
+  for Audio Keys; `keyframingReadPrint` adds the code, the reads and
+  the shutter; `refreshKeyframing(after:)` also looks at the readers of
+  the timelines an edit changed; `KeyframeSampling` takes moments
+  between frames; `keyframingNote` gains "Running…", the error, not
+  allowed, no Python and the loop.
 - `Model/Effects/BuiltInEffects.swift`, `KeyframeDesign.swift`: the
   kind, its controls, its chip.
 - `Project/ProjectFile.swift`: `expression`, `reads`, their shapes.
 - `Project/ProjectHistory.swift`: naming the next step.
 - `UI/Editor/EditorView.swift`: sending waiting expressions to the
   runner; a result landing joins `analysisArrived`.
-- `App/Preferences.swift`: `pythonInterpreter`, `showsScriptConsole`.
+- `Project/ProjectStore+Save.swift`, `ProjectStore+Backups.swift`:
+  Save As and backups copy `Scripts/`; New Script's write, through
+  `PackageCoordinator`.
+- `App/Preferences.swift`: `pythonInterpreter`, `showsScriptConsole`,
+  `recentScriptFiles`.
 - `scripts/build-app.sh`, with a new `scripts/fetch-python.sh`: the
   pinned archive by version and SHA-256, kept in `build/` between
   builds, trimmed of what the helper can't use (`idlelib`, `tkinter`,
@@ -596,9 +743,15 @@ faked.
 
 - `Model/Effects/ExpressionTests`: samples to keyframes, Smooth and
   Stepped; a fitting result is written and a stale one isn't; each kind
-  of read puts it out of date and nothing else does; a loop of two and
-  of three writes nothing and is named; reading its own target is the
-  base; Bake keeps the keyframes and drops the code.
+  of read puts it out of date and nothing else does; an edit in
+  another timeline reaches an expression that read it, and no other; a
+  loop of two and of three, within and across timelines, writes nothing
+  and is named; reading its own target is the base; Bake keeps the
+  keyframes and drops the code.
+- `Model/Effects/BetweenFramesTests`: the moments are the compositor's
+  for a clip's angle and samples; a move straight within the frame keeps
+  no extra keyframes and a curved one does; a changed shutter puts the
+  expression out of date.
 - `Project/ProjectFileExpressionTests`: an expression saves and loads
   byte for byte; `expression` on another kind is refused with its path.
 - `Scripting/ProjectBridgeTests`: each row of the `amv` table against
@@ -606,12 +759,18 @@ faked.
   was; a run that raises writes nothing; a run is one undo step with the
   script's name.
 - `Scripting/CodeApprovalTests`: allowed by typing; not after a change
-  outside; never read from a project.
+  outside; never read from a project; a project made here runs its
+  scripts, and a copy of it elsewhere asks.
+- `Scripting/ScriptLibraryTests`: a package's `Scripts/` is listed by
+  docstring; a file added or changed is picked up; Save As and a backup
+  carry the folder.
 - `Scripting/PythonHelperTests`, with a real interpreter
   (`AMV_PYTHON=<python3> swift test --filter Scripting`; skipped when
   the variable isn't set): the names in scope against hand-worked
   values; an error's line; the time limit and Stop; a helper killed
-  mid-run; output over the cap; the same seed giving the same samples.
+  mid-run; output over the cap; the same seed giving the same samples;
+  a run of the changed samples alone, with and without `prev`, giving
+  what a whole run gives.
   The helper's own Python has `unittest`s, run from here.
 - `Scripting/ConfinementTests`, on a Mac with the app bundle: the
   network, a file write, a subprocess and a read in the home folder are
@@ -621,7 +780,15 @@ faked.
 
 ## Decisions made here
 
-The request didn't settle these. Each is cheap to change before the
+Asked for, and so not open:
+
+- **Expressions read every timeline of the project**, not only their
+  own.
+- **Scripts live in the project's package**, beside its files, and
+  there is no folder of scripts in Application Support.
+- **Motion blur reads values the code gave**, not lines between frames.
+
+The request didn't settle the rest. Each is cheap to change before the
 build starts; the first two shape everything after them.
 
 1. **Expressions write keyframes** and aren't evaluated while drawing,
@@ -635,20 +802,28 @@ build starts; the first two shape everything after them.
    and would need no bundle; Python is what was asked for and what
    people who script video and animation tools write.
 4. **A Python ships in the app**, pinned, and another can be chosen.
-5. **Code runs only once allowed on this Mac, by its hash**, and typing
-   it allows it. Blender asks once per file; a hash also covers a file
-   changed afterwards.
+5. **Code runs only once allowed on this Mac**: an expression by its
+   hash, typing it being allowing it; a project's scripts by the
+   project, known by its ID and its place. Blender asks once per file;
+   a hash also covers a file changed afterwards.
 6. **Expressions are confined and scripts aren't.**
-7. **The code is saved in `project.json`**, not as `.py` files in the
-   package.
-8. **An expression reads its own timeline only.**
+7. **An expression's code is saved in `project.json`**, not as a `.py`
+   file in the package. "Beside the files" is read as being about
+   scripts; an expression belongs to one control of one clip, and
+   inline it is undone, copied and saved in presets with it.
+8. **Another timeline is read on its own clock**, at the same seconds
+   from its start, as After Effects does.
 9. **The last line is the value.**
 10. **Four fixed inputs, A to D**, rather than inputs the code declares,
     since a kind's controls come from the registry.
 11. **A script is all or nothing and one undo step.**
-12. **Scripts live in Application Support**, not in projects: a project
-    never brings a script that runs.
+12. **A project made on this Mac runs its scripts without asking**, and
+    one from elsewhere asks once.
 13. **The module is `amv`**, after the project's extension.
+14. **At most 8 moments between frames**, at the shutter's own places.
+    A clip set to 64 samples reads lines between the eight.
+15. **Runs are cut down by keeping results and re-running changed
+    samples**; NumPy and whole-clip calls wait for a measurement.
 
 ## Not yet
 
@@ -662,7 +837,10 @@ build starts; the first two shape everything after them.
   checked as a file read from disk is. `document()` only reads.
 - Running a script without a window (from a terminal, on a project
   path).
-- Code shared between expressions (a project's own module).
+- Code shared between expressions: importing a module from the
+  project's `Scripts/`, whose text would have to be allowed with the
+  expression's.
+- Between Frames for the other methods, which sample on frames only.
 - A dialog for a script's settings.
 - A debugger, completion and syntax coloring in the editor.
 - Expressions on text (a Text effect's words) and choices; numbers
@@ -681,26 +859,35 @@ In order, each step usable on its own:
    module's objects, `ScriptConsole`. Usable as: look around a project
    in Python.
 3. **Scripts that edit.** The working copy, the changes in the table,
-   refusals, the one named undo step, `ScriptLibrary`, the Scripts menu
-   and the run sheet.
+   refusals, the one named undo step; `ScriptLibrary` and the package's
+   `Scripts/`, with Save As and backups; allowing a project's scripts
+   (`CodeApproval`); the Scripts menu and the run sheet.
 4. **The expression model**, with no Python: the kind, `expression`,
-   `reads`, saving, `ExpressionResults`, `regenerateKeyframes` and the
-   fingerprints, loops. Tested with results put in the store by hand.
-5. **Allowing code.** `CodeApproval`, the badge's and designer's states,
-   Review Expressions.
+   `reads` across timelines and their readers, saving,
+   `ExpressionResults`, `regenerateKeyframes` and the fingerprints,
+   loops. Tested with results put in the store by hand.
+5. **Allowing expressions.** Hashes in `CodeApproval`, the badge's and
+   designer's states, Review Expressions.
 6. **The confined helper**: the profile, on a Mac, and its tests.
 7. **Running expressions.** `ExpressionRunner`, the helper's evaluator
    and tables, the names in scope, errors, `ExpressionEditor` and the
    chip. Not before steps 5 and 6: from the first build that runs an
    expression, it runs only allowed code, confined.
 8. **Listen To and Beats From** for expressions: `audio` and `beats`.
-9. **Following a held drag**: running against `ProjectState.held`, for
-   the inputs' sliders in the designer first.
-10. Accessibility, checked with the `accessibility-reviewer` agent.
-11. Docs, once built: this document's status; the README's row and the
+9. **Between frames**: the shutter's moments, the setting, the
+   fingerprint.
+10. **Doing less work**: re-running the changed samples alone. Then
+    measure a run on real projects, with Between Frames on.
+11. **Following a held drag**: running against `ProjectState.held`, for
+    the inputs' sliders in the designer first.
+12. **Whole-clip calls with NumPy**, only if step 10's measurement
+    shows runs that are still slow.
+13. Accessibility, checked with the `accessibility-reviewer` agent.
+14. Docs, once built: this document's status; the README's row and the
     milestones; [keyframing-effects.md](keyframing-effects.md) (the
     kinds table, "The idea", "Not yet");
-    [project-package.md](project-package.md) and
+    [project-package.md](project-package.md) (`Scripts/` in the layout,
+    in Retention and in what Save As and backups copy) and
     [effects.md](effects.md#saving) (the new keys);
     [accessibility.md](accessibility.md); `KeyboardShortcutsView`; and
     AGENTS.md (the `Scripting/` folder, `AMV_PYTHON`, and what
