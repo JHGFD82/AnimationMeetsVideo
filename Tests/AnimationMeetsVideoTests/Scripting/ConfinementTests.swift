@@ -69,6 +69,31 @@ struct ConfinementTests {
         #expect(end == .samples([1.25, 1.5]))
     }
 
+    /// An error comes back as itself: writing it up mustn't need anything
+    /// the sandbox refuses, as asking for the working folder did, which
+    /// turned every error into "Operation not permitted".
+    @Test func anErrorComesBackAsItself() async throws {
+        let helper = helper()
+        defer { Task { await helper.shutDown() } }
+        let end = try await helper.run(
+            HelperRequest(kind: .line, code: "x = 1\nraise ValueError(\"nothing to hear\")"),
+            output: { _ in }, answer: { _ in .error(.value("no calls")) }
+        )
+        guard case .failed(let failure) = end else {
+            Issue.record("Expected a failure, got \(end)")
+            return
+        }
+        #expect(failure.exception == "ValueError")
+        #expect(failure.message == "nothing to hear")
+        #expect(failure.line == 2)
+    }
+
+    /// Python's own idea of the working folder works confined, for code
+    /// that resolves a relative path.
+    @Test func theWorkingFolderCanBeRead() async throws {
+        #expect(try await outcome("import os\nos.getcwd()") == "'allowed'")
+    }
+
     @Test func theNetworkIsRefused() async throws {
         let result = try await outcome("import socket\nsocket.create_connection((\"1.1.1.1\", 53), timeout=3).close()")
         #expect(result != "'allowed'")

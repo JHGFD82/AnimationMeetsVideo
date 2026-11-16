@@ -270,8 +270,13 @@ final class HelperConnection: @unchecked Sendable {
         process.standardError = errors
         // Nothing of the app's own environment that would change how
         // Python starts (it ignores PYTHON* under -E), and a working
-        // directory that is always there.
-        process.currentDirectoryURL = URL(filePath: NSTemporaryDirectory())
+        // directory that is always there. Confined, it is the helper's own
+        // code, which the sandbox lets it read: the temporary folder isn't,
+        // so os.getcwd(), and so os.path.abspath of a relative path,
+        // failed with "Operation not permitted".
+        process.currentDirectoryURL = confined
+            ? host.deletingLastPathComponent().deletingLastPathComponent()
+            : URL(filePath: NSTemporaryDirectory())
 
         let reader = reader
         fromHelper.fileHandleForReading.readabilityHandler = { handle in

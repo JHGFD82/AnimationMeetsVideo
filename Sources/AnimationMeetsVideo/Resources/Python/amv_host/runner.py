@@ -250,7 +250,11 @@ def internal_error(error):
 
 
 def _is_host(path):
-    return os.path.abspath(path).startswith(HOST_FOLDER + os.sep)
+    # A frame's file is an absolute path for code loaded from a file, and
+    # a name like "<expression>" otherwise, which is never the helper's.
+    # abspath of such a name would ask for the working folder, which can
+    # fail, and then the error being written up is lost.
+    return os.path.isabs(path) and os.path.normpath(path).startswith(HOST_FOLDER + os.sep)
 
 
 def serve(channel, on_host=None):
