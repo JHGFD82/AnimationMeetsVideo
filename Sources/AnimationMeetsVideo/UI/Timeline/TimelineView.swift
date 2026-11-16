@@ -345,6 +345,7 @@ struct TimelineView: View {
                     }
                     .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
                     .accessibilityLabel("Snapping")
+                    TimelineLoopButton(loop: playback.loop, onToggle: toggleLoop)
                     Button {
                         addAdjustmentLayer()
                     } label: {

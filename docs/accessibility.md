@@ -78,6 +78,7 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ← / → | Step the playhead a frame; ten with Shift |
 | ↑ / ↓ | Go to the previous or next edit (any clip's start or end, or the end of the timeline) |
 | Home / End | Go to the start or the end |
+| C | Loop playback over the loop region, on or off; with no region, make one over the selected clips, else the whole timeline (also Timeline > Loop Playback, with Set Loop Start and End to Playhead beside it) |
 | ⌘B | Split the selected clip (or the clips picked together) at the playhead; with nothing selected, every clip the playhead is in |
 | ⇧⌘B | Split every clip the playhead is in, on every layer |
 | , / . | Nudge the selected clip a frame earlier or later; ten with Shift |
@@ -156,6 +157,12 @@ playhead to the middle of the view when it lands out of view.
   down, rename it and delete it.
 - **Sections** read their name and span; pressing selects, and actions
   rename and delete.
+- **The loop bar** is a group named "Loop". The region in it reads "Loop
+  region" and whether it is on, with its span ("On, from 00:00:04:00 to
+  00:00:08:00"); pressing turns it on or off, and its actions move
+  either end or the whole region a frame earlier or later and remove
+  it. The header's Loop button, C and the Timeline menu do the same
+  without the bar, and turning it on or off is announced ("Loop on").
 - **Keyframes** read their time and ease; pressing moves the playhead to
   one, and actions apply an ease or delete it.
 - **Joined transitions** read their kind, length and curve; pressing

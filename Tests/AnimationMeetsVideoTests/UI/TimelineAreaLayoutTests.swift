@@ -97,4 +97,9 @@ import Testing
     // Layouts saved before layers had sizes of their own still load.
     let old = #"{"hidden":[],"layerHeights":["video",56,"sound",44,"music",44],"shares":["video",0.5,"sound",0.25,"music",0.25],"showsSections":true}"#
     #expect(TimelineAreaLayout(rawValue: old)?.layerScales.isEmpty == true)
+    // And from before the loop row: it shows.
+    #expect(TimelineAreaLayout(rawValue: old)?.showsLoop == true)
+    var hidden = TimelineAreaLayout()
+    hidden.showsLoop = false
+    #expect(TimelineAreaLayout(rawValue: hidden.rawValue)?.showsLoop == false)
 }

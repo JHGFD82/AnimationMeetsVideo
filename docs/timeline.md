@@ -417,6 +417,41 @@ renaming doesn't rebuild playback. They're saved in `project.json` under
 each timeline as `sections` (`id`, `name`, `start`, `end`), left out while a
 timeline has none.
 
+## Loop region
+
+A slim bar between the ruler and the sections holds the timeline's
+**loop region**, a stretch that playback repeats, as Logic Pro's cycle
+range (`LoopBar`, `PlaybackLoop`; the whole design is in
+[loop-region.md](loop-region.md)). There is at most one per timeline. It
+is drawn in cyan with the loop glyph and its length, and greyed while
+off.
+
+- Drag across empty bar to draw one; it is turned on, and replaces any
+  region there was (that one stays, dimmed, until the release, and
+  Escape brings it back). Too short a drag, under a quarter second,
+  makes nothing.
+- Drag an edge to resize it, or the middle to move it. Edges snap as
+  everything else does (below), and the region lands on frames, stays
+  at least a quarter second long and within the timeline.
+- Click it to turn it on or off. Its right-click menu turns it on or off
+  and removes it.
+- The loop button beside snapping, **C**, and **Timeline > Loop
+  Playback** do the same, and with no region make one over the selected
+  clips, else the whole timeline. **Set Loop Start to Playhead** and
+  **Set Loop End to Playhead** in the same menu move an end (or make a
+  region from the playhead to the end, or the start to the playhead),
+  and **Remove Loop Region** takes it away.
+- **Loop row** in the view options shows or hides the bar.
+
+While it is on, playing that reaches its end goes back to its start.
+Play starts at the playhead when that is inside the region, else at its
+start; turning it on while playing goes to its start at once, and
+turning it off plays on. Moving the playhead by hand pauses as ever. It
+doesn't change what is exported or the timeline's length, and while a
+take records over the playing timeline it plays straight on. It is
+where the timeline was left, not an edit: no undo step, kept in
+`view-state.json` with the playhead.
+
 ## Tools
 
 A segmented control in the timeline's header picks what dragging and
@@ -464,6 +499,8 @@ beat is drawn, and only those snap).
 - **The blade** cuts at a target near the pointer, so it can cut exactly at
   the playhead or another clip's edge.
 - **Scrubbing** in the ruler snaps the playhead to clip edges and beats.
+- **The loop region**'s edges snap when drawn, resized or moved (a move
+  by whichever end is nearer). Nothing snaps to the loop region.
 
 A clip never snaps to its own edges. While a drag has snapped, a yellow
 line runs through the layers at the target. The usual placement rules still
@@ -1036,8 +1073,9 @@ as it would before it was rendered.
 - Thumbnails of the frames in the transition footage lane.
 - Trimming at a joined cut from the clips themselves (the transition box
   covers the edges; roll the cut instead).
-- A loop region: a bar under the ruler to draw a stretch that playback
-  repeats. Planned in [loop-region.md](loop-region.md).
+- The loop bar in the Motion Designer, the graph editors and the
+  Keyframe Designer, and the loop region's color. Planned in
+  [loop-region.md](loop-region.md).
 - Colors for clips, sections and a whole layer's clips from their
   right-click menus, and Clear Layer. Planned in
   [bar-colors.md](bar-colors.md).

@@ -310,10 +310,14 @@ Requirements for the file:
 `view-state.json` holds where the project's window was left: the timeline
 open, and for each timeline shown, its playhead (an exact rational, as in
 `project.json`), its zoom and sideways scroll, how far down each area of
-layers was scrolled, and the clip (or transition) selected, which the
-inspector and effects panel show. Opening the project opens that timeline
-and puts each back as it was (see [timeline.md](timeline.md), "Each
-timeline keeps its place").
+layers was scrolled, the clip (or transition) selected, which the
+inspector and effects panel show, and its loop region (`loop`: `start`
+and `end` as exact rationals, and `on`; see
+[loop-region.md](loop-region.md), "Saving"). Opening the project opens
+that timeline and puts each back as it was (see
+[timeline.md](timeline.md), "Each timeline keeps its place"). A file
+without `loop`, written before there were loop regions, reads as none,
+and a damaged one is dropped on its own.
 
 It also holds what the browser remembers (`browser`, left out when there
 is nothing): the range last picked of each clip and of each timeline's

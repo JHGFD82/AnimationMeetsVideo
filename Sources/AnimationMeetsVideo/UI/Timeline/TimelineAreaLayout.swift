@@ -21,6 +21,8 @@ struct TimelineAreaLayout: Equatable, Codable {
     var hidden: Set<LayerKind> = []
     /// Whether the sections lane under the ruler shows.
     var showsSections = true
+    /// Whether the loop bar under the ruler shows.
+    var showsLoop = true
     var shares: [LayerKind: CGFloat] = [.video: 0.5, .sound: 0.25, .music: 0.25]
     var layerHeights: [LayerKind: CGFloat] = [.video: 56, .sound: 44, .music: 44]
     /// Layers sized apart from their area, as a multiple of its height.
@@ -156,7 +158,7 @@ struct TimelineAreaLayout: Equatable, Codable {
     // which goes through rawValue, and rawValue encodes with Codable, so
     // the two would call each other until the stack ran out.
     private enum CodingKeys: String, CodingKey {
-        case hidden, shares, layerHeights, layerScales, showsSections
+        case hidden, shares, layerHeights, layerScales, showsSections, showsLoop
     }
 
     init() {}
@@ -167,6 +169,7 @@ struct TimelineAreaLayout: Equatable, Codable {
         shares = try container.decode([LayerKind: CGFloat].self, forKey: .shares)
         layerHeights = try container.decode([LayerKind: CGFloat].self, forKey: .layerHeights)
         showsSections = try container.decodeIfPresent(Bool.self, forKey: .showsSections) ?? true
+        showsLoop = try container.decodeIfPresent(Bool.self, forKey: .showsLoop) ?? true
         layerScales = try container.decodeIfPresent([UUID: CGFloat].self, forKey: .layerScales) ?? [:]
     }
 
@@ -176,6 +179,7 @@ struct TimelineAreaLayout: Equatable, Codable {
         try container.encode(shares, forKey: .shares)
         try container.encode(layerHeights, forKey: .layerHeights)
         try container.encode(showsSections, forKey: .showsSections)
+        try container.encode(showsLoop, forKey: .showsLoop)
         try container.encode(layerScales, forKey: .layerScales)
     }
 }

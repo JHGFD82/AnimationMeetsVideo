@@ -107,6 +107,7 @@ import Testing
             TimelineActions(
                 togglePlayback: {}, step: { _ in }, goToStart: {}, goToEnd: {}, previousEdit: {}, nextEdit: {},
                 splitAtPlayhead: {}, splitAllAtPlayhead: {}, nudge: { _ in }, deleteSelection: {}, toggleEnabled: {}, isSnapping: snapping, toggleSnapping: {},
+                toggleLoop: {}, setLoopStart: {}, setLoopEnd: {}, removeLoop: {},
                 tool: tool, setTool: { _ in }, zoomIn: {}, zoomOut: {}, zoomToFit: {}, renderNow: nil,
                 timelineID: t, structure: project.structure
             )

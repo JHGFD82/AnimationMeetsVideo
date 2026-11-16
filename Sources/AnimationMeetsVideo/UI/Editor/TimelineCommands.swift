@@ -22,6 +22,13 @@ struct TimelineActions {
     var toggleEnabled: () -> Void
     var isSnapping: Bool
     var toggleSnapping: () -> Void
+    /// The loop region: on or off (made when there is none), an end set
+    /// to the playhead, and taken away. Whether each would do something
+    /// is in `TimelineMenuState`, which follows the playhead.
+    var toggleLoop: () -> Void
+    var setLoopStart: () -> Void
+    var setLoopEnd: () -> Void
+    var removeLoop: () -> Void
     var tool: TimelineTool
     var setTool: (TimelineTool) -> Void
     var zoomIn: () -> Void
@@ -60,9 +67,9 @@ extension FocusedValues {
     }
 }
 
-/// The Timeline menu: playback, moving the playhead, splitting, tools,
-/// snapping, skimming and zoom, so they can be found and not only
-/// remembered.
+/// The Timeline menu: playback, the loop region, moving the playhead,
+/// splitting, tools, snapping, skimming and zoom, so they can be found
+/// and not only remembered.
 ///
 /// Most of these keys have no modifier, and a menu key equivalent without
 /// one would take the key from a text field or list being typed in. The
@@ -90,6 +97,20 @@ struct TimelineCommands: Commands {
         CommandMenu("Timeline") {
             Button("Play/Pause  Space") { actions?.togglePlayback() }
                 .disabled(!offers(\.canPlay))
+
+            Divider()
+
+            Toggle("Loop Playback  C", isOn: Binding(
+                get: { state?.isLooping ?? false },
+                set: { _ in actions?.toggleLoop() }
+            ))
+            .disabled(!offers(\.canToggleLoop))
+            Button("Set Loop Start to Playhead") { actions?.setLoopStart() }
+                .disabled(!offers(\.canSetLoopStart))
+            Button("Set Loop End to Playhead") { actions?.setLoopEnd() }
+                .disabled(!offers(\.canSetLoopEnd))
+            Button("Remove Loop Region") { actions?.removeLoop() }
+                .disabled(!offers(\.hasLoop))
 
             Divider()
 

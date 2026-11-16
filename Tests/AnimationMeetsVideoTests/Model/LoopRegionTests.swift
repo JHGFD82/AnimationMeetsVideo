@@ -93,6 +93,32 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(early.start == seconds(2) && early.end == seconds(6))
     }
 
+    /// The menu's Set items and what the loop button makes with no region,
+    /// on a timeline ten seconds long.
+    @Test func theMenuAndTheButtonMakeOrMoveARegion() throws {
+        var project = EditingProject.empty
+        let media = MediaClip(name: "Clip", kind: .video, url: nil, duration: seconds(10), frameRate: 24, colorSpace: .rec709, codecName: "H.264")
+        let imported = project.importClip(media, intoTimeline: project.rootTimelineID)
+        let ids = try #require(imported)
+        let t = try #require(project.timeline(id: project.rootTimelineID))
+
+        // No region: from the playhead to the end, or the start to it.
+        #expect(t.loopSettingStart(of: nil, to: seconds(4)) == LoopRegion(start: seconds(4), end: seconds(10)))
+        #expect(t.loopSettingEnd(of: nil, to: seconds(4)) == LoopRegion(start: .zero, end: seconds(4)))
+        #expect(t.loopSettingStart(of: nil, to: seconds(10)) == nil)
+
+        // A region: the edge moves by the resize rules, off or on as it was.
+        let region = LoopRegion(start: seconds(2), end: seconds(6), isOn: false)
+        #expect(t.loopSettingStart(of: region, to: seconds(3)) == LoopRegion(start: seconds(3), end: seconds(6), isOn: false))
+        #expect(t.loopSettingEnd(of: region, to: seconds(1))?.end == seconds(2.25))
+        #expect(t.loopSettingStart(of: region, to: seconds(2)) == nil)
+
+        // Over the clips picked, else the whole timeline.
+        #expect(t.defaultLoop(over: []) == LoopRegion(start: .zero, end: seconds(10)))
+        #expect(t.defaultLoop(over: [ids.clipID]) == LoopRegion(start: .zero, end: seconds(10)))
+        #expect(EditingProject.empty.timelines[0].defaultLoop(over: []) == nil)
+    }
+
     @Test func aRegionLongerThanTheLimitsKeepsItsStartAtTheirs() {
         let t = timeline()
         let region = LoopRegion(start: seconds(0), end: seconds(20))

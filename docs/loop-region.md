@@ -1,17 +1,18 @@
 # Loop region
 
-Status: **partly built, nothing to see yet**. Built: the model and its
-rules (`Model/LoopRegion.swift`), the loop in the player
+Status: **built in the main timeline; planned elsewhere**. Built: the
+model and its rules (`Model/LoopRegion.swift`), the loop in the player
 (`Playback/PlaybackLoop.swift`, `PlaybackModel.jump(to:)` and the play
-rule), saving it in the view state with the editor surface's park and
-show, and its suspension while a take records. Not built: the bar, the
-buttons, the key and the menu items in every host, and the region's
-color, which waits for `BarColor` ([bar-colors.md](bar-colors.md)).
-Until the bar or a button is built nothing makes a region, so the app
-looks and plays as before. See [Building it](#building-it) for what is
-left. The rest of this document is written for whoever builds it: it
-says what the person sees, then where each piece goes in the code, then
-the order to build it in. Choices made while writing it that the
+rule), saving it in the view state, its suspension while a take
+records, and in the main timeline the bar (`UI/Components/LoopBar.swift`),
+the loop button, C and the Timeline menu's items
+(`UI/Timeline/TimelineLoop.swift`). Not built: the bar, button and key
+in the Motion Designer, the graph editors and the Keyframe Designer, and
+the region's color, which waits for `BarColor`
+([bar-colors.md](bar-colors.md)). See [Building it](#building-it) for
+what is left. The rest of this document is written for whoever builds
+it: it says what the person sees, then where each piece goes in the
+code, then the order to build it in. Choices made while writing it that the
 request didn't settle are listed under
 [Decisions made here](#decisions-made-here).
 
@@ -46,7 +47,7 @@ Colors for the region (its right-click **Color** menu) are described in
   a clip turned off is (`Design.clipFill(tone, selected: false, enabled: false)`,
   outline in `tone.greyed()`).
 - On the chip: the `Design.Symbol.loop` glyph, then the region's length
-  as timecode (`CMTime.timecode(frameRate:)`), in
+  as compact timecode (`CMTime.compactTimecode(frameRate:)`, "4:00"), in
   `Design.Typeface.numericMicro`, one line, cut off when the chip is too
   narrow. The ink is the one [bar-colors.md](bar-colors.md#ink) picks
   for the fill.
@@ -72,7 +73,7 @@ Colors for the region (its right-click **Color** menu) are described in
   it, edges included) to turn it off or on.
 - **Escape** during any of these drags cancels it (`EscapableDrag`).
 - **Right-click** the region: **Turn Loop Off** / **Turn Loop On**,
-  **Color** ▸, **Remove Loop Region**.
+  **Color** ▸ (not built yet), **Remove Loop Region**.
 - While a drag runs, the bar draws a draft; the region itself changes
   once, on release. Playback keeps looping the old range until then.
 
@@ -397,7 +398,7 @@ struct LoopBar: View {
     let onAdjust: (LoopRegion) -> Void  // PlaybackLoop.adjust (and Color)
     let onRemove: () -> Void            // PlaybackLoop.remove
     let onToggle: () -> Void            // PlaybackLoop.toggle
-    let onPickColor: () -> Void         // "Other…", see bar-colors.md
+    let onPickColor: () -> Void         // "Other…", see bar-colors.md; not built yet
 
     static let height: CGFloat = SectionLane.height
 }
@@ -405,9 +406,9 @@ struct LoopBar: View {
 
 Take from `SectionLane`, which solved the same problems:
 
-- A `draft` state drawn instead of the region during a drag, and kept
-  for a moment after the drop until the new region arrives
-  (`commitDrop` / `pendingDrop`), so it doesn't flash back.
+- A `draft` state drawn instead of the region during a drag. Unlike a
+  section's, it isn't kept past the drop: the region is the player's and
+  changes as soon as it is handed over, so there is no edit to wait for.
 - Gestures measure from the region as the host has it, never from the
   draft.
 - The move is the chip's own `.gesture`; the edge handles are views
@@ -424,7 +425,9 @@ Differences from `SectionLane`:
   backwards in timeline time. Take the min and max of the two.
 - A click is told from a drag on release (moved less than 3 points),
   not on mouse-down: a click toggles, and toggling on mouse-down would
-  toggle at the start of every drag.
+  toggle at the start of every drag. The region and its edges take a
+  drag with no minimum distance and start following it only past 3
+  points, so one gesture tells both.
 - No selection, no rename, no Option-copy, no double-click.
 
 ## Hosting it
@@ -440,8 +443,8 @@ Differences from `SectionLane`:
   the names column (`Design.Typeface.micro`, `textTertiary`), then a
   `TimelineLoopLane(parent:width:)` beside `TimelineSectionLane`, with
   the same `rubberBandStretch`, `rubberBandScroll` and `clipped`.
-- `TimelineLoopLane` reads `parent.playback.loop.region` in its own
-  body. `TimelineView` is `Equatable` and must not read the loop as its
+- `TimelineLoopLane` (`TimelineLoop.swift`) reads
+  `parent.playback.loop.region` in its own body. `TimelineView` is `Equatable` and must not read the loop as its
   body is built, or toggling would rebuild the whole timeline; that is
   why the playhead has `PlayheadReader`.
 - Mapping: `viewport.x(atSeconds:)` and `viewport.seconds(atX:)`.
@@ -449,13 +452,17 @@ Differences from `SectionLane`:
   `liveSnap.targets?.nearest(to:within:)` with `snapTolerance(viewport)`.
   Snap indicator: `viewportModel.snapIndicator`.
 - The loop button goes in the header beside the snapping toggle, as a
-  small view of its own that reads the loop (`PlayheadTimecode` is the
-  pattern), not in `TimelineView.body`.
+  small view of its own that reads the loop (`TimelineLoopButton`), not
+  in `TimelineView.body`.
 - `TimelineKeyboard.handleKey`: `c` without modifiers toggles; with no
   region it makes one over the selected clips (`selection` or
-  `groupSelection`: earliest start to latest end), else `0...duration`.
+  `groupSelection`: earliest start to latest end), else `0...duration`
+  (`Timeline.defaultLoop(over:)`).
 - `TimelineActions`, `TimelineCommands`, `TimelineMenuState`: the four
-  menu items, enabled as the table says.
+  menu items, enabled as the table says. What the Set items make is
+  `Timeline.loopSettingStart(of:to:)` and `loopSettingEnd(of:to:)`, so
+  the menu state and the actions agree. `TimelineMenuStatePublisher`
+  reads the loop, so the menu follows it without the timeline's body.
 - `TimelineRecording.startRecording(_:playing:)` sets
   `playback.loop.isSuspended` while a take records with the timeline
   playing, and clears it when the take stops.
@@ -576,9 +583,9 @@ build starts.
 
 ## Building it
 
-Steps 2 to 4 are built, without the region's color, and the recording
-suspension from step 5 with them. None of it has been compiled or run
-yet: it was written where there is no Xcode.
+Steps 2 to 5 are built, without the region's color. None of it has
+been compiled or run yet: it was written where there is no Xcode, so
+build it, run the tests and look at the snapshot before going on.
 
 1. `BarColor` from [bar-colors.md](bar-colors.md) (its model step).
    Not built; then add `color` to `LoopRegion`, `PlaybackLoop.adjust`
@@ -588,9 +595,10 @@ yet: it was written where there is no Xcode.
    `PlaybackLoopTests`.
 4. Built: saving in the view state and the surface's park and show,
    with `ViewStateFileTests`.
-5. `Design.loop`, `LoopBar`, and the main timeline's row, button, key
-   and menu items; the snapshot case and the event tests. Built of it:
-   `TimelineRecording` suspending the loop while a take records.
+5. Built: `Design.loop`, `LoopBar`, and the main timeline's row,
+   button, key and menu items; `TimelineRecording` suspending the loop
+   while a take records; the `loopBar` snapshot case and
+   `LoopBarInteractionTests`.
 6. The Motion Designer's bar, button and key.
 7. The graph editors' and the Keyframe Designer's bar, toggle and key.
 8. Accessibility, checked with the `accessibility-reviewer` agent.

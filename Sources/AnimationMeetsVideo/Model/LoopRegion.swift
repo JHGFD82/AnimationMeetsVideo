@@ -72,6 +72,41 @@ extension Timeline {
         return moved
     }
 
+    /// What Set Loop Start to Playhead makes of `region`: its start at
+    /// `time` by the resize rules, or with no region, one from `time` to
+    /// the timeline's end. Nil where it would change or make nothing.
+    func loopSettingStart(of region: LoopRegion?, to time: CMTime) -> LoopRegion? {
+        let limits = CMTimeRange(start: .zero, end: duration)
+        guard let region else {
+            return resolvedLoop(from: time, to: duration, within: limits).map { LoopRegion(start: $0.start, end: $0.end) }
+        }
+        let resized = resolvedLoopEdge(region, edge: .start, to: time, within: limits)
+        return resized == region ? nil : resized
+    }
+
+    /// What Set Loop End to Playhead makes of `region`: its end at `time`
+    /// by the resize rules, or with no region, one from the timeline's
+    /// start to `time`. Nil where it would change or make nothing.
+    func loopSettingEnd(of region: LoopRegion?, to time: CMTime) -> LoopRegion? {
+        let limits = CMTimeRange(start: .zero, end: duration)
+        guard let region else {
+            return resolvedLoop(from: .zero, to: time, within: limits).map { LoopRegion(start: $0.start, end: $0.end) }
+        }
+        let resized = resolvedLoopEdge(region, edge: .end, to: time, within: limits)
+        return resized == region ? nil : resized
+    }
+
+    /// The region the loop button and C make when there is none: over
+    /// the clips `ids` (earliest start to latest end), else the whole
+    /// timeline. Nil when that is too short to loop.
+    func defaultLoop(over ids: Set<UUID>) -> LoopRegion? {
+        let clips = layers.flatMap(\.clips).filter { ids.contains($0.id) }
+        let from = clips.map(\.startOffset).min() ?? .zero
+        let to = clips.map(\.endOffset).max() ?? duration
+        let limits = CMTimeRange(start: .zero, end: duration)
+        return resolvedLoop(from: from, to: to, within: limits).map { LoopRegion(start: $0.start, end: $0.end) }
+    }
+
     /// The frames inside `limits`: its start rounded up and its end down,
     /// so ends clamped to them stay on frames. Nil for limits that hold no
     /// whole frame or aren't numeric.

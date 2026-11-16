@@ -25,7 +25,8 @@ extension TimelineView {
         let viewport = viewport(width: trackWidth)
         let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
         let shownAreas = shownAreaLayout.shown
-        let railHeight = rulerHeight + (shownAreaLayout.showsSections ? SectionLane.height : 0) + separatorHeight
+        let railHeight = rulerHeight + (shownAreaLayout.showsLoop ? LoopBar.height : 0)
+            + (shownAreaLayout.showsSections ? SectionLane.height : 0) + separatorHeight
         // Whatever height the timeline is given goes to the areas,
         // split by their shares: a taller timeline shows more
         // layers, it doesn't make them taller.
@@ -47,15 +48,26 @@ extension TimelineView {
         )
 
         VStack(alignment: .leading, spacing: 0) {
-            // The time rail: the ruler and the sections under it
-            // are one raised assembly, lit along its top, and the
-            // only part of the timeline that stands proud of the
+            // The time rail: the ruler, the loop bar and the sections
+            // under it are one raised assembly, lit along its top, and
+            // the only part of the timeline that stands proud of the
             // track area below.
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     TimelineColumnHeaderRow(height: rulerHeight)
                         .frame(width: labelColumnWidth, alignment: .leading)
                     TimelineRulerLane(parent: self, width: trackWidth)
+                }
+                if shownAreaLayout.showsLoop {
+                    HStack(spacing: 0) {
+                        Text("Loop")
+                            .font(Design.Typeface.micro)
+                            .foregroundStyle(Design.textTertiary)
+                            .padding(.leading, Design.Space.step)
+                            .frame(width: labelColumnWidth, height: LoopBar.height, alignment: .leading)
+                            .accessibilityHidden(true)
+                        TimelineLoopLane(parent: self, width: trackWidth)
+                    }
                 }
                 if shownAreaLayout.showsSections {
                     HStack(spacing: 0) {

@@ -28,6 +28,7 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "← →", does: "Step a frame; ten with ⇧"),
             Shortcut(keys: "↑ ↓", does: "Previous or next edit"),
             Shortcut(keys: "Home End", does: "Go to the start or the end"),
+            Shortcut(keys: "C", does: "Loop playback over the loop region; makes one over the selection if there is none"),
         ]),
         Group(title: "Editing clips", shortcuts: [
             Shortcut(keys: "⌘B", does: "Split the selected clips at the playhead"),

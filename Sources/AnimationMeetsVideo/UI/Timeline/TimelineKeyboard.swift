@@ -100,6 +100,11 @@ extension TimelineView {
             snapping.toggle()
             return true
         }
+        // C, as Logic's cycle: the loop on or off, made if there is none.
+        if key == "c", !flags.contains(.shift) {
+            toggleLoop()
+            return true
+        }
         if let chosen = TimelineTool(shortcutKey: key), !flags.contains(.shift) {
             tool = chosen
             return true
@@ -169,6 +174,10 @@ extension TimelineView {
             toggleEnabled: { toggleSelectedClipsEnabled() },
             isSnapping: snapping,
             toggleSnapping: { snapping.toggle() },
+            toggleLoop: { toggleLoop() },
+            setLoopStart: { setLoopStartToPlayhead() },
+            setLoopEnd: { setLoopEndToPlayhead() },
+            removeLoop: { playback.loop.remove() },
             tool: tool,
             setTool: { tool = $0 },
             zoomIn: { zoomAroundPlayhead(by: zoomStep) },
