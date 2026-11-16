@@ -298,6 +298,41 @@ struct HandleEdit {
     }
 }
 
+/// One value the arrow keys and VoiceOver change, one of what Tab picks:
+/// "Position", "Center".
+struct HandleKeyTarget {
+    /// The handle whose nudge changes it.
+    var handle: HandleID
+    var name: String
+    /// As the readout says it: "120, −40".
+    var value: String
+    /// Its parts as VoiceOver's adjustable elements: Position X and Y.
+    var axes: [HandleAxis]
+    /// More of VoiceOver's actions on each of its elements: the anchor's
+    /// moves to the box's points.
+    var actions: [HandleAction] = []
+}
+
+/// One part of a key target, as VoiceOver adjusts it.
+struct HandleAxis {
+    /// "Position X".
+    var name: String
+    /// "120 pixels".
+    var value: String
+    /// The arrows that make it bigger and smaller.
+    var increment: NudgeDirection
+    var decrement: NudgeDirection
+    /// The names of the ten-fold steps: "Move 10 pixels right", "Move 10
+    /// pixels left".
+    var larger: (increment: String, decrement: String)
+}
+
+/// A named edit VoiceOver offers.
+struct HandleAction {
+    var name: String
+    var edit: (HandleContext) -> HandleEdit?
+}
+
 /// Something the canvas draws handles for.
 protocol ViewerHandleSet {
     /// The handles at the playhead, in the order a press is given to them:
@@ -317,6 +352,13 @@ protocol ViewerHandleSet {
     func edit(_ drag: HandleDrag, _ context: HandleContext) -> HandleEdit?
     /// The same for one press of an arrow key.
     func nudge(_ handle: HandleID, _ direction: NudgeDirection, step: NudgeStep, _ context: HandleContext) -> HandleEdit?
+    /// What the arrows can pick with Tab, in order.
+    func keyTargets(_ context: HandleContext) -> [HandleKeyTarget]
+    /// What a handle changes, back at its default: VoiceOver's Reset.
+    func reset(_ handle: HandleID, _ context: HandleContext) -> HandleEdit?
+    /// Why a press on `handle` can't drag it, beyond the clip being
+    /// locked: a Keyframing effect drives what it writes.
+    func refusal(for handle: HandleID, _ context: HandleContext) -> HandleRefusal?
 }
 
 /// Finding the handle under the pointer, in view points.

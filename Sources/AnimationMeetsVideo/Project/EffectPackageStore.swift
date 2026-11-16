@@ -508,7 +508,7 @@ enum EffectPackageStore {
                 .required("components", .array(.string)), .required("default", .numbers(count: nil)),
                 .optional("range", .numbers(count: 2)), .optional("unit", unit), .optional("step", .number),
             ]),
-            "point": object(common + [.optional("default", .numbers(count: 2))]),
+            "point": object(common + [.optional("default", .numbers(count: 2)), .optional("handle", .bool)]),
             "color": object(common + [.required("default", .numbers(count: nil))]),
             "curve": object(common + [
                 .optional("default", .array(.numbers(count: 2))),
@@ -969,9 +969,12 @@ enum EffectPackageStore {
                     range: range, componentNames: components
                 )
             case "point":
-                return ControlDefinition(
+                var definition = ControlDefinition(
                     kind, name, owner, defaults: StrictJSON.numbers(entry["default"]) ?? [0, 0], unit: " px", componentNames: ["Δx", "Δy"]
                 )
+                definition.isPoint = true
+                definition.showsViewerHandle = entry["handle"] as? Bool ?? true
+                return definition
             case "curve":
                 let points = try (entry["default"] as? [Any])?.map { item in
                     guard let pair = StrictJSON.numbers(item), pair.count == 2 else {

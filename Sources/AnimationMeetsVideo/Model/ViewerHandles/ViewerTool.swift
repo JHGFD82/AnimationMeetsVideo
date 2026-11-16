@@ -15,9 +15,16 @@ enum ViewerTool: String, CaseIterable, Identifiable, Sendable {
 
 /// Which handle sets the viewer shows for a clip, decided in one place.
 enum ViewerHandleSets {
-    /// Transform handles for a clip with pictures that isn't an
-    /// adjustment clip; later, the selected effect's own and a tool's.
-    static func active(for clip: TimelineClip, on layer: TimelineLayer, in project: EditingProject) -> [any ViewerHandleSet] {
+    /// The effect selected in the effects panel's own handles when it has
+    /// any (its point controls), on any clip, an adjustment clip's
+    /// included; otherwise Transform handles, for a clip with pictures
+    /// that isn't an adjustment clip. Later, a tool's own set.
+    static func active(
+        for clip: TimelineClip, on layer: TimelineLayer, in project: EditingProject, selectedEffectID: UUID?
+    ) -> [any ViewerHandleSet] {
+        if let selectedEffectID, let effect = clip.effects.first(id: selectedEffectID), PointControlHandles.applies(to: effect) {
+            return [PointControlHandles(effectID: effect.id)]
+        }
         guard project.hasEffectStack(clip), clip.source != .adjustment, !layer.isAdjustment else { return [] }
         return [TransformHandles()]
     }

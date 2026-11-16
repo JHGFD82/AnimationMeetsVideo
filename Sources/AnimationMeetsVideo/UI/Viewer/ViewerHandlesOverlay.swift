@@ -17,7 +17,8 @@ import SwiftUI
 ///
 /// A click gives the canvas the keys: Tab picks what the arrows change,
 /// and the arrows nudge it. VoiceOver reaches each value as an adjustable
-/// element with the same steps.
+/// element with the same steps. Both come from the handle sets
+/// (`keyTargets`), so every set gets them.
 struct ViewerHandlesOverlay: View {
     let source: ViewerHandlesSource
     let mapping: ViewerMapping
@@ -37,8 +38,9 @@ struct ViewerHandlesOverlay: View {
     @State private var pictureSizes: [UUID: CGSize] = [:]
     @State private var book = HandleDragBook()
     @State private var hovered: HandleID?
-    /// Where the pointer rests on the anchor, for its hover text.
-    @State private var anchorHover: CGPoint?
+    /// Where the pointer rests on a handle with hover text (the anchor, a
+    /// point), for showing it.
+    @State private var hoverPoint: CGPoint?
     @FocusState private var isFocused: Bool
 
     /// The keys the canvas takes while it has the keyboard and handles
@@ -71,7 +73,7 @@ struct ViewerHandlesOverlay: View {
         let list = shown.map { handles($0) } ?? []
         ZStack(alignment: .topLeading) {
             if let shown {
-                Canvas { context, _ in draw(shown, list, in: &context) }
+                Canvas { context, _ in draw(shown, list, through: mapping, in: &context) }
                     .decorative()
                 readouts(shown, list)
                 chips(shown)
@@ -121,7 +123,9 @@ struct ViewerHandlesOverlay: View {
               found.clip.enabled, time >= found.clip.startOffset, time < found.clip.endOffset
         else { return nil }
         let original = found.clip, layer = found.layer
-        let sets = ViewerHandleSets.active(for: original, on: layer, in: project)
+        let sets = ViewerHandleSets.active(
+            for: original, on: layer, in: project, selectedEffectID: source.effectsState.selectedEffectID
+        )
         guard !sets.isEmpty else { return nil }
         let drawn = source.state.drag.flatMap { $0.clipID == original.id ? $0.clip : nil } ?? original
         let sourceTime = original.sourceTime(atTimelineTime: time)
@@ -147,6 +151,27 @@ struct ViewerHandlesOverlay: View {
         shown.sets.reversed().flatMap { $0.handles(shown.context) }
     }
 
+    /// The set a handle or area belongs to, which edits it.
+    private func owner(of id: HandleID, _ shown: Shown, at point: CGPoint? = nil) -> (any ViewerHandleSet)? {
+        if id == .opacity { return shown.sets.first { $0 is TransformHandles } }
+        for set in shown.sets.reversed() {
+            if set.handles(shown.context).contains(where: { $0.id == id }) { return set }
+            if let point, set.area(at: mapping.toFrame(point), shown.context) == id { return set }
+        }
+        return nil
+    }
+
+    /// What Tab can pick, from every set, with the set that changes it.
+    private func keyTargets(_ shown: Shown) -> [(set: any ViewerHandleSet, target: HandleKeyTarget)] {
+        shown.sets.flatMap { set in set.keyTargets(shown.context).map { (set: set, target: $0) } }
+    }
+
+    /// The target the arrows change now: the one picked, or the first.
+    private func picked(_ shown: Shown) -> (set: any ViewerHandleSet, target: HandleKeyTarget)? {
+        let targets = keyTargets(shown)
+        return targets.first { $0.target.handle == source.state.picked } ?? targets.first
+    }
+
     private var mediaToMeasure: UUID? {
         guard showsHandles, let selection = source.selection,
               let clip = project.clipAndLayer(selection.timelineClipID, in: source.timelineID)?.clip,
@@ -162,12 +187,14 @@ struct ViewerHandlesOverlay: View {
 
     // MARK: Drawing
 
-    private func draw(_ shown: Shown, _ list: [ViewerHandle], in context: inout GraphicsContext) {
+    /// The outlines and handles through `map`, the handles hidden during a
+    /// drag.
+    private func draw(_ shown: Shown, _ list: [ViewerHandle], through map: ViewerMapping, in context: inout GraphicsContext) {
         let drag = source.state.drag.flatMap { $0.clipID == shown.original.id ? $0 : nil }
         for set in shown.sets {
             for outline in set.outlines(shown.context) {
                 var path = Path()
-                path.addLines(outline.points.map(mapping.toView))
+                path.addLines(outline.points.map(map.toView))
                 if outline.isClosed { path.closeSubpath() }
                 context.stroke(path, with: .color(.black.opacity(0.35)), lineWidth: 3)
                 context.stroke(path, with: .color(Design.accent), lineWidth: 1)
@@ -181,16 +208,19 @@ struct ViewerHandlesOverlay: View {
         // other display draws the clip moving, without it.
         if let drag, levered, book.began, let anchor = list.first(where: { $0.id == .anchor }) {
             var lever = Path()
-            lever.move(to: mapping.toView(anchor.place))
+            lever.move(to: map.toView(anchor.place))
             lever.addLine(to: drag.pointer)
             context.stroke(lever, with: .color(.black.opacity(0.35)), lineWidth: 3)
             context.stroke(lever, with: .color(.white.opacity(0.85)), lineWidth: 1)
         }
         let litPivot = levered || (drag == nil && hovered.map { id in list.contains { $0.id == id && $0.isPivot } } == true)
         for handle in list {
-            // While dragging, only the crosshair stays, for a scale or a turn.
-            if drag != nil, !(levered && handle.id == .anchor) { continue }
-            let place = mapping.toView(handle.place)
+            // While dragging, only the crosshair stays, for a scale or a
+            // turn.
+            // A point being dragged stays, as it is all there is to see.
+            let isDraggedPoint = handle.glyph == .round && handle.id == drag?.handle
+            if drag != nil, !(levered && handle.id == .anchor), !isDraggedPoint { continue }
+            let place = map.toView(handle.place)
             let alpha = handle.isEnabled ? 1.0 : 0.4
             switch handle.glyph {
             case .square:
@@ -238,9 +268,9 @@ struct ViewerHandlesOverlay: View {
         if let drag = source.state.drag, drag.clipID == shown.original.id, drag.handle != .opacity, book.began {
             readoutChip(drag.readout)
                 .position(chipPlace(near: drag.pointer))
-        } else if hovered == .anchor, let anchorHover, let text = list.first(where: { $0.id == .anchor })?.hoverText {
+        } else if let hovered, let hoverPoint, let text = list.first(where: { $0.id == hovered })?.hoverText {
             readoutChip(text)
-                .position(chipPlace(near: anchorHover))
+                .position(chipPlace(near: hoverPoint))
         }
     }
 
@@ -270,11 +300,27 @@ struct ViewerHandlesOverlay: View {
         let reading = TransformHandles.reading(shown.context)
         // A fade dragged on either display shows here as it goes.
         let dragged = source.state.drag.flatMap { $0.clipID == shown.original.id && $0.handle == .opacity ? $0.readout : nil }
+        let fades = shown.sets.contains { $0 is TransformHandles }
         return HStack(spacing: Design.Space.close) {
+            if fades { opacityChip(shown, text: dragged ?? TransformHandles.text(of: .opacity, reading)) }
+            if isFocused, let picked = picked(shown) {
+                Text("\(picked.target.name) \(picked.target.value)")
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textSecondary)
+                    .padding(.horizontal, Design.Space.close)
+                    .padding(.vertical, 3)
+                    .beveledChip(fill: Design.Surface.overlay.color, radius: Design.Radius.control)
+                    .decorative()
+            }
+        }
+        .padding(Design.Space.group)
+    }
+
+    private func opacityChip(_ shown: Shown, text: String) -> some View {
             HStack(spacing: Design.Space.tight) {
                 Image(systemName: "circle.lefthalf.filled")
                     .font(Design.Typeface.label)
-                Text(dragged ?? TransformHandles.text(of: .opacity, reading))
+                Text(text)
                     .font(Design.Typeface.numericSmall)
             }
             .foregroundStyle(Design.textPrimary)
@@ -289,17 +335,6 @@ struct ViewerHandlesOverlay: View {
             .highPriorityGesture(dragGesture(shown, forcing: .opacity))
             .help("Drag left or right to fade the clip; Shift for ten at a time, Option for a tenth")
             .accessibilityHidden(true)
-            if isFocused {
-                Text("\(source.state.part.name) \(TransformHandles.text(of: source.state.part, reading))")
-                    .font(Design.Typeface.numericSmall)
-                    .foregroundStyle(Design.textSecondary)
-                    .padding(.horizontal, Design.Space.close)
-                    .padding(.vertical, 3)
-                    .beveledChip(fill: Design.Surface.overlay.color, radius: Design.Radius.control)
-                    .decorative()
-            }
-        }
-        .padding(Design.Space.group)
     }
 
     // MARK: Pointer
@@ -320,11 +355,15 @@ struct ViewerHandlesOverlay: View {
             guard let shown, source.state.drag == nil else { return }
             let id = hit(location, shown, list)
             if hovered != id { hovered = id }
-            if id == .anchor { anchorHover = location } else if anchorHover != nil { anchorHover = nil }
+            if let id, list.contains(where: { $0.id == id && $0.hoverText != nil }) {
+                hoverPoint = location
+            } else if hoverPoint != nil {
+                hoverPoint = nil
+            }
             cursor(for: id, shown, list).set()
         case .ended:
             hovered = nil
-            anchorHover = nil
+            hoverPoint = nil
             NSCursor.arrow.set()
         }
     }
@@ -344,9 +383,11 @@ struct ViewerHandlesOverlay: View {
     /// locked, or a Keyframing effect drives the control it writes.
     private func refusal(for handle: HandleID, _ shown: Shown) -> HandleRefusal? {
         if shown.context.isLocked { return .locked }
-        guard let kind = TransformHandles.Part(handle)?.control else { return nil }
         let context = shown.editing
-        return TransformHandles.driver(of: kind, in: shown.original, at: TransformHandles.targetIndex(in: shown.original, context))
+        for set in shown.sets {
+            if let refusal = set.refusal(for: handle, context) { return refusal }
+        }
+        return nil
     }
 
     /// Gives the notice a refused press gets; returns whether it was
@@ -388,8 +429,8 @@ struct ViewerHandlesOverlay: View {
             let id = forced ?? hit(value.startLocation, shown, list)
             book.handle = id
             book.shown = shown.editing
-            book.sets = shown.sets
-            if let id {
+            book.set = id.flatMap { owner(of: $0, shown, at: value.startLocation) }
+            if let id, book.set != nil {
                 if refuse(id, shown) || list.first(where: { $0.id == id })?.isEnabled == false { book.isDead = true }
             } else {
                 // The arrow tool: a press on nothing does nothing.
@@ -405,6 +446,7 @@ struct ViewerHandlesOverlay: View {
         move(to: value.location)
     }
 
+
     private func begin(_ id: HandleID) {
         guard var context = book.shown else { return }
         context.newTransform = TransformHandles.newTransform(for: context.clip)
@@ -419,10 +461,10 @@ struct ViewerHandlesOverlay: View {
     }
 
     private func move(to location: CGPoint) {
-        guard var drag = book.drag, let context = book.shown, let set = book.sets.first else { return }
+        guard var drag = book.drag, let context = book.shown, let set = book.set else { return }
+        let flags = NSEvent.modifierFlags
         let pivot = set.pivot(of: drag.handle, context)
         drag.move(to: mapping.toFrame(location), about: pivot, holdingWithin: context.pixels(TransformHandles.leverMinimum))
-        let flags = NSEvent.modifierFlags
         drag.shift = flags.contains(.shift)
         drag.option = flags.contains(.option)
         book.drag = drag
@@ -434,8 +476,8 @@ struct ViewerHandlesOverlay: View {
         guard book.began, var drag = book.drag else { return }
         let shift = flags.contains(.shift), option = flags.contains(.option)
         guard shift != drag.shift || option != drag.option else { return }
-        drag.shift = shift
         drag.option = option
+        drag.shift = shift
         book.drag = drag
         step()
     }
@@ -443,14 +485,17 @@ struct ViewerHandlesOverlay: View {
     /// The drag so far, worked out from the clip before it, held to one
     /// side of the project.
     private func step() {
-        guard let drag = book.drag, let context = book.shown, let set = book.sets.first else { return }
+        guard let drag = book.drag, let context = book.shown, let set = book.set else { return }
         let start = context.clip
         let edit = set.edit(drag, context)
         let edited = edit?.applied(to: start) ?? start
         let readout = edit?.readout
+            ?? set.keyTargets(context).first(where: { $0.handle == drag.handle }).map { "\($0.name) \($0.value)" }
             ?? TransformHandles.Part(drag.handle).map { TransformHandles.text(of: $0, TransformHandles.reading(context)) }
             ?? ""
-        source.state.drag = ViewerCanvasState.Drag(handle: drag.handle, clipID: start.id, clip: edited, readout: readout, pointer: book.pointer)
+        source.state.drag = ViewerCanvasState.Drag(
+            handle: drag.handle, clipID: start.id, clip: edited, readout: readout, pointer: book.pointer
+        )
         let binding = source.project, timelineID = source.timelineID
         let write = { binding.wrappedValue.editClip(start.id, in: timelineID) { $0 = edited } }
         if let projectState { projectState.hold(write) } else { write() }
@@ -495,7 +540,7 @@ struct ViewerHandlesOverlay: View {
     /// of the picture, keeping the picture still.
     private func doubleClick(at location: CGPoint, _ shown: Shown?) {
         guard let shown, hit(location, shown, handles(shown)) == .anchor, !refuse(.anchor, shown),
-              let edit = TransformHandles.resetAnchor(shown.editing)
+              let edit = owner(of: .anchor, shown)?.reset(.anchor, shown.editing)
         else { return }
         apply(edit, shown)
     }
@@ -511,10 +556,10 @@ struct ViewerHandlesOverlay: View {
             return .handled
         }
         if press.key == .tab {
-            let parts = TransformHandles.Part.allCases
-            let current = parts.firstIndex(of: source.state.part)
-            guard let next = TabStep.next(after: current, of: parts.count, back: press.modifiers.contains(.shift)) else { return .ignored }
-            source.state.part = parts[next]
+            let targets = keyTargets(shown)
+            let current = picked(shown).flatMap { picked in targets.firstIndex { $0.target.handle == picked.target.handle } }
+            guard let next = TabStep.next(after: current, of: targets.count, back: press.modifiers.contains(.shift)) else { return .ignored }
+            source.state.picked = targets[next].target.handle
             return .handled
         }
         let direction: NudgeDirection
@@ -526,7 +571,8 @@ struct ViewerHandlesOverlay: View {
         default: return .ignored
         }
         let step: NudgeStep = press.modifiers.contains(.shift) ? .large : press.modifiers.contains(.option) ? .fine : .normal
-        nudge(source.state.part, direction, step, shown)
+        guard let picked = picked(shown) else { return .ignored }
+        nudge(picked.target.handle, on: picked.set, direction, step, shown)
         return .handled
     }
 
@@ -544,20 +590,20 @@ struct ViewerHandlesOverlay: View {
 
     /// One press of an arrow key, or a VoiceOver adjustment: an edit of its
     /// own, as a nudge on the tone graph is.
-    private func nudge(_ part: TransformHandles.Part, _ direction: NudgeDirection, _ step: NudgeStep, _ shown: Shown) {
-        guard book.drag == nil, !refuse(part.handle, shown),
-              let edit = TransformHandles().nudge(part.handle, direction, step: step, shown.editing)
-        else { return }
+    private func nudge(
+        _ handle: HandleID, on set: any ViewerHandleSet, _ direction: NudgeDirection, _ step: NudgeStep, _ shown: Shown
+    ) {
+        guard book.drag == nil, !refuse(handle, shown), let edit = set.nudge(handle, direction, step: step, shown.editing) else { return }
         apply(edit, shown)
     }
 
-    private func reset(_ part: TransformHandles.Part, _ shown: Shown) {
-        guard !refuse(part.handle, shown), let edit = TransformHandles.reset(part, shown.editing) else { return }
+    private func reset(_ handle: HandleID, on set: any ViewerHandleSet, _ shown: Shown) {
+        guard !refuse(handle, shown), let edit = set.reset(handle, shown.editing) else { return }
         apply(edit, shown)
     }
 
-    private func moveAnchor(to point: BoxPoint, _ shown: Shown) {
-        guard !refuse(.anchor, shown), let edit = TransformHandles.moveAnchor(to: point, shown.editing) else { return }
+    private func perform(_ action: HandleAction, on handle: HandleID, _ shown: Shown) {
+        guard !refuse(handle, shown), let edit = action.edit(shown.editing) else { return }
         apply(edit, shown)
     }
 
@@ -569,75 +615,55 @@ struct ViewerHandlesOverlay: View {
 
     // MARK: VoiceOver
 
-    /// Each thing a drag can change, as an adjustable element over the box:
-    /// increment and decrement are the arrow keys' nudges, with named
-    /// actions for the ten-fold steps and Reset.
+    /// Each thing a drag can change, as an adjustable element over the box
+    /// (or the points): increment and decrement are the arrow keys'
+    /// nudges, with named actions for the ten-fold steps and Reset, and
+    /// any more the set offers.
     @ViewBuilder
     private func accessibilityElements(_ shown: Shown) -> some View {
-        let reading = TransformHandles.reading(shown.context)
         let box = boxRect(shown)
-        let position = reading.position.count == 2 ? reading.position : [0, 0]
-        Group {
-            element("Position X", "\(HandleFormat.number(position[0])) pixels", .position, up: .right, down: .left,
-                    larger: ("Move 10 pixels right", "Move 10 pixels left"), shown)
-            element("Position Y", "\(HandleFormat.number(position[1])) pixels", .position, up: .down, down: .up,
-                    larger: ("Move 10 pixels down", "Move 10 pixels up"), shown)
-            element("Scale", scaleValue(reading.scale), .scale, up: .up, down: .down,
-                    larger: ("Scale up 10 percent", "Scale down 10 percent"), shown)
-            element("Rotation", "\(HandleFormat.number(reading.rotation)) degrees", .rotation, up: .right, down: .left,
-                    larger: ("Turn 15 degrees clockwise", "Turn 15 degrees counterclockwise"), shown)
-            element("Anchor X", "\(HandleFormat.number(reading.anchor.x)) pixels", .anchor, up: .right, down: .left,
-                    larger: ("Move 10 pixels right", "Move 10 pixels left"), shown)
-            element("Anchor Y", "\(HandleFormat.number(reading.anchor.y)) pixels", .anchor, up: .down, down: .up,
-                    larger: ("Move 10 pixels down", "Move 10 pixels up"), shown)
-            element("Opacity", "\(HandleFormat.number(reading.opacity)) percent", .opacity, up: .up, down: .down,
-                    larger: ("Increase 10 percent", "Decrease 10 percent"), shown)
+        let elements = keyTargets(shown).flatMap { entry in entry.target.axes.map { (set: entry.set, target: entry.target, axis: $0) } }
+        ZStack {
+            ForEach(Array(elements.enumerated()), id: \.offset) { _, element in
+                self.element(element.axis, of: element.target, on: element.set, shown)
+            }
         }
         .frame(width: max(box.width, 1), height: max(box.height, 1))
         .position(x: box.midX, y: box.midY)
     }
 
-    private func scaleValue(_ scale: [Double]) -> String {
-        guard scale.count == 2, (scale[0] * 10).rounded() != (scale[1] * 10).rounded() else {
-            return "\(HandleFormat.number(scale.first ?? 100)) percent"
-        }
-        return "\(HandleFormat.number(scale[0])) by \(HandleFormat.number(scale[1])) percent"
-    }
-
-    private func element(
-        _ label: String, _ value: String, _ part: TransformHandles.Part, up: NudgeDirection, down: NudgeDirection,
-        larger: (String, String), _ shown: Shown
-    ) -> some View {
-        Color.clear
+    private func element(_ axis: HandleAxis, of target: HandleKeyTarget, on set: any ViewerHandleSet, _ shown: Shown) -> some View {
+        let handle = target.handle
+        return Color.clear
             .accessibilityElement()
-            .accessibilityLabel(label)
-            .accessibilityValue(value)
+            .accessibilityLabel(axis.name)
+            .accessibilityValue(axis.value)
             .accessibilityAdjustableAction { direction in
                 switch direction {
-                case .increment: nudge(part, up, .normal, shown)
-                case .decrement: nudge(part, down, .normal, shown)
+                case .increment: nudge(handle, on: set, axis.increment, .normal, shown)
+                case .decrement: nudge(handle, on: set, axis.decrement, .normal, shown)
                 @unknown default: break
                 }
             }
             .accessibilityActions {
-                Button(larger.0) { nudge(part, up, .large, shown) }
-                Button(larger.1) { nudge(part, down, .large, shown) }
-                Button("Reset") { reset(part, shown) }
-                if part == .anchor {
-                    ForEach(BoxPoint.allCases, id: \.self) { point in
-                        Button("Move to \(point.name)") { moveAnchor(to: point, shown) }
-                    }
+                Button(axis.larger.increment) { nudge(handle, on: set, axis.increment, .large, shown) }
+                Button(axis.larger.decrement) { nudge(handle, on: set, axis.decrement, .large, shown) }
+                Button("Reset") { reset(handle, on: set, shown) }
+                ForEach(Array(target.actions.enumerated()), id: \.offset) { _, action in
+                    Button(action.name) { perform(action, on: handle, shown) }
                 }
             }
     }
 
     /// The box's bounds in the well, where VoiceOver's elements are.
     private func boxRect(_ shown: Shown) -> CGRect {
-        let points = shown.sets.flatMap { $0.outlines(shown.context) }.flatMap(\.points).map(mapping.toView)
+        let outlined = shown.sets.flatMap { $0.outlines(shown.context) }.flatMap(\.points)
+        let points = (outlined.isEmpty ? handles(shown).map(\.place) : outlined).map(mapping.toView)
         guard let first = points.first else { return .zero }
         var rect = CGRect(origin: first, size: .zero)
         for point in points.dropFirst() { rect = rect.union(CGRect(origin: point, size: .zero)) }
-        return rect.intersection(CGRect(origin: .zero, size: mapping.wellSize))
+        // Points alone are a spot: room round them for VoiceOver's frame.
+        return rect.insetBy(dx: -12, dy: -12).intersection(CGRect(origin: .zero, size: mapping.wellSize))
     }
 }
 
@@ -650,7 +676,8 @@ private final class HandleDragBook {
     var handle: HandleID?
     /// The context the press found, with the clip from before the drag.
     var shown: HandleContext?
-    var sets: [any ViewerHandleSet] = []
+    /// The set the pressed handle belongs to, which edits it.
+    var set: (any ViewerHandleSet)?
     /// The press drags nothing: it hit nothing, was refused, or Escape
     /// cancelled it.
     var isDead = false
@@ -705,7 +732,7 @@ private final class HandleDragBook {
         isDead = false
         handle = nil
         shown = nil
-        sets = []
+        set = nil
     }
 
     isolated deinit {

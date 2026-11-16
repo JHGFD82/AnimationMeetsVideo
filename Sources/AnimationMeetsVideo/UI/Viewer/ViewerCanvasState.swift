@@ -13,8 +13,10 @@ import SwiftUI
 @Observable
 final class ViewerCanvasState {
     var tool = ViewerTool.arrow
-    /// What the arrows change while the canvas has the keys (Tab).
-    var part = TransformHandles.Part.position
+    /// What the arrows change while the canvas has the keys (Tab): one of
+    /// the handle sets' `keyTargets`, by its handle; the first when this
+    /// isn't among them.
+    var picked: HandleID = .move
     var drag: Drag?
     /// The editor surface's parked playhead and effects panel, which a
     /// canvas outside the surface (the external display's) shows the

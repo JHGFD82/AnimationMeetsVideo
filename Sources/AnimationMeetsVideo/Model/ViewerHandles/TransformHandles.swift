@@ -679,6 +679,63 @@ struct TransformHandles: ViewerHandleSet {
         }
     }
 
+    func reset(_ handle: HandleID, _ context: HandleContext) -> HandleEdit? {
+        Part(handle).flatMap { Self.reset($0, context) }
+    }
+
+    func refusal(for handle: HandleID, _ context: HandleContext) -> HandleRefusal? {
+        guard let kind = Part(handle)?.control else { return nil }
+        return Self.driver(of: kind, in: context.clip, at: Self.targetIndex(in: context.clip, context))
+    }
+
+    func keyTargets(_ context: HandleContext) -> [HandleKeyTarget] {
+        let reading = Self.reading(context)
+        func pixels(_ value: Double) -> String { "\(HandleFormat.number(value)) pixels" }
+        func percent(_ value: Double) -> String { "\(HandleFormat.number(value)) percent" }
+        let position = reading.position.count == 2 ? reading.position : [0, 0]
+        let scale: String
+        if reading.scale.count == 2, (reading.scale[0] * 10).rounded() != (reading.scale[1] * 10).rounded() {
+            scale = "\(HandleFormat.number(reading.scale[0])) by \(HandleFormat.number(reading.scale[1])) percent"
+        } else {
+            scale = percent(reading.scale.first ?? 100)
+        }
+        let anchorMoves = BoxPoint.allCases.map { point in
+            HandleAction(name: "Move to \(point.name)") { Self.moveAnchor(to: point, $0) }
+        }
+        return Part.allCases.map { part in
+            let axes: [HandleAxis] = switch part {
+            case .position: [
+                HandleAxis(name: "Position X", value: pixels(position[0]), increment: .right, decrement: .left,
+                           larger: ("Move 10 pixels right", "Move 10 pixels left")),
+                HandleAxis(name: "Position Y", value: pixels(position[1]), increment: .down, decrement: .up,
+                           larger: ("Move 10 pixels down", "Move 10 pixels up")),
+            ]
+            case .scale: [
+                HandleAxis(name: "Scale", value: scale, increment: .up, decrement: .down,
+                           larger: ("Scale up 10 percent", "Scale down 10 percent")),
+            ]
+            case .rotation: [
+                HandleAxis(name: "Rotation", value: "\(HandleFormat.number(reading.rotation)) degrees", increment: .right, decrement: .left,
+                           larger: ("Turn 15 degrees clockwise", "Turn 15 degrees counterclockwise")),
+            ]
+            case .anchor: [
+                HandleAxis(name: "Anchor X", value: pixels(reading.anchor.x), increment: .right, decrement: .left,
+                           larger: ("Move 10 pixels right", "Move 10 pixels left")),
+                HandleAxis(name: "Anchor Y", value: pixels(reading.anchor.y), increment: .down, decrement: .up,
+                           larger: ("Move 10 pixels down", "Move 10 pixels up")),
+            ]
+            case .opacity: [
+                HandleAxis(name: "Opacity", value: percent(reading.opacity), increment: .up, decrement: .down,
+                           larger: ("Increase 10 percent", "Decrease 10 percent")),
+            ]
+            }
+            return HandleKeyTarget(
+                handle: part.handle, name: part.name, value: Self.text(of: part, reading), axes: axes,
+                actions: part == .anchor ? anchorMoves : []
+            )
+        }
+    }
+
     /// A part back at its default, the picture kept still for the anchor:
     /// VoiceOver's Reset.
     static func reset(_ part: Part, _ context: HandleContext) -> HandleEdit? {

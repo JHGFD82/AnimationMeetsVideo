@@ -73,6 +73,9 @@ import Testing
         // A color gets an alpha of 1.
         #expect(controls["tint"]?.isColor == true && controls["tint"]?.defaultValues == [1, 0.8, 0.4, 1])
         #expect(controls["middle"]?.defaultValues == [0, 0] && controls["middle"]?.componentNames == ["Δx", "Δy"])
+        // A point is a handle in the viewer, unless it says otherwise.
+        #expect(controls["middle"]?.isPoint == true && controls["middle"]?.showsViewerHandle == true)
+        #expect(controls["gains"]?.isPoint == false)
         #expect(controls["gains"]?.componentNames == ["Low", "High"])
         #expect(controls["mode"]?.choiceOptions.map(\.id) == ["soft", "hard"] && controls["mode"]?.defaultChoice == "soft")
 
@@ -80,6 +83,21 @@ import Testing
         #expect(package.reach?.text == "radius * scale + 1")
         #expect(package.after.map(\.name) == ["CIBloom"])
         #expect(package.after[0].parameters.map(\.key) == ["inputIntensity", "inputRadius"])
+    }
+
+    @Test func aPointCanLeaveOutItsViewerHandle() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var manifest = glow
+        var controls = manifest["controls"] as! [[String: Any]]
+        controls[3]["handle"] = false
+        manifest["controls"] = controls
+        let package = try EffectPackageStore.read(try write(manifest))
+        let middle = try #require(package.controls.first { $0.kind.savedName == "middle" })
+        #expect(middle.isPoint && !middle.showsViewerHandle)
+        // Only a point takes the key.
+        controls[0]["handle"] = false
+        manifest["controls"] = controls
+        #expect(try problem(manifest) != nil)
     }
 
     @Test func packagesAreInstalledAfterTheBuiltInEffects() throws {

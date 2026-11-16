@@ -161,13 +161,33 @@ enum StackFolding {
     /// `center` is the center of the picture, where the anchor point's
     /// offset is measured from (see `anchor`).
     static func fold(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> FoldedPlacement {
-        var placement = FoldedPlacement(anchor: anchor(effects: effects, anchorPoint: anchorPoint, at: time, center: center))
+        fold(effects[...], from: anchor(effects: effects, anchorPoint: anchorPoint, at: time, center: center), at: time)
+    }
+
+    /// The Transform steps of `effects`, starting with the anchor at
+    /// `anchor`.
+    private static func fold(_ effects: ArraySlice<Effect>, from anchor: CGPoint, at time: CMTime) -> FoldedPlacement {
+        var placement = FoldedPlacement(anchor: anchor)
         for effect in effects where effect.enabled && effect.kind == .transform {
             for control in effect.controls {
                 placement.apply(control, movesAnchor: effect.movesAnchor, at: time)
             }
         }
         return placement
+    }
+
+    /// Where the steps after the effect at `index` put what it draws: an
+    /// effect works in the frame's pixels at its own place in the stack,
+    /// and the Transform effects below it move the picture afterwards.
+    /// The whole fold with the fold of the effects above it undone (the
+    /// anchor taken from the whole stack, as drawing does). Nil when those
+    /// above scale the picture to nothing, so there is no way back.
+    static func placement(after index: Int, effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> CGAffineTransform? {
+        let start = anchor(effects: effects, anchorPoint: anchorPoint, at: time, center: center)
+        let whole = fold(effects[...], from: start, at: time).matrix
+        let above = fold(effects.prefix(max(0, min(index, effects.count))), from: start, at: time).matrix
+        guard abs(above.a * above.d - above.b * above.c) > 1e-12 else { return nil }
+        return above.inverted().concatenating(whole)
     }
 
     /// The steps to draw for the stack at source time `time`: nothing while
