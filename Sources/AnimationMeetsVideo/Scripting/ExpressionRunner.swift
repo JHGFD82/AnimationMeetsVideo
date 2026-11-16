@@ -102,7 +102,10 @@ final class ExpressionRunner {
             expressionLog.error("Expression run failed before it could finish: \(details, privacy: .public)")
             failure = ExpressionFailure(summary: error.localizedDescription, time: nil, details: details)
         }
-        let reads = await bridge.reads
+        // A partial run read only what its samples needed: what the whole
+        // run before it read holds too.
+        var reads = request.reused?.reads ?? []
+        for read in await bridge.reads where !reads.contains(read) { reads.append(read) }
         let expected = request.times.count * request.width
         if failure == nil, values.count != expected {
             failure = ExpressionFailure(summary: "The expression gave \(values.count) numbers, not \(expected).", time: nil)
@@ -110,8 +113,32 @@ final class ExpressionRunner {
         let print = project.expressionPrint(of: request.effect, in: request.clip, of: request.timeline, base: request.base, reads: reads)
         return ExpressionResult(
             times: failure == nil ? request.times : [], values: failure == nil ? values : [], width: request.width,
-            reads: reads, failure: failure, print: print
+            reads: reads, failure: failure, print: print, readsPrint: project.readsPrint(reads)
         )
+    }
+
+    /// What an expression's samples depend on besides its code and its
+    /// tables: what `audio()` hears and `beats` follows, which component
+    /// it writes, where it is, and the frame rate.
+    private static func settingsKey(of effect: Effect, setup: KeyframingSetup, timeline: Timeline, clip: TimelineClip, layer: UUID) -> UInt64 {
+        var key = KeyframingPrint()
+        switch setup.audioSource {
+        case nil: key.add(UInt64(0))
+        case .mix?: key.add(UInt64(1))
+        case .layer(let id)?:
+            key.add(UInt64(2))
+            key.add(id)
+        case .clip(let id)?:
+            key.add(UInt64(3))
+            key.add(id)
+        }
+        key.add(setup.beatLayer)
+        key.add(UInt64(bitPattern: Int64(setup.component ?? -1)))
+        key.add(timeline.id)
+        key.add(clip.id)
+        key.add(layer)
+        key.add(timeline.frameRate)
+        return key.value
     }
 
     /// What is sent for one expression, and what it is made from.
@@ -127,6 +154,8 @@ final class ExpressionRunner {
         var base: AnimatedValue<ComponentValue>
         /// The control it writes to, as a read.
         var ownTarget: KeyframingRead
+        /// The last result, when the helper may start from it.
+        var reused: ExpressionResult?
     }
 
     /// The request for an expression: its code, and a table for each name
@@ -181,6 +210,18 @@ final class ExpressionRunner {
         request.context = [
             "timeline": JSONValue(timeline.id), "clip": JSONValue(clip.id), "layer": JSONValue(found.layer.id),
         ]
+        // Running only the samples that changed (see docs/python-scripting.md,
+        // "Doing less work"): the helper keeps each expression's last run,
+        // and may call the code only for the samples whose rows differ
+        // from it, when the last run worked and nothing it read has changed
+        // since. What else the samples depend on and the tables don't show
+        // is the key, which must match too.
+        let last = ExpressionResults.shared.results(for: effect.id).last
+        let reused = last.flatMap { last in
+            last.failure == nil && last.readsPrint == project.readsPrint(last.reads) ? last : nil
+        }
+        request.fields["reuse"] = .bool(reused != nil)
+        request.fields["key"] = .string(String(settingsKey(of: effect, setup: setup, timeline: timeline, clip: clip, layer: found.layer.id), radix: 16))
         let ownTarget: KeyframingRead = switch target {
         case .volume: KeyframingRead(timeline: timeline.id, kind: .volume(clip: clip.id))
         case .control(let effectID, let controlID):
@@ -188,7 +229,7 @@ final class ExpressionRunner {
         }
         return Prepared(
             request: request, times: sampling.sources, timelineTimes: sampling.timelineTimes, width: width, effect: effect, clip: clip, timeline: timeline,
-            base: base, ownTarget: ownTarget
+            base: base, ownTarget: ownTarget, reused: reused
         )
     }
 }

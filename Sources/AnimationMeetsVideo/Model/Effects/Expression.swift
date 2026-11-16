@@ -123,6 +123,10 @@ struct ExpressionResult: Equatable, Sendable {
     /// The fingerprint of what it was made from (`expressionPrint`), with
     /// `reads` as they were when it ran.
     var print: UInt64
+    /// The fingerprint of `reads` alone as they were when it ran
+    /// (`readsPrint`): while they are unchanged, the next run calls the
+    /// code only for the samples whose rows changed.
+    var readsPrint: UInt64 = 0
 }
 
 /// An expression's error, as its note shows it.
@@ -286,6 +290,13 @@ extension EditingProject {
                 }
             }
         }
+    }
+
+    /// The fingerprint of `reads` alone, as they are now.
+    func readsPrint(_ reads: [KeyframingRead]) -> UInt64 {
+        var fingerprint = KeyframingPrint()
+        addReads(reads, to: &fingerprint)
+        return fingerprint.value
     }
 
     /// The result in `ExpressionResults` that fits the expression as it is

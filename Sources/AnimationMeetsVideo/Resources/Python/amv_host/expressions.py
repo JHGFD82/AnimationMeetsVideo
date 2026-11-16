@@ -207,6 +207,83 @@ def _numbers(value, width, time):
     return numbers
 
 
+# MARK: - Running only what changed
+
+# Each expression's last run, by its effect: what it was made from and the
+# samples it gave, so a run where only some samples' rows changed (one
+# keyframe of an input moved) calls the code for those alone. Kept for
+# the helper's life; the app says when nothing the run read has changed
+# since (`reuse`), the only time they can be used.
+_last_runs = {}
+_KEPT_RUNS = 64
+
+# Names that make a sample depend on the ones before it in ways a partial
+# run can't follow: `state` (kept from sample to sample), and the ways to
+# reach names without naming them.
+_WHOLE_RUN_NAMES = {"state", "globals", "locals", "vars", "eval", "exec"}
+
+
+def _uses(code):
+    """The names the code mentions."""
+    try:
+        return {node.id for node in ast.walk(ast.parse(code)) if isinstance(node, ast.Name)}
+    except SyntaxError:
+        return set()
+
+
+def _samples_to_run(effect, shape, tables, count, width, reuse, code):
+    """Which samples to call the code for, in order, and the results to
+    start from: every sample, unless the last run of this expression was
+    made from the same code and settings and nothing it read has changed
+    (`reuse`). Then only the samples whose rows changed; with `prev`, from
+    the first of them to the end, since each follows from the one before;
+    with `state`, every sample."""
+    every = list(range(count))
+    last = _last_runs.get(effect)
+    if not reuse or last is None or last["shape"] != shape:
+        return every, [0.0] * (count * width)
+    sizes = {name: size for name, size in shape[4]}
+    changed = [
+        k for k in range(count)
+        if any(tables[name][k * size:(k + 1) * size] != last["tables"][name][k * size:(k + 1) * size] for name, size in sizes.items())
+    ]
+    out = list(last["results"])
+    if not changed:
+        return [], out
+    names = _uses(code)
+    if names & _WHOLE_RUN_NAMES:
+        return every, out
+    if "prev" in names:
+        return list(range(changed[0], count)), out
+    return changed, out
+
+
+def _ran_alone(indices):
+    """Whether the samples run aren't one run from the first to the end, so
+    each one's `prev` is the result before it, not the one run before it."""
+    return bool(indices) and indices[-1] - indices[0] + 1 != len(indices)
+
+
+def _previous(out, k, width):
+    """The result at sample `k`, as `prev` is given: a number, or a Vector
+    for several; None before the first."""
+    if k < 0:
+        return None
+    numbers = out[k * width:(k + 1) * width]
+    return numbers[0] if width == 1 else Vector(numbers)
+
+
+def _remember(effect, shape, tables, results):
+    _last_runs.pop(effect, None)
+    if len(_last_runs) >= _KEPT_RUNS:
+        _last_runs.pop(next(iter(_last_runs)))
+    _last_runs[effect] = {"shape": shape, "tables": tables, "results": list(results)}
+
+
+def _forget(effect):
+    _last_runs.pop(effect, None)
+
+
 def run(host, header, payload):
     """Runs an expression over its samples, sending its `result` or
     `error`."""
@@ -245,9 +322,10 @@ def run(host, header, payload):
     time = 0.0
     try:
         statements, last = compiled(header["code"])
-        out = []
-        prev = None
-        for k in range(count):
+        shape = (header.get("key"), header["code"], count, width, tuple(map(tuple, header["tables"])))
+        indices, out = _samples_to_run(effect, shape, tables, count, width, header.get("reuse", False), header["code"])
+        prev = _previous(out, indices[0] - 1, width) if indices else None
+        for k in indices:
             time = tables["time"][k]
             _bridge.sample_time = time
             _bridge.sample_index = k
@@ -256,17 +334,19 @@ def run(host, header, payload):
                 if name in tables:
                     namespace[name] = column(name, k)
             namespace["frame"] = int(round(namespace.get("frame", 0)))
-            namespace["prev"] = prev
+            namespace["prev"] = prev if not _ran_alone(indices) else _previous(out, k - 1, width)
             namespace["random"] = _seeded(seed, effect, k)
             if statements is not None:
                 exec(statements, namespace)
             value = eval(last, namespace)
-            out.extend(_numbers(value, width, time))
-            prev = value
+            out[k * width:(k + 1) * width] = _numbers(value, width, time)
+            prev = _previous(out, k, width)
             names["state"] = namespace["state"]
-        message = {"type": "result"}
+        _remember(effect, shape, tables, out)
+        message = {"type": "result", "ran": len(indices)}
         result_payload = protocol.pack_floats(out)
     except BaseException as error:  # noqa: B902 – everything is reported, KeyboardInterrupt too
+        _forget(effect)
         message = runner.error_message(error, "<expression>")
         message["time"] = time
         result_payload = b""

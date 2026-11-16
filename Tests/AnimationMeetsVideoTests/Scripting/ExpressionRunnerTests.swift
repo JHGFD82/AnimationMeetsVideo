@@ -131,4 +131,65 @@ import Testing
         let after = f.project.clipAndLayer(f.clipID, in: f.timelineID)!.clip
         #expect(f.project.expressionPrint(of: after.effect(id: id)!, in: after, of: timeline, base: nil, reads: []) != before)
     }
+
+    @Test func theHelperMayReuseTheLastRunOnlyWhileWhatItReadIsUnchanged() async throws {
+        var (f, id) = fixture()
+        let job = ExpressionRunner.Job(timelineID: f.timelineID, clipID: f.clipID, effectID: id)
+        // No run yet: nothing to start from.
+        #expect(ExpressionRunner.request(for: job, in: f.project)?.request.fields["reuse"] == false)
+        let count = try #require(ExpressionRunner.request(for: job, in: f.project)).times.count
+        let rotation = KeyframingRead(timeline: f.timelineID, kind: .control(clip: f.clipID, effect: f.transformID, control: f.controlID(.rotation)))
+        let helper = ReadingHelper(read: rotation, samples: (0..<count).map(Double.init))
+        let result = try #require(await ExpressionRunner(helper: helper).run(job, in: f.project))
+        #expect(result.reads == [rotation])
+        ExpressionResults.shared.store(result, for: id)
+        #expect(ExpressionRunner.request(for: job, in: f.project)?.request.fields["reuse"] == true)
+        // What it read changes: the whole run again.
+        let rotationID = f.controlID(.rotation)
+        f.project.editEffect(f.transformID, ofClip: f.clipID, in: f.timelineID) { effect in
+            effect.controls[effect.controlIndex(rotationID)!].number = AnimatedValue(ComponentValue(values: [45]))
+        }
+        #expect(ExpressionRunner.request(for: job, in: f.project)?.request.fields["reuse"] == false)
+    }
+
+    @Test func aPartialRunKeepsTheReadsOfTheRunBefore() async throws {
+        let (f, id) = fixture()
+        let job = ExpressionRunner.Job(timelineID: f.timelineID, clipID: f.clipID, effectID: id)
+        let count = try #require(ExpressionRunner.request(for: job, in: f.project)).times.count
+        let rotation = KeyframingRead(timeline: f.timelineID, kind: .control(clip: f.clipID, effect: f.transformID, control: f.controlID(.rotation)))
+        let first = try #require(await ExpressionRunner(helper: ReadingHelper(read: rotation, samples: Array(repeating: 1, count: count))).run(job, in: f.project))
+        ExpressionResults.shared.store(first, for: id)
+        // This run reads nothing, as a partial one that called no sample
+        // reading Rotation wouldn't.
+        let second = try #require(await ExpressionRunner(helper: FakeHelper(end: .samples(Array(repeating: 2, count: count)))).run(job, in: f.project))
+        #expect(second.reads == [rotation])
+    }
+}
+
+/// A helper whose run reads one control, then gives `samples`.
+final class ReadingHelper: ScriptHelper, @unchecked Sendable {
+    let read: KeyframingRead
+    let samples: [Double]
+
+    init(read: KeyframingRead, samples: [Double]) {
+        self.read = read
+        self.samples = samples
+    }
+
+    func run(
+        _ request: HelperRequest,
+        output: @escaping @Sendable (ScriptOutput) -> Void,
+        answer: @escaping @Sendable (HelperCall) async -> HelperReply
+    ) async throws -> ScriptRunEnd {
+        guard case .control(let clip, let effect, let control) = read.kind else { return .samples(samples) }
+        let target: JSONValue = [
+            "timeline": JSONValue(read.timeline), "clip": JSONValue(clip), "effect": JSONValue(effect), "control": JSONValue(control),
+        ]
+        _ = await answer(HelperCall(method: "control_frames", arguments: ["target": target]))
+        return .samples(samples)
+    }
+
+    func stop() async {}
+
+    func ping() async throws -> HelperPong { HelperPong(version: PythonVersion("3.14.0"), executable: "fake") }
 }

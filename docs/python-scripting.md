@@ -1,18 +1,19 @@
 # Python scripting
 
-Status: **partly built.** Steps 1 to 9 of [Building it](#building-it)
+Status: **partly built.** Steps 1 to 10 of [Building it](#building-it)
 are written: the helper, the runtime and the Settings tab; reading the
 project and the console; scripts that edit, the Scripts menu and
 `Scripts/`; the expression model; allowing expressions, with Review
 Expressions; the confined helper; running expressions, with the code
 editor and the Expression chip in the Keyframe Designer; Listen To and
-Beats From, with `audio()`, `beats`, `noise()` and `wiggle()`; and
-Between Frames. Steps 1 to 8 have been built and tried on a Mac; step 9
-was written since and not yet built. No Python release is pinned in the
+Beats From, with `audio()`, `beats`, `noise()` and `wiggle()`; Between
+Frames; and re-running only the changed samples. Steps 1 to 8 have been
+built and tried on a Mac; steps 9 and 10 were written since and not yet
+built. No Python release is pinned in the
 repository: `scripts/fetch-python.sh --pin`, run on the Mac that builds
 the app, writes the pin to `scripts/python-pin`, which git ignores.
-Still to come: re-running only the changed samples (step 10), following
-a held drag (11) and NumPy (12).
+Still to come: following a held drag (step 11) and NumPy (12), which
+step 10's measurement (below) doesn't call for.
 
 `noise(x, dimension=0)` and `wiggle(frequency, amount, octaves=1,
 dimension=0)` are Wiggler's noise for the expression's Seed, worked out
@@ -467,6 +468,25 @@ multiplies it by up to 8. What keeps runs few and short:
   sample to the end, since each sample follows from the one before, and
   code that read a control at another moment (`.at`) runs whole when
   that control changed.
+- **As built**, two things differ from the above. The app sends every
+  row each run, and the helper compares them with the rows it kept, so
+  a helper started afresh can never use rows it doesn't have; sending
+  is cheap, and the calls are what cost. And code that uses `state`
+  runs whole, rather than from the first changed sample, which would
+  need `state` kept as it was at every sample. The helper uses its last
+  run only when the app says nothing that run read has changed since,
+  and when the code, the tables' shape and a key of what else the
+  samples depend on (what `audio()` hears and `beats` follows, the
+  component, where the clip is, the frame rate) are the same; a partial
+  run's reads join the whole run's. `prev` is the sample before as a
+  number or a Vector, the same in a whole run and a partial one.
+- **Measured** on the helper alone (Python 3.13 on Linux, with the app's
+  answers stood in for), for `value + [a * sin(t * tau * b), 0]` on a
+  Position: a three-minute clip at 30 fps (5,400 samples) runs whole in
+  about 0.14 s, and in 16 ms after one input keyframe moves; with 8
+  moments between frames (48,600 samples), 0.8 s and 0.19 s. Well inside
+  the 5 second limit, so NumPy (below) isn't called for yet. To measure
+  again on a Mac, in the real app, with projects' own expressions.
 - **A whole clip in one call**, only if measuring says the rest isn't
   enough. With NumPy in the built-in Python, `t`, `value` and the tables
   are arrays, and the code is called once, its arithmetic running over

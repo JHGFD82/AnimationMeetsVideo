@@ -362,14 +362,14 @@ class ExpressionTests(unittest.TestCase):
     def tearDown(self):
         self.helper.close()
 
-    def run_expression(self, code, count=5, width=1, value=None, **extra):
+    def run_expression(self, code, count=5, width=1, value=None, a=None, printed=None, **extra):
         times = [k / 24 for k in range(count)]
         value = value or [[0.0] * width for _ in range(count)]
         tables = [("time", 1), ("t", 1), ("frame", 1), ("source_time", 1), ("value", width),
                   ("a", 1), ("b", 1), ("c", 1), ("d", 1)]
         columns = {
             "time": times, "t": times, "frame": [float(k) for k in range(count)], "source_time": times,
-            "value": [x for v in value for x in v], "a": [2.0] * count, "b": [1.0] * count, "c": [0.0] * count, "d": [0.0] * count,
+            "value": [x for v in value for x in v], "a": a or [2.0] * count, "b": [1.0] * count, "c": [0.0] * count, "d": [0.0] * count,
         }
         floats = [x for name, _ in tables for x in columns[name]]
         payload = struct.pack("<%dd" % len(floats), *floats)
@@ -377,7 +377,9 @@ class ExpressionTests(unittest.TestCase):
             count=count, width=width, tables=tables, fps=24.0, duration=count / 24, seed=1, effect="E9",
             context={"timeline": "T1", "clip": "C1", "layer": "L1"}, **extra
         )
-        _, result = self.helper.run("expression", code, self.app, payload=payload, **header)
+        output, result = self.helper.run("expression", code, self.app, payload=payload, **header)
+        if printed is not None:
+            printed.append(output)
         if result["type"] == "result":
             data = result["payload"] if "payload" in result else b""
             return list(struct.unpack("<%dd" % (len(data) // 8), data))
@@ -418,6 +420,54 @@ class ExpressionTests(unittest.TestCase):
         self.assertEqual(self.run_expression("float('nan')")["exception"], "ValueError")
         self.assertEqual(self.run_expression("'tall'")["exception"], "TypeError")
         self.assertEqual(self.run_expression("[1, 2, 3]", width=2)["exception"], "ValueError")
+
+    # MARK: Running only what changed
+
+    def ran(self, code, a, **extra):
+        """The frames the code was called for, and the samples."""
+        printed = []
+        samples = self.run_expression("print(frame, end=' ')\n" + code, a=a, printed=printed, reuse=True, key="K", **extra)
+        return [int(f) for f in printed[0].split()], samples
+
+    def test_a_run_with_nothing_changed_calls_nothing_and_gives_the_same(self):
+        self.assertEqual(self.ran("a * frame", [1.0] * 5), ([0, 1, 2, 3, 4], [0, 1, 2, 3, 4]))
+        self.assertEqual(self.ran("a * frame", [1.0] * 5), ([], [0, 1, 2, 3, 4]))
+
+    def test_only_the_samples_whose_rows_changed_are_called(self):
+        self.ran("a * frame", [1.0] * 5)
+        self.assertEqual(self.ran("a * frame", [1.0, 1.0, 3.0, 1.0, 1.0]), ([2], [0, 1, 6, 3, 4]))
+
+    def test_with_prev_from_the_first_change_to_the_end(self):
+        self.ran("(prev or 0) + a", [1.0] * 5)
+        self.assertEqual(self.ran("(prev or 0) + a", [1.0, 1.0, 3.0, 1.0, 1.0]), ([2, 3, 4], [1, 2, 5, 6, 7]))
+
+    def test_with_state_every_sample(self):
+        code = "state['n'] = state.get('n', 0) + a\nstate['n']"
+        self.ran(code, [1.0] * 5)
+        self.assertEqual(self.ran(code, [1.0, 1.0, 3.0, 1.0, 1.0]), ([0, 1, 2, 3, 4], [1, 2, 5, 6, 7]))
+
+    def test_a_partial_run_gives_what_a_whole_run_gives(self):
+        code = "x = a * sin(t * 7) + (prev or 0) * 0.5\nx"
+        self.ran(code, [1.0] * 5)
+        partial = self.ran(code, [1.0, 2.0, 1.0, 1.0, 4.0])[1]
+        whole = self.run_expression(code, a=[1.0, 2.0, 1.0, 1.0, 4.0])
+        self.assertEqual(partial, whole)
+
+    def test_without_reuse_or_with_other_settings_every_sample(self):
+        self.ran("a * frame", [1.0] * 5)
+        self.assertEqual(self.ran("a * frame", [1.0] * 5, )[0], [])
+        printed = []
+        self.run_expression("print(frame, end=' ')\na * frame", a=[1.0] * 5, printed=printed, reuse=False, key="K")
+        self.assertEqual(printed[0].split(), ["0", "1", "2", "3", "4"])
+        self.assertEqual(self.ran("a * frame", [1.0] * 5, )[0], [])
+        printed = []
+        self.run_expression("print(frame, end=' ')\na * frame", a=[1.0] * 5, printed=printed, reuse=True, key="other")
+        self.assertEqual(len(printed[0].split()), 5)
+
+    def test_after_an_error_every_sample(self):
+        self.ran("a * frame", [1.0] * 5)
+        self.run_expression("1 / 0", reuse=True, key="K")
+        self.assertEqual(self.ran("a * frame", [1.0] * 5)[0], [0, 1, 2, 3, 4])
 
     def test_a_mistake_in_the_helper_ends_the_run_not_the_helper(self):
         # A message it can't make sense of: no tables.
