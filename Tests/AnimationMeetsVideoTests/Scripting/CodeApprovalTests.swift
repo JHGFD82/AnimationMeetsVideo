@@ -16,6 +16,16 @@ import Testing
         #expect(!approval.isAllowed("value + 2"))
     }
 
+    @Test func theModelReadsOnlyTheAppsOwnList() {
+        defer { try? FileManager.default.removeItem(at: file) }
+        let code = "value + \(UUID())"
+        // Another list's code doesn't count for the model.
+        CodeApproval(file: file).allow(code)
+        #expect(!CodeApproval.allowsCode(code))
+        CodeApproval.allowInSession(code)
+        #expect(CodeApproval.allowsCode(code))
+    }
+
     @Test func whatIsAllowedIsKeptOnThisMacBetweenLaunches() {
         defer { try? FileManager.default.removeItem(at: file) }
         let id = UUID()

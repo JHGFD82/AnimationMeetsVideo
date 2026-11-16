@@ -16,6 +16,8 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         let expressionID: UUID
 
         init(driving kind: ControlKind = .opacity) {
+            // As if typed here: only allowed code runs.
+            for code in ["value", "value * 2", "a * sin(t * tau)"] { CodeApproval.allowInSession(code) }
             let target = KeyframingTarget.control(effectID: f.transformID, controlID: f.controlID(kind))
             expressionID = f.project.setKeyframing(.expression, driving: target, onClip: f.clipID, in: f.timelineID)!
         }
@@ -48,6 +50,16 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(x.opacity.keyframes.isEmpty)
         #expect(x.f.project.waitingExpressions().map { $0.effectID } == [x.expressionID])
         #expect(x.f.project.keyframingNote(for: x.expression, in: x.clip)?.text == "Running\u{2026}")
+    }
+
+    @Test func codeFromElsewhereIsntRunUntilAllowed() {
+        var x = Fixture()
+        let code = "import os  # \(UUID())"
+        x.f.project.editEffect(x.expressionID, ofClip: x.f.clipID, in: x.f.timelineID) { $0.expression = code }
+        #expect(x.f.project.waitingExpressions().isEmpty)
+        #expect(x.f.project.keyframingNote(for: x.expression, in: x.clip)?.text.hasPrefix("Expression not allowed yet") == true)
+        CodeApproval.allowInSession(code)
+        #expect(x.f.project.waitingExpressions().map { $0.effectID } == [x.expressionID])
     }
 
     @Test func aFittingResultIsWrittenAsGeneratedKeyframes() throws {
@@ -100,7 +112,7 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         var x = Fixture()
         x.land(x.result(failure: ExpressionFailure(summary: "Line 2: NameError: name 'tim' is not defined", time: nil)) { _ in [] })
         #expect(x.opacity.keyframes.isEmpty)
-        #expect(x.f.project.keyframingNote(for: x.expression, in: x.clip)?.text == "Line 2: NameError: name 'tim' is not defined")
+        #expect(x.f.project.keyframingNote(for: x.expression, in: x.clip)?.text == "Expression has an error. Line 2: NameError: name 'tim' is not defined")
         #expect(x.f.project.waitingExpressions().isEmpty)
     }
 

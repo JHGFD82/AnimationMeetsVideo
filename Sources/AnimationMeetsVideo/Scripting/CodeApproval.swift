@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Observation
+import os
 
 /// What Python the person has allowed to run on this Mac (see
 /// docs/python-scripting.md, "Safety"). Python in a project is code from
@@ -15,7 +16,18 @@ import Observation
 @MainActor
 @Observable
 final class CodeApproval {
-    static let shared = CodeApproval()
+    static let shared = CodeApproval(publishes: true)
+
+    /// The hashes `shared` allows, for the model to read off the main
+    /// actor: an expression runs only if its code is allowed
+    /// (`EditingProject.expressionIsAllowed`).
+    private nonisolated static let published = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    /// Whether this Mac allows `code`, read from anywhere.
+    nonisolated static func allowsCode(_ code: String) -> Bool {
+        let hash = hash(of: code)
+        return published.withLock { $0.contains(hash) }
+    }
 
     /// A project whose scripts run without asking: one made on this Mac,
     /// or one whose scripts the person allowed.
@@ -33,13 +45,31 @@ final class CodeApproval {
     private(set) var allowedHashes: Set<String> = []
     private(set) var allowedProjects: Set<AllowedProject> = []
     @ObservationIgnored private let file: URL
+    /// Whether `allowsCode` reads this one's hashes: the app's own.
+    @ObservationIgnored private let publishes: Bool
 
-    init(file: URL = CodeApproval.defaultFile) {
+    init(file: URL = CodeApproval.defaultFile, publishes: Bool = false) {
         self.file = file
+        self.publishes = publishes
         if let data = try? Data(contentsOf: file), let stored = try? JSONDecoder().decode(Stored.self, from: data) {
             allowedHashes = Set(stored.code)
             allowedProjects = Set(stored.projects)
         }
+        publish()
+    }
+
+    /// Hands the hashes to `allowsCode`, for this one, the app's own.
+    private func publish() {
+        guard publishes else { return }
+        let hashes = allowedHashes
+        Self.published.withLock { $0.formUnion(hashes) }
+    }
+
+    /// Allows `code` until the app quits, without saving it: for tests,
+    /// which mustn't write the person's own list.
+    nonisolated static func allowInSession(_ code: String) {
+        let hash = hash(of: code)
+        published.withLock { _ = $0.insert(hash) }
     }
 
     nonisolated static var defaultFile: URL {
@@ -62,8 +92,19 @@ final class CodeApproval {
 
     /// Allows this exact code: typed by the person, or read and allowed.
     func allow(_ code: String) {
-        guard allowedHashes.insert(Self.hash(of: code)).inserted else { return }
+        allow([code])
+    }
+
+    /// Allows several at once (Allow All in This Project, Review
+    /// Expressions), saved once. Posts `expressionsAllowed`, for the
+    /// editors to run the expressions now allowed.
+    func allow(_ codes: [String]) {
+        let new = Set(codes.map(Self.hash(of:))).subtracting(allowedHashes)
+        guard !new.isEmpty else { return }
+        allowedHashes.formUnion(new)
+        publish()
         save()
+        NotificationCenter.default.post(name: .expressionsAllowed, object: self)
     }
 
     // MARK: Projects
@@ -98,6 +139,7 @@ final class CodeApproval {
     func forgetAll() {
         allowedHashes = []
         allowedProjects = []
+        if publishes { Self.published.withLock { $0 = [] } }
         save()
     }
 
@@ -116,4 +158,9 @@ final class CodeApproval {
             NSLog("Couldn't save the code allowed to run: \(error.localizedDescription)")
         }
     }
+}
+
+extension Notification.Name {
+    /// Code was allowed to run: expressions waiting on it can run now.
+    static let expressionsAllowed = Notification.Name("expressionsAllowed")
 }

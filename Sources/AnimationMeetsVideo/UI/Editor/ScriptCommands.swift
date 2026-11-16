@@ -65,6 +65,10 @@ struct ScriptCommands: Commands {
                 .disabled(project == nil || !hasPython || isRunning)
             }
             Divider()
+            Button("Review Expressions\u{2026}") {
+                if let project { ExpressionReviewWindow.shared.show(for: project) }
+            }
+            .disabled(project == nil)
             Button("Python Console") { ScriptConsoleWindow.shared.show() }
                 .keyboardShortcut("y", modifiers: [.command, .option])
         }

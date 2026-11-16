@@ -339,6 +339,7 @@ extension EditingProject {
     /// it never has), with no result in the store that fits.
     func expressionIsWaiting(_ effect: Effect, in clip: TimelineClip, of timeline: Timeline) -> Bool {
         guard effect.kind == .expression, effect.enabled, let setup = effect.keyframing, setup.target != nil,
+              Self.expressionIsAllowed(effect),
               keyframingTargetIsReachable(effect, in: clip), expressionCycles()[effect.id] == nil
         else { return false }
         let base = setup.base ?? setup.target.flatMap { clip.number(of: $0) }.map { Self.removingKeyframes(of: effect.id, from: $0) }
@@ -362,9 +363,33 @@ extension EditingProject {
         return waiting
     }
 
-    /// What an expression's note says, if anything: its loop, its error,
-    /// or that it is running.
+    /// Whether this Mac allows an expression's code to run (see
+    /// docs/python-scripting.md, "Safety"). One that isn't plays exactly
+    /// as saved: its keyframes are in the project. It just isn't run again.
+    static func expressionIsAllowed(_ effect: Effect) -> Bool {
+        CodeApproval.allowsCode(effect.expression ?? "")
+    }
+
+    /// Every expression in the project, for Review Expressions… and Allow
+    /// All in This Project.
+    func expressions() -> [(timelineID: UUID, clipID: UUID, effect: Effect)] {
+        var found: [(UUID, UUID, Effect)] = []
+        for timeline in timelines {
+            for layer in timeline.layers {
+                for clip in layer.clips where clip.hasKeyframingEffect {
+                    for effect in clip.effects where effect.kind == .expression { found.append((timeline.id, clip.id, effect)) }
+                }
+            }
+        }
+        return found
+    }
+
+    /// What an expression's note says, if anything: that it isn't allowed
+    /// yet, its loop, its error, or that it is running.
     func expressionNote(for effect: Effect, in clip: TimelineClip, of timeline: Timeline) -> EffectNote? {
+        if !Self.expressionIsAllowed(effect) {
+            return EffectNote(text: "Expression not allowed yet: its code came from somewhere else, so it plays as saved and doesn't run until you allow it.", dims: true)
+        }
         if let next = expressionCycles()[effect.id] {
             let name = clipAndLayer(next.clip, in: next.timeline).map { self.name(of: .control(effectID: next.effect, controlID: next.control), in: $0.clip) } ?? "a control"
             return EffectNote(text: "It reads \(name), whose expression reads it back, so it writes nothing.", dims: true)
@@ -373,7 +398,7 @@ extension EditingProject {
         let base = setup?.base ?? setup?.target.flatMap { clip.number(of: $0) }.map { Self.removingKeyframes(of: effect.id, from: $0) }
         if let result = fittingExpressionResult(of: effect, in: clip, of: timeline, base: base), let failure = result.failure {
             let when = failure.time.map { String(format: " (at %.2f s)", $0) } ?? ""
-            return EffectNote(text: failure.summary + when, dims: false)
+            return EffectNote(text: "Expression has an error. " + failure.summary + when, dims: true)
         }
         if expressionIsWaiting(effect, in: clip, of: timeline) {
             return EffectNote(text: "Running\u{2026}", dims: false)
