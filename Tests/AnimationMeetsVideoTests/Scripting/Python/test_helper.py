@@ -128,6 +128,17 @@ class FakeApp:
                     "controls": [["K1", "position", "Position"], ["K2", "opacity", "Opacity"]]}
         if method == "control":
             return self.controls[args["target"]["control"]]
+        if method == "audio_levels":
+            self.changes.append((method, args))
+            return [0.1 * k for k in range(5)]
+        if method == "beat_times":
+            # A beat every 2 frames from frame 1, the first a downbeat.
+            return [[1 / 24, 1], [3 / 24, 2], [5 / 24, 3]]
+        if method == "noise":
+            return [x * 0.5 for x in args["xs"]]
+        if method == "wiggle":
+            self.changes.append((method, args))
+            return [0.5] * 5
         if method == "control_frames":
             # Position over 4 s at 24 fps: x climbs 10 a frame, y holds.
             return {"start": 0.0, "frame": 1 / 24, "values": [[10.0 * k, 5.0] for k in range(97)]}
@@ -411,9 +422,27 @@ class ExpressionTests(unittest.TestCase):
     def test_the_last_line_must_be_a_value(self):
         self.assertEqual(self.run_expression("x = 1")["exception"], "SyntaxError")
 
-    def test_names_of_later_steps_say_so(self):
-        error = self.run_expression("audio(20, 200)")
-        self.assertEqual(error["exception"], "NotImplementedError")
+    def test_audio_is_what_listen_to_hears_at_each_sample_read_once(self):
+        self.assertEqual(self.run_expression("audio(20, 200)"), [0.0, 0.1, 0.2, 0.30000000000000004, 0.4])
+        calls = [c for c in self.app.changes if c[0] == "audio_levels"]
+        self.assertEqual(calls, [("audio_levels", {"low": 20.0, "high": 200.0, "floor": -48.0, "ceiling": 0.0})])
+
+    def test_beats_count_and_phase_between_them(self):
+        self.assertEqual(self.run_expression("beats.index", count=6), [0, 1, 1, 2, 2, 3])
+        for got, expected in zip(self.run_expression("beats.phase", count=4), [0, 0, 0.5, 0]):
+            self.assertAlmostEqual(got, expected)
+        self.assertEqual(self.run_expression("1 if beats.downbeat else 0", count=4), [0, 1, 1, 0])
+        until = self.run_expression("beats.until", count=2)
+        self.assertAlmostEqual(until[0], 1 / 24)
+        self.assertAlmostEqual(until[1], 2 / 24)
+
+    def test_wiggle_scales_wigglers_noise_by_the_amount(self):
+        self.assertEqual(self.run_expression("wiggle(2, 30)"), [15.0] * 5)
+        calls = [c for c in self.app.changes if c[0] == "wiggle"]
+        self.assertEqual(calls, [("wiggle", {"frequency": 2.0, "octaves": 1, "seed": 1, "dimension": 0})])
+
+    def test_noise_is_read_from_the_app(self):
+        self.assertEqual(self.run_expression("noise(frame)", count=3), [0, 0.5, 1.0])
 
 
 class VectorTests(unittest.TestCase):

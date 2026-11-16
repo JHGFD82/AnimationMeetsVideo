@@ -1,22 +1,30 @@
 # Python scripting
 
-Status: **partly built, not yet tried on a Mac.** Steps 1 to 7 of
+Status: **partly built, not yet tried on a Mac.** Steps 1 to 8 of
 [Building it](#building-it) are written: the helper, the runtime and the
 Settings tab; reading the project and the console; scripts that edit,
 the Scripts menu and `Scripts/`; the expression model; allowing
-expressions, with Review Expressions; the confined helper; and running
+expressions, with Review Expressions; the confined helper; running
 expressions, with the code editor and the Expression chip in the
-Keyframe Designer. They were written without a build (on Linux, with no
-Xcode), so none of the Swift has been compiled or run; the helper's own
-Python tests pass. The sandbox profile (step 6) has to pass
-`ConfinementTests` on a Mac before expressions can be relied on. No
-Python release is pinned in the repository: `scripts/fetch-python.sh
+Keyframe Designer; and Listen To and Beats From, with `audio()`,
+`beats`, `noise()` and `wiggle()`. They were written without a build
+(on Linux, with no Xcode), so none of the Swift has been compiled or
+run; the helper's own Python tests pass. The sandbox profile (step 6)
+has to pass `ConfinementTests` on a Mac before expressions can be relied
+on. No Python release is pinned in the repository: `scripts/fetch-python.sh
 --pin`, run on the Mac that builds the app, writes the pin to
-`scripts/python-pin`, which git ignores. Still to come: `audio()`,
-`beats`, `noise()` and `wiggle()` in expressions (step 8; for now they
-say so when called), Between Frames (step 9, the setting is saved but
-not yet followed), re-running only the changed samples (10), following
-a held drag (11) and NumPy (12). The rest of this document
+`scripts/python-pin`, which git ignores. Still to come: Between Frames
+(step 9; the setting is saved but not yet followed), re-running only the
+changed samples (10), following a held drag (11) and NumPy (12).
+
+`noise(x, dimension=0)` and `wiggle(frequency, amount, octaves=1,
+dimension=0)` are Wiggler's noise for the expression's Seed, worked out
+by the app: `wiggle` from the start of the expression's range, as
+Wiggler starts, and `dimension` another stream, as Wiggler moves each
+component on its own. `beats.since` and `beats.until` are None where
+there is no beat before or after; `beats.phase` is 0 there.
+
+The rest of this document
 was written for whoever builds it: it says what the person sees, then
 how it works, then where each piece goes in the code, then the order to
 build it in. Choices made while writing it that the request didn't

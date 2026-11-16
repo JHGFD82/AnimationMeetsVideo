@@ -31,6 +31,12 @@ actor ProjectBridge {
         /// date, or its own keyframes would.
         var ownTarget: KeyframingRead?
         var ownBase: AnimatedValue<ComponentValue>?
+        /// For an expression: the timeline time of each of its samples,
+        /// what its `audio()` listens to (Listen To) and the layer whose
+        /// beats `beats` follows (Beats From).
+        var sampleTimes: [CMTime] = []
+        var audioSource: AudioKeysSource?
+        var beatLayer: UUID?
     }
 
     let snapshot: EditingProject
@@ -43,6 +49,8 @@ actor ProjectBridge {
     /// keyframes out of date when it changes.
     private(set) var reads: [KeyframingRead] = []
     private var readSet: Set<KeyframingRead> = []
+    /// What Listen To hears at each sample, read once a run.
+    private var heard: [[Double]]?
 
     init(project: EditingProject, context: Context = Context(), readsOnly: Bool = false) {
         snapshot = project
@@ -87,6 +95,10 @@ actor ProjectBridge {
         case "asset": return try readAsset(call)
         case "beats": return try readBeats(call)
         case "control_frames": return try readControlFrames(call)
+        case "audio_levels": return try readAudioLevels(call)
+        case "beat_times": return try readBeatTimes()
+        case "noise": return try noiseValues(call)
+        case "wiggle": return try wiggleValues(call)
         default:
             if readsOnly {
                 throw ScriptCallError.readOnly("An expression reads the project; it can't change it. A script can.")
@@ -277,6 +289,83 @@ actor ProjectBridge {
             time = CMTimeAdd(time, frame)
         }
         return ["start": .number(clip.startOffset.seconds), "frame": .number(frame.seconds), "values": .array(values)]
+    }
+
+    /// How loud `low` to `high` Hz are at each of the expression's
+    /// samples, 0 to 1 between `floor` and `ceiling` dB: what Listen To
+    /// hears, by Audio Keys' arithmetic (`AudioKeysMath`).
+    private func readAudioLevels(_ call: HelperCall) throws -> JSONValue {
+        guard let own = context.ownTarget, let timeline = working.timeline(id: own.timeline) else {
+            throw ScriptCallError.value("audio() is for expressions")
+        }
+        guard let source = context.audioSource else {
+            throw ScriptCallError.value("audio() hears nothing: choose what it listens to under Listen To")
+        }
+        guard let low = call["low"]?.number, let high = call["high"]?.number, low.isFinite, high.isFinite else {
+            throw ScriptCallError.type("audio() takes the lowest and highest frequency, in Hz")
+        }
+        let floor = call["floor"]?.number ?? -48, ceiling = call["ceiling"]?.number ?? 0
+        noteRead(KeyframingRead(timeline: timeline.id, kind: .heard(source)))
+        if heard == nil { heard = working.heardBands(source, in: timeline, at: context.sampleTimes) }
+        guard let heard else {
+            // When the sound has been read, what it hears changes, and the
+            // expression runs again.
+            throw ScriptCallError.value("The sound it listens to is still being read")
+        }
+        return .array(heard.map { bands in
+            .number(AudioKeysMath.normalized(AudioKeysMath.level(of: bands, from: low, to: high), floor: floor, ceiling: ceiling))
+        })
+    }
+
+    /// The beats of the layer under Beats From, in its timeline's time:
+    /// [seconds, place in the measure (0 for a detected beat)].
+    private func readBeatTimes() throws -> JSONValue {
+        guard let own = context.ownTarget, let timeline = working.timeline(id: own.timeline) else {
+            throw ScriptCallError.value("beats is for expressions")
+        }
+        guard let layerID = context.beatLayer else {
+            throw ScriptCallError.value("beats follows nothing: choose a Sound or Music layer under Beats From")
+        }
+        guard let layer = timeline.layer(id: layerID) else { throw ScriptCallError.gone("The layer under Beats From is gone") }
+        noteRead(KeyframingRead(timeline: timeline.id, kind: .beats(layer: layerID)))
+        return .array(working.beatMarkers(in: layer, tracks: context.beatTracks).map { beat in
+            [.number(beat.time.seconds), .number(Double(beat.position ?? 0))]
+        })
+    }
+
+    /// Wiggler's noise stream for an expression's Seed and a dimension
+    /// (0 for the first component, 1 for the next…), as Wiggler streams
+    /// each component.
+    private static func noiseStream(_ call: HelperCall) throws -> UInt64 {
+        guard let seed = call["seed"]?.number, seed.isFinite, let dimension = call["dimension"]?.int, dimension >= 0 else {
+            throw ScriptCallError.type("noise needs the expression's seed and a dimension")
+        }
+        return KeyframeGenerators.hash(UInt64(max(seed, 0)) &* 31 &+ UInt64(dimension))
+    }
+
+    /// `noise(x)`: Wiggler's smooth noise at each of `xs`, about -1 to 1.
+    private func noiseValues(_ call: HelperCall) throws -> JSONValue {
+        let stream = try Self.noiseStream(call)
+        guard let xs = call["xs"]?.array else { throw ScriptCallError.type("noise() takes a number") }
+        return try .array(xs.map { x in
+            guard let x = x.number, x.isFinite else { throw ScriptCallError.value("noise() takes a finite number") }
+            return .number(KeyframeGenerators.noise(x, stream: stream, smooth: true))
+        })
+    }
+
+    /// `wiggle(frequency, amount)` before its amount: Wiggler's noise at
+    /// `frequency` wiggles a second, at each of the expression's samples,
+    /// from the start of its range, about -1 to 1.
+    private func wiggleValues(_ call: HelperCall) throws -> JSONValue {
+        let stream = try Self.noiseStream(call)
+        guard let frequency = call["frequency"]?.number, frequency.isFinite else {
+            throw ScriptCallError.type("wiggle() takes a frequency, in wiggles a second")
+        }
+        let octaves = max(min(call["octaves"]?.int ?? 1, 8), 1)
+        let start = context.sampleTimes.first?.seconds ?? 0
+        return .array(context.sampleTimes.map { time in
+            .number(KeyframeGenerators.fractalNoise((time.seconds - start) * frequency, octaves: octaves, stream: stream, smooth: true))
+        })
     }
 
     /// What reading a target is, as an expression's read.

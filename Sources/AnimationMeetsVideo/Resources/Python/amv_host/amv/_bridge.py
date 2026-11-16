@@ -38,7 +38,9 @@ context = {}
 # out, and each control's values over its clip, read once a run (see
 # `objects.Control`). None outside an expression.
 sample_time = None
+sample_index = None
 tables = {}
+seed = 1
 
 
 def call(method, **arguments):

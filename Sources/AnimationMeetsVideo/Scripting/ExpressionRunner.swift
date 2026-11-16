@@ -71,7 +71,9 @@ final class ExpressionRunner {
         let bridge = ProjectBridge(
             project: project,
             context: ProjectBridge.Context(
-                beatTracks: DetectedBeats.shared.tracks, ownTarget: request.ownTarget, ownBase: request.base
+                beatTracks: DetectedBeats.shared.tracks, ownTarget: request.ownTarget, ownBase: request.base,
+                sampleTimes: request.timelineTimes, audioSource: request.effect.keyframing?.audioSource,
+                beatLayer: request.effect.keyframing?.beatLayer
             ),
             readsOnly: true
         )
@@ -103,6 +105,8 @@ final class ExpressionRunner {
     struct Prepared {
         var request: HelperRequest
         var times: [CMTime]
+        /// The same samples in the timeline's time.
+        var timelineTimes: [CMTime]
         var width: Int
         var effect: Effect
         var clip: TimelineClip
@@ -167,7 +171,7 @@ final class ExpressionRunner {
             KeyframingRead(timeline: timeline.id, kind: .control(clip: clip.id, effect: effectID, control: controlID))
         }
         return Prepared(
-            request: request, times: sampling.sources, width: width, effect: effect, clip: clip, timeline: timeline,
+            request: request, times: sampling.sources, timelineTimes: sampling.timelineTimes, width: width, effect: effect, clip: clip, timeline: timeline,
             base: base, ownTarget: ownTarget
         )
     }

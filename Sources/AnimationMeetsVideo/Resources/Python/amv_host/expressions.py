@@ -68,20 +68,101 @@ def clamp(x, low, high):
     return min(max(x, low), high)
 
 
-def _later(name, step):
-    def unavailable(*args, **kwargs):
-        raise NotImplementedError("%s isn't available in expressions yet (%s)." % (name, step))
-    return unavailable
+def audio(low, high, floor=-48.0, ceiling=0.0):
+    """How loud the frequencies from `low` to `high` Hz are at this sample,
+    0 to 1 between `floor` and `ceiling` dB: what Listen To hears, worked
+    out by the app as Audio Keys works it out. The levels are read once a
+    run for each range asked for."""
+    key = ("audio", float(low), float(high), float(floor), float(ceiling))
+    levels = _bridge.tables.get(key)
+    if levels is None:
+        levels = _bridge.call("audio_levels", low=key[1], high=key[2], floor=key[3], ceiling=key[4])
+        _bridge.tables[key] = levels
+    return levels[_bridge.sample_index]
 
 
-class _Later:
-    """A name whose reads come in a later step."""
+def noise(x, dimension=0):
+    """Wiggler's smooth noise at `x`, about -1 to 1, the same every run for
+    the expression's Seed; `dimension` gives another stream, as Wiggler
+    moves each component on its own."""
+    key = ("noise", int(dimension), float(x))
+    found = _bridge.tables.get(key)
+    if found is None:
+        found = _bridge.call("noise", xs=[key[2]], seed=_bridge.seed, dimension=key[1])[0]
+        _bridge.tables[key] = found
+    return found
 
-    def __init__(self, name, step):
-        self._message = "%s isn't available in expressions yet (%s)." % (name, step)
 
-    def __getattr__(self, attribute):
-        raise NotImplementedError(self._message)
+def wiggle(frequency, amount, octaves=1, dimension=0):
+    """`amount` times Wiggler's noise at `frequency` wiggles a second, from
+    the start of the expression's range: wiggle(2, 30) moves about 30 either
+    way, twice a second. Read once a run for each frequency."""
+    key = ("wiggle", float(frequency), int(octaves), int(dimension))
+    values = _bridge.tables.get(key)
+    if values is None:
+        values = _bridge.call("wiggle", frequency=key[1], octaves=key[2], seed=_bridge.seed, dimension=key[3])
+        _bridge.tables[key] = values
+    return amount * values[_bridge.sample_index]
+
+
+class Beats:
+    """The beats of the layer under Beats From, at this sample: `index` (how
+    many have passed), `since` and `until` (seconds since the last and to
+    the next, None where there is none), `phase` (0 to 1 from one beat to
+    the next, 0 before the first and after the last) and `downbeat`
+    (whether the last was the first of its measure, in a beat-matched
+    song)."""
+
+    def _beats(self):
+        beats = _bridge.tables.get("beats")
+        if beats is None:
+            beats = _bridge.call("beat_times")
+            _bridge.tables["beats"] = beats
+        return beats
+
+    def _around(self):
+        import bisect
+
+        beats = self._beats()
+        time = _bridge.sample_time
+        passed = bisect.bisect_right([b[0] for b in beats], time + 1e-9)
+        last = beats[passed - 1] if passed > 0 else None
+        upcoming = beats[passed] if passed < len(beats) else None
+        return passed, last, upcoming, time
+
+    @property
+    def index(self):
+        return self._around()[0]
+
+    @property
+    def since(self):
+        _, last, _, time = self._around()
+        return None if last is None else time - last[0]
+
+    @property
+    def until(self):
+        _, _, upcoming, time = self._around()
+        return None if upcoming is None else upcoming[0] - time
+
+    @property
+    def phase(self):
+        _, last, upcoming, time = self._around()
+        if last is None or upcoming is None or upcoming[0] <= last[0]:
+            return 0.0
+        return (time - last[0]) / (upcoming[0] - last[0])
+
+    @property
+    def downbeat(self):
+        _, last, _, _ = self._around()
+        return last is not None and last[1] == 1
+
+    @property
+    def times(self):
+        """Every beat's time, in seconds of the timeline."""
+        return [b[0] for b in self._beats()]
+
+    def __repr__(self):
+        return "<beats: %d so far>" % self.index
 
 
 def _base_names():
@@ -89,10 +170,10 @@ def _base_names():
     names.update({
         "Vector": Vector, "linear": linear, "ease": ease, "clamp": clamp, "abs": abs, "min": min, "max": max,
         "round": round, "len": len, "range": range, "sum": sum,
-        "audio": _later("audio()", "it comes with Listen To"),
-        "beats": _Later("beats", "it comes with Beats From"),
-        "noise": _later("noise()", "it comes with Wiggler's noise"),
-        "wiggle": _later("wiggle()", "it comes with Wiggler's noise"),
+        "audio": audio,
+        "beats": Beats(),
+        "noise": noise,
+        "wiggle": wiggle,
     })
     return names
 
@@ -159,6 +240,7 @@ def run(host, header, payload):
         "layer": amv.Layer(context["timeline"], context["layer"]) if context.get("layer") else None,
     })
     seed = header.get("seed", 1)
+    _bridge.seed = seed
     effect = header.get("effect", "")
     time = 0.0
     try:
@@ -168,6 +250,7 @@ def run(host, header, payload):
         for k in range(count):
             time = tables["time"][k]
             _bridge.sample_time = time
+            _bridge.sample_index = k
             namespace = dict(names)
             for name in ("time", "t", "frame", "source_time", "value", "a", "b", "c", "d"):
                 if name in tables:
@@ -189,5 +272,6 @@ def run(host, header, payload):
         result_payload = b""
     finally:
         _bridge.sample_time = None
+        _bridge.sample_index = None
         _bridge.tables = {}
     host.end(message, result_payload)

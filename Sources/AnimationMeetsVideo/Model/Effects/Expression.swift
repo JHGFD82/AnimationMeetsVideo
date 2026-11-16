@@ -164,6 +164,18 @@ extension EditingProject {
             fingerprint.add(range.end)
         }
         fingerprint.add(UInt64(bitPattern: Int64(setup?.component ?? -1)))
+        // What `audio()` listens to and whose beats `beats` follows.
+        switch setup?.audioSource {
+        case nil: fingerprint.add(UInt64(0))
+        case .mix?: fingerprint.add(UInt64(1))
+        case .layer(let id)?:
+            fingerprint.add(UInt64(2))
+            fingerprint.add(id)
+        case .clip(let id)?:
+            fingerprint.add(UInt64(3))
+            fingerprint.add(id)
+        }
+        fingerprint.add(setup?.beatLayer)
         if let base { fingerprint.add(base) { $0.values } } else { fingerprint.add(UInt64(0)) }
         if effect.choice(.betweenFrames, as: BetweenFrames.self) ?? .auto == .auto {
             // Its shutter's moments are called too (see "Between frames").

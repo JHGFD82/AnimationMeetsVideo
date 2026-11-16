@@ -334,14 +334,16 @@ private struct KeyframeDesignerSidebar: View {
                 help: "How what it makes meets the control's own value: added to it, scaling it as a percent, or in its place"
             ) { choice, setup in setup.combine = KeyframingCombine(rawValue: choice) ?? .add }
         }
-        if driver.kind == .audioKeys {
+        // An expression hears and follows beats only when its code asks
+        // (`audio()`, `beats`).
+        if driver.kind == .audioKeys || driver.kind == .expression {
             choiceRow(
                 "Listen To", options: hud.project.audioSourceOptions(current: setup.audioSource, in: timeline),
                 selected: setup.audioSource.optionID,
                 help: "The sound it follows: the whole mix, one Sound or Music layer, or one clip, as heard"
             ) { choice, setup in setup.audioSource = AudioKeysSource(optionID: choice) }
         }
-        if driver.kind == .beatKeys {
+        if driver.kind == .beatKeys || driver.kind == .expression {
             choiceRow(
                 "Beats From", options: hud.project.beatLayerOptions(current: setup.beatLayer, in: timeline),
                 selected: setup.beatLayer?.uuidString ?? "none", help: "The Sound or Music layer whose beats it follows"
