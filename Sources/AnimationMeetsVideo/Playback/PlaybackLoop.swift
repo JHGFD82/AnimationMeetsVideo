@@ -8,6 +8,11 @@ import Observation
 /// graph editors) shows and loops the same region. See
 /// docs/loop-region.md, "Playback".
 ///
+/// Players in other windows on the same timeline (a timeline window, the
+/// external display's own editor) show the same region: each player's
+/// loop joins the project's `LoopRegions`, and a change made through one
+/// is applied to the others (`apply(_:publishing:)`).
+///
 /// The end is watched with a boundary observer on the player, only while
 /// it plays and a region is active, so no time observer runs the rest of
 /// the time (as `BeatMatchSession.refreshLoop` does). The observer
@@ -41,6 +46,18 @@ final class PlaybackLoop {
     @ObservationIgnored private(set) var watchedRange: CMTimeRange?
     @ObservationIgnored private var observer: Any?
     private let player: AVPlayer
+    /// The timeline shown, as `show` was last told; nil before, or in a
+    /// test that gives none.
+    @ObservationIgnored private(set) var timelineID: UUID?
+    /// The regions shared by the project's players, which this one keeps
+    /// in step with; nil for a player on its own.
+    @ObservationIgnored var shared: LoopRegions? {
+        didSet {
+            guard shared !== oldValue else { return }
+            oldValue?.leave(self)
+            shared?.join(self)
+        }
+    }
 
     /// How far short of the item's end a range running to it is watched:
     /// at the end itself the player pauses, and that pause would take the
@@ -82,10 +99,19 @@ final class PlaybackLoop {
     // MARK: What is shown
 
     /// Another timeline is shown, from 0 to its `duration`: its region,
-    /// with no jump. A region whose end isn't after its start is dropped.
-    /// A designer's window is kept: the designer gives it back itself.
-    func show(_ region: LoopRegion?, duration: CMTime, frameDuration: CMTime) {
-        self.region = region.flatMap(Self.valid)
+    /// with no jump. With `shared` and the timeline's ID, that is the
+    /// region the project's players have for it, if any has shown it;
+    /// `region` (where this window left it) only seeds it the first time.
+    /// A region whose end isn't after its start is dropped. A designer's
+    /// window is kept: the designer gives it back itself.
+    func show(_ region: LoopRegion?, duration: CMTime, frameDuration: CMTime, timelineID: UUID? = nil) {
+        self.timelineID = timelineID
+        let saved = region.flatMap(Self.valid)
+        if let shared, let timelineID {
+            self.region = shared.region(of: timelineID, seeding: saved)
+        } else {
+            self.region = saved
+        }
         timelineRange = CMTimeRange(start: .zero, end: duration)
         self.frameDuration = frameDuration
         refresh()
@@ -111,51 +137,72 @@ final class PlaybackLoop {
 
     // MARK: Changing the region
 
+    /// A change to the region, made here or in another window's player on
+    /// the same timeline.
+    enum Change: Equatable {
+        case draw(LoopRegion)
+        case adjust(LoopRegion)
+        case setOn(Bool)
+        case remove
+    }
+
     /// A region drawn, in place of any there was. It is on, and while
     /// playing the player goes to its start.
-    func draw(_ region: LoopRegion) {
-        guard var drawn = Self.valid(region) else { return }
-        drawn.isOn = true
-        self.region = drawn
-        refresh()
-        if isPlaying, let active = activeRange { jump(active.start) }
-    }
+    func draw(_ region: LoopRegion) { apply(.draw(region)) }
 
     /// The region resized, moved or recolored. While playing, the player
     /// goes to its start only when it is outside the new range; a change
     /// that leaves the range alone never moves it.
-    func adjust(to region: LoopRegion) {
-        guard let adjusted = Self.valid(region) else { return }
-        let before = activeRange
-        self.region = adjusted
-        refresh()
-        guard isPlaying, let after = activeRange, after != before else { return }
-        let now = playerTime()
-        if !now.isNumeric || now < after.start || now >= after.end { jump(after.start) }
-    }
+    func adjust(to region: LoopRegion) { apply(.adjust(region)) }
 
-    func remove() {
-        guard region != nil else { return }
-        region = nil
-        refresh()
-    }
+    func remove() { apply(.remove) }
 
     /// Turns the region on or off. Turning it on while playing takes the
     /// player to its start; turning it off lets playing run on.
     func toggle() {
-        guard var toggled = region else { return }
-        toggled.isOn.toggle()
-        region = toggled
-        refresh()
-        if toggled.isOn, isPlaying, let active = activeRange { jump(active.start) }
+        guard let region else { return }
+        apply(.setOn(!region.isOn))
     }
 
     /// Turns the region on or off, when there is one and it isn't
     /// already, as `toggle` does. Asking twice does nothing the second
     /// time, so two views keeping the same rule can both ask.
-    func setOn(_ on: Bool) {
-        guard let region, region.isOn != on else { return }
-        toggle()
+    func setOn(_ on: Bool) { apply(.setOn(on)) }
+
+    /// Makes `change`, with what it does to a playing player, and unless
+    /// it came from another player (`publishing` false), hands it to the
+    /// others on this timeline. A change that does nothing goes nowhere.
+    func apply(_ change: Change, publishing: Bool = true) {
+        let before = activeRange
+        switch change {
+        case .draw(let region):
+            guard var drawn = Self.valid(region) else { return }
+            drawn.isOn = true
+            self.region = drawn
+            refresh()
+            if isPlaying, let active = activeRange { jump(active.start) }
+        case .adjust(let region):
+            guard let adjusted = Self.valid(region), adjusted != self.region else { return }
+            self.region = adjusted
+            refresh()
+            if isPlaying, let after = activeRange, after != before {
+                let now = playerTime()
+                if !now.isNumeric || now < after.start || now >= after.end { jump(after.start) }
+            }
+        case .setOn(let on):
+            guard var toggled = region, toggled.isOn != on else { return }
+            toggled.isOn = on
+            region = toggled
+            refresh()
+            if on, isPlaying, let active = activeRange { jump(active.start) }
+        case .remove:
+            guard region != nil else { return }
+            region = nil
+            refresh()
+        }
+        if publishing, let shared, let timelineID {
+            shared.changed(change, to: region, in: timelineID, by: self)
+        }
     }
 
     // MARK: Playing

@@ -727,7 +727,12 @@ struct TimelineEditorSurface<Library: View>: View {
         let time = memory.time(in: timelineID, of: project)
         playback.showTimeline(from: time)
         if let timeline = project.timeline(id: timelineID) {
-            playback.loop.show(memory.parked(timelineID)?.loop, duration: timeline.duration, frameDuration: timeline.frameDuration)
+            // The same region as the project's other windows on it.
+            playback.loop.shared = projectState?.loopRegions
+            playback.loop.show(
+                memory.parked(timelineID)?.loop, duration: timeline.duration, frameDuration: timeline.frameDuration,
+                timelineID: timelineID
+            )
         }
         playheadTime = time
         if selection?.timelineID != timelineID {

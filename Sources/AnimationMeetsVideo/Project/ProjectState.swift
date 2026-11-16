@@ -41,6 +41,10 @@ import Observation
 @Observable
 final class ProjectState {
     private var committed: EditingProject
+    /// Each timeline's loop region, kept the same in the players of all
+    /// the project's windows (`LoopRegions`). Not part of the project:
+    /// looping is never an edit.
+    @ObservationIgnored let loopRegions = LoopRegions()
     /// The project with the drag so far, while one is held; nil otherwise.
     private(set) var held: EditingProject?
     /// The effects, and the clips for their anchor point, whose effects
