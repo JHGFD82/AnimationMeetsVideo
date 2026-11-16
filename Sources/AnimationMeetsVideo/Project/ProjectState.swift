@@ -21,6 +21,9 @@ import Observation
 ///   with the first step (`ResetWhenChanged`, a view of its own, so the
 ///   rows around it aren't redrawn), read `held`, so the control is
 ///   consistent with itself.
+/// - A viewer handle's drag has no row of its own, so the rows of what it
+///   changes follow instead (`heldParts`): an effect's control rows and
+///   the clip's anchor point row, so the number moves with the handle.
 /// - Everything else shows the project as it was until the drag ends: the
 ///   Inspector's numbers and other copies of the value, the timeline's
 ///   volume lines and lanes, the EQ's band rows beside its
@@ -40,6 +43,12 @@ final class ProjectState {
     private var committed: EditingProject
     /// The project with the drag so far, while one is held; nil otherwise.
     private(set) var held: EditingProject?
+    /// The effects, and the clips for their anchor point, whose effects
+    /// panel rows show `held` during the drag, though they aren't the row
+    /// being dragged: what a viewer handle changes (`showHeld`). Set once
+    /// as a drag begins changing them, rather than every step, so a row
+    /// reading it is redrawn on each step only when it is one of them.
+    private(set) var heldParts: Set<UUID> = []
     /// Between `beginHold` and `endHold`, until `letGo`.
     @ObservationIgnored private(set) var isHolding = false
     /// Inside `hold`: writes go to `held`.
@@ -77,6 +86,14 @@ final class ProjectState {
     func beginHold() {
         isHolding = true
         held = nil
+        heldParts = []
+    }
+
+    /// Has the rows of `parts` (effect IDs, and clip IDs for the anchor
+    /// point) show the held drag (`heldParts`).
+    func showHeld(_ parts: Set<UUID>) {
+        guard isHolding, parts != heldParts else { return }
+        heldParts = parts
     }
 
     /// Runs a step of the drag, whose writes to `value` go to `held` while
@@ -95,6 +112,7 @@ final class ProjectState {
     func endHold() {
         isHolding = false
         held = nil
+        if !heldParts.isEmpty { heldParts = [] }
     }
 
     /// Writes the drag so far to the project and lets the rest of it go
@@ -105,6 +123,7 @@ final class ProjectState {
         isHolding = false
         if let held { committed = held }
         held = nil
+        if !heldParts.isEmpty { heldParts = [] }
     }
 
     // MARK: Locked clips

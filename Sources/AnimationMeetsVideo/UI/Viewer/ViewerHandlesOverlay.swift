@@ -635,7 +635,13 @@ struct ViewerHandlesOverlay: View {
         )
         let binding = source.project, timelineID = source.timelineID
         let write = { binding.wrappedValue.editClip(start.id, in: timelineID) { $0 = edited } }
-        if let projectState { projectState.hold(write) } else { write() }
+        if let projectState {
+            projectState.hold(write)
+            // The panel rows of what the drag changes show it as it goes.
+            projectState.showHeld(start.partsChanged(to: edited))
+        } else {
+            write()
+        }
     }
 
     private func dragEnded() {

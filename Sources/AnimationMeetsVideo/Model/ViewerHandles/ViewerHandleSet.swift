@@ -304,6 +304,21 @@ struct HandleEdit {
     }
 }
 
+extension TimelineClip {
+    /// What an edit of this clip into `edited` changes that the effects
+    /// panel shows a row for: the IDs of the effects it has before and
+    /// after and changes, and its own ID when its anchor point changes.
+    /// An effect the edit adds has no row yet, so it isn't one of them.
+    func partsChanged(to edited: TimelineClip) -> Set<UUID> {
+        var parts: Set<UUID> = []
+        for effect in edited.effects where self.effect(id: effect.id).map({ $0 != effect }) ?? false {
+            parts.insert(effect.id)
+        }
+        if anchorPoint != edited.anchorPoint { parts.insert(id) }
+        return parts
+    }
+}
+
 /// One value the arrow keys and VoiceOver change, one of what Tab picks:
 /// "Position", "Center".
 struct HandleKeyTarget {

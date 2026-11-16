@@ -40,11 +40,15 @@ extension EffectsPanel {
     /// A control as a held drag has it, for the row to show. A linked size
     /// dragged by its width changes the height too, and an animated value
     /// dragged where it has no keyframe gets one, which its diamond and its
-    /// lane show at once; the row reads the project, still as it was. Only
-    /// those rows read the held project, so a step of a drag redraws them
-    /// and not every row.
+    /// lane show at once; a viewer handle changes an effect's controls with
+    /// no row of its own being dragged (`ProjectState.heldParts`); the row
+    /// reads the project, still as it was. Only those rows read the held
+    /// project, so a step of a drag redraws them and not every row.
     private func heldControl(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> EffectControl? {
-        guard (control.kind.isLinkable && control.linked) || control.isAnimated, let held = projectState?.held else { return nil }
+        guard let projectState,
+              (control.kind.isLinkable && control.linked) || control.isAnimated || projectState.heldParts.contains(effect.id),
+              let held = projectState.held
+        else { return nil }
         return held.clipAndLayer(clip.id, in: timelineID)?.clip.effect(id: effect.id)?.controls.first(id: control.id)
     }
 

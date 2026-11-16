@@ -559,3 +559,27 @@ private func placement(_ clip: TimelineClip, _ context: HandleContext) -> Folded
         #expect(TransformHandles.reset(.scale, ctx) == nil)
     }
 }
+
+struct ClipPartsChangedTests {
+    @Test func namesTheEffectsAnEditChanges() {
+        let moved = transform(), still = transform()
+        let before = clip([moved, still])
+        var after = before
+        after.effects[0].changeControl(.position) { $0.number = AnimatedValue(ComponentValue(values: [10, 20])) }
+        #expect(before.partsChanged(to: after) == [moved.id])
+    }
+
+    @Test func namesTheClipWhenItsAnchorPointMoves() {
+        let before = clip([transform()])
+        var after = before
+        after.anchorPoint = AnimatedValue(Vector2(x: 5, y: 5))
+        #expect(before.partsChanged(to: after) == [before.id])
+    }
+
+    @Test func leavesOutAnEffectTheEditAdds() {
+        let before = clip()
+        var after = before
+        after.effects.append(transform())
+        #expect(before.partsChanged(to: after).isEmpty)
+    }
+}

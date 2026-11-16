@@ -10,7 +10,12 @@ extension EffectsPanel {
     func anchorRow(_ c: RowContext) -> some View {
         let clip = c.clip
         let animated = clip.anchorPoint.isAnimated
-        let value = clip.anchorPoint.value(at: c.sourceNow(animated: animated))
+        // A viewer handle moving the anchor shows here as it goes
+        // (`ProjectState.heldParts`); only then is the held project read,
+        // within the clip rows' own `StackRow`.
+        let held = projectState.flatMap { $0.heldParts.contains(clip.id) ? $0.held : nil }
+        let shown = held?.clipAndLayer(clip.id, in: timelineID)?.clip.anchorPoint ?? clip.anchorPoint
+        let value = shown.value(at: c.sourceNow(animated: animated))
         let key = ParameterKey(timelineID: timelineID, parameter: .anchorPoint(clipID: clip.id))
         return labelled(
             ParameterRow(
@@ -19,7 +24,7 @@ extension EffectsPanel {
                 unit: " px",
                 isAnimated: clip.anchorPoint.isAnimated,
                 isSelected: false,
-                keyframeTimes: clip.anchorPoint.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
+                keyframeTimes: shown.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
                 playhead: c.frameTime(animated: animated),
                 onReset: {
                     editClip(clip.id) { $0.anchorPoint = AnimatedValue(Vector2.zero) }
@@ -45,7 +50,7 @@ extension EffectsPanel {
                     .disabled(clip.anchorPoint == AnimatedValue(Vector2.zero))
             },
             lane: ParameterLane(
-                id: key, marks: clip.anchorPoint.marks, geometry: c.geometry, playhead: c.frameTime(animated: animated),
+                id: key, marks: shown.marks, geometry: c.geometry, playhead: c.frameTime(animated: animated),
                 height: EffectsPanelMetrics.rowHeight, onSeek: onSeek,
                 edits: LaneKeyframeEdits { (change: @escaping (inout AnimatedValue<Vector2>) -> Void) in editClip(clip.id) { change(&$0.anchorPoint) } }
             )

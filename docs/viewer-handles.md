@@ -639,6 +639,16 @@ what sets or adds the keyframe on an animated value. Scale's link is
 switched off first when the numbers are to differ, since `setComponent`
 moves both while it is on.
 
+### The effects panel during a drag
+
+The rows of what a drag changes show its values as it goes: the
+overlay names the effects it changes, and the clip when its anchor point
+moves (`TimelineClip.partsChanged(to:)`), to `ProjectState.showHeld`,
+and those rows read `held` while their IDs are in
+`ProjectState.heldParts`. The set changes as the drag begins and ends,
+not on every step, so the panel's other rows aren't redrawn. A
+Transform the drag adds has no row until the drag ends.
+
 ### Following the drag without a rebuild
 
 A held drag is drawn by patching the frame's clips with the drag's
