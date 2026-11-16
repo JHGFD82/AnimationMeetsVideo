@@ -4,7 +4,8 @@ import SwiftUI
 /// The loop bar: a slim row under a ruler holding the loop region of the
 /// timeline the player plays (`PlaybackLoop`). Drag across empty bar to
 /// draw a region, drag its edges to resize it and its middle to move it,
-/// click it to turn it on or off. Shared by every host, which says how
+/// click it to select it (for Delete). Its right-click menu turns it on
+/// or off. Shared by every host, which says how
 /// timeline time maps to x and what to snap to. See docs/loop-region.md,
 /// "The shared view".
 ///
@@ -31,6 +32,10 @@ struct LoopBar: View {
     let onAdjust: (LoopRegion) -> Void
     let onRemove: () -> Void
     let onToggle: () -> Void
+    /// Whether the region is the host's selection, which Delete removes.
+    let isSelected: Bool
+    /// The region pressed: the host selects it, and nothing else.
+    let onSelect: () -> Void
 
     static let height: CGFloat = SectionLane.height
     /// How far a press moves before it is a drag rather than a click.
@@ -47,8 +52,7 @@ struct LoopBar: View {
     /// runs; nil before the pointer has moved, or once Escape cancelled.
     @State private var draft: LoopRegion?
     /// The drag under way, from when the pointer has moved far enough to
-    /// be one until the button comes up, cancelled or not. A press that
-    /// ends without one is a click.
+    /// be one until the button comes up, cancelled or not.
     @State private var part: Part?
     @State private var escape = EscapableDrag()
     /// The timecode over the pointer while dragging; only the main
@@ -97,17 +101,19 @@ struct LoopBar: View {
     // MARK: Drawing
 
     /// The region as drawn: the loop's tone when on, greyed when off, its
-    /// glyph and length on it, cut off when it is too narrow.
-    private func chip(_ shown: LoopRegion) -> some View {
+    /// glyph and length on it, cut off when it is too narrow. Selected, it
+    /// is drawn as a selected section is: the brighter fill and a light
+    /// outline.
+    private func chip(_ shown: LoopRegion, selected: Bool = false) -> some View {
         let bounds = span(shown)
         let tone = Design.loop
-        let outline = shown.isOn ? tone : tone.greyed()
+        let outline = selected ? Design.textOnColor.opacity(0.95) : (shown.isOn ? tone : tone.greyed()).opacity(0.85)
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                .fill(Design.clipFill(tone, selected: false, enabled: shown.isOn))
+                .fill(Design.clipFill(tone, selected: selected, enabled: shown.isOn))
                 .overlay {
                     RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                        .strokeBorder(outline.opacity(0.85), lineWidth: 1)
+                        .strokeBorder(outline, lineWidth: selected ? 1.5 : 1)
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
@@ -137,7 +143,7 @@ struct LoopBar: View {
         let width = max(2, bounds.max - bounds.min)
         // A tiny region keeps a middle to grab for moving.
         let handle = min(handleWidth, max(2, width / 3))
-        return chip(shown)
+        return chip(shown, selected: isSelected)
             .overlay(alignment: .topLeading) {
                 // From the chip's left: a graph running backwards in
                 // timeline time puts the start on the right.
@@ -153,23 +159,24 @@ struct LoopBar: View {
             .contextMenu {
                 Button(region.isOn ? "Turn Loop Off" : "Turn Loop On", action: onToggle)
                 Divider()
-                Button("Remove Loop Region", role: .destructive, action: onRemove)
+                Button("Delete Loop Region", role: .destructive, action: onRemove)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Loop region")
             .accessibilityValue(
                 "\(region.isOn ? "On" : "Off"), from \(timecode(region.start)) to \(timecode(region.end))"
             )
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { onToggle() }
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { onSelect() }
             .accessibilityActions {
+                Button(region.isOn ? "Turn loop off" : "Turn loop on", action: onToggle)
                 Button("Move start one frame earlier") { step(region, .edge(.start), by: -1) }
                 Button("Move start one frame later") { step(region, .edge(.start), by: 1) }
                 Button("Move end one frame earlier") { step(region, .edge(.end), by: -1) }
                 Button("Move end one frame later") { step(region, .edge(.end), by: 1) }
                 Button("Move region one frame earlier") { step(region, .move, by: -1) }
                 Button("Move region one frame later") { step(region, .move, by: 1) }
-                Button("Remove loop region", action: onRemove)
+                Button("Delete loop region", action: onRemove)
             }
             .offset(x: bounds.min, y: 2)
     }
@@ -217,14 +224,14 @@ struct LoopBar: View {
             }
     }
 
-    /// On the region (`.move`) or one of its edges. A press released
-    /// within `dragDistance` of where it went down, anywhere on the
-    /// region, is a click and turns it on or off: told on release, since
-    /// toggling on mouse-down would toggle at the start of every drag.
+    /// On the region (`.move`) or one of its edges. The press selects it,
+    /// as a section's does, and a drag starts once the pointer has moved
+    /// `dragDistance`; a press that never gets that far only selects.
     private func regionGesture(_ region: LoopRegion, grabbed: Part) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(space))
             .onChanged { value in
                 if part == nil {
+                    if !isSelected { onSelect() }
                     guard hypot(value.translation.width, value.translation.height) >= Self.dragDistance else { return }
                     part = grabbed
                 }
@@ -248,10 +255,7 @@ struct LoopBar: View {
                 }
             }
             .onEnded { _ in
-                guard part != nil else {
-                    onToggle()
-                    return
-                }
+                guard part != nil else { return }
                 let adjusted = draft
                 let commits = escape.end()
                 endDrag()

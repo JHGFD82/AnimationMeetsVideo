@@ -1422,8 +1422,9 @@ struct UISnapshots {
 
     /// The loop bar as the main timeline's rail stacks it, over a sections
     /// row: a region on; the sections; a region off, greyed; one too
-    /// narrow for its length, cut off; no region. The loop's cyan and the
-    /// sections' bronze should read as two different rows.
+    /// narrow for its length, cut off; one selected; no region. The
+    /// loop's cyan and the sections' bronze should read as two different
+    /// rows.
     @Test func loopBar() throws {
         var project = EditingProject.empty
         project.addSection(named: "Chorus", in: project.rootTimelineID, from: .zero, to: CMTime(value: 8, timescale: 1))
@@ -1432,13 +1433,14 @@ struct UISnapshots {
         let length = CMTime(value: 12, timescale: 1)
         let viewport = TimelineViewport(durationSeconds: length.seconds, frameRate: 24, width: width, requestedPixelsPerSecond: nil, requestedScrollX: 0)
         func at(_ frames: Int64) -> CMTime { CMTime(value: frames, timescale: 24) }
-        func bar(_ region: LoopRegion?) -> some View {
+        func bar(_ region: LoopRegion?, selected: Bool = false) -> some View {
             LoopBar(
                 region: region, timeline: timeline, limits: CMTimeRange(start: .zero, end: length),
                 x: { viewport.x(atSeconds: $0.seconds) },
                 time: { CMTime(seconds: viewport.seconds(atX: $0), preferredTimescale: 600) },
                 snap: { _ in nil }, onSnapIndicator: { _ in },
-                onDraw: { _ in }, onAdjust: { _ in }, onRemove: {}, onToggle: {}
+                onDraw: { _ in }, onAdjust: { _ in }, onRemove: {}, onToggle: {},
+                isSelected: selected, onSelect: {}
             )
             .frame(width: width, height: LoopBar.height)
         }
@@ -1455,11 +1457,12 @@ struct UISnapshots {
                 sections
                 bar(LoopRegion(start: at(48), end: at(240), isOn: false))
                 bar(LoopRegion(start: at(24), end: at(30)))
+                bar(LoopRegion(start: at(96), end: at(192)), selected: true)
                 bar(nil)
             }
             .background(Design.Surface.raised.color)
             .preferredColorScheme(.dark),
-            "loop-bar", size: CGSize(width: width, height: 5 * LoopBar.height)
+            "loop-bar", size: CGSize(width: width, height: 6 * LoopBar.height)
         )
     }
 

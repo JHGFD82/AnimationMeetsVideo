@@ -4,14 +4,20 @@ import SwiftUI
 
 // Keys, the Timeline menu and deleting what is selected in a timeline.
 extension TimelineView {
-    /// Delete removes the selected layer, else the selected transition,
-    /// else the selected clip.
+    /// Delete removes the selected loop region, else the clips picked
+    /// together, the selected section, layer, transition or clip.
     func deleteSelection() -> Bool {
         // Not under a drag, which may be of what would go (see `handleKey`).
         guard !DragEscape.isActive else { return false }
         // The effects panel has the key while it is the active panel and
         // something in it is selected.
         if activePanel?.current == .sidePanel, showsEffects, effectsState.hasSelection { return false }
+        if isLoopSelected {
+            isLoopSelected = false
+            guard playback.loop.region != nil else { return false }
+            deleteLoop()
+            return true
+        }
         if !groupSelection.isEmpty {
             deleteGroup()
             return true
@@ -150,11 +156,12 @@ extension TimelineView {
         let effectsTakeDelete = activePanel?.current == .sidePanel && showsEffects && effectsState.hasSelection
         let hasSection = selectedSectionID.map { id in timeline.sections.contains { $0.id == id } } == true
         let layer = selectedLayerID.flatMap { timeline.layer(id: $0) }
-        let hasSelected = !groupSelection.isEmpty || hasSection || layer != nil || selection?.timelineID == timelineID
+        let hasSelected = isLoopSelected || !groupSelection.isEmpty || hasSection || layer != nil || selection?.timelineID == timelineID
         // A layer goes with its clips, which may be open in the motion
         // designer (the clips picked are checked in `TimelineMenuState`).
         let locked = projectState?.lockedClipIDs ?? []
-        let deletesLocked = groupSelection.isEmpty && !hasSection && layer?.clips.contains { locked.contains($0.id) } == true
+        let deletesLocked = !isLoopSelected && groupSelection.isEmpty && !hasSection
+            && layer?.clips.contains { locked.contains($0.id) } == true
         return TimelineMenuState.Selection(clips: clips, canDelete: hasSelected && !effectsTakeDelete && !deletesLocked)
     }
 
@@ -177,7 +184,7 @@ extension TimelineView {
             toggleLoop: { toggleLoop() },
             setLoopStart: { setLoopStartToPlayhead() },
             setLoopEnd: { setLoopEndToPlayhead() },
-            removeLoop: { playback.loop.remove() },
+            removeLoop: { deleteLoop() },
             tool: tool,
             setTool: { tool = $0 },
             zoomIn: { zoomAroundPlayhead(by: zoomStep) },

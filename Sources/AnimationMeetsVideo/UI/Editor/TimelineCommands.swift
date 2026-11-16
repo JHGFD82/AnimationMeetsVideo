@@ -109,7 +109,7 @@ struct TimelineCommands: Commands {
                 .disabled(!offers(\.canSetLoopStart))
             Button("Set Loop End to Playhead") { actions?.setLoopEnd() }
                 .disabled(!offers(\.canSetLoopEnd))
-            Button("Remove Loop Region") { actions?.removeLoop() }
+            Button("Delete Loop Region") { actions?.removeLoop() }
                 .disabled(!offers(\.hasLoop))
 
             Divider()

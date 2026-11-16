@@ -23,6 +23,7 @@ struct LoopBarInteractionTests {
         var drawn: [LoopRegion] = []
         var adjusted: [LoopRegion] = []
         var toggles = 0
+        var selects = 0
     }
 
     private struct Host: View {
@@ -44,7 +45,9 @@ struct LoopBarInteractionTests {
                 onDraw: { calls.drawn.append($0) },
                 onAdjust: { calls.adjusted.append($0) },
                 onRemove: {},
-                onToggle: { calls.toggles += 1 }
+                onToggle: { calls.toggles += 1 },
+                isSelected: false,
+                onSelect: { calls.selects += 1 }
             )
         }
     }
@@ -62,25 +65,29 @@ struct LoopBarInteractionTests {
         // Right to left works too: 6 s back to 2 s.
         try await drag(harness, from: 240, to: 80)
         #expect(calls.drawn == [LoopRegion(start: seconds(2), end: seconds(6))])
-        #expect(calls.toggles == 0)
+        #expect(calls.toggles == 0 && calls.selects == 0)
     }
 
-    @Test func aClickTogglesAndADragMovesWithoutToggling() async throws {
+    /// A click selects the region, for Delete, and never turns it on or
+    /// off; a drag of its middle moves it and selects it too.
+    @Test func aClickSelectsAndADragMoves() async throws {
         let calls = Calls()
         let region = LoopRegion(start: seconds(2), end: seconds(6))
         let harness = EventHarness(Host(region: region, calls: calls), size: Self.size)
         try await harness.settle()
 
         try await harness.click(at: CGPoint(x: 160, y: Self.y))
-        #expect(calls.toggles == 1)
-        // On an edge, a click toggles too.
+        #expect(calls.selects > 0)
+        // On an edge, a click selects too.
+        let before = calls.selects
         try await harness.click(at: CGPoint(x: 240, y: Self.y))
-        #expect(calls.toggles == 2)
+        #expect(calls.selects > before)
+        #expect(calls.adjusted.isEmpty)
 
         // The middle dragged a second later moves it, its length kept.
         try await drag(harness, from: 160, to: 200)
         #expect(calls.adjusted == [LoopRegion(start: seconds(3), end: seconds(7))])
-        #expect(calls.toggles == 2)
+        #expect(calls.toggles == 0)
         #expect(calls.drawn.isEmpty)
     }
 
