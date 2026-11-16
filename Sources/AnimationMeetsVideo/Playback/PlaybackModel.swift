@@ -12,6 +12,8 @@ final class PlaybackModel {
     let player: AVPlayer
     /// Blips on the timeline's beat markers during playback.
     let beatClicks: BeatClickPlayer
+    /// The loop region of the timeline shown, and the turn back at its end.
+    let loop: PlaybackLoop
     private(set) var currentTime: CMTime = .zero
     private(set) var isPlaying = false
     /// Where the pointer skims the timeline while paused: the viewer (and
@@ -116,6 +118,8 @@ final class PlaybackModel {
         motionBlurInPreview = blur
         drawingOptions.update(motionBlurInPreview: blur)
         beatClicks = BeatClickPlayer(player: player)
+        loop = PlaybackLoop(player: player)
+        loop.jump = { [weak self] time in self?.jump(to: time) }
         redrawer.onFrame = { [weak self] buffer, token in self?.receiveRedrawn(buffer, token: token) }
         display.onOutputFrame = { [weak self] buffer, time in self?.receiveOutputFrame(buffer, at: time) }
         timeObserver = player.addPeriodicTimeObserver(
@@ -487,6 +491,7 @@ final class PlaybackModel {
         if !playing, !isSeeking, !playerIsSkimmed { currentTime = player.currentTime() }
         isPlaying = playing
         display.isPlaying = playing
+        loop.playingChanged(playing)
         if playing {
             prerenderer.cancel()
             dropRedraw()
@@ -678,11 +683,24 @@ final class PlaybackModel {
         }
         // Play starts from the frame skimmed to, as the viewer shows it.
         if let skimTime { move(to: skimTime, playsGrain: false) }
-        if let item = player.currentItem, item.duration.isNumeric,
-           CMTimeCompare(player.currentTime(), item.duration) >= 0 {
+        if let start = loop.playStart(from: currentTime) {
+            // A loop on: from the playhead inside it, else from its start.
+            if start != currentTime { move(to: start, playsGrain: false) }
+        } else if let item = player.currentItem, item.duration.isNumeric,
+                  CMTimeCompare(player.currentTime(), item.duration) >= 0 {
             player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
         }
         player.play()
+    }
+
+    /// A loop's turn back while playing: the player seeks and plays on.
+    /// Not `seek(to:)`, which pauses (the playhead is the master), nor the
+    /// paused-seek queue, which is for scrubbing. The playhead, the page
+    /// turn, the beat tick and the audio taps follow the player's jump in
+    /// time on their own.
+    func jump(to time: CMTime) {
+        currentTime = time
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     // MARK: Tape scrubbing

@@ -8,10 +8,14 @@ extension TimelineView {
         recordError = nil
         let playhead = playheadTime
         recordingTimelineID = timelineID
+        // A take over the playing timeline lines up with it, so the loop
+        // lets it play straight on until the take stops.
+        if playing { playback.loop.isSuspended = true }
         Task {
             do {
                 try await recorder.start(source, player: playback.player, from: playhead, playing: playing)
             } catch {
+                playback.loop.isSuspended = false
                 recordError = error.localizedDescription
             }
         }
@@ -25,6 +29,7 @@ extension TimelineView {
         let take: AudioRecorder.Take
         let timelineID = recordingTimelineID ?? timelineID
         recordingTimelineID = nil
+        playback.loop.isSuspended = false
         do {
             take = try recorder.stop()
         } catch {
