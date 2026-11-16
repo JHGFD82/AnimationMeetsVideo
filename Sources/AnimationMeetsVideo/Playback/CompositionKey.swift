@@ -108,6 +108,9 @@ extension CompositionKey {
 /// values patched in; one that differs (a clip added, moved, trimmed or
 /// retimed, a transition, the layers' order, a replaced file, an effect
 /// added, removed or turned off, a pan moved off center) is built again.
+/// Transform effects are left out altogether: the compositor folds them
+/// from the patched values, so adding one (as a drag in the viewer does)
+/// doesn't build the item again.
 /// A Text effect's words and font are left out too: the compositor lays
 /// text out as it draws, so typing or picking a font is drawn at once.
 /// (`EditingProject.structure` keeps them, since they name the clip.)
@@ -123,8 +126,13 @@ struct StructureKey: Equatable {
         for t in composition.timelines.indices {
             for l in composition.timelines[t].layers.indices {
                 for c in composition.timelines[t].layers[l].clips.indices {
+                    // Transform effects have no input, track or pass of
+                    // their own: the compositor folds them as it draws, so
+                    // one added, removed or switched off is a value too, and
+                    // a viewer drag that adds one is drawn at once.
                     composition.timelines[t].layers[l].clips[c].effects =
-                        composition.timelines[t].layers[l].clips[c].effects.map { effect in
+                        composition.timelines[t].layers[l].clips[c].effects.compactMap { effect -> Effect? in
+                            guard effect.kind != .transform else { return nil }
                             var bare = Effect.bare(effect)
                             bare.text = nil
                             return bare

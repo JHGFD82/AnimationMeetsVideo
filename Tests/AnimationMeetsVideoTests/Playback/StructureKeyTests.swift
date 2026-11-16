@@ -48,6 +48,26 @@ import Testing
         if bare != before { #expect(StructureKey(project: bare) != StructureKey(project: before)) }
     }
 
+    /// A Transform is folded as the compositor draws, from the patched
+    /// values, so a drag in the viewer that adds one is drawn at once.
+    @Test func aTransformAddedRemovedOrSwitchedOffKeepsTheKey() {
+        let (before, tl, clip) = project()
+        var added = before
+        added.editClip(clip, in: tl) { clip in
+            var transform = Effect(kind: .transform)
+            transform.changeControl(.position) { $0.number = AnimatedValue(ComponentValue(values: [40, 0])) }
+            clip.effects.append(transform)
+        }
+        #expect(StructureKey(project: added) == StructureKey(project: before))
+        var off = added
+        off.editClip(clip, in: tl) { $0.effects[0].enabled = false }
+        #expect(StructureKey(project: off) == StructureKey(project: added))
+        // Other effects still build the item again.
+        var blended = added
+        blended.editClip(clip, in: tl) { $0.effects.append(Effect(kind: .blending)) }
+        #expect(StructureKey(project: blended) != StructureKey(project: added))
+    }
+
     /// Mono sound panned off center plays from a stereo copy, which the item
     /// is built with; the pan's amount is heard as it plays.
     @Test func aPanOffCenterChangesItAndItsAmountDoesNot() {
