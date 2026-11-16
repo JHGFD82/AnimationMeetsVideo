@@ -304,9 +304,9 @@ Position is picked to begin with, so a click in the viewer and an arrow
 key nudges the clip. Each nudge is an edit of its own, as a nudge on the
 tone graph is, and does what the drag does: it adds a keyframe where
 the value is animated, and a nudge of the anchor keeps the picture
-still. Space still plays, and the handles go. The canvas gives the keys back when its handles
-stop showing (another selection, playback) and at a press outside it,
-as other drawn views do.
+still. Space still plays, and the handles go. The canvas gives the
+keys back when its handles stop showing (another selection, playback)
+and at a press outside it, as other drawn views do.
 
 ## Zooming and scrolling the viewer
 
