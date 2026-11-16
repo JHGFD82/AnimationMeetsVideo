@@ -240,6 +240,7 @@ struct EditorView: View {
         }
         .onChange(of: project) { oldValue, newValue in projectDidChange(newValue, from: oldValue) }
         .onReceive(NotificationCenter.default.publisher(for: .spectrogramsChanged)) { _ in analysisArrived() }
+        .runsExpressions(of: project) { expressionResultsArrived() }
         .onChange(of: analysis.beats, initial: true) { _, beats in
             if DetectedBeats.shared.update(beats, owner: ObjectIdentifier(analysis)) { analysisArrived() }
         }
@@ -333,6 +334,16 @@ struct EditorView: View {
         var refreshed = project
         guard refreshed.refreshKeyframing() else { return }
         history.adopt { $0.refreshKeyframing() }
+        writeDerived { project = refreshed }
+    }
+
+    /// Expressions whose runs have finished make their keyframes. As with
+    /// analysis, applying the code was the edit; the result arriving isn't
+    /// one, so it is made in the undo baseline too.
+    private func expressionResultsArrived() {
+        var refreshed = project
+        guard refreshed.applyExpressionResults() else { return }
+        history.adopt { $0.applyExpressionResults() }
         writeDerived { project = refreshed }
     }
 

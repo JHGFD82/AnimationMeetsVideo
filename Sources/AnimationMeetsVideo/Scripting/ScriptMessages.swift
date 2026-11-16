@@ -67,6 +67,9 @@ struct HelperRequest: Sendable {
         case script
         /// One console line, run in the console's namespace.
         case line
+        /// An expression, called once per sample over the tables in
+        /// `payload` (see `ExpressionRunner`).
+        case expression
     }
 
     var kind: Kind
@@ -81,11 +84,15 @@ struct HelperRequest: Sendable {
     /// How long it may run before it is stopped; nil for as long as it
     /// takes (a script, which the person can stop).
     var timeLimit: Duration?
+    /// More fields for the header, as an expression's tables and context.
+    var fields: [String: JSONValue] = [:]
+    /// Raw little-endian float64s after the header: an expression's tables.
+    var payload = Data()
 
     func header(id: Int) -> JSONValue {
-        var header: [String: JSONValue] = [
+        var header: [String: JSONValue] = fields.merging([
             "type": .string(kind.rawValue), "id": .number(Double(id)), "code": .string(code), "context": context,
-        ]
+        ]) { _, own in own }
         if let path {
             header["path"] = .string(path.path)
             header["folder"] = .string(path.deletingLastPathComponent().path)
@@ -141,6 +148,8 @@ struct ScriptCallError: Error, Equatable, Sendable {
         case type, value
         /// `LookupError`: no such kind of effect, say.
         case lookup
+        /// `amv.ReadOnly`: an expression changing the project.
+        case readOnly = "readonly"
     }
 
     var kind: Kind
@@ -150,6 +159,7 @@ struct ScriptCallError: Error, Equatable, Sendable {
     static func refused(_ message: String) -> Self { Self(kind: .refused, message: message) }
     static func type(_ message: String) -> Self { Self(kind: .type, message: message) }
     static func value(_ message: String) -> Self { Self(kind: .value, message: message) }
+    static func readOnly(_ message: String) -> Self { Self(kind: .readOnly, message: message) }
     static func lookup(_ message: String) -> Self { Self(kind: .lookup, message: message) }
 }
 
@@ -173,6 +183,8 @@ enum ScriptRunEnd: Equatable, Sendable {
     case finished(display: String?)
     /// It raised.
     case failed(ScriptFailure)
+    /// An expression's samples, each sample's numbers one after another.
+    case samples([Double])
 }
 
 /// An exception a run raised: its type and text, the line of the code
@@ -182,12 +194,15 @@ struct ScriptFailure: Equatable, Sendable {
     var message: String
     var line: Int?
     var traceback: String
+    /// For an expression: the timeline time of the sample it happened at.
+    var time: Double?
 
-    init(exception: String, message: String, line: Int? = nil, traceback: String = "") {
+    init(exception: String, message: String, line: Int? = nil, traceback: String = "", time: Double? = nil) {
         self.exception = exception
         self.message = message
         self.line = line
         self.traceback = traceback
+        self.time = time
     }
 
     init(_ header: JSONValue) {
@@ -195,6 +210,7 @@ struct ScriptFailure: Equatable, Sendable {
         message = header["message"]?.string ?? ""
         line = header["line"]?.int
         traceback = header["traceback"]?.string ?? ""
+        time = header["time"]?.number
     }
 
     /// Whether it was stopped: by Stop, or by the time limit.

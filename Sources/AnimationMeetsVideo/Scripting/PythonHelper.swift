@@ -95,7 +95,7 @@ actor PythonHelper: ScriptHelper {
         defer { timer?.cancel() }
 
         do {
-            try connection.send(HelperFrame(header: request.header(id: id)))
+            try connection.send(HelperFrame(header: request.header(id: id), payload: request.payload))
             while true {
                 let frame = try await connection.reader.next()
                 switch frame.type {
@@ -109,6 +109,7 @@ actor PythonHelper: ScriptHelper {
                     let stream = frame.header["stream"]?.string.flatMap(ScriptOutput.Stream.init) ?? .stdout
                     output(ScriptOutput(stream: stream, text: frame.header["text"]?.string ?? ""))
                 case "result" where frame.header["run"]?.int == id:
+                    if request.kind == .expression { return .samples(Self.floats(frame.payload)) }
                     return .finished(display: frame.header["display"]?.string)
                 case "error" where frame.header["run"]?.int == id:
                     if timedOutRun == id, let limit = request.timeLimit { throw ScriptHelperError.tookTooLong(limit) }
@@ -161,6 +162,26 @@ actor PythonHelper: ScriptHelper {
             drop(connection)
             throw error
         }
+    }
+
+    /// Raw little-endian float64s as numbers.
+    static func floats(_ data: Data) -> [Double] {
+        stride(from: 0, to: data.count - data.count % 8, by: 8).map { offset in
+            var bits: UInt64 = 0
+            for (shift, byte) in data[data.startIndex + offset..<data.startIndex + offset + 8].enumerated() {
+                bits |= UInt64(byte) << (8 * UInt64(shift))
+            }
+            return Double(bitPattern: bits)
+        }
+    }
+
+    /// Numbers as raw little-endian float64s.
+    static func payload(_ numbers: [Double]) -> Data {
+        var data = Data(capacity: numbers.count * 8)
+        for number in numbers {
+            withUnsafeBytes(of: number.bitPattern.littleEndian) { data.append(contentsOf: $0) }
+        }
+        return data
     }
 
     /// Ends the helper, if it is running; the next run starts a new one.

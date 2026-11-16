@@ -14,7 +14,8 @@ from collections import namedtuple
 from collections.abc import Sequence
 
 from . import _bridge
-from .values import time_in, time_out, value_in, value_out
+from ._bridge import Gone
+from .values import Vector, time_in, time_out, value_in, value_out
 
 call = _bridge.call
 
@@ -476,7 +477,13 @@ class Control(_Proxy):
     @property
     def value(self):
         """Its value where it isn't keyframed: a number, a Vector, or for a
-        choice its option. Setting it sets that value."""
+        choice its option. Setting it sets that value.
+
+        In an expression, its value at this sample, read on its own
+        timeline's clock: as many seconds from that timeline's start as
+        `time` is from this one's."""
+        if _bridge.sample_time is not None:
+            return self.at(_bridge.sample_time)
         return value_in(self._read()["value"])
 
     @value.setter
@@ -498,8 +505,36 @@ class Control(_Proxy):
         call("set_keyframes", target=self._target(), keyframes=pairs)
 
     def at(self, time):
-        """Its value at `time`, a moment of its clip's source."""
+        """Its value at `time`, a moment of its clip's source. In an
+        expression, `time` is a moment of its timeline instead, as `time`
+        is, and the value is read in a straight line between the frames
+        of its clip."""
+        if _bridge.sample_time is not None:
+            return self._sampled(float(time))
         return value_in(call("control_at", target=self._target(), times=[time_out(time)])[0])
+
+    def _sampled(self, seconds):
+        key = self._key
+        table = _bridge.tables.get(key)
+        if table is None:
+            table = call("control_frames", target=self._target())
+            _bridge.tables[key] = table
+        values = table["values"]
+        if not values:
+            raise Gone("%s has no frames to read" % _try(lambda: self.name))
+        if isinstance(values[0], str):
+            return values[0]
+        position = (seconds - table["start"]) / table["frame"] if table["frame"] > 0 else 0.0
+        if position <= 0:
+            return value_in(values[0])
+        if position >= len(values) - 1:
+            return value_in(values[-1])
+        low = int(position)
+        f = position - low
+        a, b = values[low], values[low + 1]
+        if isinstance(a, list):
+            return Vector(x + (y - x) * f for x, y in zip(a, b))
+        return a + (b - a) * f
 
     @property
     def driven_by(self):

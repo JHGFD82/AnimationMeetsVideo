@@ -1,17 +1,22 @@
 # Python scripting
 
-Status: **partly built, not yet tried on a Mac.** Steps 1 to 5 of
+Status: **partly built, not yet tried on a Mac.** Steps 1 to 7 of
 [Building it](#building-it) are written: the helper, the runtime and the
 Settings tab; reading the project and the console; scripts that edit,
-the Scripts menu and `Scripts/`; the expression model; and allowing
-expressions, with Review Expressions. They were written without a build
-(on Linux, with no Xcode), so none of the Swift has been compiled or
-run; the helper's own Python tests pass. No Python release is pinned in
-`scripts/fetch-python.sh` yet, so the app is built without one of its
-own until `scripts/fetch-python.sh --pin` is run on the Mac that builds
-it (the pin is kept in `scripts/python-pin`, which git ignores). Steps 6 on remain: the confined helper must be written
-and tried on a Mac before expressions run (step 7), and the Keyframe
-Designer doesn't offer Expression until then. The rest of this document
+the Scripts menu and `Scripts/`; the expression model; allowing
+expressions, with Review Expressions; the confined helper; and running
+expressions, with the code editor and the Expression chip in the
+Keyframe Designer. They were written without a build (on Linux, with no
+Xcode), so none of the Swift has been compiled or run; the helper's own
+Python tests pass. The sandbox profile (step 6) has to pass
+`ConfinementTests` on a Mac before expressions can be relied on. No
+Python release is pinned in the repository: `scripts/fetch-python.sh
+--pin`, run on the Mac that builds the app, writes the pin to
+`scripts/python-pin`, which git ignores. Still to come: `audio()`,
+`beats`, `noise()` and `wiggle()` in expressions (step 8; for now they
+say so when called), Between Frames (step 9, the setting is saved but
+not yet followed), re-running only the changed samples (10), following
+a held drag (11) and NumPy (12). The rest of this document
 was written for whoever builds it: it says what the person sees, then
 how it works, then where each piece goes in the code, then the order to
 build it in. Choices made while writing it that the request didn't

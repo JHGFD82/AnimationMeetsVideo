@@ -37,9 +37,11 @@ class Helper:
         )
         self.next_id = 0
 
-    def send(self, header):
+    def send(self, header, payload=b""):
+        if payload:
+            header = dict(header, bytes=len(payload))
         data = json.dumps(header).encode()
-        self.process.stdin.write(struct.pack("<I", len(data)) + data)
+        self.process.stdin.write(struct.pack("<I", len(data)) + data + payload)
         self.process.stdin.flush()
 
     def read(self):
@@ -52,11 +54,11 @@ class Helper:
             header["payload"] = self.process.stdout.read(header["bytes"])
         return header
 
-    def run(self, kind, code, app=None, **extra):
+    def run(self, kind, code, app=None, payload=b"", **extra):
         """Runs `code`, answering its calls with `app`; gives the output
         printed and the result or error."""
         self.next_id += 1
-        self.send(dict(extra, type=kind, id=self.next_id, code=code))
+        self.send(dict(extra, type=kind, id=self.next_id, code=code), payload)
         printed = []
         while True:
             message = self.read()
@@ -126,6 +128,9 @@ class FakeApp:
                     "controls": [["K1", "position", "Position"], ["K2", "opacity", "Opacity"]]}
         if method == "control":
             return self.controls[args["target"]["control"]]
+        if method == "control_frames":
+            # Position over 4 s at 24 fps: x climbs 10 a frame, y holds.
+            return {"start": 0.0, "frame": 1 / 24, "values": [[10.0 * k, 5.0] for k in range(97)]}
         if method == "control_at":
             return [[50, 25] for _ in args["times"]]
         if method == "asset":
@@ -334,6 +339,81 @@ class HelperTests(unittest.TestCase):
     def test_the_helper_ends_when_the_app_closes_its_input(self):
         self.helper.process.stdin.close()
         self.assertEqual(self.helper.process.wait(5), 0)
+
+
+class ExpressionTests(unittest.TestCase):
+    """Expressions, called once per sample with the tables the app sends."""
+
+    def setUp(self):
+        self.helper = Helper()
+        self.app = FakeApp()
+
+    def tearDown(self):
+        self.helper.close()
+
+    def run_expression(self, code, count=5, width=1, value=None, **extra):
+        times = [k / 24 for k in range(count)]
+        value = value or [[0.0] * width for _ in range(count)]
+        tables = [("time", 1), ("t", 1), ("frame", 1), ("source_time", 1), ("value", width),
+                  ("a", 1), ("b", 1), ("c", 1), ("d", 1)]
+        columns = {
+            "time": times, "t": times, "frame": [float(k) for k in range(count)], "source_time": times,
+            "value": [x for v in value for x in v], "a": [2.0] * count, "b": [1.0] * count, "c": [0.0] * count, "d": [0.0] * count,
+        }
+        floats = [x for name, _ in tables for x in columns[name]]
+        payload = struct.pack("<%dd" % len(floats), *floats)
+        header = dict(
+            count=count, width=width, tables=tables, fps=24.0, duration=count / 24, seed=1, effect="E9",
+            context={"timeline": "T1", "clip": "C1", "layer": "L1"}, **extra
+        )
+        _, result = self.helper.run("expression", code, self.app, payload=payload, **header)
+        if result["type"] == "result":
+            data = result["payload"] if "payload" in result else b""
+            return list(struct.unpack("<%dd" % (len(data) // 8), data))
+        return result
+
+    def test_each_sample_is_the_last_lines_value(self):
+        self.assertEqual(self.run_expression("frame * 2"), [0, 2, 4, 6, 8])
+
+    def test_lines_before_set_names_and_inputs_are_read(self):
+        self.assertEqual(self.run_expression("x = a * 10\nx + b"), [21.0] * 5)
+
+    def test_prev_and_state_carry_from_sample_to_sample(self):
+        self.assertEqual(self.run_expression("(prev or 0) + 1"), [1, 2, 3, 4, 5])
+        self.assertEqual(self.run_expression("state['n'] = state.get('n', 0) + 1\nstate['n']"), [1, 2, 3, 4, 5])
+
+    def test_a_number_sets_every_component_of_a_vector(self):
+        self.assertEqual(self.run_expression("7", count=2, width=2), [7, 7, 7, 7])
+        self.assertEqual(self.run_expression("value + [1, 2]", count=1, width=2, value=[[10, 20]]), [11, 22])
+
+    def test_another_control_is_read_on_its_clock(self):
+        code = "clip.effect('Transform')['position'].value[0]"
+        self.assertEqual(self.run_expression(code, count=3), [0, 10, 20])
+        # Half a frame on: halfway between frames.
+        self.assertEqual(self.run_expression("clip.effect('Transform')['position'].at(time + 1/48)[0]", count=2), [5, 15])
+
+    def test_random_is_the_same_every_run(self):
+        first = self.run_expression("random()")
+        self.assertEqual(first, self.run_expression("random()"))
+        self.assertEqual(len(set(first)), 5)
+
+    def test_an_error_names_its_line_and_moment(self):
+        error = self.run_expression("x = 1\n1 / (frame - 3)")
+        self.assertEqual(error["exception"], "ZeroDivisionError")
+        self.assertEqual(error["line"], 2)
+        self.assertAlmostEqual(error["time"], 3 / 24)
+
+    def test_a_value_that_isnt_a_finite_number_is_an_error(self):
+        self.assertEqual(self.run_expression("float('nan')")["exception"], "ValueError")
+        self.assertEqual(self.run_expression("'tall'")["exception"], "TypeError")
+        self.assertEqual(self.run_expression("[1, 2, 3]", width=2)["exception"], "ValueError")
+
+    def test_the_last_line_must_be_a_value(self):
+        self.assertEqual(self.run_expression("x = 1")["exception"], "SyntaxError")
+
+    def test_names_of_later_steps_say_so(self):
+        error = self.run_expression("audio(20, 200)")
+        self.assertEqual(error["exception"], "NotImplementedError")
 
 
 class VectorTests(unittest.TestCase):

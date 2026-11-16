@@ -208,9 +208,7 @@ private struct KeyframeDesignerSidebar: View {
     let timeline: Timeline
 
     /// The methods, None first.
-    /// Expression's chip waits for expressions to run (see
-    /// docs/python-scripting.md, "Building it", step 7).
-    static let methods: [EffectKind?] = [nil] + EffectKind.all.filter { $0.isKeyframing && $0 != .expression }
+    static let methods: [EffectKind?] = [nil] + EffectKind.all.filter(\.isKeyframing)
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.group) {
@@ -251,6 +249,12 @@ private struct KeyframeDesignerSidebar: View {
                         onKeepEdits: { edit { $0.keepKeyframingEdits(driver.id, ofClip: key.clipID, in: key.timelineID) } }
                     )
                     .padding(.leading, -EffectsPanelMetrics.controlIndent)
+                }
+                if driver.kind == .expression {
+                    VStack(alignment: .leading, spacing: Design.Space.step) {
+                        header("Code")
+                        expressionEditor(driver)
+                    }
                 }
                 VStack(alignment: .leading, spacing: Design.Space.step) {
                     header("Applies To")
@@ -308,6 +312,7 @@ private struct KeyframeDesignerSidebar: View {
         case .looper?: "Repeats the control's own keyframes past their end, or before their start."
         case .timeStep?: "Holds each value for a number of frames, for a stop-motion look."
         case .overshoot?: "Adds a spring's bounce after each of the control's keyframes."
+        case .expression?: "Python that works out the control's value at each frame; its last line is the value."
         default: kind?.name ?? ""
         }
     }
@@ -322,7 +327,8 @@ private struct KeyframeDesignerSidebar: View {
                 selected: setup.component.map(String.init) ?? "all", help: "Which of the control's values it writes to"
             ) { choice, setup in setup.component = Int(choice) }
         }
-        if !driver.kind.reshapesTarget {
+        // An expression's code says how its result meets `value`.
+        if !driver.kind.reshapesTarget, driver.kind != .expression {
             choiceRow(
                 "Combine", options: KeyframingCombine.allCases.map { ($0.rawValue, $0.name) }, selected: setup.combine.rawValue,
                 help: "How what it makes meets the control's own value: added to it, scaling it as a percent, or in its place"
@@ -399,6 +405,22 @@ private struct KeyframeDesignerSidebar: View {
         .help("Where it writes keyframes; the control keeps its own outside")
         .accessibilityLabel("Range")
         .accessibilityValue(label)
+    }
+
+    /// The code of the Expression driving the control.
+    private func expressionEditor(_ driver: Effect) -> some View {
+        let project = hud.project
+        let base = driver.keyframing?.base
+            ?? clip.number(of: target).map { EditingProject.removingKeyframes(of: driver.id, from: $0) }
+        let failure = project.fittingExpressionResult(of: driver, in: clip, of: timeline, base: base)?.failure.map { failure in
+            failure.summary + (failure.time.map { String(format: " (at %.2f s)", $0) } ?? "")
+        }
+        let notAllowed = project.expressions().map { $0.effect }.filter { !EditingProject.expressionIsAllowed($0) }
+        return ExpressionEditor(
+            code: driver.expression ?? "", failure: failure, approval: .shared, notAllowedCount: notAllowed.count,
+            onApply: { code in editEffect(driver.id) { $0.expression = code } },
+            onAllowAll: { CodeApproval.shared.allow(notAllowed.compactMap(\.expression)) }
+        )
     }
 
     // MARK: Editing

@@ -2100,4 +2100,26 @@ struct UISnapshots {
         let console = ScriptConsole(transcript: transcript, runner: ScriptRunner(helper: PythonHelper(interpreter: { nil }), transcript: transcript))
         try SnapshotSupport.render(console, "script-console", size: CGSize(width: 620, height: 380))
     }
+
+    /// The Expression's code in the Keyframe Designer: applied, with an
+    /// error, and come from elsewhere, not allowed yet.
+    @Test func expressionEditor() throws {
+        let allowed = "swing = a * sin(t * tau * b)\nvalue + swing"
+        CodeApproval.allowInSession(allowed)
+        let approval = CodeApproval(file: FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-\(UUID().uuidString).json"))
+        approval.allow(allowed)
+        let states = VStack(alignment: .leading, spacing: 24) {
+            ExpressionEditor(code: allowed, failure: nil, approval: approval, notAllowedCount: 0, onApply: { _ in }, onAllowAll: {})
+            ExpressionEditor(
+                code: allowed, failure: "Line 2: NameError: name 'swng' is not defined (at 1.25 s)", approval: approval,
+                notAllowedCount: 0, onApply: { _ in }, onAllowAll: {}
+            )
+            ExpressionEditor(code: "import os\nvalue", failure: nil, approval: approval, notAllowedCount: 12, onApply: { _ in }, onAllowAll: {})
+        }
+        .padding(16)
+        .frame(width: 320)
+        .background(Design.Surface.floating.color)
+        .preferredColorScheme(.dark)
+        try SnapshotSupport.render(states, "expression-editor", size: CGSize(width: 320, height: 700))
+    }
 }

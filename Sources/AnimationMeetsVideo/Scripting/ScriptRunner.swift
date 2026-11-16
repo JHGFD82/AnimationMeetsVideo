@@ -148,6 +148,9 @@ final class ScriptRunner {
         case .failed(let failure):
             transcript.append(.failure(failure))
             return .failed(failure)
+        case .samples:
+            // Only an expression gives samples, and they don't come here.
+            return .finished(changed: false, display: nil)
         case .finished(let display):
             if let display { transcript.append(.result(display)) }
             guard await bridge.hasChanges else { return .finished(changed: false, display: display) }

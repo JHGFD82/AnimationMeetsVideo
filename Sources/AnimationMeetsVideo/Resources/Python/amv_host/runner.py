@@ -116,7 +116,7 @@ class Host:
         _bridge.connection = self.call
         _bridge.context = header.get("context") or {}
 
-    def end(self, message):
+    def end(self, message, payload=b""):
         from .amv import _bridge
 
         _bridge.connection = None
@@ -126,7 +126,7 @@ class Host:
         self.drain()
         # The run is over: a Stop arriving now was for it, not for the next.
         with self.channel.interrupts.held(discard=True):
-            self.channel.send(dict(message, run=self.run_id))
+            self.channel.send(dict(message, run=self.run_id), payload)
         self.run_id = None
 
     def run_script(self, header):
@@ -244,7 +244,7 @@ def serve(channel, on_host=None):
     sys.stderr = Output(host, "stderr")
     while True:
         try:
-            header, _ = channel.read(discard_interrupts=True)
+            header, payload = channel.read(discard_interrupts=True)
         except protocol.ClosedError:
             return host
         kind = header.get("type")
@@ -259,6 +259,10 @@ def serve(channel, on_host=None):
                 host.run_script(header)
             elif kind == "line":
                 host.run_line(header)
+            elif kind == "expression":
+                from . import expressions
+
+                expressions.run(host, header, payload)
             elif kind == "quit":
                 return host
             # Anything else (a reply to a call of a run that was stopped)

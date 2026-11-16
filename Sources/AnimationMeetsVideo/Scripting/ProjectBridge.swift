@@ -25,17 +25,36 @@ actor ProjectBridge {
         /// Clips a tool has open, which nothing else may change
         /// (`ProjectState.lock`).
         var locks: [ProjectState.ClipLock] = []
+        /// For an expression: the control it writes to, and that control
+        /// as it was before it wrote. Reading its own target gives that
+        /// base, which is `value`, and isn't a read that puts it out of
+        /// date, or its own keyframes would.
+        var ownTarget: KeyframingRead?
+        var ownBase: AnimatedValue<ComponentValue>?
     }
 
     let snapshot: EditingProject
     let context: Context
     /// The snapshot with the run's changes so far.
     private(set) var working: EditingProject
+    /// For an expression: it only reads, and what it reads is noted.
+    let readsOnly: Bool
+    /// What an expression read, in the order first read: what puts its
+    /// keyframes out of date when it changes.
+    private(set) var reads: [KeyframingRead] = []
+    private var readSet: Set<KeyframingRead> = []
 
-    init(project: EditingProject, context: Context = Context()) {
+    init(project: EditingProject, context: Context = Context(), readsOnly: Bool = false) {
         snapshot = project
         working = project
         self.context = context
+        self.readsOnly = readsOnly
+    }
+
+    /// Notes a read, for an expression.
+    func noteRead(_ read: KeyframingRead) {
+        guard readsOnly, read != context.ownTarget, readSet.insert(read).inserted else { return }
+        reads.append(read)
     }
 
     /// Whether the run has changed anything.
@@ -67,7 +86,11 @@ actor ProjectBridge {
         case "timeline_time": return try readTimelineTime(call)
         case "asset": return try readAsset(call)
         case "beats": return try readBeats(call)
+        case "control_frames": return try readControlFrames(call)
         default:
+            if readsOnly {
+                throw ScriptCallError.readOnly("An expression reads the project; it can't change it. A script can.")
+            }
             if let change = try change(call) { return change }
             throw ScriptCallError.value("The app doesn't know the call \u{201C}\(call.method)\u{201D}.")
         }
@@ -94,6 +117,8 @@ actor ProjectBridge {
 
     private func readTimeline(_ call: HelperCall) throws -> JSONValue {
         let timeline = try self.timeline(call)
+        noteRead(KeyframingRead(timeline: timeline.id, kind: .settings))
+        noteRead(KeyframingRead(timeline: timeline.id, kind: .layerNames))
         return [
             "name": .string(timeline.name),
             "frame_size": [.number(timeline.frameSize.width), .number(timeline.frameSize.height)],
@@ -109,6 +134,7 @@ actor ProjectBridge {
 
     private func readLayer(_ call: HelperCall) throws -> JSONValue {
         let (timeline, layer) = try self.layer(call)
+        noteRead(KeyframingRead(timeline: timeline.id, kind: .layer(layer.id)))
         return [
             "name": .string(working.displayName(of: layer, in: timeline)),
             "kind": .string(layer.kind.rawValue),
@@ -121,6 +147,7 @@ actor ProjectBridge {
 
     private func readClip(_ call: HelperCall) throws -> JSONValue {
         let (timelineID, clip, layer) = try self.clip(call)
+        noteRead(KeyframingRead(timeline: timelineID, kind: .clip(clip.id)))
         let source: JSONValue = switch clip.source {
         case .media(let id): ["kind": "media", "id": JSONValue(id)]
         case .timeline(let id): ["kind": "timeline", "id": JSONValue(id)]
@@ -157,6 +184,7 @@ actor ProjectBridge {
 
     private func readControl(_ call: HelperCall) throws -> JSONValue {
         let target = try self.target(call)
+        noteRead(Self.read(of: target))
         let driver = working.keyframingEffect(driving: target.target, in: target.clip)
         switch target.kind {
         case .volume:
@@ -179,6 +207,7 @@ actor ProjectBridge {
 
     private func readControlAt(_ call: HelperCall) throws -> JSONValue {
         let target = try self.target(call)
+        noteRead(Self.read(of: target))
         guard let times = call["times"]?.array else { throw ScriptCallError.type("control_at takes a list of times") }
         let frames = try self.timeline(call, key: "target")
         return try .array(times.map { time in
@@ -217,8 +246,46 @@ actor ProjectBridge {
     }
 
     private func readBeats(_ call: HelperCall) throws -> JSONValue {
-        let (_, layer) = try self.layer(call)
+        let (timeline, layer) = try self.layer(call)
+        noteRead(KeyframingRead(timeline: timeline.id, kind: .beats(layer: layer.id)))
         return .array(working.beatMarkers(in: layer, tracks: context.beatTracks).map { ScriptTime.json($0.time) })
+    }
+
+    /// A control's value at each frame of its clip, from the clip's start
+    /// to its end on its timeline, for an expression to read at its own
+    /// samples, in a straight line between frames: {start, frame, values},
+    /// the times in seconds.
+    private func readControlFrames(_ call: HelperCall) throws -> JSONValue {
+        let target = try self.target(call)
+        noteRead(Self.read(of: target))
+        guard let timeline = working.timeline(id: target.timelineID) else { throw ScriptCallError.gone("The timeline is gone.") }
+        let clip = target.clip
+        let frame = timeline.frameDuration
+        var values: [JSONValue] = []
+        var time = clip.startOffset
+        while time <= clip.endOffset {
+            let source = CMTimeMinimum(CMTimeMaximum(clip.sourceTime(atTimelineTime: time), clip.trimStart), clip.trimEnd)
+            if let base = context.ownBase, Self.read(of: target) == context.ownTarget {
+                values.append(ScriptValue.json(base.value(at: source)))
+            } else {
+                switch target.kind {
+                case .volume: values.append(.number(clip.volume.value(at: source)))
+                case .control(let control):
+                    values.append(control.kind.isChoice ? JSONValue(control.choice) : ScriptValue.json(control.number.value(at: source)))
+                }
+            }
+            time = CMTimeAdd(time, frame)
+        }
+        return ["start": .number(clip.startOffset.seconds), "frame": .number(frame.seconds), "values": .array(values)]
+    }
+
+    /// What reading a target is, as an expression's read.
+    static func read(of target: Target) -> KeyframingRead {
+        switch target.target {
+        case .volume: KeyframingRead(timeline: target.timelineID, kind: .volume(clip: target.clip.id))
+        case .control(let effectID, let controlID):
+            KeyframingRead(timeline: target.timelineID, kind: .control(clip: target.clip.id, effect: effectID, control: controlID))
+        }
     }
 
     // MARK: - Finding things

@@ -21,6 +21,10 @@ class NotConnected(RuntimeError):
     pass
 
 
+class ReadOnly(Exception):
+    """An expression changing the project, which it only reads."""
+
+
 # Set by the helper while a run is under way: a function taking the
 # method's name and its arguments, returning the app's answer or raising
 # the app's error.
@@ -30,6 +34,12 @@ connection = None
 # the clips selected and the playhead.
 context = {}
 
+# While an expression runs: the timeline time of the sample being worked
+# out, and each control's values over its clip, read once a run (see
+# `objects.Control`). None outside an expression.
+sample_time = None
+tables = {}
+
 
 def call(method, **arguments):
     if connection is None:
@@ -38,6 +48,6 @@ def call(method, **arguments):
 
 
 # Shown as amv.Gone and amv.Refused in tracebacks, as scripts name them.
-Gone.__module__ = Refused.__module__ = NotConnected.__module__ = "amv"
+Gone.__module__ = Refused.__module__ = NotConnected.__module__ = ReadOnly.__module__ = "amv"
 
-ERRORS = {"gone": Gone, "refused": Refused, "type": TypeError, "value": ValueError, "lookup": LookupError}
+ERRORS = {"gone": Gone, "refused": Refused, "readonly": ReadOnly, "type": TypeError, "value": ValueError, "lookup": LookupError}
