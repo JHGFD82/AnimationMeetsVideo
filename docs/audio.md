@@ -55,7 +55,7 @@ its end, and take the same eases and graph editor as other controls.
 
 ### In the timeline
 
-**L** shows volume: each clip's as a line across its block, mute at the
+**Shift-L** shows volume (L alone plays forward, as J, K and L shuttle): each clip's as a line across its block, mute at the
 bottom and +6 dB at the top with a faint line at 0 dB, and a Sound or Music
 layer's as a row under it. It acts on the selected clip's layer, or on every
 layer with sound when nothing is selected; pressing it again hides it. A

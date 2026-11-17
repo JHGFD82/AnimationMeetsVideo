@@ -360,6 +360,8 @@ final class PlaybackModel {
             let clock = CMClockGetHostTimeClock()
             let anchorHost = CMClockGetTime(clock)
             let anchor = player.currentTime()
+            // J and L's speed, which the new item plays on at.
+            let rate = shuttleRate
             capture.arm(at: nil)
             player.rate = 0
             player.replaceCurrentItem(with: item)
@@ -367,13 +369,16 @@ final class PlaybackModel {
             await Self.ready(item)
             let lead = CMTime(value: 1, timescale: 10)
             let host = CMClockGetTime(clock)
-            let start = CMTimeAdd(CMTimeAdd(anchor, CMTimeSubtract(host, anchorHost)), lead)
+            // Where the timeline has reached by the lead's end, at the
+            // speed it was playing.
+            let elapsed = CMTimeMultiplyByFloat64(CMTimeAdd(CMTimeSubtract(host, anchorHost), lead), multiplier: Float64(rate))
+            let start = CMTimeMaximum(.zero, CMTimeAdd(anchor, elapsed))
             fadesNextFrame = true
             if item.status == .readyToPlay, player.status == .readyToPlay {
-                player.setRate(1, time: start, atHostTime: CMTimeAdd(host, lead))
+                player.setRate(rate, time: start, atHostTime: CMTimeAdd(host, lead))
             } else {
                 await player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero)
-                player.play()
+                player.rate = rate
             }
             itemSwaps += 1
             return await display.firstFrame(of: item, within: .seconds(2))
@@ -499,7 +504,9 @@ final class PlaybackModel {
         if !playing, !isSeeking, !playerIsSkimmed { currentTime = player.currentTime() }
         isPlaying = playing
         display.isPlaying = playing
-        loop.playingChanged(playing)
+        // The loop turns back only playing forward (see `shuttle`).
+        loop.playingChanged(playing && player.rate >= 0)
+        if !playing { shuttleRate = 1 }
         if playing {
             prerenderer.cancel()
             dropRedraw()
@@ -689,7 +696,14 @@ final class PlaybackModel {
             player.pause()
             return
         }
-        // Play starts from the frame skimmed to, as the viewer shows it.
+        cueForwardPlay()
+        player.play()
+    }
+
+    /// Readies play forward from where it is: from the frame skimmed to, as
+    /// the viewer shows it; inside the loop region when one is on; and from
+    /// the start when at the end.
+    private func cueForwardPlay() {
         if let skimTime { move(to: skimTime, playsGrain: false) }
         if let start = loop.playStart(from: currentTime) {
             // A loop on: from the playhead inside it, else from its start.
@@ -698,7 +712,63 @@ final class PlaybackModel {
                   CMTimeCompare(player.currentTime(), item.duration) >= 0 {
             player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
         }
-        player.play()
+    }
+
+    // MARK: Shuttle (J, K, L)
+
+    /// The fastest J and L play, in times normal speed.
+    static let maxShuttleSpeed: Float = 8
+    /// The speed J or L last set while playing, in times normal speed,
+    /// backwards when negative; 1 otherwise, which Space plays at. An item
+    /// swapped in while playing plays on at it.
+    private(set) var shuttleRate: Float = 1
+
+    /// L plays forward and J backward, as in Final Cut Pro, Premiere and
+    /// Resolve. Pressed again while playing that way, each plays twice as
+    /// fast, up to eight times; pressed while playing the other way, it
+    /// turns around at normal speed. Faster than normal, or backward, only
+    /// as the item allows (`canPlayFastForward`, `canPlayReverse`,
+    /// `canPlayFastReverse`); the fastest it allows otherwise. Backward
+    /// play ignores the loop region, which turns back only at its end.
+    /// Returns whether it plays, which it can't backward from the start
+    /// or with an item that doesn't play backward.
+    @discardableResult
+    func shuttle(forward: Bool) -> Bool {
+        guard let item = player.currentItem else { return false }
+        let sign: Float = forward ? 1 : -1
+        let sameWay = isPlaying && player.rate != 0 && (player.rate > 0) == forward
+        var speed: Float = sameWay ? min(abs(player.rate) * 2, Self.maxShuttleSpeed) : 1
+        if forward {
+            if speed > 1, !item.canPlayFastForward { speed = 1 }
+        } else {
+            guard item.canPlayReverse else { return false }
+            if speed > 1, !item.canPlayFastReverse { speed = 1 }
+        }
+        if isTapeScrubbing { stopTape() }
+        if !isPlaying {
+            if forward {
+                cueForwardPlay()
+            } else {
+                if let skimTime { move(to: skimTime, playsGrain: false) }
+                guard CMTimeCompare(currentTime, .zero) > 0 else { return false }
+            }
+        }
+        let rate = speed * sign
+        shuttleRate = rate
+        player.rate = rate
+        // Already playing, the player doesn't report starting again
+        // (`playStateChanged`), so the loop hears of a turn around here.
+        if isPlaying { loop.playingChanged(rate > 0) }
+        return true
+    }
+
+    /// K: stops playing, at whatever speed and either way. False when not
+    /// playing.
+    @discardableResult
+    func pause() -> Bool {
+        guard isPlaying || player.rate != 0 else { return false }
+        player.pause()
+        return true
     }
 
     /// A loop's turn back while playing: the player seeks and plays on.

@@ -113,7 +113,7 @@ How volume fits the stack, as built (details in [audio.md](audio.md)):
   stack, shows only its sound effects and these rows. The **L** key's row
   in the timeline stays
   the layer volume on Sound and Music layers; clip volume is drawn as a
-  line across each clip block while L is on.
+  line across each clip block while Shift-L is on.
 
 ## Foundations
 

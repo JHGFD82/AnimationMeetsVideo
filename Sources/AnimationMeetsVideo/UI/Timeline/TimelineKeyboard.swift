@@ -40,9 +40,10 @@ extension TimelineView {
         return true
     }
 
-    /// The timeline's keys, listed in docs/accessibility.md. L shows or
-    /// hides volume rows, on the selected clip's layer or on every layer
-    /// with sound when nothing is selected.
+    /// The timeline's keys, listed in docs/accessibility.md. J, K and L
+    /// shuttle (`PlaybackModel.shuttle`); Shift-L shows or hides volume
+    /// rows, on the selected clip's layer or on every layer with sound when
+    /// nothing is selected.
     func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if let handled = handleNavigationKey(event, flags: flags) { return handled }
@@ -121,6 +122,16 @@ extension TimelineView {
             tool = chosen
             return true
         }
+        // J, K and L, as in Final Cut Pro, Premiere and Resolve: play
+        // backward, stop, play forward; J or L again plays faster.
+        if !flags.contains(.shift) {
+            switch key {
+            case "j": return playback.shuttle(forward: false)
+            case "k": return playback.pause()
+            case "l": return playback.shuttle(forward: true)
+            default: break
+            }
+        }
         if key == "l" { return toggleVolumeRows() }
         if key == "v", !flags.contains(.shift) { return toggleSelectedClipsEnabled() }
         // Shift-F, as Final Cut's Reveal in Browser.
@@ -175,6 +186,8 @@ extension TimelineView {
     var actions: TimelineActions {
         TimelineActions(
             togglePlayback: { playback.togglePlayback() },
+            shuttle: { playback.shuttle(forward: $0) },
+            pause: { playback.pause() },
             step: { stepPlayhead(byFrames: $0) },
             goToStart: { parkPlayhead(at: .zero) },
             goToEnd: { parkPlayhead(at: timeline.duration) },
@@ -330,8 +343,8 @@ extension TimelineView {
         return eased
     }
 
-    /// L shows volume, as levels in After Effects (pressing it again hides
-    /// it): each clip's as a line across it, and a Sound or Music layer's as
+    /// Shift-L shows volume, after levels' L in After Effects (pressing it
+    /// again hides it; L alone plays forward): each clip's as a line across it, and a Sound or Music layer's as
     /// a row under it. Acts on the selected clip's layer, or on every layer
     /// with sound when nothing is selected.
     func toggleVolumeRows() -> Bool {
