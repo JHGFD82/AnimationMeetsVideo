@@ -399,9 +399,12 @@ turned on) and Cancel Path.
   its own, as the handles do (the slop, modifiers as they change,
   `DragEscape`, the hold), draws the path and the preview stretch, and
   takes the pen's keys. Command's arrow runs `PathHandles.edit`. The
-  pen's pointers are drawn by `HandleCursors` from `pencil.tip` with a
-  small badge (ring, caret, slash, plus, minus). `PathDrawing` draws
-  paths for both overlays.
+  pen's pointers are drawn by `HandleCursors` as vectors: a nib in thin
+  black lines on a white rim, its point at the top left and at the hot
+  spot, so a click lands under the tip, with a small badge up and to
+  its right (ring, caret, slash, plus, minus); Option's is a caret whose
+  point is the hot spot (the `penCursors` snapshot marks it).
+  `PathDrawing` draws paths for both overlays.
 - **`KeyHoldMonitor`** (`UI/Components/`, new): key down and key up for
   one key in the view's window, repeats dropped, standing aside while
   text is typed as `KeyPressMonitor` does. `ViewerCanvas` uses it for

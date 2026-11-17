@@ -1442,6 +1442,45 @@ struct UISnapshots {
         )
     }
 
+    /// The pen's pointers at eight times their size over a light and a
+    /// dark square, with a red cross where a click lands (the hot spot),
+    /// which should be the pen's tip: plain, and with each badge (ring,
+    /// caret, slash, plus, minus), then Option's convert pointer.
+    @Test func penCursors() throws {
+        let kinds: [HandleCursor] = [.pen(.none), .pen(.ring), .pen(.caret), .pen(.slash), .pen(.plus), .pen(.minus), .convert]
+        let scale = 8.0
+        func tile(_ kind: HandleCursor, light: Bool) -> some View {
+            let cursor = HandleCursors.cursor(for: kind)
+            let size = cursor.image.size
+            let hot = cursor.hotSpot
+            return ZStack(alignment: .topLeading) {
+                (light ? Color(white: 0.85) : Color(white: 0.15))
+                Image(nsImage: cursor.image)
+                    .interpolation(.none)
+                    .resizable()
+                    .frame(width: size.width * scale, height: size.height * scale)
+                Path { path in
+                    let x = hot.x * scale, y = hot.y * scale
+                    path.move(to: CGPoint(x: x - 10, y: y))
+                    path.addLine(to: CGPoint(x: x + 10, y: y))
+                    path.move(to: CGPoint(x: x, y: y - 10))
+                    path.addLine(to: CGPoint(x: x, y: y + 10))
+                }
+                .stroke(Color.red, lineWidth: 1)
+            }
+            .frame(width: size.width * scale, height: size.height * scale)
+        }
+        try SnapshotSupport.render(
+            VStack(spacing: 4) {
+                HStack(spacing: 4) { ForEach(kinds.indices, id: \.self) { tile(kinds[$0], light: true) } }
+                HStack(spacing: 4) { ForEach(kinds.indices, id: \.self) { tile(kinds[$0], light: false) } }
+            }
+            .padding(4)
+            .preferredColorScheme(.dark),
+            "pen-cursors", size: CGSize(width: 7 * 28 * 8 + 32, height: 2 * 28 * 8 + 16)
+        )
+    }
+
     /// A Path selected in the effects panel, with the arrow and Show
     /// Handles on: its outline in the path color, every point, and the
     /// tangents of the picked (middle, filled) point and those either side.
