@@ -26,6 +26,10 @@ struct ViewerCanvas: View {
     private var isDragging: Bool { handles?.state.drag != nil }
 
     var body: some View {
+        // Read here, not only in the reader below, whose reads don't draw
+        // the canvas again: a zoom or a scroll must, so the handles map
+        // presses as the picture is now.
+        let _ = (framing.zoom, framing.center)
         GeometryReader { proxy in
             let mapping = framing.mapping(frameSize: frameSize, wellSize: proxy.size, backingScale: displayScale)
             ZStack(alignment: .topLeading) {
