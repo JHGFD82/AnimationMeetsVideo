@@ -164,16 +164,21 @@ struct EditorView: View {
             .environment(\.timelineViewMemory, viewMemory)
         }
         // While a song is beat matched, or clips are in the motion
-        // designer, the editor is darkened and takes no input; a click on it
-        // brings the panel back.
+        // designer, the editor is dimmed and takes no clicks; a click on it
+        // brings the panel back (the chip's button only reads as one: the
+        // click is the block's). It stays readable, and the timeline can
+        // still be scrolled and zoomed to look along it
+        // (`WindowInputBlock.lookingEvents`).
         .disabled(beatMatch.isActive || motionDesign.isActive)
         .overlay {
             if beatMatch.isActive || motionDesign.isActive {
-                let name = beatMatch.isActive ? "Beat match" : "The motion designer"
+                let name = beatMatch.isActive ? "Beat Match" : "The Motion Designer"
                 let bringToFront = { beatMatch.isActive ? beatMatch.bringToFront() : motionDesign.bringToFront() }
-                Color.black.opacity(0.55)
+                Color.black.opacity(0.32)
                     .contentShape(Rectangle())
                     .onTapGesture { bringToFront() }
+                    .overlay(alignment: .top) { DraftPanelChip(name: name, bringToFront: bringToFront) }
+                    .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(name) is open")
                     .accessibilityHint("Bring its panel to the front")
                     .accessibilityAddTraits(.isButton)
@@ -461,3 +466,27 @@ final class ProjectAccess: @unchecked Sendable {
         })
     }
 }
+
+/// Says over the dimmed editor which panel is open and why it takes no
+/// clicks, with a button to go back to it.
+private struct DraftPanelChip: View {
+    let name: String
+    let bringToFront: () -> Void
+
+    var body: some View {
+        HStack(spacing: Design.Space.step) {
+            Text("\(name) is open. Scroll and zoom the timeline to look along it; editing waits until the panel closes.")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Go to Panel", action: bringToFront)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, Design.Space.group)
+        .padding(.vertical, Design.Space.close)
+        .frame(maxWidth: 560)
+        .floatingSurface(radius: Design.Radius.panel)
+        .padding(.top, 52)
+    }
+}
+
