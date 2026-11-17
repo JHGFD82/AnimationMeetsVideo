@@ -127,7 +127,7 @@ struct BrowserPanel: View {
         ContentUnavailableView {
             Label("No media yet", systemImage: "film.stack")
         } description: {
-            Text("Import footage and music, or drag files here from the Finder. Their scenes then show here, ready to drag onto the timeline.")
+            Text("Import footage and music, or drag files here from the Finder.")
         } actions: {
             Button("Import Media…", action: importMedia)
                 .buttonStyle(.borderedProminent)

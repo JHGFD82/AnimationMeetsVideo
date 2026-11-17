@@ -26,7 +26,7 @@ struct ProjectStartView: View {
                     Text("Animation Meets Video")
                         .font(Design.Typeface.display)
                         .foregroundStyle(Design.textPrimary)
-                    Text("A project is a folder on disk. Make one first and everything after it — the media you import, the scenes and beats found in it, the frames rendered in the background — is written there as it happens, not held in memory until you remember to save.")
+                    Text("Each project is a folder on disk. What you import, and what the app finds in it, is saved there as you work.")
                         .font(Design.Typeface.body)
                         .foregroundStyle(Design.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)

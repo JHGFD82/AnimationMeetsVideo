@@ -38,7 +38,7 @@ struct SceneSplitterView: View {
             Button("Cancel", role: .cancel) { splitter.cancelPendingEdit() }
             Button("Embed and Split") { splitter.confirmPendingEdit() }
         } message: { _ in
-            Text("Their keyframes run across the new cut. Each will be put into a timeline of its own and split there, and its animation applied to that embedded timeline, so it stays one animation.")
+            Text("Their keyframes run across the new cut, so each goes into a timeline of its own and is split there, keeping its animation whole.")
         }
     }
 

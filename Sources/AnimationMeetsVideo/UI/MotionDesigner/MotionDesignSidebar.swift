@@ -71,10 +71,14 @@ struct MotionDesignSidebar: View {
     private var guidance: some View {
         VStack(alignment: .leading, spacing: Design.Space.close) {
             heading("Retime to the music")
-            Text("Grab the line to put a marker on that frame, and drag it along the music. Click a marker to lock its frame to that moment; click again to unlock it.")
-            Text("Give a marker Ease In, Ease Out or Easy Ease to ramp the speed. Option-drag a marker to pull out a handle. L locks or unlocks the picked markers.")
-            Text("M puts a marker under the playhead; ← → move the selected point a frame.")
+            Text("Grab the line to drop a marker, then drag it along the music.")
+            Text("Click a marker to lock it to that moment.")
+                .help("Click it again to unlock it. L locks or unlocks the picked markers.")
+            Text("Select a marker to ease it, or Option-drag it, to ramp the speed.")
+                .help("Its Ease In, Ease Out or Easy Ease is picked here once it is selected (E for Easy Ease); Option-dragging pulls out a handle.")
+            Text("M adds a marker · L locks · E eases · ← → move a frame")
                 .foregroundStyle(Design.textTertiary)
+                .accessibilityLabel("M adds a marker at the playhead, L locks the picked markers, and E eases them, and the Left and Right Arrow keys move the selected point a frame.")
         }
         .font(Design.Typeface.label)
         .foregroundStyle(Design.textSecondary)

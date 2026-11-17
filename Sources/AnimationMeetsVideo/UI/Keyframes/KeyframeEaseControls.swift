@@ -22,7 +22,8 @@ struct KeyframeEaseControls: View {
                 Divider()
                 side("Ease Out", ease: frame.easeOut,
                      available: index + 1 < value.keyframes.count && !frame.hold, outgoing: true)
-                Text("Each side changes independently. Speed is a percent of the steady speed between keyframes.")
+                Text("Speed is a percent of the steady speed between keyframes.")
+                    .help("Ease In and Ease Out change independently.")
                     .font(Design.Typeface.micro)
                     .foregroundStyle(Design.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
