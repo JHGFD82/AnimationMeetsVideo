@@ -128,6 +128,9 @@ struct ViewerPanel: View {
 
                 ViewerTimecode(playback: playback, frameRate: frameRate)
                 Spacer()
+                if let handles {
+                    ViewerToolPicker(state: handles.state)
+                }
                 if handles != nil {
                     Toggle(isOn: $showsHandles) {
                         Image(systemName: "viewfinder")

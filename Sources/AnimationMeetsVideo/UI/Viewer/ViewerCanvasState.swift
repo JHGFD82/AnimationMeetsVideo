@@ -13,6 +13,16 @@ import SwiftUI
 @Observable
 final class ViewerCanvasState {
     var tool = ViewerTool.arrow
+    /// What the pen keeps between presses: Shape or Mask, the path it
+    /// works on, and what its draw added (see docs/pen-tool.md).
+    var pen = PenState()
+    /// A press of the pen is under way, which a pinch or a scroll leaves
+    /// alone, as it does a handle's drag.
+    var isPenPressed = false
+    /// A drawn path's clip, selected in the timeline: the one place the
+    /// viewer changes the selection, to what it has just made. Set by the
+    /// surface that owns the selection while it is shown.
+    var select: ((TimelineSelection) -> Void)?
     /// What the arrows change while the canvas has the keys (Tab): one of
     /// the handle sets' `keyTargets`, by its handle; the first when this
     /// isn't among them.
@@ -26,10 +36,17 @@ final class ViewerCanvasState {
     private(set) var effects: EffectsPanelState?
 
     /// The surface showing `playhead` and `effects` is the one other
-    /// canvases follow.
-    func follow(playhead: PlayheadState, effects: EffectsPanelState) {
+    /// canvases follow; `select` selects a clip in its timeline.
+    func follow(playhead: PlayheadState, effects: EffectsPanelState, select: ((TimelineSelection) -> Void)? = nil) {
         if self.playhead !== playhead { self.playhead = playhead }
         if self.effects !== effects { self.effects = effects }
+        if let select { self.select = select }
+    }
+
+    /// Picks `tool`; the pen set to `mode` when given.
+    func pick(_ tool: ViewerTool, mode: PenState.Mode? = nil) {
+        if self.tool != tool { self.tool = tool }
+        if let mode, pen.mode != mode { pen.mode = mode }
     }
 
     /// That surface is gone.
@@ -37,6 +54,7 @@ final class ViewerCanvasState {
         guard self.playhead === playhead else { return }
         self.playhead = nil
         effects = nil
+        select = nil
     }
 
     /// A drag on a handle so far.

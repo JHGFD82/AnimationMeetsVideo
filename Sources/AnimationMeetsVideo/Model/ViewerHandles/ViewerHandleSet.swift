@@ -34,6 +34,9 @@ struct HandleContext {
     /// Whether a tool has locked the clip (`ProjectState.lockedClipIDs`):
     /// its box is drawn, its handles aren't.
     var isLocked = false
+    /// What the arrows change (`ViewerCanvasState.picked`): a path shows
+    /// the tangents of its picked point and the points either side.
+    var picked: HandleID?
 
     var center: CGPoint { CGPoint(x: frameSize.width / 2, y: frameSize.height / 2) }
 
@@ -134,6 +137,12 @@ enum HandleGlyph: Equatable, Sendable {
     case round
     /// A square turned on its corner: a handle an effect package declares.
     case diamond
+    /// A path's point (`PathHandles`): a hollow square in the path color,
+    /// filled when it is the one picked.
+    case vertex
+    case pickedVertex
+    /// The end of a path's tangent: a dot in the path color.
+    case tangent
     case crosshair
     /// Not drawn: a zone (a rotation zone).
     case none
@@ -152,6 +161,31 @@ enum HandleCursor: Equatable, Sendable {
     case slide
     /// The handle can't be dragged.
     case notAllowed
+    /// The pen, with a badge saying what a click does (see
+    /// docs/pen-tool.md, "Drawing").
+    case pen(PenBadge)
+    /// Illustrator's convert pointer: Option with the pen, over a point, a
+    /// tangent or a stretch.
+    case convert
+    /// The hand Space makes of the pen: open, and closed while dragging.
+    case hand
+    case closedHand
+}
+
+/// What the pen's pointer wears to say what a click does.
+enum PenBadge: Equatable, Sendable {
+    /// Places a point.
+    case none
+    /// Closes the path.
+    case ring
+    /// Takes the last point's out tangent away.
+    case caret
+    /// Carries on drawing from an end.
+    case slash
+    /// Adds a point on a stretch.
+    case plus
+    /// Removes a point.
+    case minus
 }
 
 /// What a press on a handle gives instead of a drag.
@@ -206,6 +240,10 @@ struct ViewerOutline: Equatable {
         case box
         /// A thin line, as the lever from the anchor to the pointer.
         case guide
+        /// A path drawn with the pen: the path color over a dark casing.
+        case path
+        /// From a path's point to the end of one of its tangents.
+        case tangent
     }
 
     var points: [CGPoint]

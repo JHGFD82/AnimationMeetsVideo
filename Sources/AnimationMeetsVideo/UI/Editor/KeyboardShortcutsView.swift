@@ -58,6 +58,16 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "Tab", does: "Viewer, once clicked: pick what the arrows change"),
             Shortcut(keys: "← → ↑ ↓", does: "Viewer, once clicked: nudge it; ten with ⇧, a tenth with ⌥"),
         ]),
+        Group(title: "Pen", shortcuts: [
+            Shortcut(keys: "P", does: "Pick the pen in the viewer; again for the arrow"),
+            Shortcut(keys: "Space", does: "Held: the hand, which drags the picture; never plays while the pen is picked"),
+            Shortcut(keys: "Return", does: "End the path being drawn (a mask is closed)"),
+            Shortcut(keys: "Esc", does: "Cancel the path being drawn; with nothing drawn, back to the arrow"),
+            Shortcut(keys: "⌘Return", does: "Add a point after the picked one, or the first at the middle of the frame"),
+            Shortcut(keys: "⌥Return", does: "Make the picked point linear or ease"),
+            Shortcut(keys: "⌫", does: "Remove the picked point, or the last while drawing"),
+            Shortcut(keys: "Tab ← → ↑ ↓", does: "Pick a point, and nudge it; ten with ⇧, a tenth with ⌥"),
+        ]),
         Group(title: "Keyframes", shortcuts: [
             Shortcut(keys: "F9", does: "Easy ease the keyframes at the playhead"),
             Shortcut(keys: "⇧F9  ⇧⌘F9", does: "Ease in, ease out"),

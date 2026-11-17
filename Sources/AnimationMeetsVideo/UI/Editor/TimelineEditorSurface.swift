@@ -429,7 +429,8 @@ struct TimelineEditorSurface<Library: View>: View {
         // hash in the composition's key.
         .onChange(of: EffectPackageStatus.shared.revision) { showProject() }
         .onAppear {
-            canvas.follow(playhead: playhead, effects: effectsState)
+            let selection = $selection
+            canvas.follow(playhead: playhead, effects: effectsState, select: { selection.wrappedValue = $0 })
             trail = project.containingTimelines(of: timelineID)
             playhead.liveTime = { [playback] in playback.isPlaying ? playback.player.currentTime() : nil }
             let project = $project

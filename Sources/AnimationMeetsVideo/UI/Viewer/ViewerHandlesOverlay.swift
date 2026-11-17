@@ -42,6 +42,7 @@ struct ViewerHandlesOverlay: View {
     let showsOtherPicture: Bool
 
     @AppStorage(Preferences.viewerHandles) private var showsHandles = false
+    @AppStorage(Preferences.penColor) private var penColor = Preferences.defaultPenColor
     @Environment(ProjectState.self) private var projectState: ProjectState?
     @Environment(\.projectHistory) private var history
     @Environment(ActivePanel.self) private var activePanel: ActivePanel?
@@ -167,7 +168,8 @@ struct ViewerHandlesOverlay: View {
             selectedEffectID: source.effectsState.selectedEffectID,
             shownUpTo: showing?.clipID == original.id ? showing?.effectID : nil,
             pixelsPerPoint: mapping.pixelsPerPoint,
-            isLocked: projectState?.lockedClipIDs.contains(original.id) ?? false
+            isLocked: projectState?.lockedClipIDs.contains(original.id) ?? false,
+            picked: source.state.picked
         )
         return Shown(clip: drawn, original: original, context: context, sets: sets, name: project.clipName(original.id, in: source.timelineID))
     }
@@ -243,6 +245,7 @@ struct ViewerHandlesOverlay: View {
         _ shown: Shown, _ list: [ViewerHandle], through map: ViewerMapping, inLoupe: Bool = false, in context: inout GraphicsContext
     ) {
         let drag = source.state.drag.flatMap { $0.clipID == shown.original.id ? $0 : nil }
+        let pathColor = PathDrawing.color(penColor)
         for set in shown.sets {
             for outline in set.outlines(shown.context) {
                 var path = Path()
@@ -257,6 +260,10 @@ struct ViewerHandlesOverlay: View {
                     // the clip's box.
                     context.stroke(path, with: .color(.black.opacity(0.35)), lineWidth: 2.5)
                     context.stroke(path, with: .color(.white.opacity(0.85)), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                case .path:
+                    PathDrawing.line(path, color: pathColor, in: &context)
+                case .tangent:
+                    PathDrawing.tangentLine(path, color: pathColor, in: &context)
                 }
             }
         }
@@ -284,7 +291,8 @@ struct ViewerHandlesOverlay: View {
             // While dragging, only the crosshair stays, for a scale or a
             // turn; the loupe shows them all, for what is near.
             // A point being dragged stays, as it is all there is to see.
-            let isDraggedPoint = (handle.glyph == .round || handle.glyph == .diamond) && handle.id == drag?.handle
+            let isPoint = [HandleGlyph.round, .diamond, .vertex, .pickedVertex, .tangent].contains(handle.glyph)
+            let isDraggedPoint = isPoint && handle.id == drag?.handle
             if drag != nil, !inLoupe, !(levered && handle.id == .anchor), !isDraggedPoint { continue }
             let place = map.toView(handle.place)
             let alpha = handle.isEnabled ? 1.0 : 0.4
@@ -308,6 +316,10 @@ struct ViewerHandlesOverlay: View {
                 diamond.closeSubpath()
                 context.fill(diamond, with: .color(.white.opacity(alpha)))
                 context.stroke(diamond, with: .color(Design.accent.opacity(alpha)), lineWidth: 1)
+            case .vertex, .pickedVertex:
+                PathDrawing.vertex(at: place, picked: handle.glyph == .pickedVertex, color: pathColor, alpha: alpha, in: &context)
+            case .tangent:
+                PathDrawing.tangentEnd(at: place, color: pathColor, alpha: alpha, in: &context)
             case .crosshair:
                 var cross = Path()
                 cross.move(to: CGPoint(x: place.x - 5, y: place.y))

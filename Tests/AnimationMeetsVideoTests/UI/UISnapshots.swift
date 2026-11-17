@@ -1369,6 +1369,113 @@ struct UISnapshots {
         try SnapshotSupport.render(canvas(turning), "viewer-handles-turning", size: size)
     }
 
+    /// A shape layer whose Path is half drawn: three points, the middle one
+    /// ease, open, the pen picked and drawing on it.
+    private func halfDrawnPath() throws -> (project: EditingProject, layerID: UUID, clipID: UUID, effectID: UUID) {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.path, to: timelineID)
+        let shape = try #require(added)
+        let effectID = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip.effects.first?.id)
+        project.editEffect(effectID, ofClip: shape.clipID, in: timelineID) { effect in
+            effect.changeControl(.path) {
+                $0.setPath(FreePath(vertices: [
+                    .init(CGPoint(x: -520, y: 220)),
+                    .init(CGPoint(x: -80, y: -260), in: CGVector(dx: -220, dy: 0), out: CGVector(dx: 220, dy: 0)),
+                    .init(CGPoint(x: 360, y: 180), in: CGVector(dx: -60, dy: -160), out: CGVector(dx: 60, dy: 160)),
+                ]), at: .zero)
+            }
+        }
+        return (project, shape.layerID, shape.clipID, effectID)
+    }
+
+    /// The pen's path half drawn (Show Handles off) over a dark, a bright,
+    /// a middle-gray and a busy picture: the check on the path color, a
+    /// magenta line over a dark casing, which should read on all four. Its
+    /// points are hollow squares, the last one picked and filled, with its
+    /// tangents and the point before's. (The next stretch's preview follows
+    /// the pointer, so it isn't in the picture.)
+    @Test func penDrawing() throws {
+        let drawn = try halfDrawnPath()
+        let project = drawn.project
+        let timelineID = project.rootTimelineID
+        let frameSize = try #require(project.timeline(id: timelineID)).frameSize
+        let state = ProjectState(project)
+        let selection = TimelineSelection(timelineID: timelineID, layerID: drawn.layerID, timelineClipID: drawn.clipID)
+        func canvas<Picture: View>(_ picture: Picture) -> some View {
+            let canvasState = ViewerCanvasState()
+            canvasState.tool = .pen
+            canvasState.pen.target = PenTarget(clipID: drawn.clipID, effectID: drawn.effectID)
+            canvasState.picked = PathHandles.Part.vertex(2).handle
+            return ZStack {
+                picture
+                ViewerCanvas(
+                    framing: ViewerFraming(fitMargin: 0), frameSize: frameSize, playback: PlaybackModel(),
+                    handles: ViewerHandlesSource(
+                        project: .constant(project), timelineID: timelineID, selection: selection,
+                        effectsState: EffectsPanelState(), playhead: PlayheadState(), state: canvasState
+                    )
+                )
+            }
+            .frame(width: 480, height: 270)
+            .clipped()
+        }
+        let busy = LinearGradient(
+            stops: (0..<24).map { Gradient.Stop(color: [.orange, .black, .cyan, .white, .green, .purple][$0 % 6], location: Double($0) / 23) },
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+        try SnapshotSupport.render(
+            Grid(horizontalSpacing: 4, verticalSpacing: 4) {
+                GridRow {
+                    canvas(Color.black)
+                    canvas(Color.white)
+                }
+                GridRow {
+                    canvas(Color(white: 0.5))
+                    canvas(busy)
+                }
+            }
+            .background(Design.Surface.well.color)
+            .environment(state)
+            .preferredColorScheme(.dark),
+            "pen-drawing", size: CGSize(width: 964, height: 544)
+        )
+    }
+
+    /// A Path selected in the effects panel, with the arrow and Show
+    /// Handles on: its outline in the path color, every point, and the
+    /// tangents of the picked (middle, filled) point and those either side.
+    @Test func pathHandles() throws {
+        let key = Preferences.viewerHandles
+        let remembered = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(true, forKey: key)
+        defer { UserDefaults.standard.set(remembered, forKey: key) }
+        let drawn = try halfDrawnPath()
+        let project = drawn.project
+        let timelineID = project.rootTimelineID
+        let frameSize = try #require(project.timeline(id: timelineID)).frameSize
+        let effects = EffectsPanelState()
+        effects.select(effect: drawn.effectID)
+        let canvasState = ViewerCanvasState()
+        canvasState.picked = PathHandles.Part.vertex(1).handle
+        try SnapshotSupport.render(
+            ZStack {
+                Design.Surface.well.color
+                ViewerCanvas(
+                    framing: ViewerFraming(), frameSize: frameSize, playback: PlaybackModel(),
+                    handles: ViewerHandlesSource(
+                        project: .constant(project), timelineID: timelineID,
+                        selection: TimelineSelection(timelineID: timelineID, layerID: drawn.layerID, timelineClipID: drawn.clipID),
+                        effectsState: effects, playhead: PlayheadState(), state: canvasState
+                    )
+                )
+            }
+            .environment(ProjectState(project))
+            .preferredColorScheme(.dark),
+            "path-handles", size: CGSize(width: 800, height: 500)
+        )
+    }
+
     /// The external display synced, with handles on: the top bar with its
     /// Show Handles switch, the frame filling the screen edge to edge, and
     /// the selected clip's box, handles and opacity chip over it.

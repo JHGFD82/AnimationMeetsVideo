@@ -16,6 +16,11 @@ enum Preferences {
     /// Whether the viewer shows handles on the clip selected in the
     /// timeline (Show Handles, H). Off until asked for.
     static let viewerHandles = "viewerHandles"
+    /// The color paths are drawn in over the picture (see
+    /// docs/pen-tool.md, "The path color"), as `#RRGGBB`; hot magenta
+    /// until changed.
+    static let penColor = "penColor"
+    static let defaultPenColor = "#FF2DC8"
 
     // MARK: Timeline
 

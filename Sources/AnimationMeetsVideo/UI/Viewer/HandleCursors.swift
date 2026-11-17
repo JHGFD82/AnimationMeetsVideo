@@ -23,6 +23,80 @@ enum HandleCursors {
             return .resizeLeftRight
         case .notAllowed:
             return .operationNotAllowed
+        case .pen(let badge):
+            return pen(badge)
+        case .convert:
+            return pen(.caret, converting: true)
+        case .hand:
+            return .openHand
+        case .closedHand:
+            return .closedHand
+        }
+    }
+
+    /// The pen: `pencil.tip` with its point at the hot spot, and a small
+    /// badge by it saying what a click does. Option's convert pointer is
+    /// the caret alone, as Illustrator's is.
+    private static func pen(_ badge: PenBadge, converting: Bool = false) -> NSCursor {
+        let key = "pen@\(badge)\(converting ? "-convert" : "")"
+        if let cached = cache[key] { return cached }
+        let cursor = makePen(badge, converting: converting) ?? .crosshair
+        cache[key] = cursor
+        return cursor
+    }
+
+    private static func makePen(_ badge: PenBadge, converting: Bool) -> NSCursor? {
+        let base = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        let name = converting ? "chevron.up" : "pencil.tip"
+        guard let dark = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(base.applying(NSImage.SymbolConfiguration(paletteColors: [.black]))),
+            let light = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(base.applying(NSImage.SymbolConfiguration(paletteColors: [.white])))
+        else { return nil }
+        let side: CGFloat = 28
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(side * 2), pixelsHigh: Int(side * 2), bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return nil }
+        rep.size = NSSize(width: side, height: side)
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        guard let graphics = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.current = graphics
+        // The symbol in the top left, drawn y up.
+        let size = dark.size
+        let rect = NSRect(x: 6, y: side - 6 - size.height, width: size.width, height: size.height)
+        for (dx, dy) in [(-1.0, 0.0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (-1, 1), (1, -1)] {
+            light.draw(in: rect.offsetBy(dx: CGFloat(dx), dy: CGFloat(dy)))
+        }
+        dark.draw(in: rect)
+        if let symbol = badgeSymbol(badge), !converting,
+           let mark = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8, weight: .heavy)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [.black]))),
+           let rim = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8, weight: .heavy)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))) {
+            let mark = mark, badgeRect = NSRect(x: side - 11, y: 1, width: mark.size.width, height: mark.size.height)
+            for (dx, dy) in [(-1.0, 0.0), (1, 0), (0, -1), (0, 1)] { rim.draw(in: badgeRect.offsetBy(dx: CGFloat(dx), dy: CGFloat(dy))) }
+            mark.draw(in: badgeRect)
+        }
+        graphics.flushGraphics()
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
+        // The pen's tip, at the bottom middle of the symbol (a cursor's hot
+        // spot is measured from the image's top left).
+        return NSCursor(image: image, hotSpot: NSPoint(x: 6 + size.width / 2, y: 6 + size.height))
+    }
+
+    private static func badgeSymbol(_ badge: PenBadge) -> String? {
+        switch badge {
+        case .none: nil
+        case .ring: "circle"
+        case .caret: "chevron.up"
+        case .slash: "line.diagonal"
+        case .plus: "plus"
+        case .minus: "minus"
         }
     }
 

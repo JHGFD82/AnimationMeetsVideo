@@ -17,18 +17,20 @@ struct ViewerCanvas: View {
     var showsOtherPicture = false
 
     @Environment(\.displayScale) private var displayScale
+    @Environment(ActivePanel.self) private var activePanel: ActivePanel?
     /// The pinch's magnification at its last step, which the next is
     /// measured from.
     @State private var pinched: CGFloat?
 
     /// A pinch or a scroll during a drag is ignored: the drag works in the
-    /// frame's pixels as they were mapped when it began.
-    private var isDragging: Bool { handles?.state.drag != nil }
+    /// frame's pixels as they were mapped when it began. So is one during
+    /// a press of the pen.
+    private var isDragging: Bool { handles.map { $0.state.drag != nil || $0.state.isPenPressed } ?? false }
 
     var body: some View {
         // Read here, not only in the reader below, whose reads don't draw
-        // the canvas again: a zoom or a scroll must, so the handles map
-        // presses as the picture is now.
+        // the canvas again: a zoom or a scroll must, so the handles and the
+        // pen map presses as the picture is now.
         let _ = (framing.zoom, framing.center)
         GeometryReader { proxy in
             let mapping = framing.mapping(frameSize: frameSize, wellSize: proxy.size, backingScale: displayScale)
@@ -39,10 +41,19 @@ struct ViewerCanvas: View {
                 if let handles, let playback {
                     // Reads the playhead itself, so the panel doesn't.
                     PlayheadReader(playhead: handles.playhead) { time in
-                        ViewerHandlesOverlay(
-                            source: handles, mapping: mapping, time: time, playback: playback, framing: framing,
-                            showsOtherPicture: showsOtherPicture
-                        )
+                        // The pen draws its path whatever Show Handles says,
+                        // in place of the handles.
+                        if handles.state.tool == .pen {
+                            PenOverlay(
+                                source: handles, mapping: mapping, time: time, playback: playback, framing: framing,
+                                showsOtherPicture: showsOtherPicture
+                            )
+                        } else {
+                            ViewerHandlesOverlay(
+                                source: handles, mapping: mapping, time: time, playback: playback, framing: framing,
+                                showsOtherPicture: showsOtherPicture
+                            )
+                        }
                     }
                 }
             }
@@ -55,8 +66,21 @@ struct ViewerCanvas: View {
                 framing.apply((framing.current ?? mapping).scrolled(by: delta))
                 return true
             })
-            .background(KeyPressMonitor { zoomKey($0) })
+            .background(KeyPressMonitor { zoomKey($0) || toolKey($0) })
         }
+    }
+
+    /// P picks the pen, and P again puts the arrow back, while the viewer
+    /// or the timeline has the keys (`KeyPressMonitor` leaves it alone
+    /// while text is typed).
+    private func toolKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard let state = handles?.state, flags.isDisjoint(with: [.command, .control, .option, .shift]),
+              event.charactersIgnoringModifiers?.lowercased() == "p",
+              activePanel.map({ $0.current == .viewer || $0.current == .timeline }) ?? true
+        else { return false }
+        state.pick(state.tool == .pen ? .arrow : .pen)
+        return true
     }
 
     /// Two fingers zoom about where they began: the spot of the picture
