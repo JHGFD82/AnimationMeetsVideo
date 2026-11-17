@@ -52,4 +52,21 @@ import Testing
         PictureCache.emptyAll([one, two])
         #expect(one.count == 0 && two.count == 0 && one.pixels == 0)
     }
+
+    /// Many uses of a few pictures, and many pictures through a small
+    /// cache, keep the order and the count right as old uses are dropped.
+    @Test func longRunsKeepTheOrder() {
+        let cache = PictureCache(pixelLimit: 500)
+        for index in 0..<5 { cache.setObject(picture(10), forKey: "\(index)" as NSString) }
+        // "0" used again and again: never the oldest.
+        for _ in 0..<1000 { _ = cache.object(forKey: "0") }
+        for index in 5..<400 {
+            cache.setObject(picture(10), forKey: "\(index)" as NSString)
+            _ = cache.object(forKey: "0")
+        }
+        #expect(cache.count == 5 && cache.pixels == 500)
+        #expect(cache.object(forKey: "0") != nil)
+        #expect(cache.object(forKey: "399") != nil && cache.object(forKey: "396") != nil)
+        #expect(cache.object(forKey: "395") == nil && cache.object(forKey: "1") == nil)
+    }
 }

@@ -13,7 +13,10 @@ enum FrameThumbnails {
     /// How many pictures are made at once.
     static let concurrency = 4
 
-    private static let cache = NSCache<NSString, NSImage>()
+    /// Kept until there are too many or memory runs short
+    /// (`PictureCache`), not thrown away at `NSCache`'s whim: about 128
+    /// megabytes' worth, some two thousand filmstrip pictures across files.
+    private static let cache = PictureCache(pixelLimit: 32_000_000)
     private static var generators: [String: AVAssetImageGenerator] = [:]
     /// The times pictures were made at, by file and size, to find the one
     /// nearest a time when that time has none.
@@ -28,7 +31,9 @@ enum FrameThumbnails {
         madeTimes = [:]
     }
 
-    /// The picture `image(url:time:height:)` made, if it is still kept.
+    /// The picture `image(url:time:height:)` made, if it is still kept:
+    /// until a couple of thousand others have been made since it was last
+    /// asked for, or the system warns that memory is low.
     static func cached(url: URL, time: CMTime, height: CGFloat) -> NSImage? {
         cache.object(forKey: key(url: url, time: time, height: height))
     }

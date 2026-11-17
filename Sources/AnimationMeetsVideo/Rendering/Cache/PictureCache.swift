@@ -13,10 +13,21 @@ import Dispatch
 @MainActor
 final class PictureCache {
     let pixelLimit: Int
-    private var pictures: [NSString: NSImage] = [:]
-    /// Keys from the least recently used to the most.
-    private var order: [NSString] = []
+    private var pictures: [NSString: Entry] = [:]
+    /// Each use of a picture, oldest first, from `head` on; a use is stale
+    /// once its picture has been used again since (its stamp no longer the
+    /// entry's), and is skipped. So using a picture costs the same however
+    /// many are kept, as a thumbnail strip asking for hundreds needs.
+    private var uses: [(key: NSString, stamp: Int)] = []
+    private var head = 0
+    private var clock = 0
     private(set) var pixels = 0
+
+    private struct Entry {
+        var picture: NSImage
+        var pixels: Int
+        var stamp: Int
+    }
 
     init(pixelLimit: Int) {
         self.pixelLimit = pixelLimit
@@ -28,34 +39,53 @@ final class PictureCache {
 
     /// The picture kept under `key`, which is then the most recently used.
     func object(forKey key: NSString) -> NSImage? {
-        guard let picture = pictures[key] else { return nil }
+        guard pictures[key] != nil else { return nil }
         touch(key)
-        return picture
+        return pictures[key]?.picture
     }
 
     /// Keeps `picture` under `key`, letting the least recently used go
     /// while the pictures together are past the limit. One bigger than the
     /// limit by itself is still kept, alone.
     func setObject(_ picture: NSImage, forKey key: NSString) {
-        if let old = pictures[key] { pixels -= Self.pixels(of: old) }
-        pictures[key] = picture
-        pixels += Self.pixels(of: picture)
+        if let old = pictures[key] { pixels -= old.pixels }
+        let size = Self.pixels(of: picture)
+        pictures[key] = Entry(picture: picture, pixels: size, stamp: 0)
+        pixels += size
         touch(key)
-        while pixels > pixelLimit, order.count > 1 {
-            let oldest = order.removeFirst()
-            if let gone = pictures.removeValue(forKey: oldest) { pixels -= Self.pixels(of: gone) }
+        while pixels > pixelLimit, pictures.count > 1, head < uses.count {
+            let use = uses[head]
+            head += 1
+            // The oldest use that is still its picture's last. The picture
+            // just kept is used last of all, so it is reached only once it
+            // is alone, which ends the loop.
+            guard let entry = pictures[use.key], entry.stamp == use.stamp else { continue }
+            pictures[use.key] = nil
+            pixels -= entry.pixels
         }
+        compact()
     }
 
     func removeAllObjects() {
         pictures = [:]
-        order = []
+        uses = []
+        head = 0
         pixels = 0
     }
 
     private func touch(_ key: NSString) {
-        if let index = order.firstIndex(of: key) { order.remove(at: index) }
-        order.append(key)
+        clock += 1
+        pictures[key]?.stamp = clock
+        uses.append((key, clock))
+        compact()
+    }
+
+    /// Drops the uses already passed and those gone stale, once they
+    /// outnumber the pictures kept several times over.
+    private func compact() {
+        guard uses.count - head > 64, uses.count - head > pictures.count * 4 else { return }
+        uses = uses[head...].filter { pictures[$0.key]?.stamp == $0.stamp }
+        head = 0
     }
 
     private static func pixels(of picture: NSImage) -> Int {
