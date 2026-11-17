@@ -6,7 +6,7 @@ import Testing
 @Suite struct BarColorTests {
     @Test func hexReadsAndWrites() throws {
         let color = try #require(BarColor(hex: "#3db8d0"))
-        #expect(color == BarColor(red: 0x3D, green: 0xB8, blue: 0xD0))
+        #expect(color == BarColor(red: UInt8(0x3D), green: 0xB8, blue: 0xD0))
         #expect(color.hex == "#3DB8D0")
         #expect(BarColor(hex: color.hex) == color)
     }
@@ -42,6 +42,6 @@ import Testing
     }
 
     @Test func channelsRoundToTheNearestByte() {
-        #expect(BarColor(red: 1.0, green: 0.5, blue: -1) == BarColor(red: 255, green: 128, blue: 0))
+        #expect(BarColor(red: 1.0, green: 0.5, blue: -1) == BarColor(red: UInt8(255), green: 128, blue: 0))
     }
 }

@@ -51,7 +51,8 @@ import Testing
         let bundle = try #require(project.clipBundle(topClips[1], in: t0))
         var colored = bundle
         colored.clip.color = teal
-        let pasted = try #require(project.paste(colored, in: t0, onto: nil, at: t(100)))
+        let placed = project.paste(colored, in: t0, onto: nil, at: t(100))
+        let pasted = try #require(placed)
         #expect(clip(pasted.clipID, in: project)?.color == teal)
     }
 
