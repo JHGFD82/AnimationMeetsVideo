@@ -15,6 +15,7 @@ struct KeyframeDesignerTransport: View {
                 Image(systemName: playing ? Design.Symbol.pause : Design.Symbol.play)
                     .frame(width: 18)
             }
+            .buttonStyle(.icon)
             .help(playing ? "Pause (Space)" : "Play (Space)")
             .accessibilityLabel(playing ? "Pause" : "Play")
             Text(time.timecode(frameRate: frameRate))

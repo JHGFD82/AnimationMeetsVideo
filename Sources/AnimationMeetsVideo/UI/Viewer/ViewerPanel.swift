@@ -118,9 +118,10 @@ struct ViewerPanel: View {
                     if let skim, skim.isActive { skim.togglePlay() } else { playback.togglePlayback() }
                 } label: {
                     Image(systemName: playing ? Design.Symbol.pause : Design.Symbol.play)
-                        .frame(width: 20)
+                        .frame(width: 18)
                         .contentTransition(.symbolEffect(.replace))
                 }
+                .buttonStyle(.icon)
                 .keyboardShortcut(.space, modifiers: [])
                 .help(isSkimming ? "Play/Pause the skimmed clip (Space)" : "Play/Pause (Space)")
                 .accessibilityLabel(playing ? "Pause" : "Play")
