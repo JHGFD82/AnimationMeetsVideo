@@ -27,6 +27,10 @@ final class ViewerCanvasState {
     /// the handle sets' `keyTargets`, by its handle; the first when this
     /// isn't among them.
     var picked: HandleID = .move
+    /// A path's points picked together (⌘-click with the arrow, ⌘A with
+    /// the pen), which a drag of one of them and the arrows move as one.
+    /// `picked` names the one whose tangents show.
+    var pointSelection: PathPointSelection?
     var drag: Drag?
     /// The editor surface's parked playhead and effects panel, which a
     /// canvas outside the surface (the external display's) shows the
@@ -53,6 +57,21 @@ final class ViewerCanvasState {
             pen.ended = true
             pen.added = nil
         }
+    }
+
+    /// The points picked together on the path of `effectID`, while it still
+    /// has `count` points; none otherwise, since the indices would name
+    /// other points.
+    func pickedPoints(of effectID: UUID, count: Int) -> Set<Int> {
+        guard let selection = pointSelection, selection.effectID == effectID, selection.count == count else { return [] }
+        return selection.points
+    }
+
+    /// Picks `points` of the path of `effectID`, which has `count`; one
+    /// point or none clears the selection, `picked` saying the one.
+    func pickPoints(_ points: Set<Int>, of effectID: UUID, count: Int) {
+        let next = points.count > 1 ? PathPointSelection(effectID: effectID, count: count, points: points) : nil
+        if pointSelection != next { pointSelection = next }
     }
 
     /// Picks `tool`; the pen set to `mode` when given.
@@ -104,4 +123,13 @@ struct ViewerHandlesSource {
     var effectsState: EffectsPanelState
     var playhead: PlayheadState
     var state: ViewerCanvasState
+}
+
+/// Points of one path picked together (`ViewerCanvasState.pointSelection`).
+struct PathPointSelection: Equatable {
+    var effectID: UUID
+    /// How many points the path had: a point added or removed shifts the
+    /// indices, which then pick nothing.
+    var count: Int
+    var points: Set<Int>
 }

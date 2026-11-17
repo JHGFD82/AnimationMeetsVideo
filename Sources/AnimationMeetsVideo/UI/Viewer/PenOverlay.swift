@@ -77,6 +77,7 @@ struct PenOverlay: View {
         .onKeyPress(keys: Self.keys) { press in key(press) }
         .background(KeyHoldMonitor(keyCode: 49, isActive: true, onDown: { spaceWentDown() }, onUp: { spaceCameUp() }))
         .background(FlagsMonitor { flags in flagsChanged(flags) })
+        .background(KeyPressMonitor { selectAllKey($0) })
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Pen")
         .accessibilityHint(isDrawing
@@ -89,6 +90,7 @@ struct PenOverlay: View {
                 Button("Cancel Path") { cancelDraw() }
             }
             Button("Add Point") { addPointAfterPicked() }
+            Button("Pick All Points") { pickAllPoints() }
         }
         .onChange(of: live) { _, isLive in
             if !isLive {
@@ -182,8 +184,10 @@ struct PenOverlay: View {
                 PathDrawing.tangentEnd(at: view(vertex.point + tangent), color: color, in: &context)
             }
         }
+        let together = source.state.pickedPoints(of: shown.target.effectID, count: path.vertices.count)
         for index in path.vertices.indices {
-            PathDrawing.vertex(at: view(path.vertices[index].point), picked: index == picked, color: color, in: &context)
+            let isPicked = index == picked || together.contains(index)
+            PathDrawing.vertex(at: view(path.vertices[index].point), picked: isPicked, color: color, in: &context)
         }
         if let pointer, book.begun == nil, !commandDown, hoverAction(at: pointer) == .close, let first = path.vertices.first {
             PathDrawing.closingRing(at: view(first.point), color: color, in: &context)
@@ -418,6 +422,8 @@ struct PenOverlay: View {
         if let outcome {
             if project != outcome.project { source.project.wrappedValue = outcome.project }
             source.state.pen = outcome.state
+            // The pen's press picks the point it worked on alone.
+            source.state.pointSelection = nil
             if let picked = outcome.picked { source.state.picked = PathHandles.Part.vertex(picked).handle }
             if let made = outcome.made {
                 source.state.select?(TimelineSelection(timelineID: source.timelineID, layerID: made.layerID, timelineClipID: made.clipID))
@@ -485,19 +491,27 @@ struct PenOverlay: View {
         guard let timeline = project.timeline(id: source.timelineID),
               let clip = project.clipAndLayer(target.clipID, in: source.timelineID)?.clip
         else { return nil }
+        let sourceTime = clip.sourceTime(atTimelineTime: time)
         return HandleContext(
-            clip: clip, sourceTime: clip.sourceTime(atTimelineTime: time), frameSize: timeline.frameSize, pictureRect: .zero,
+            clip: clip, sourceTime: sourceTime, frameSize: timeline.frameSize, pictureRect: .zero,
             selectedEffectID: target.effectID, shownUpTo: source.effectsState.showUpTo?.effectID,
             pixelsPerPoint: mapping.pixelsPerPoint,
             isLocked: projectState?.lockedClipIDs.contains(target.clipID) ?? false,
-            picked: source.state.picked
+            picked: source.state.picked,
+            pickedPoints: ViewerHandlesOverlay.pickedPoints(of: clip, target.effectID, at: sourceTime, state: source.state)
         )
     }
 
     private func arrowBegan(at location: CGPoint) {
         let hit = arrowHandle(at: location)
         guard let found = hit, found.handle.isEnabled else {
-            if let refusal = hit?.handle.refusal { refuse(.driven(refusal)) }
+            if let refusal = hit?.handle.refusal {
+                refuse(.driven(refusal))
+            } else if hit == nil, let shown = current() {
+                // ⌘ on nothing lets the picked points go.
+                source.state.pickPoints([], of: shown.target.effectID, count: 0)
+                if PathHandles.Part(source.state.picked) != nil { source.state.picked = .move }
+            }
             book.isDead = true
             return
         }
@@ -505,7 +519,22 @@ struct PenOverlay: View {
         book.arrowSet = found.set
         book.arrowContext = found.context
         book.before = project
-        if let part = PathHandles.Part(found.handle.id) { source.state.picked = PathHandles.Part.vertex(part.vertex).handle }
+        if case .vertex(let index)? = PathHandles.Part(found.handle.id), let shown = current() {
+            // Command is the arrow, with the arrow's ⌘: the point joins the
+            // picked points, which a drag moves together; a click on one
+            // already picked takes it out (`PathPointPicking`).
+            let count = shown.located.path.vertices.count
+            let press = PathPointPicking.press(
+                on: index, picked: PathHandles.selected(found.context, in: shown.located.path), command: true
+            )
+            source.state.picked = found.handle.id
+            source.state.pickPoints(press.points, of: shown.target.effectID, count: count)
+            book.arrowOnClick = (shown.target.effectID, count, press.onClick)
+            book.arrowContext?.picked = found.handle.id
+            book.arrowContext?.pickedPoints = press.points
+        } else if let part = PathHandles.Part(found.handle.id) {
+            source.state.picked = PathHandles.Part.vertex(part.vertex).handle
+        }
         source.state.isPenPressed = true
         history?.beginGesture()
         projectState?.beginHold()
@@ -527,8 +556,10 @@ struct PenOverlay: View {
         guard var drag = book.arrow, book.arrowBegan, let set = book.arrowSet, let context = book.arrowContext else { return }
         drag.shift = book.arrowShift
         drag.option = book.arrowOption
-        let edited = set.edit(drag, context)?.applied(to: context.clip) ?? context.clip
+        let edit = set.edit(drag, context)
+        let edited = edit?.applied(to: context.clip) ?? context.clip
         book.arrowEdited = edited
+        book.arrowName = edit?.actionName ?? book.arrowName
         let binding = source.project, timelineID = source.timelineID
         let write = { binding.wrappedValue.editClip(edited.id, in: timelineID) { $0 = edited } }
         if let projectState { projectState.hold(write) } else { write() }
@@ -536,13 +567,20 @@ struct PenOverlay: View {
 
     private func arrowEnded() {
         guard book.arrow != nil else { return }
+        // A ⌘-click, never dragged, picks as a click does.
+        if let click = book.arrowOnClick, !book.arrowBegan {
+            source.state.pickPoints(click.points, of: click.effectID, count: click.count)
+            if !click.points.contains(PathHandles.Part(source.state.picked)?.vertex ?? -1) {
+                source.state.picked = click.points.min().map { PathHandles.Part.vertex($0).handle } ?? .move
+            }
+        }
         book.escape?.end()
         book.escape = nil
         projectState?.endHold()
         source.state.isPenPressed = false
         if let edited = book.arrowEdited, project.clipAndLayer(edited.id, in: source.timelineID)?.clip != edited {
             source.project.wrappedValue.editClip(edited.id, in: source.timelineID) { $0 = edited }
-            history?.nameNextStep("Move Point")
+            history?.nameNextStep(book.arrowName)
         }
         let history = self.history
         Task { @MainActor in history?.endGesture() }
@@ -603,6 +641,7 @@ struct PenOverlay: View {
     private func apply(_ outcome: PenTool.Outcome?) {
         guard let outcome else { return }
         source.state.pen = outcome.state
+        source.state.pointSelection = nil
         source.state.picked = outcome.picked.map { PathHandles.Part.vertex($0).handle } ?? source.state.picked
         guard outcome.project != project else { return }
         history?.nameNextStep(outcome.name)
@@ -689,11 +728,14 @@ struct PenOverlay: View {
         }
     }
 
-    /// ⌫: the picked point goes; while drawing, the last. A draw left with
+    /// ⌫: the picked points go; while drawing, the last. A draw left with
     /// no points is cancelled.
     private func removePicked() {
         guard let shown = current(), let index = keyPoint() else { return }
-        if isDrawing, shown.located.path.vertices.count <= 1 {
+        let count = shown.located.path.vertices.count
+        var going = source.state.pickedPoints(of: shown.target.effectID, count: count)
+        going.insert(index)
+        if isDrawing, count - going.count < 1 {
             cancelDraw()
             return
         }
@@ -701,11 +743,36 @@ struct PenOverlay: View {
         applyHandleEdit { _, context in
             var clip = context.clip
             guard let e = clip.effects.index(of: target.effectID) else { return nil }
-            clip.effects[e].changeControl(.path) { $0.mapPath { $0.remove(index) } }
-            return HandleEdit(change: { $0 = clip }, readout: "Remove Point", actionName: "Remove Point")
+            clip.effects[e].changeControl(.path) { control in
+                control.mapPath { path in
+                    for point in going.sorted(by: >) { path.remove(point) }
+                }
+            }
+            let name = going.count > 1 ? "Remove Points" : "Remove Point"
+            return HandleEdit(change: { $0 = clip }, readout: name, actionName: name)
         }
-        let count = shown.located.path.vertices.count - 1
-        source.state.picked = count > 0 ? PathHandles.Part.vertex(min(index, count - 1)).handle : .move
+        let left = count - going.count
+        source.state.pointSelection = nil
+        source.state.picked = left > 0 ? PathHandles.Part.vertex(min(index, left - 1)).handle : .move
+    }
+
+    /// ⌘A picks every point of the path the pen works on, while the pen has
+    /// the keys or the pointer is over the viewer.
+    private func selectAllKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard isLive, isFocused || pointer != nil, flags == .command,
+              event.charactersIgnoringModifiers?.lowercased() == "a"
+        else { return false }
+        return pickAllPoints()
+    }
+
+    @discardableResult
+    private func pickAllPoints() -> Bool {
+        guard let shown = current(), !shown.located.path.isEmpty else { return false }
+        let count = shown.located.path.vertices.count
+        if PathHandles.Part(source.state.picked) == nil { source.state.picked = PathHandles.Part.vertex(0).handle }
+        source.state.pickPoints(Set(0..<count), of: shown.target.effectID, count: count)
+        return true
     }
 
     private func nudgePicked(_ direction: NudgeDirection, _ step: NudgeStep) {
@@ -778,6 +845,10 @@ private final class PenPressBook {
     var arrowShift = false
     var arrowOption = false
     var arrowEdited: TimelineClip?
+    /// The points of the path a ⌘-click, if it isn't dragged, leaves picked.
+    var arrowOnClick: (effectID: UUID, count: Int, points: Set<Int>)?
+    /// The undo step's name for Command's drag: Move Point or Move Points.
+    var arrowName = "Move Point"
 
     /// The button came up: ready for the next press.
     func reset() {
@@ -797,6 +868,8 @@ private final class PenPressBook {
         arrowShift = false
         arrowOption = false
         arrowEdited = nil
+        arrowOnClick = nil
+        arrowName = "Move Point"
     }
 
     isolated deinit {

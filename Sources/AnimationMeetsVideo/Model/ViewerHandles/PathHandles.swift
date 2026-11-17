@@ -111,6 +111,14 @@ struct PathHandles: ViewerHandleSet {
         return Array(Set(shown)).sorted()
     }
 
+    /// The points picked: those picked together, with the picked one, all
+    /// on the path.
+    static func selected(_ context: HandleContext, in path: FreePath) -> Set<Int> {
+        var points = context.pickedPoints
+        if let picked = Part(context.picked)?.vertex { points.insert(picked) }
+        return points.filter { path.vertices.indices.contains($0) }
+    }
+
     // MARK: The set
 
     func handles(_ context: HandleContext) -> [ViewerHandle] {
@@ -118,6 +126,7 @@ struct PathHandles: ViewerHandleSet {
         let refusal = Self.driver(of: located, in: context.clip)
         let path = located.path
         let picked = Part(context.picked)?.vertex
+        let selected = Self.selected(context, in: path)
         var list: [ViewerHandle] = []
         // Tangents first: drawn over the points, so asked first.
         for index in Self.pointsShowingTangents(of: path, picked: picked) {
@@ -134,7 +143,7 @@ struct PathHandles: ViewerHandleSet {
         for index in path.vertices.indices {
             let vertex = path.vertices[index]
             list.append(ViewerHandle(
-                id: Part.vertex(index).handle, place: located.frame(vertex.point), glyph: index == picked ? .pickedVertex : .vertex,
+                id: Part.vertex(index).handle, place: located.frame(vertex.point), glyph: selected.contains(index) ? .pickedVertex : .vertex,
                 cursor: refusal == nil ? .move : .notAllowed, reach: TransformHandles.handleReach,
                 isEnabled: refusal == nil, refusal: refusal, name: Self.name(of: index, in: path),
                 value: Self.text(of: index, in: path)
@@ -214,9 +223,9 @@ struct PathHandles: ViewerHandleSet {
     // MARK: Dragging
 
     /// A point follows the pointer in whole pixels of the path's
-    /// coordinates, its tangents with it; with Shift kept to the axis the
-    /// drag is nearer on screen, with Option a tenth of the pointer's
-    /// movement, in tenths. A tangent's end follows the pointer, in
+    /// coordinates, its tangents with it, and the other points picked with
+    /// it by as much; with Shift kept to the axis the drag is nearer on
+    /// screen, with Option a tenth of the pointer's movement, in tenths. A tangent's end follows the pointer, in
     /// tenths; on an ease point the opposite tangent stays in line with it
     /// at its own length, and on a broken one it moves alone.
     func edit(_ drag: HandleDrag, _ context: HandleContext) -> HandleEdit? {
@@ -242,8 +251,15 @@ struct PathHandles: ViewerHandleSet {
                 y: ((Double(start.y) + Double(change.dy)) / step).rounded() * step
             )
             guard moved != start else { return nil }
-            path.vertices[index].point = moved
-            return write(path, located, context, readout: "Point \(index + 1) \(HandleFormat.pair(Double(moved.x), Double(moved.y)))", actionName: "Move Point")
+            let selected = Self.selected(context, in: path)
+            guard selected.count > 1, selected.contains(index) else {
+                path.vertices[index].point = moved
+                return write(path, located, context, readout: "Point \(index + 1) \(HandleFormat.pair(Double(moved.x), Double(moved.y)))", actionName: "Move Point")
+            }
+            // The others picked move as far as this one did.
+            let dx = moved.x - start.x, dy = moved.y - start.y
+            for other in selected { path.vertices[other].point = CGPoint(x: path.vertices[other].point.x + dx, y: path.vertices[other].point.y + dy) }
+            return write(path, located, context, readout: "\(selected.count) Points \(HandleFormat.pair(Double(dx), Double(dy)))", actionName: "Move Points")
         case .tangent(let index, let side):
             let vertex = path.vertices[index]
             let start = side == .in ? vertex.inTangent : vertex.outTangent
@@ -289,13 +305,20 @@ struct PathHandles: ViewerHandleSet {
         case .down: (0, 1)
         }
         var path = located.path
-        let point = path.vertices[index].point
-        let moved = CGPoint(
-            x: ((Double(point.x) + dx * step.multiplier) * 10).rounded() / 10,
-            y: ((Double(point.y) + dy * step.multiplier) * 10).rounded() / 10
-        )
-        path.vertices[index].point = moved
-        return write(path, located, context, readout: "Point \(index + 1) \(HandleFormat.pair(Double(moved.x), Double(moved.y)))", actionName: "Move Point")
+        // The points picked with it go too.
+        let selected = Self.selected(context, in: path)
+        let moving = selected.contains(index) ? selected : [index]
+        for point in moving {
+            let place = path.vertices[point].point
+            path.vertices[point].point = CGPoint(
+                x: ((Double(place.x) + dx * step.multiplier) * 10).rounded() / 10,
+                y: ((Double(place.y) + dy * step.multiplier) * 10).rounded() / 10
+            )
+        }
+        let moved = path.vertices[index].point
+        let readout = moving.count > 1
+            ? "\(moving.count) Points" : "Point \(index + 1) \(HandleFormat.pair(Double(moved.x), Double(moved.y)))"
+        return write(path, located, context, readout: readout, actionName: moving.count > 1 ? "Move Points" : "Move Point")
     }
 
     func reset(_ handle: HandleID, _ context: HandleContext) -> HandleEdit? { nil }
@@ -390,4 +413,35 @@ struct PathHandles: ViewerHandleSet {
 /// toward where it goes on to.
 enum TangentSide: Hashable, Sendable {
     case `in`, out
+}
+
+/// How a press on a path's points picks them, the same with the arrow and
+/// with the pen (whose Command is the arrow): one modifier, Command, adds
+/// a point to the points picked together (see docs/pen-tool.md, "Editing
+/// a path").
+enum PathPointPicking {
+    /// What a press does to the points picked, and what it leaves for its
+    /// release to do if it turns out to be a click rather than a drag.
+    struct Press: Equatable {
+        /// The points picked from the press on, which a drag moves.
+        var points: Set<Int>
+        /// The points picked if the press is let go without dragging.
+        var onClick: Set<Int>
+    }
+
+    /// A press on point `index` (nil: on nothing) with `points` picked.
+    /// Without Command a press on a point picks it alone, unless it is
+    /// picked, when a drag moves them all and a click picks it alone.
+    /// With Command a point joins them (a drag then moves them all) or, if
+    /// it is picked, a click takes it out; a press on nothing lets them go.
+    static func press(on index: Int?, picked points: Set<Int>, command: Bool) -> Press {
+        guard let index else { return command ? Press(points: [], onClick: []) : Press(points: points, onClick: points) }
+        if command {
+            if points.contains(index) { return Press(points: points, onClick: points.subtracting([index])) }
+            let joined = points.union([index])
+            return Press(points: joined, onClick: joined)
+        }
+        if points.contains(index) { return Press(points: points, onClick: [index]) }
+        return Press(points: [index], onClick: [index])
+    }
 }

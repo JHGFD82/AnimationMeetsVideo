@@ -212,15 +212,20 @@ clicked with the pen picked, it takes Return (end the path; a mask is
 closed), Escape (cancel the path being drawn, or with nothing drawn
 put the arrow back), ⌘Return (add a point after the picked one, or the
 first at the middle of the frame), ⌥Return (make the picked point
-linear or ease), ⌫ (remove the picked point, or the last while
-drawing), Tab and ⇧Tab (pick a point) and the arrows (nudge it). Space
+linear or ease), ⌫ (remove the picked points, or the last while
+drawing), ⌘A (pick every point), Tab and ⇧Tab (pick a point) and the
+arrows (nudge the picked points). With the arrow and a Path or Path
+Mask selected, ⌘A picks every point too, while the viewer has the
+keys. Space
 held is the hand and never plays while the pen is picked, except that a
 control with the keyboard keeps Space to press it.
 
 - **Each point** is an adjustable element ("Point 3, X, ease"), across
   and down, with actions Add Point After, Remove Point, Make Linear or
-  Make Ease, and Close Path or Open Path. The pen itself is a group
-  named "Pen" with End Path, Cancel Path and Add Point.
+  Make Ease, and Close Path or Open Path; with the arrow, also Add to
+  Picked Points (or Remove from Picked Points) and Pick All Points,
+  VoiceOver's ⌘-click. The pen itself is a group named "Pen" with End
+  Path, Cancel Path, Add Point and Pick All Points.
 - **The chip** saying a Path or Path Mask waits for its path is read
   once as it appears; a refusal ("Select a clip to mask.") is read too.
 - **The tool picker** in the viewer's rail is labelled "Viewer Tool"

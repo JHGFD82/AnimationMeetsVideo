@@ -37,6 +37,10 @@ struct HandleContext {
     /// What the arrows change (`ViewerCanvasState.picked`): a path shows
     /// the tangents of its picked point and the points either side.
     var picked: HandleID?
+    /// A path's points picked together with the picked one
+    /// (`ViewerCanvasState.pointSelection`), which a drag of one of them
+    /// and the arrows move as one.
+    var pickedPoints: Set<Int> = []
 
     var center: CGPoint { CGPoint(x: frameSize.width / 2, y: frameSize.height / 2) }
 

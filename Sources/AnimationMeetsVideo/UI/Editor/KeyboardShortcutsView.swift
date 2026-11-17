@@ -65,8 +65,9 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "Esc", does: "Cancel the path being drawn; with nothing drawn, back to the arrow"),
             Shortcut(keys: "⌘Return", does: "Add a point after the picked one, or the first at the middle of the frame"),
             Shortcut(keys: "⌥Return", does: "Make the picked point linear or ease"),
-            Shortcut(keys: "⌫", does: "Remove the picked point, or the last while drawing"),
-            Shortcut(keys: "Tab ← → ↑ ↓", does: "Pick a point, and nudge it; ten with ⇧, a tenth with ⌥"),
+            Shortcut(keys: "⌫", does: "Remove the picked points, or the last while drawing"),
+            Shortcut(keys: "⌘A", does: "Pick every point of the path, to move them together"),
+            Shortcut(keys: "Tab ← → ↑ ↓", does: "Pick a point, and nudge the picked points; ten with ⇧, a tenth with ⌥"),
         ]),
         Group(title: "Keyframes", shortcuts: [
             Shortcut(keys: "F9", does: "Easy ease the keyframes at the playhead"),

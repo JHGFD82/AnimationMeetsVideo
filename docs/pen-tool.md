@@ -242,6 +242,23 @@ the Transform handles, as a shape or a mask shows its own today:
 - every point, and the tangent handles of the picked point and the
   point either side of it (the ones that shape the stretches it
   touches). A click on a point picks it;
+- several points can be **picked together**, drawn filled, with one
+  modifier, Command, the same with the arrow and with the pen (whose
+  Command is the arrow, so it is the arrow's Command):
+
+  | Press | Without Command (the arrow) | With Command (either tool) |
+  | --- | --- | --- |
+  | Click a point | Picks it alone | Adds it to the picked points, or takes it out if it was picked |
+  | Drag a point | Picks it alone and moves it; one already picked moves them all | Adds it if it wasn't picked, and moves them all |
+  | Click nothing | Nothing | Lets the picked points go |
+
+  ⌘A picks every point. Whether a press was a click or a drag is told
+  when the button comes up, so ⌘-clicking a picked point takes it out
+  only if it wasn't dragged. To move one point alone while others are
+  picked, ⌘-click nothing first. The picked points move as one step
+  and, where the path is animated, one keyframe at the playhead, by a
+  drag or the arrows; ⌫ with the pen removes them all. Adding or
+  removing a point lets them go, since the points' numbers change;
 - a drag moves a point, in whole pixels: Shift keeps it to one axis and
   Option takes a tenth, as for every point on the canvas. A tangent's
   drag on an ease point keeps the opposite tangent in line with it (at
@@ -562,6 +579,11 @@ settled while building:
   handles (and the pen) mapped presses, and the picture sat, as before
   the last pinch or scroll until something else changed. Each now reads
   the zoom and the place in its body (`ViewerFramingRedrawTests`).
+- **Several points can be picked together** (⌘-click with either tool,
+  ⌘A) and moved as one, which the plan had left out:
+  `ViewerCanvasState.pointSelection`, read through
+  `HandleContext.pickedPoints`, so a drag and the arrows move them all
+  (`PathHandles`). Both tools pick by one rule, `PathPointPicking`.
 - **The path color's well** draws its swatches as pictures of their own
   (`ColorSwatch`): a menu draws a tinted symbol as a template, so every
   swatch came out alike. Bars' Color menu had the same fault and uses
@@ -576,8 +598,8 @@ settled while building:
   ([graphic-layers.md](graphic-layers.md#strokes)).
 - **A `path` control in effect packages**, handed to a kernel as a
   drawn picture.
-- **Selecting several points**, a marquee, and moving a whole path by
-  dragging inside it (a shape has Position; a mask moves with a
+- **A marquee** to pick points, and moving a whole path by dragging
+  inside it (a shape has Position; a mask moves with a
   Transform below it).
 - **A color per path** and Illustrator's rubber band preference.
 - **Per-point feather** and **tracking** a mask to footage.

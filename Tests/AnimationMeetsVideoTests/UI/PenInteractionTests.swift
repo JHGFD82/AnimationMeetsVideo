@@ -238,6 +238,25 @@ struct PenInteractionTests {
         #expect(abs(points[1].y) <= 2)
     }
 
+    @Test func commandAPicksEveryPointAndTheArrowsMoveThem() async throws {
+        let rig = try Rig()
+        let harness = rig.harness()
+        try await harness.settle(200)
+        try await harness.click(at: rig.view(-200, -100))
+        try await harness.click(at: rig.view(200, -100))
+        try await harness.click(at: rig.view(0, 150))
+        harness.key(code: 36, characters: "\r")
+        try await harness.settle(200)
+        let before = try #require(rig.path).vertices.map(\.point)
+        harness.key(code: 0, characters: "a", flags: .command)
+        try await harness.settle()
+        harness.key(code: 124, characters: "\u{F703}", flags: .shift)
+        try await harness.settle(200)
+        let after = try #require(rig.path).vertices.map(\.point)
+        #expect(after == before.map { CGPoint(x: $0.x + 10, y: $0.y) })
+        #expect(rig.undoManager.undoActionName == "Move Points")
+    }
+
     @Test func pPicksThePenAndPutsTheArrowBack() async throws {
         let rig = try Rig()
         rig.canvas.tool = .arrow

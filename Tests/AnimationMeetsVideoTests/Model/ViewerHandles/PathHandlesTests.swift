@@ -160,4 +160,62 @@ import Testing
         ))
         #expect(path(of: nudged.applied(to: original), effect)?.vertices[0].point == CGPoint(x: -90, y: 0))
     }
+
+    @Test func pointsPickedTogetherMoveTogether() throws {
+        let effect = pathEffect()
+        let original = clip([effect])
+        let set = PathHandles(effectID: effect.id)
+        var context = context(original, selected: effect.id, picked: PathHandles.Part.vertex(0).handle)
+        context.pickedPoints = [0, 2]
+        // Drawn picked, the one between not.
+        let glyphs = Dictionary(uniqueKeysWithValues: set.handles(context).map { ($0.id, $0.glyph) })
+        #expect(glyphs[PathHandles.Part.vertex(0).handle] == .pickedVertex)
+        #expect(glyphs[PathHandles.Part.vertex(1).handle] == .vertex)
+        #expect(glyphs[PathHandles.Part.vertex(2).handle] == .pickedVertex)
+        // Dragging one drags both, by as much.
+        var drag = HandleDrag(handle: PathHandles.Part.vertex(2).handle, start: CGPoint(x: 1060, y: 540))
+        drag.move(to: CGPoint(x: 1070, y: 520), about: nil, holdingWithin: 0)
+        let edit = try #require(set.edit(drag, context))
+        #expect(edit.actionName == "Move Points")
+        let moved = try #require(path(of: edit.applied(to: original), effect))
+        #expect(moved.vertices[0].point == CGPoint(x: -90, y: -20))
+        #expect(moved.vertices[1].point == CGPoint(x: 0, y: -50))
+        #expect(moved.vertices[2].point == CGPoint(x: 110, y: -20))
+        // The arrows too.
+        let nudged = try #require(set.nudge(PathHandles.Part.vertex(0).handle, .down, step: .normal, context)).applied(to: original)
+        #expect(path(of: nudged, effect)?.vertices.map(\.point.y) == [1, -50, 1])
+        // A point not among them moves alone.
+        var alone = HandleDrag(handle: PathHandles.Part.vertex(1).handle, start: CGPoint(x: 960, y: 490))
+        alone.move(to: CGPoint(x: 970, y: 490), about: nil, holdingWithin: 0)
+        let single = try #require(set.edit(alone, context)).applied(to: original)
+        #expect(path(of: single, effect)?.vertices.map(\.point.x) == [-100, 10, 100])
+    }
+
+    @MainActor @Test func pickedPointsLapseWhenThePathChangesCount() {
+        let state = ViewerCanvasState()
+        let id = UUID()
+        state.pickPoints([0, 1, 2], of: id, count: 3)
+        #expect(state.pickedPoints(of: id, count: 3) == [0, 1, 2])
+        #expect(state.pickedPoints(of: id, count: 4).isEmpty)
+        #expect(state.pickedPoints(of: UUID(), count: 3).isEmpty)
+        state.pickPoints([1], of: id, count: 3)
+        #expect(state.pointSelection == nil)
+    }
+
+    /// One modifier, Command, adds points with either tool.
+    @Test func commandAddsPointsAndAPlainPressPicksOne() {
+        typealias P = PathPointPicking
+        // Without Command: a point alone; a picked one drags them all and,
+        // clicked, is picked alone.
+        #expect(P.press(on: 3, picked: [1, 2], command: false) == P.Press(points: [3], onClick: [3]))
+        #expect(P.press(on: 2, picked: [1, 2], command: false) == P.Press(points: [1, 2], onClick: [2]))
+        // With Command: it joins them, and a drag moves them all.
+        #expect(P.press(on: 3, picked: [1, 2], command: true) == P.Press(points: [1, 2, 3], onClick: [1, 2, 3]))
+        // A picked one, clicked, leaves them; dragged, moves them all.
+        #expect(P.press(on: 2, picked: [1, 2], command: true) == P.Press(points: [1, 2], onClick: [1]))
+        #expect(P.press(on: 2, picked: [2], command: true) == P.Press(points: [2], onClick: []))
+        // On nothing: Command lets them go; a plain press keeps them.
+        #expect(P.press(on: nil, picked: [1, 2], command: true) == P.Press(points: [], onClick: []))
+        #expect(P.press(on: nil, picked: [1, 2], command: false) == P.Press(points: [1, 2], onClick: [1, 2]))
+    }
 }
