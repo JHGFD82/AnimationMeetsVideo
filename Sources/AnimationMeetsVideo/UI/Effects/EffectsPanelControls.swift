@@ -139,6 +139,7 @@ extension EffectsPanel {
                     summary: control.kind.isCurve
                         ? curveSummary(shown, at: c.sourceNow(animated: control.isAnimated))
                         : control.kind.isPath ? pathSummary(shown, of: effect, at: c.sourceNow(animated: control.isAnimated)) : nil,
+                    summaryAction: control.kind.isPath ? penAction(control, of: effect, in: clip) : nil,
                     method: methodBadge(.control(effectID: effect.id, controlID: control.id), c),
                     onOpenMethod: { openDesigner(on: .control(effectID: effect.id, controlID: control.id), of: clip) },
                     menu: menu
@@ -160,6 +161,18 @@ extension EffectsPanel {
     private func curveSummary(_ control: EffectControl, at time: CMTime) -> String {
         let curve = control.curve(at: time)
         return curve.isIdentity ? "Straight" : "\(curve.points.count) points"
+    }
+
+    /// The Path row's button: picks the pen with this effect as the one it
+    /// works on, to draw its path or edit it.
+    private func penAction(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> (title: String, help: String, action: () -> Void)? {
+        guard let drawWithPen = state.drawWithPen else { return nil }
+        let empty = control.number.value.values.isEmpty && !control.isAnimated
+        return (
+            empty ? "Draw with Pen" : "Edit with Pen",
+            empty ? "Pick the pen to draw this path in the viewer (P)" : "Pick the pen to add, remove and convert this path's points",
+            { drawWithPen(clip.id, effect.id) }
+        )
     }
 
     /// What a path control's row says of it: that it has no path yet, or

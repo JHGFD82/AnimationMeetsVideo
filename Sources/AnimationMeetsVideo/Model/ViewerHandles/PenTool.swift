@@ -674,3 +674,26 @@ enum PenTool {
 private extension CGVector {
     static func + (a: CGVector, b: CGVector) -> CGVector { CGVector(dx: a.dx + b.dx, dy: a.dy + b.dy) }
 }
+
+extension EditingProject {
+    /// The Paths and Path Masks of `timelineID` with no path yet that
+    /// `old` didn't have: just added, from the library, the Generators tab
+    /// or the New Shape Layer menu, which picks the pen to draw them
+    /// (docs/pen-tool.md, "In the effects panel and the library").
+    func pathsAwaitingPen(since old: EditingProject, in timelineID: UUID) -> [(layerID: UUID, clipID: UUID, effectID: UUID, kind: EffectKind)] {
+        guard let timeline = timeline(id: timelineID) else { return [] }
+        var before: Set<UUID>?
+        var found: [(layerID: UUID, clipID: UUID, effectID: UUID, kind: EffectKind)] = []
+        for layer in timeline.layers {
+            for clip in layer.clips {
+                for effect in clip.effects where PathHandles.applies(to: effect) {
+                    guard let control = effect.control(.path), control.number.value.values.isEmpty, !control.isAnimated else { continue }
+                    let had = before ?? Set((old.timeline(id: timelineID)?.layers ?? []).flatMap(\.clips).flatMap(\.effects).map(\.id))
+                    before = had
+                    if !had.contains(effect.id) { found.append((layer.id, clip.id, effect.id, effect.kind)) }
+                }
+            }
+        }
+        return found
+    }
+}

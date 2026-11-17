@@ -43,6 +43,18 @@ final class ViewerCanvasState {
         if let select { self.select = select }
     }
 
+    /// Picks the pen to draw or edit the path of `effectID` (a Path or a
+    /// Path Mask) on `clipID`: a draw under way on another path ends, so
+    /// the pen works on this one, the one selected in the effects panel.
+    func drawWithPen(_ effectID: UUID, kind: EffectKind, onClip clipID: UUID) {
+        pick(.pen, mode: kind == .pathMask ? .mask : .shape)
+        if pen.target?.effectID != effectID {
+            pen.target = PenTarget(clipID: clipID, effectID: effectID)
+            pen.ended = true
+            pen.added = nil
+        }
+    }
+
     /// Picks `tool`; the pen set to `mode` when given.
     func pick(_ tool: ViewerTool, mode: PenState.Mode? = nil) {
         if self.tool != tool { self.tool = tool }

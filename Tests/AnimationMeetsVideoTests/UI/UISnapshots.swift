@@ -1476,6 +1476,40 @@ struct UISnapshots {
         )
     }
 
+    /// The effects panel with a Path Mask on a shape clip: with no path
+    /// yet (its row asks for one and offers Draw with Pen), and with a
+    /// closed path of four points (Edit with Pen), its Feather, Expand,
+    /// Keep and Amount rows under it.
+    @Test func pathMaskPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let maskAdded = project.addEffect(.pathMask, toClip: shape.clipID, in: timelineID)
+        let maskID = try #require(maskAdded)
+        let selection = TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID)
+        func panel(_ project: EditingProject) -> some View {
+            let state = EffectsPanelState()
+            state.drawWithPen = { _, _ in }
+            state.collapsed = [project.clipAndLayer(shape.clipID, in: timelineID)?.clip.effects.first?.id].compactMap { $0 }.reduce(into: Set()) { $0.insert($1) }
+            return EffectsPanel(
+                project: .constant(project), timelineID: timelineID, selection: selection,
+                playheadTime: .zero, state: state, onSeek: { _ in }, onSelectTransition: { _ in }
+            )
+        }
+        try SnapshotSupport.render(panel(project), "path-mask-panel-empty", size: CGSize(width: 520, height: 420))
+        project.editEffect(maskID, ofClip: shape.clipID, in: timelineID) { effect in
+            effect.changeControl(.path) {
+                $0.setPath(FreePath(vertices: [
+                    .init(CGPoint(x: -100, y: -100)), .init(CGPoint(x: 100, y: -100)),
+                    .init(CGPoint(x: 100, y: 100)), .init(CGPoint(x: -100, y: 100)),
+                ], closed: true), at: .zero)
+            }
+            effect.changeControl(.maskFeather) { $0.number = AnimatedValue(ComponentValue(values: [24])) }
+        }
+        try SnapshotSupport.render(panel(project), "path-mask-panel", size: CGSize(width: 520, height: 420))
+    }
+
     /// The external display synced, with handles on: the top bar with its
     /// Show Handles switch, the frame filling the screen edge to edge, and
     /// the selected clip's box, handles and opacity chip over it.

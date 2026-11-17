@@ -401,6 +401,17 @@ struct TimelineEditorSurface<Library: View>: View {
                 sideTab = .effects
             }
         }
+        // A Path or Path Mask just added, with no path yet, picks the pen
+        // to draw it, selected (docs/pen-tool.md); not one undo or redo
+        // brought back.
+        .onChange(of: project) { old, new in
+            guard undoManager.map({ !$0.isUndoing && !$0.isRedoing }) ?? true,
+                  let added = new.pathsAwaitingPen(since: old, in: timelineID).last
+            else { return }
+            selection = TimelineSelection(timelineID: timelineID, layerID: added.layerID, timelineClipID: added.clipID)
+            effectsState.select(effect: added.effectID)
+            canvas.drawWithPen(added.effectID, kind: added.kind, onClip: added.clipID)
+        }
         .onChange(of: project, initial: true) { _, project in
             graphs.update(project: project)
             // Volumes aren't part of the composition: the player's audio
@@ -431,6 +442,11 @@ struct TimelineEditorSurface<Library: View>: View {
         .onAppear {
             let selection = $selection
             canvas.follow(playhead: playhead, effects: effectsState, select: { selection.wrappedValue = $0 })
+            effectsState.drawWithPen = { [weak canvas, weak effectsState, weak projectState, timelineID] clipID, effectID in
+                guard let effect = projectState?.value.clipAndLayer(clipID, in: timelineID)?.clip.effect(id: effectID) else { return }
+                effectsState?.select(effect: effectID)
+                canvas?.drawWithPen(effectID, kind: effect.kind, onClip: clipID)
+            }
             trail = project.containingTimelines(of: timelineID)
             playhead.liveTime = { [playback] in playback.isPlaying ? playback.player.currentTime() : nil }
             let project = $project
@@ -450,6 +466,7 @@ struct TimelineEditorSurface<Library: View>: View {
             // These hold this surface, whose state holds them: kept, they
             // would keep it, and the project, alive.
             timelineHost.surface = nil
+            effectsState.drawWithPen = nil
             graphs.onEdit = { _ in }
             graphs.onSeek = { _ in }
             graphs.onTogglePlayback = {}
