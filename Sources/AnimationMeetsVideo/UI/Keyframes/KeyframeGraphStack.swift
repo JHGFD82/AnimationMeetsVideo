@@ -117,7 +117,7 @@ struct KeyframeGraphLinkMenu: View {
                 Button(candidate.title) { hud.link(candidate.id, into: link.id) }
             }
         } label: {
-            Image(systemName: "link")
+            Image(systemName: Design.Symbol.linkGraph)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

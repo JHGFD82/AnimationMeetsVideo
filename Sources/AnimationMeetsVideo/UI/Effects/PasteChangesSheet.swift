@@ -53,7 +53,7 @@ struct PasteChangesSheet: View {
 
     private func row(_ entry: PasteChangeEntry) -> some View {
         HStack(alignment: .top, spacing: Design.Space.group) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: Design.Symbol.warning)
                 .foregroundStyle(Design.statusWarning)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(entry.timelineName) · \(entry.clipName) · \(entry.effectName)")

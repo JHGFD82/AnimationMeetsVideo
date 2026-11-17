@@ -10,8 +10,10 @@ enum InspectorGlyphs {
         case .fontSize: .symbol("textformat.size")
         case .leading: .symbol("arrow.up.and.down.text.horizontal")
         case .tracking: .symbol("arrow.left.and.right.text.vertical")
-        case .verticalScale: .symbol("arrow.up.and.down.square")
-        case .horizontalScale: .symbol("arrow.left.and.right.square")
+        // Letters, as Illustrator marks them: the squares with arrows are
+        // the zoom controls' Fit.
+        case .verticalScale: .text("T\u{2195}")
+        case .horizontalScale: .text("T\u{2194}")
         case .baselineShift: .symbol("arrow.up.and.line.horizontal.and.arrow.down")
         case .characterRotation: .symbol("rotate.right")
         case .leftIndent: .symbol("arrow.right.to.line")

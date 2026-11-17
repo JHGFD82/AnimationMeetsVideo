@@ -655,7 +655,7 @@ struct KeyframeGraphView: View {
                 GraphLoopToggle()
             }
             if names.count > 1 {
-                Toggle(isOn: $viewport.separateScales) { Image(systemName: "arrow.up.and.down.text.horizontal") }
+                Toggle(isOn: $viewport.separateScales) { Image(systemName: Design.Symbol.separateScales) }
                     .toggleStyle(.icon)
                     .help(viewport.separateScales
                           ? "Draw every component on one value scale"

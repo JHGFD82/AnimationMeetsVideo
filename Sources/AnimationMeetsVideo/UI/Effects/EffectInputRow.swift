@@ -36,7 +36,7 @@ extension EffectsPanel {
         let missing = input.map { project.isMissing($0) } ?? false
         return HStack(spacing: 4) {
             Color.clear.frame(width: EffectsPanelMetrics.controlIndent - 12)
-            Image(systemName: input == nil ? "square.dashed" : (missing ? "exclamationmark.triangle" : "film"))
+            Image(systemName: input == nil ? "square.dashed" : (missing ? Design.Symbol.warning : "film"))
                 .foregroundStyle(missing ? Design.statusWarning : Design.textTertiary)
             Text(inputTitle(input, missing: missing))
                 .foregroundStyle(input == nil ? Design.textTertiary : Design.textSecondary)

@@ -237,7 +237,7 @@ private struct KeyframeDesignerSidebar: View {
             }
             if let driver, let setup = driver.keyframing {
                 if let note = hud.project.keyframingNote(for: driver, in: clip, of: timeline) {
-                    Label(note.text, systemImage: note.dims ? "exclamationmark.triangle" : "info.circle")
+                    Label(note.text, systemImage: note.dims ? Design.Symbol.warning : "info.circle")
                         .font(Design.Typeface.micro)
                         .foregroundStyle(note.dims ? Design.statusWarning : Design.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)

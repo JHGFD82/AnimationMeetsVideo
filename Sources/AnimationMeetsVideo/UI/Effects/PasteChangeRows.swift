@@ -12,7 +12,7 @@ extension EffectsPanel {
     func pasteChangeRow(_ change: PasteChange, of effect: Effect, in clip: TimelineClip) -> some View {
         besideLane(
             HStack(alignment: .top, spacing: 4) {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image(systemName: Design.Symbol.warning)
                     .font(Design.Typeface.glyphSmall)
                     .padding(.top, 1)
                 Text(change.message)

@@ -589,7 +589,7 @@ struct EffectNoteRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 4) {
-            Image(systemName: note.dims ? "exclamationmark.triangle" : "info.circle")
+            Image(systemName: note.dims ? Design.Symbol.warning : "info.circle")
                 .font(Design.Typeface.glyphSmall)
             Text(note.text)
                 .font(Design.Typeface.micro)
@@ -613,7 +613,7 @@ struct KeyframingEditsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 4) {
-                Image(systemName: "exclamationmark.triangle")
+                Image(systemName: Design.Symbol.warning)
                     .font(Design.Typeface.glyphSmall)
                 Text("What it reads has changed, and its keyframes were edited by hand since.")
                     .font(Design.Typeface.micro)

@@ -54,7 +54,7 @@ struct ClipLabelRow: View, Equatable {
                     .help("\(effectCount) effect\(effectCount == 1 ? "" : "s") in its stacks")
                 }
                 if hasPasteChanges {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image(systemName: Design.Symbol.warning)
                         .font(Design.Typeface.micro)
                         .help("Effects pasted onto this clip have changes to resolve before it can be exported")
                 }

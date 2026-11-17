@@ -67,7 +67,7 @@ private struct WaveformArea: View {
     var body: some View {
         if let error = session.loadError {
             ContentUnavailableView {
-                Label("Couldn't Read the Song", systemImage: "exclamationmark.triangle")
+                Label("Couldn't Read the Song", systemImage: Design.Symbol.warning)
             } description: {
                 Text(error)
             } actions: {

@@ -98,7 +98,7 @@ struct ViewerPanel: View {
                         .padding(.bottom, Design.Space.group)
                 }
                 if let buildError {
-                    Label(buildError, systemImage: "exclamationmark.triangle.fill")
+                    Label(buildError, systemImage: Design.Symbol.warning)
                         .font(Design.Typeface.body)
                         .padding(Design.Space.group)
                         .background(Design.statusDanger.opacity(0.92), in: RoundedRectangle(cornerRadius: Design.Radius.panel, style: .continuous))
