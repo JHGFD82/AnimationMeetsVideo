@@ -17,14 +17,13 @@ struct KeyframeGraphStack: View {
         VStack(spacing: 0) {
             if link.isLinked {
                 presetBar
-                Divider()
             }
             ForEach(Array(link.keys.enumerated()), id: \.element) { index, key in
                 if index > 0 { Groove() }
                 KeyframeGraphView(hud: hud, key: key, input: input, link: link)
             }
             if link.isLinked {
-                Divider()
+                Groove()
                 timeBar
             }
         }
@@ -50,9 +49,9 @@ struct KeyframeGraphStack: View {
         }
         .font(Design.Typeface.label)
         .controlSize(.small)
-        .padding(.horizontal, Design.Space.step)
+        .padding(.horizontal, Design.Space.rail)
         .padding(.vertical, Design.Space.close)
-        .background(Design.Surface.raised.color)
+        .rail(.raised)
     }
 
     /// The shared time's slider, under the graphs, with Fit; each graph's
@@ -66,9 +65,9 @@ struct KeyframeGraphStack: View {
                 .help("Fit every graph's keyframes in view")
                 .accessibilityLabel("Fit")
         }
-        .padding(.horizontal, Design.Space.step)
+        .padding(.horizontal, Design.Space.rail)
         .frame(height: KeyframeGraphView.zoomBarHeight)
-        .background(Color.black.opacity(0.2))
+        .rail(.raised)
     }
 
     /// The shared time's zoom for its slider, from all the graphs' spans to

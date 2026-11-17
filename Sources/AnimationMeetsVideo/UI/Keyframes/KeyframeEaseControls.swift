@@ -19,7 +19,7 @@ struct KeyframeEaseControls: View {
                 let frame = value.keyframes[index]
                 side("Ease In", ease: frame.easeIn,
                      available: index > 0 && !value.keyframes[index - 1].hold, outgoing: false)
-                Divider()
+                Groove()
                 side("Ease Out", ease: frame.easeOut,
                      available: index + 1 < value.keyframes.count && !frame.hold, outgoing: true)
                 Text("Speed is a percent of the steady speed between keyframes.")

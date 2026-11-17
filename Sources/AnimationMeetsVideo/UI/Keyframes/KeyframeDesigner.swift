@@ -52,7 +52,6 @@ struct KeyframeDesigner: View {
                 VStack(spacing: 0) {
                     KeyframeDesignerTransport(hud: hud, frameRate: timeline.frameRate)
                     toolbar(target, targets: targets, driver: driver, clip: clip)
-                    Divider()
                     HStack(spacing: 0) {
                         ScrollView {
                             KeyframeDesignerSidebar(
@@ -61,7 +60,7 @@ struct KeyframeDesigner: View {
                             .padding(Design.Space.group)
                         }
                         .frame(width: Self.sidebarWidth)
-                        .background(Design.Surface.raised.color)
+                        .background(Design.Surface.base.color)
                         Groove(axis: .vertical)
                         GeometryReader { geometry in
                             VStack(spacing: 0) {
@@ -76,7 +75,7 @@ struct KeyframeDesigner: View {
                                     // Leave 200 points for the graph and room for the spectrum's padding.
                                     .frame(height: min(170, max(80, geometry.size.height - 220)))
                                     .padding(Design.Space.step)
-                                    Divider()
+                                    Groove()
                                 }
                                 if let graph = Self.parameterKey(of: target, in: clip, timelineID: key.timelineID) {
                                     KeyframeGraphView(hud: hud, key: graph, input: input, isInDesigner: true)
@@ -89,7 +88,7 @@ struct KeyframeDesigner: View {
                     }
                 }
                 .frame(minWidth: 700, minHeight: 400)
-                .background(Color.black.opacity(0.2))
+                .background(Design.Surface.base.color)
             } else {
                 message("This clip has no controls to keyframe. Add an effect to it first.")
             }
@@ -142,8 +141,9 @@ struct KeyframeDesigner: View {
         }
         .font(Design.Typeface.label)
         .controlSize(.small)
-        .padding(.horizontal, Design.Space.step)
+        .padding(.horizontal, Design.Space.rail)
         .padding(.vertical, Design.Space.close)
+        .rail(.raised)
     }
 
     private func editControl(_ effectID: UUID, _ kind: ControlKind, _ change: @escaping (inout EffectControl) -> Void) {

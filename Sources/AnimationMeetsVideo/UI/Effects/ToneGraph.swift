@@ -140,7 +140,7 @@ struct ToneGraph: View {
                 }
             }
             .aspectRatio(1, contentMode: .fit)
-            .background(Color.black.opacity(0.18))
+            .background(Design.Surface.sunken.color)
             .focusable()
             .focusEffectDisabled()
             .focused($isFocused)
