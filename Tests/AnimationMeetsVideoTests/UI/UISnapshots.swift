@@ -954,6 +954,30 @@ struct UISnapshots {
         )
     }
 
+    /// The expanded EQ sheet, in the frame every sheet has: the clip and
+    /// EQ as its title, how to work the graph under it, the graph with a
+    /// high shelf cut and its band strip, and Done in the footer.
+    @Test func expandedEqualizerSheet() throws {
+        var (project, clipID, layerID) = try AudioMixSupport.project(playing: URL(filePath: "/dev/null"), seconds: 8)
+        let timelineID = project.rootTimelineID
+        let eqID = project.addEffect(.equalizer, toClip: clipID, in: timelineID)
+        let eq = try #require(eqID)
+        project.editEffect(eq, ofClip: clipID, in: timelineID) { effect in
+            guard let index = effect.controls.firstIndex(where: { $0.kind == .eqHighShelf }) else { return }
+            effect.controls[index].enabled = true
+            effect.controls[index].setComponent(1, to: -6, at: .zero)
+        }
+        let panel = EffectsPanel(
+            project: .constant(project), timelineID: timelineID,
+            selection: TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clipID),
+            playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+        )
+        try SnapshotSupport.render(
+            panel.expandedEqualizerSheet(EffectsPanel.ExpandedEqualizer(clipID: clipID, effectID: eq)),
+            "expanded-equalizer-sheet", size: CGSize(width: Design.SheetWidth.graph, height: 620)
+        )
+    }
+
     /// The effects panel for a video clip: Time at 50% with Echo on and
     /// Shutter with Motion Blur on, each headed as an effect is, with their
     /// rows lined up with a Curves effect's controls between them.

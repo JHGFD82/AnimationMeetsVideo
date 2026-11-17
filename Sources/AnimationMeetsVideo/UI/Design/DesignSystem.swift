@@ -200,6 +200,8 @@ enum Design {
         static let standard: CGFloat = 460
         /// A form with a list or preview beside it.
         static let wide: CGFloat = 580
+        /// A graph at a size for fine work: the expanded EQ.
+        static let graph: CGFloat = 720
     }
 
     // MARK: - Type

@@ -30,37 +30,40 @@ extension EffectsPanel {
         }
     }
 
-    /// The EQ at a size for fine work, editing the same controls.
-    @ViewBuilder
+    /// The EQ at a size for fine work, editing the same controls, in the
+    /// frame every sheet has: the clip and the EQ as its title, how to
+    /// work the graph as its subtitle, and Done in the footer.
     func expandedEqualizerSheet(_ item: ExpandedEqualizer) -> some View {
-        VStack(alignment: .leading, spacing: Design.Space.step) {
-            if let clip = project.clipAndLayer(item.clipID, in: timelineID)?.clip, let effect = clip.effect(id: item.effectID), let timeline {
-                Text("\(project.clipName(clip.id, in: timelineID)) · \(effect.displayName)")
-                    .font(Design.Typeface.panelTitle)
-                    .foregroundStyle(Design.textPrimary)
-                let source = ClipLaneGeometry(clip: clip, timeline: timeline, width: 100)
+        let found: (clip: TimelineClip, effect: Effect)? = project.clipAndLayer(item.clipID, in: timelineID).flatMap { pair in
+            pair.clip.effect(id: item.effectID).map { (clip: pair.clip, effect: $0) }
+        }
+        let close = { expandedEqualizer = nil }
+        return SheetFrame(
+            title: found.map { "\(project.clipName($0.clip.id, in: timelineID)) · \($0.effect.displayName)" } ?? "EQ",
+            subtitle: "Drag a band to move it, ⌥-drag or scroll over it for its Q, double-click to turn it on or off.",
+            width: Design.SheetWidth.graph
+        ) {
+            if let found, let timeline {
+                let source = ClipLaneGeometry(clip: found.clip, timeline: timeline, width: 100)
                     .clampedSource(atTimeline: timeline.snappedToFrame(playheadTime))
-                equalizerGraph(effect, of: clip, at: source, dimmed: !effect.enabled, onExpand: nil)
-                    .frame(minWidth: 640, minHeight: 320)
-                EqualizerBandStrip(effect: effect, time: source) { kind, change in
-                    editEffect(effect.id, in: clip) { effect in
+                equalizerGraph(found.effect, of: found.clip, at: source, dimmed: !found.effect.enabled, onExpand: nil)
+                    .frame(minHeight: 320)
+                EqualizerBandStrip(effect: found.effect, time: source) { kind, change in
+                    editEffect(found.effect.id, in: found.clip) { effect in
                         effect.changeControl(kind, change)
                     }
                 }
             } else {
-                Text("The EQ is no longer there.").foregroundStyle(Design.textSecondary)
+                Text(verbatim: "The EQ is no longer there.")
+                    .font(Design.Typeface.body)
+                    .foregroundStyle(Design.textSecondary)
             }
-            HStack {
-                Text("Drag a band to move it, ⌥-drag for its Q, double-click to turn it on or off.")
-                    .help("Scrolling over a band changes its Q too.")
-                    .font(Design.Typeface.micro)
-                    .foregroundStyle(Design.textTertiary)
-                Spacer()
-                Button("Done") { expandedEqualizer = nil }
-                    .keyboardShortcut(.defaultAction)
-            }
+        } actions: {
+            Button("Done", action: close)
+                .keyboardShortcut(.defaultAction)
         }
-        .padding(Design.Space.group)
+        // Done is the only action, so Escape closes too.
+        .onExitCommand(perform: close)
     }
 
     // MARK: Sound
