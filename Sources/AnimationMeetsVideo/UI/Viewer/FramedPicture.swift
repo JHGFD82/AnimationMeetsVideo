@@ -19,6 +19,9 @@ struct FramedPicture: View {
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
+        // Read here, not only in the reader below, whose reads don't draw
+        // the picture again: a zoom or a scroll must (as `ViewerCanvas`).
+        let _ = (framing.zoom, framing.center)
         GeometryReader { proxy in
             let mapping = framing.mapping(frameSize: frameSize, wellSize: proxy.size, backingScale: displayScale)
             let rect = mapping.pictureRect

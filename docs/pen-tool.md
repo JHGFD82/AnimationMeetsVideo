@@ -553,11 +553,12 @@ settled while building:
 - **Path Mask's feather** is a Gaussian blur of a quarter of Feather,
   so the edge goes from nearly kept to nearly cut across Feather,
   centered on the path.
-- **The canvas draws again on a zoom or a scroll.** `ViewerCanvas` read
-  the framing only inside its `GeometryReader`, which didn't draw it
-  again when the framing changed, so the handles (and now the pen)
-  mapped presses as the picture was before the last pinch or scroll
-  until something else changed. Found by the pen's scroll test.
+- **The canvas and the picture draw again on a zoom or a scroll.**
+  `ViewerCanvas` and `FramedPicture` read the framing only inside their
+  `GeometryReader`s, which didn't draw them again when it changed: the
+  handles (and the pen) mapped presses, and the picture sat, as before
+  the last pinch or scroll until something else changed. Each now reads
+  the zoom and the place in its body (`ViewerFramingRedrawTests`).
 
 ## Not in this plan
 
