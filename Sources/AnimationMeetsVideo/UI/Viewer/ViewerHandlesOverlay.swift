@@ -548,7 +548,10 @@ struct ViewerHandlesOverlay: View {
     private func refuse(_ handle: HandleID, _ shown: Shown) -> Bool {
         guard let refusal = refusal(for: handle, shown) else { return false }
         guard let projectState else {
-            NSSound.beep()
+            switch refusal {
+            case .locked: ClipLockRefusal.signal()
+            case .driven: RefusalNotice.shared.tell("A Keyframing effect writes this control's keyframes. Bake them to change it by hand.")
+            }
             return true
         }
         switch refusal {

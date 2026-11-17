@@ -227,7 +227,9 @@ struct BrowserPanel: View {
             onAdd: addGeneratorLayer,
             onAddToSelected: selected.map { selected in
                 { kind in
-                    if project.addEffect(kind, toClip: selected.timelineClipID, in: selected.timelineID) == nil { NSSound.beep() }
+                    if project.addEffect(kind, toClip: selected.timelineClipID, in: selected.timelineID) == nil {
+                        RefusalNotice.shared.tellUnlessJustTold(RefusalReason.addingEffect(kind, toClip: selected.timelineClipID, in: selected.timelineID, of: project))
+                    }
                 }
             }
         )
@@ -238,7 +240,7 @@ struct BrowserPanel: View {
     private func addGeneratorLayer(_ kind: EffectKind) {
         let start = playhead?.actionTime ?? .zero
         guard let created = project.addShapeLayer(kind, to: activeTimelineID, from: start) else {
-            NSSound.beep()
+            RefusalNotice.shared.tellUnlessJustTold("\(kind.name) couldn't be added to this timeline.")
             return
         }
         selection = TimelineSelection(timelineID: activeTimelineID, layerID: created.layerID, timelineClipID: created.clipID)

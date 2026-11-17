@@ -89,10 +89,14 @@ struct EffectsLibrary: View {
     }
 
     /// Puts a preset's effects on the selected clip, below its stacks; a
-    /// beep when no clip is selected or it has nowhere to put them.
+    /// note saying why not when no clip is selected or it has nowhere to
+    /// put them.
     private func applyToSelectedClip(_ preset: EffectPreset) {
-        guard let selection, !project.paste(preset.bundle, ontoClip: selection.timelineClipID, in: selection.timelineID).isEmpty else {
-            NSSound.beep()
+        guard let selection else {
+            return RefusalNotice.shared.tell("Select a clip on the timeline to apply \u{201C}\(preset.name)\u{201D} to.")
+        }
+        guard !project.paste(preset.bundle, ontoClip: selection.timelineClipID, in: selection.timelineID).isEmpty else {
+            RefusalNotice.shared.tellUnlessJustTold("The selected clip can't take any of \u{201C}\(preset.name)\u{201D}'s effects: a sound clip takes only sound effects, and a picture only those for pictures.")
             return
         }
     }

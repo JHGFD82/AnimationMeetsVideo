@@ -178,11 +178,11 @@ struct TimelinesList: View {
             guard renamingID == nil, press.modifiers.isDisjoint(with: [.control, .option, .shift]), !picked.items.isEmpty else {
                 return .ignored
             }
-            if !deleteSelection(order: all) { NSSound.beep() }
+            if !deleteSelection(order: all) { refuseDeletingMain() }
             return .handled
         }
         .focusedSceneValueUnlessDrafting(\.browserEditActions, EditMenuActions(
-            delete: { if !deleteSelection(order: all) { NSSound.beep() } },
+            delete: { if !deleteSelection(order: all) { refuseDeletingMain() } },
             // What is shown: a collapsed row's timelines stay out.
             selectAll: { picked.selectAll(in: layout == .tree ? Self.rows(of: nodes, collapsed: collapsed).map(\.timelineID) : all) },
             state: [AnyHashable(picked.revision), AnyHashable(all), AnyHashable(collapsed), AnyHashable(layout)]
@@ -228,9 +228,11 @@ struct TimelinesList: View {
         project.timeline(id: id).map { UsesFinder.Query(item: .timeline(id), range: nil, name: $0.name) }
     }
 
-    /// Opens Find All on one timeline; a beep where there is no panel.
+    /// Opens Find All on one timeline; a note where there is no panel.
     private func findAll(_ id: UUID) {
-        guard let finder, let query = findQuery(for: id) else { return NSSound.beep() }
+        guard let finder, let query = findQuery(for: id) else {
+            return RefusalNotice.shared.tell("Find All works in the project's own window.")
+        }
         finder.show([query])
     }
 
@@ -433,14 +435,18 @@ struct TimelinesList: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("Opens the timeline in the editor")
         .accessibilityAction { open(timeline.id) }
-        .accessibilityAction(named: "Embed in active timeline") { embedOrBeep(timeline.id) }
+        .accessibilityAction(named: "Embed in active timeline") { embedOrRefuse(timeline.id) }
         .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }
-        .accessibilityAction(named: "Delete timeline") { deleteOrBeep(timeline.id) }
+        .accessibilityAction(named: "Delete timeline") { deleteOrRefuse(timeline.id) }
         .accessibilityAction(named: "Find All") { findAll(timeline.id) }
         .accessibilityAction(named: isSelected ? "Deselect" : "Add to selection") { picked.commandClick(timeline.id) }
         .accessibilityAction(named: collapsed.contains(timeline.id) ? "Show nested timelines" : "Hide nested timelines") {
-            if listed.hasChildren { toggleNested(timeline.id) } else { NSSound.beep() }
+            if listed.hasChildren {
+                toggleNested(timeline.id)
+            } else {
+                RefusalNotice.shared.tell("\u{201C}\(timeline.name)\u{201D} has no timelines nested in it.")
+            }
         }
     }
 
@@ -482,13 +488,22 @@ struct TimelinesList: View {
     }
 
     /// One timeline's Embed and Delete, from VoiceOver in either layout: a
-    /// beep where it can't be done.
-    private func embedOrBeep(_ id: UUID) {
-        if project.canEmbed(id, into: activeTimelineID) { onEmbed([id], nil) } else { NSSound.beep() }
+    /// note saying why where it can't be done.
+    private func embedOrRefuse(_ id: UUID) {
+        if project.canEmbed(id, into: activeTimelineID) {
+            onEmbed([id], nil)
+        } else {
+            RefusalNotice.shared.tell(RefusalReason.embedding(id, into: activeTimelineID, of: project))
+        }
     }
 
-    private func deleteOrBeep(_ id: UUID) {
-        if !delete([id]) { NSSound.beep() }
+    private func deleteOrRefuse(_ id: UUID) {
+        if !delete([id]) { refuseDeletingMain() }
+    }
+
+    /// Delete with only the main timeline picked, which every project keeps.
+    private func refuseDeletingMain() {
+        RefusalNotice.shared.tell("The main timeline can't be deleted: it is the one the project plays and exports.")
     }
 
     /// Drops the ranges remembered of timelines deleted, and fits the rest

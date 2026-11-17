@@ -48,5 +48,8 @@ extension Design {
 
         /// Recording a take onto the timeline.
         static let record = "record.circle"
+
+        /// Something asked for that wasn't done (`RefusalNotice`).
+        static let refused = "exclamationmark.circle"
     }
 }

@@ -198,7 +198,9 @@ struct NumericField: View {
         var typed = draft.trimmingCharacters(in: .whitespaces)
         if !unit.isEmpty, typed.hasSuffix(unit) { typed.removeLast(unit.count) }
         guard let result = NumericExpression.evaluate(typed) else {
-            if !draft.trimmingCharacters(in: .whitespaces).isEmpty { NSSound.beep() }
+            if !typed.isEmpty {
+                RefusalNotice.shared.tell("\u{201C}\(typed)\u{201D} isn't a number or a sum the field can work out, so the value stays as it was.")
+            }
             return
         }
         onCommit(result)

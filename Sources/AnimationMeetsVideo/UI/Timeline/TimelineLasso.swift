@@ -446,7 +446,7 @@ extension TimelineView {
         guard let group = EditorClipboard.shared.group else { return }
         var placed: [(layerID: UUID, clipID: UUID)] = []
         host.dispatch(.editProject { placed = $0.paste(group, in: timelineID, at: playheadTime) })
-        guard !placed.isEmpty else { return NSSound.beep() }
+        guard !placed.isEmpty else { return RefusalNotice.shared.tellUnlessJustTold(RefusalReason.paste) }
         pickTogether(Set(placed.map(\.clipID)))
         parkPlayhead(at: CMTimeAdd(playheadTime, CMTimeSubtract(group.end, group.start)))
     }
@@ -464,7 +464,9 @@ extension TimelineView {
         host.dispatch(.editProject { project in
             nested = project.nestClips(ids, in: timelineID, named: project.newNestedTimelineName())
         })
-        guard let nested else { return NSSound.beep() }
+        guard let nested else {
+            return RefusalNotice.shared.tellUnlessJustTold("Those clips couldn't be put in a timeline of their own.")
+        }
         groupSelection = []
         if let clip = host.readProject().clipAndLayer(nested.clipID, in: timelineID)?.clip {
             selectedLayerID = nil

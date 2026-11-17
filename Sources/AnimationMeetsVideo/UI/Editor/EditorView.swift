@@ -180,6 +180,12 @@ struct EditorView: View {
                     .accessibilityAction { bringToFront() }
             }
         }
+        // Why something just asked for wasn't done, under the header.
+        .overlay(alignment: .top) {
+            RefusalNoticeView(notice: .shared)
+                .padding(.top, 52)
+                .padding(.horizontal, Design.Space.sheet)
+        }
         // The pointer is kept out meanwhile (`WindowInputBlock`); a skim
         // under way when the panel opened stops with it.
         .onChange(of: beatMatch.isActive || motionDesign.isActive) { _, blocked in

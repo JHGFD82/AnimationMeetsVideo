@@ -845,15 +845,16 @@ struct ClipBlockView: View {
     /// Commits a drop. Made, the preview stays up until the edited clip
     /// comes back down from the project (`onChange(of: model.clip)`).
     /// Refused, the clip springs back to where it was at once, flashing
-    /// in the warning colour with the alert sound, so it is clear the
-    /// edit didn't happen rather than that it was slow.
+    /// in the warning colour, with a note saying so (or why, where the
+    /// edit said), so it is clear the edit didn't happen rather than that
+    /// it was slow.
     private func commitDrop(_ commit: () -> Bool) {
         dropCount += 1
         pendingDrop = dropCount
         guard commit() else {
             withAnimation(Design.Motion.respecting(Design.Motion.springBack)) { endDrop() }
             flash(refused: true)
-            NSSound.beep()
+            RefusalNotice.shared.tellUnlessJustTold("The clip can't go there, so it went back where it was.")
             return
         }
     }

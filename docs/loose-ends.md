@@ -56,8 +56,8 @@ documents they belong to; delete this file when it is empty.
 - **Left from the UX review.** While the Motion Designer is open its
   clips are locked ([motion-designer.md](motion-designer.md)): edits from
   elsewhere that would change them are shown locked and not offered, and
-  refused with a beep if they come anyway. Still only refused, not
-  greyed: the timeline's keys (B, Delete, the nudge keys), the keyframe
+  refused with a note saying why if they come anyway. Still only
+  refused, not greyed: the timeline's keys (B, Delete, the nudge keys), the keyframe
   lanes on the timeline, the browser's commands, and a drop on empty
   track that would push a locked clip. A song moved elsewhere leaves a
   locked clip attached to it behind, a redo refused meanwhile is lost,

@@ -86,20 +86,22 @@ struct EditCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .pasteboard) {
-            command("Cut", key: "x", text: #selector(NSText.cut(_:)), \.cut)
-            command("Copy", key: "c", text: #selector(NSText.copy(_:)), \.copy)
-            command("Paste", key: "v", text: #selector(NSText.paste(_:)), \.paste)
+            command("Cut", key: "x", text: #selector(NSText.cut(_:)), \.cut, refusal: "Nothing is selected to cut.")
+            command("Copy", key: "c", text: #selector(NSText.copy(_:)), \.copy, refusal: "Nothing is selected to copy.")
+            command("Paste", key: "v", text: #selector(NSText.paste(_:)), \.paste, refusal: "Nothing has been copied to paste here.")
             // Text has no Duplicate of its own; while typing, ⌘D does
             // nothing rather than duplicate what is selected behind it.
             Button("Duplicate") {
-                guard !isTyping else { return NSSound.beep() }
+                guard !isTyping else {
+                    return RefusalNotice.shared.tell("Duplicate works on clips and effects, not on text being typed.")
+                }
                 editorAction(\.duplicate)?()
             }
                 .keyboardShortcut("d", modifiers: .command)
                 .disabled(editorAction(\.duplicate) == nil)
             Button("Delete") {
                 guard !sendToText(#selector(NSText.delete(_:))) else { return }
-                perform(activePanel == .browser ? beatMatch?.delete ?? browser?.delete : editorAction(\.delete))
+                perform(activePanel == .browser ? beatMatch?.delete ?? browser?.delete : editorAction(\.delete), refusal: "Nothing is selected to delete.")
             }
             Divider()
             Button("Select All") {
@@ -111,9 +113,9 @@ struct EditCommands: Commands {
         }
     }
 
-    private func command(_ name: String, key: KeyEquivalent, text selector: Selector, _ pick: KeyPath<EditMenuActions, (() -> Void)?>) -> some View {
+    private func command(_ name: String, key: KeyEquivalent, text selector: Selector, _ pick: KeyPath<EditMenuActions, (() -> Void)?>, refusal: String) -> some View {
         Button(name) {
-            if !sendToText(selector) { perform(editorAction(pick), orSend: selector) }
+            if !sendToText(selector) { perform(editorAction(pick), orSend: selector, refusal: refusal) }
         }
         .keyboardShortcut(key, modifiers: .command)
     }
@@ -141,11 +143,11 @@ struct EditCommands: Commands {
     }
 
     /// Runs `action`, or else offers `selector` to whatever has the
-    /// keyboard (a list that copies its rows, say), or else beeps, as an
-    /// Edit command with nothing to act on does.
-    private func perform(_ action: (() -> Void)?, orSend selector: Selector? = nil) {
+    /// keyboard (a list that copies its rows, say), or else says
+    /// `refusal`, where a Mac app would only beep.
+    private func perform(_ action: (() -> Void)?, orSend selector: Selector? = nil, refusal: String) {
         if let action { return action() }
         if let selector, NSApp.sendAction(selector, to: nil, from: nil) { return }
-        NSSound.beep()
+        RefusalNotice.shared.tell(refusal)
     }
 }
