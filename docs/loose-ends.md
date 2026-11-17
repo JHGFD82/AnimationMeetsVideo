@@ -73,5 +73,3 @@ documents they belong to; delete this file when it is empty.
   paste only while the project it came from is open in a window: the
   app finds that project through its window. Media inside the other
   project's package is found by its path and doesn't need that.
-- **Closing the last window quits the app.** Kept on purpose; with
-  recent projects and reopening at launch, getting back is quick.

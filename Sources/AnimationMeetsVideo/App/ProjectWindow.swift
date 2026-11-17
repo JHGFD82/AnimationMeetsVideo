@@ -94,6 +94,9 @@ struct ProjectWindow: View {
                 if state == .key { NewEffectPackagePrompt.shared.claimHost(windowID) }
             }
             .task {
+                // So the app can open a start window once this one, the
+                // last, has closed (`ProjectWindows.openStartWindow`).
+                ProjectWindows.shared.openWindow = openWindow
                 session.onProjectURLChange = { url = $0 }
                 session.autosaveStatus.save = { Task { await session.save() } }
                 await openAtStart()
