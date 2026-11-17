@@ -35,8 +35,9 @@ else around it, by dragging frames along a time graph.
   clip in any way (move, trim, delete, split, effects, inspector values,
   a paste or drop over it, a media replacement that retimes it, a menu
   command, the scene splitter), from the editor or a Timeline window, is
-  refused whole, with a beep and a VoiceOver announcement
-  (`ClipLockRefusal`); a held drag is refused at each step and beeps once.
+  refused whole, with a note over the editor saying why, which VoiceOver
+  reads (`ClipLockRefusal`, `RefusalNotice`); a held drag is refused at
+  each step and keeps the one note up.
   Undo and redo that would change one are refused too
   (`ProjectHistory.canRestore`); a refused undo goes back on the stack
   (which clears the redo stack, as any new step would), and a refused
@@ -49,7 +50,7 @@ else around it, by dragging frames along a time graph.
   refusal is a backstop. In a Timeline window a locked clip's block is
   hatched, with a lock in a dark chip ("Motion Designer" where it fits;
   `LockedClipMark`), and takes no move, slip, trim, transition handle,
-  music point drag, drop or blade (no blade line; a blade click beeps);
+  music point drag, drop or blade (no blade line; a blade click is refused with the note);
   its menu and VoiceOver actions offer only Copy and Show in Clips
   Browser, and VoiceOver reads it as open in the Motion Designer. The
   Timeline menu's Split, Split All, Nudge, Delete Selection and Turn Off
@@ -60,7 +61,7 @@ else around it, by dragging frames along a time graph.
   make room). The inspector and effects panel show a locked clip's
   controls disabled under "Open in the Motion Designer"
   (`lockedForMotionDesigner`). Keys (B, Delete, the nudge keys) still
-  reach the refusal, which beeps.
+  reach the refusal, which says why in its note.
 - **Only the clips' timing is written**: where each clip the run changed
   plays, its trim, and its speed with its points (`MotionRun.write(into:over:)`,
   `TimelineClip.takeTiming`), onto the project as it is at that moment.

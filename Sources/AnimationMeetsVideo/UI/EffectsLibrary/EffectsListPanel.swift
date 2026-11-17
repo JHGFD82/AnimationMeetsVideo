@@ -101,13 +101,12 @@ struct EffectsListPanel: View {
     /// Designer (Keyframe Designer… in an effect's ⋯ menu).
     static var kinds: [EffectKind] { EffectKind.all.filter { !$0.drawsShape && !$0.isKeyframing } }
 
-    /// Adds to the selected clip; a beep when none is selected or it can't
-    /// take the effect.
+    /// Adds to the selected clip; a note saying why not when none is
+    /// selected or it can't take the effect.
     private func addToSelectedClip(_ kind: EffectKind) {
-        guard let selection, selection.timelineID == timelineID,
-              let id = project.addEffect(kind, toClip: selection.timelineClipID, in: timelineID)
-        else {
-            NSSound.beep()
+        let clipID = selection.flatMap { $0.timelineID == timelineID ? $0.timelineClipID : nil }
+        guard let clipID, let id = project.addEffect(kind, toClip: clipID, in: timelineID) else {
+            RefusalNotice.shared.tellUnlessJustTold(RefusalReason.addingEffect(kind, toClip: clipID, in: timelineID, of: project))
             return
         }
         state.select(effect: id)

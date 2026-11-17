@@ -71,7 +71,11 @@ struct GeneratorsList: View {
                             .accessibilityAction { onAdd(kind) }
                             .accessibilityAction(named: "Add at the playhead") { onAdd(kind) }
                             .accessibilityAction(named: "Add to the selected clip") {
-                                if let onAddToSelected { onAddToSelected(kind) } else { NSSound.beep() }
+                                if let onAddToSelected {
+                                    onAddToSelected(kind)
+                                } else {
+                                    RefusalNotice.shared.tell("Select a text or shape clip on the timeline to add \(kind.name) to.")
+                                }
                             }
                     }
                 }

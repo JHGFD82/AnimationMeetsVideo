@@ -347,7 +347,8 @@ arithmetic, evaluated by `NumericExpression`:
 - `x` or `×` also multiply, `÷` divides, spaces and commas are ignored.
   The decimal point is always `.`.
 - Text that isn't a complete expression, or a result that isn't a finite
-  number (such as `1/0`), beeps and leaves the value unchanged.
+  number (such as `1/0`), leaves the value unchanged, with a note saying
+  so (`RefusalNotice`).
 
 This applies to all fillable numeric fields: the effect values and the
 timeline settings' width, height and frame rate. In the settings sheet the

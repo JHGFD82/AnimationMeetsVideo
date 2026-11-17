@@ -54,14 +54,15 @@ final class PresetsModel {
     }
 
     /// Puts a preset trashed by `trash` back where it was, with a redo
-    /// that trashes it again. A beep when it can't (gone from the Trash,
-    /// or another preset has its name now).
+    /// that trashes it again. A note saying why when it can't (gone from
+    /// the Trash, or another preset has its name now).
     func untrash(_ trashed: URL, to url: URL, undoManager: UndoManager?) {
         defer { reload() }
         do {
             try FileManager.default.moveItem(at: trashed, to: url)
         } catch {
-            NSSound.beep()
+            let name = url.deletingPathExtension().lastPathComponent
+            RefusalNotice.shared.tell("\u{201C}\(name)\u{201D} couldn't be put back. \(ErrorAdvice.sentence(for: error))")
             return
         }
         undoManager?.registerUndo(withTarget: self) { [weak undoManager] model in

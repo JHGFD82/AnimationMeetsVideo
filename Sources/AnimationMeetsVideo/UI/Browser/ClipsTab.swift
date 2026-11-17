@@ -253,7 +253,7 @@ struct ClipsTab: View {
         // Delete and Select All in the Edit menu, while the browser is the
         // active panel (see `EditCommands`).
         .focusedSceneValueUnlessDrafting(\.browserEditActions, EditMenuActions(
-            delete: { if !removeSelection(snapshot) { NSSound.beep() } },
+            delete: { if !removeSelection(snapshot) { refuseRemovingScenes() } },
             selectAll: { interaction.picked.selectAll(in: order) },
             state: [AnyHashable(picked.revision), AnyHashable(memos.snapshot.revision)]
         ))
@@ -353,7 +353,7 @@ struct ClipsTab: View {
         case .rename:
             renamingAsset = entry.clip.id
         case .removeFromProject:
-            if entry.sceneNumber != nil || !removeFromProject([entry.clip.id]) { NSSound.beep() }
+            if entry.sceneNumber != nil || !removeFromProject([entry.clip.id]) { refuseRemovingScenes() }
         case .findAll:
             findAll(findQuery(for: entry))
         case .setRenaming(let editing):
@@ -446,7 +446,7 @@ struct ClipsTab: View {
             addToTimeline([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
         }
         .accessibilityAction(named: "Rename") { renamingAsset = clip.id }
-        .accessibilityAction(named: "Remove from Project") { if !removeFromProject([clip.id]) { NSSound.beep() } }
+        .accessibilityAction(named: "Remove from Project") { if !removeFromProject([clip.id]) { refuseRemovingScenes() } }
         .accessibilityAction(named: "Find All") { findAll(findQuery(for: clip)) }
     }
 
@@ -533,7 +533,7 @@ struct ClipsTab: View {
             case .endSkim: skim?.end()
             case .addToTimeline(let pieces): addToTimeline(pieces)
             case .rename(let assetID): renamingAsset = assetID
-            case .removeSelection: if !removeSelection(snapshot) { NSSound.beep() }
+            case .removeSelection: if !removeSelection(snapshot) { refuseRemovingScenes() }
             }
         }
         return true
@@ -622,9 +622,9 @@ struct ClipsTab: View {
             .disabled(finder == nil || queries.allSatisfy { project.uses(of: $0.item, within: $0.range).isEmpty })
     }
 
-    /// Opens Find All on `query`; a beep where there is no panel.
+    /// Opens Find All on `query`; a note where there is no panel.
     private func findAll(_ query: UsesFinder.Query) {
-        if let finder { finder.show([query]) } else { NSSound.beep() }
+        if let finder { finder.show([query]) } else { RefusalNotice.shared.tell("Find All works in the project's own window.") }
     }
 
     /// What Find All looks for from a clip: the whole asset's uses, or a
@@ -666,6 +666,12 @@ struct ClipsTab: View {
 
     /// Takes the media wholly selected out of the project; false when no
     /// asset is wholly selected.
+    /// Remove with only scenes picked, or none: scenes are parts of their
+    /// clip's file, not media of their own.
+    private func refuseRemovingScenes() {
+        RefusalNotice.shared.tell("A scene is part of its clip and can't be removed alone. Remove the whole clip, or merge scenes in the scene splitter.")
+    }
+
     private func removeSelection(_ snapshot: Snapshot) -> Bool {
         removeFromProject(ClipsTabModel.wholeAssetsPicked(snapshot: snapshot, picked: interaction.picked))
     }

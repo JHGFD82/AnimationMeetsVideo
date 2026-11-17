@@ -340,6 +340,12 @@ the snap line's arrival.
   `accessibilityHint`. A `SheetCallout` reads as its severity and message
   ("Warning: …"); the sheet's title is a header.
 - Animate through `editorAnimation` or check `Design.Motion.isReduced`.
+- Don't refuse with a beep alone: say why with
+  `RefusalNotice.shared.tell`, in a sentence that names what stood in the
+  way and what to do instead. The note shows over the editor in front and
+  VoiceOver reads it. Where an edit may already have been refused for a
+  sharper reason (a clip open in the Motion Designer), use
+  `tellUnlessJustTold`.
 - Don't select a field's text by hand when it starts being edited;
   `FieldTextSelection` already selects all of it.
 
@@ -359,7 +365,8 @@ the snap line's arrival.
   of seconds may read better.
 - **Announcements**: VoiceOver isn't told when a timeline edit lands (a
   split, a nudge refused at a neighbor), so the result must be found by
-  reading.
+  reading. Edits and commands refused outright are announced: their
+  `RefusalNotice` note is read out as it appears.
 - **Dialogs and alerts** use standard controls and should work, but have
   not been checked with VoiceOver.
 - Nothing here has been tested with VoiceOver on a real machine yet; the

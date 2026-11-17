@@ -2511,4 +2511,17 @@ struct UISnapshots {
         .preferredColorScheme(.dark)
         try SnapshotSupport.render(states, "expression-editor", size: CGSize(width: 320, height: 700))
     }
+
+    /// The note a refused command leaves over the editor, here for an
+    /// effect added with no clip selected.
+    @Test func refusalNotice() throws {
+        let notice = RefusalNotice()
+        notice.tell("Select a clip on the timeline to add Glow to.")
+        let view = RefusalNoticeView(notice: notice, onlyInKeyWindow: false)
+            .padding(Design.Space.sheet)
+            .frame(width: 520, height: 120, alignment: .top)
+            .background(Design.Surface.base.color)
+            .preferredColorScheme(.dark)
+        try SnapshotSupport.render(view, "refusal-notice", size: CGSize(width: 520, height: 120))
+    }
 }

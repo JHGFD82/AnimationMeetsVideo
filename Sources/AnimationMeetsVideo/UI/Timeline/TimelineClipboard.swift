@@ -114,7 +114,7 @@ extension TimelineView {
                 else { return }
                 placed = (pasted.layerID, clip)
             })
-            guard let placed else { return NSSound.beep() }
+            guard let placed else { return RefusalNotice.shared.tellUnlessJustTold(RefusalReason.paste) }
             host.dispatch(.selectClip(layer: placed.layerID, clip: placed.clip))
             parkPlayhead(at: placed.clip.endOffset)
         case .nest:

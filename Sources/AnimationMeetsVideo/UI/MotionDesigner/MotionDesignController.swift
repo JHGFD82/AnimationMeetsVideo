@@ -211,18 +211,12 @@ final class MotionDesignController {
 }
 
 /// What an edit refused by a clip lock does (`ProjectState.onRefused`):
-/// a beep, and for VoiceOver, why. A drag refused at every step beeps
-/// once, not at each.
+/// says why in a note, which VoiceOver reads (`RefusalNotice`). A drag
+/// refused at every step keeps the one note up.
 @MainActor
 enum ClipLockRefusal {
-    private static var last: Date?
-
     static func signal() {
-        let now = Date()
-        defer { last = now }
-        if let last, now.timeIntervalSince(last) < 0.5 { return }
-        NSSound.beep()
-        AccessibilityNotification.Announcement(message).post()
+        RefusalNotice.shared.tell(message)
     }
 
     static let message = "That clip is open in the Motion Designer. Close the designer to edit it."
