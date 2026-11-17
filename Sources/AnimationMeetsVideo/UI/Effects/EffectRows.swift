@@ -26,45 +26,6 @@ struct ResetWhenChanged: View {
     }
 }
 
-/// The button beside a row's ⋯ that puts it back to its default, shown
-/// only while it isn't there, which is how a changed value is told apart.
-struct RowResetButton: View {
-    let name: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "arrow.counterclockwise")
-                .font(Design.Typeface.glyphSmall)
-                .foregroundStyle(Design.textSecondary)
-                .frame(width: 16, height: 18)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Reset \(name.lowercased()) to its default")
-        .accessibilityLabel("Reset \(name)")
-    }
-}
-
-/// The ⋯ button that opens a row's menu.
-private struct RowMenu<Content: View>: View {
-    let name: String
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        Menu(content: content) {
-            Image(systemName: "ellipsis")
-                .frame(width: 18, height: 18)
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Actions for \(name)")
-        .accessibilityLabel("\(name) options")
-    }
-}
-
 /// One numeric control of the panel's stack (or the anchor point): the
 /// stopwatch that turns keyframing on and off, its name, its values at the
 /// playhead (click to type, drag to change), the buttons that step between
@@ -169,12 +130,7 @@ struct ParameterRow<MenuContent: View>: View {
                 .frame(width: 74, alignment: .leading)
 
             if let linked {
-                Button(action: onToggleLink) {
-                    Image(systemName: "link")
-                        .foregroundStyle(linked ? Design.textPrimary : Design.textTertiary.opacity(0.5))
-                }
-                .buttonStyle(.plain)
-                .help(linked ? "Width and height change together" : "Width and height change separately")
+                LinkToggle(isLinked: linked, action: onToggleLink)
             }
 
             if let summary {
@@ -385,15 +341,7 @@ struct EffectHeaderRow<MenuContent: View>: View {
                     }
                     .help("Drag to move the effect in the stack; Option-drag to copy it")
             }
-            Button(action: onToggleCollapsed) {
-                Image(systemName: "chevron.right")
-                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                    .frame(width: 12, height: 12)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Design.textSecondary)
-            .help(isCollapsed ? "Show \(effect.displayName)'s settings" : "Hide \(effect.displayName)'s settings")
-            .accessibilityLabel(isCollapsed ? "Show \(effect.displayName)'s settings" : "Hide \(effect.displayName)'s settings")
+            DisclosureChevron(isExpanded: !isCollapsed, label: "\(effect.displayName)'s settings", action: onToggleCollapsed)
             if isDrawing {
                 Image(systemName: effect.kind.systemImage)
                     .font(Design.Typeface.glyphSmall)
@@ -479,15 +427,7 @@ struct ClipSectionHeaderRow<MenuContent: View>: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Button(action: onToggleCollapsed) {
-                Image(systemName: "chevron.right")
-                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                    .frame(width: 12, height: 12)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Design.textSecondary)
-            .help(isCollapsed ? "Show the \(name) settings" : "Hide the \(name) settings")
-            .accessibilityLabel(isCollapsed ? "Show the \(name) settings" : "Hide the \(name) settings")
+            DisclosureChevron(isExpanded: !isCollapsed, label: "\(name) settings", action: onToggleCollapsed)
             Image(systemName: systemImage)
                 .font(Design.Typeface.glyphSmall)
                 .foregroundStyle(Design.textSecondary)

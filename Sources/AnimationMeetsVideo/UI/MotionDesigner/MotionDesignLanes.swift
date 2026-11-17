@@ -512,13 +512,8 @@ struct MotionDesignLanes: View {
     @ViewBuilder
     private var lassoOverlay: some View {
         if let lassoRect {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(Design.accent.opacity(0.12))
-                .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Design.accent.opacity(0.9), lineWidth: 1) }
-                .frame(width: lassoRect.width, height: lassoRect.height)
+            LassoRectangle(size: lassoRect.size)
                 .offset(x: lassoRect.minX, y: lassoRect.minY)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
         }
     }
 

@@ -36,6 +36,8 @@ extension Design {
         static let close = "xmark"
         static let remove = "minus.circle"
         static let edit = "pencil"
+        /// Starting over, and a value put back where it began
+        /// (`RowResetButton`): both take back what was changed.
         static let startOver = "arrow.counterclockwise"
         static let undo = "arrow.uturn.backward"
         static let redo = "arrow.uturn.forward"

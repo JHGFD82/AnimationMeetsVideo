@@ -314,15 +314,10 @@ struct TimelinesList: View {
     private func disclosure(_ timeline: Timeline, _ listed: Row) -> some View {
         if listed.hasChildren {
             let isOpen = !collapsed.contains(timeline.id)
-            Button { toggleNested(timeline.id) } label: {
-                Image(systemName: isOpen ? "chevron.down" : "chevron.right")
-                    .frame(width: 12, height: 12)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Design.textSecondary)
-            .help(isOpen ? "Hide the timelines in \(timeline.name)" : "Show the timelines in \(timeline.name)")
-            .accessibilityLabel(isOpen ? "Hide timelines in \(timeline.name)" : "Show timelines in \(timeline.name)")
+            DisclosureChevron(
+                isExpanded: isOpen, label: "Timelines in \(timeline.name)",
+                help: isOpen ? "Hide the timelines in \(timeline.name)" : "Show the timelines in \(timeline.name)"
+            ) { toggleNested(timeline.id) }
         } else {
             Color.clear.frame(width: 12, height: 12)
         }

@@ -172,14 +172,10 @@ struct TextSelectionRows: View {
     }
 
     private func resetButton(_ name: String, clear: @escaping (inout TextRunStyle) -> Void) -> some View {
-        Button {
-            onChange(clear)
-        } label: {
-            Image(systemName: "arrow.uturn.backward")
-        }
-        .buttonStyle(.icon)
-        .help("Use the block's \(name.lowercased())")
-        .accessibilityLabel("Use the block's \(name.lowercased()) for the selected letters")
+        RowResetButton(
+            help: "Use the block's \(name.lowercased())",
+            label: "Use the block's \(name.lowercased()) for the selected letters"
+        ) { onChange(clear) }
     }
 }
 
@@ -230,14 +226,10 @@ struct TextRunNumberRow: View {
             }
             if value.isAnimated { AnimatedInEffectsBadge(name: "selected letters' \(lowercase)") }
             if own != nil {
-                Button {
-                    onChange { $0 = nil }
-                } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                }
-                .buttonStyle(.icon)
-                .help("Use the block's \(lowercase)")
-                .accessibilityLabel("Use the block's \(lowercase) for the selected letters")
+                RowResetButton(
+                    help: "Use the block's \(lowercase)",
+                    label: "Use the block's \(lowercase) for the selected letters"
+                ) { onChange { $0 = nil } }
             }
         }
         .font(Design.Typeface.label)

@@ -161,6 +161,9 @@ enum Design {
     enum Radius {
         /// Clip blocks, section chips, small chips.
         static let chip: CGFloat = 3
+        /// A lasso's rectangle (`LassoRectangle`), a shade softer than a
+        /// chip so it reads as drawn rather than as a thing.
+        static let lasso: CGFloat = 2
         /// Buttons, tiles, grouped rows.
         static let control: CGFloat = 5
         /// Panels and popovers.

@@ -56,10 +56,7 @@ extension EffectsPanel {
             if let lasso = keyframeLasso, !lasso.isClick {
                 let origin = proxy.frame(in: .global).origin
                 let rect = lasso.rect
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(Design.accent.opacity(0.12))
-                    .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Design.accent.opacity(0.9), lineWidth: 1) }
-                    .frame(width: rect.width, height: rect.height)
+                LassoRectangle(size: rect.size)
                     .offset(x: rect.minX - origin.x, y: rect.minY - origin.y)
             }
         }

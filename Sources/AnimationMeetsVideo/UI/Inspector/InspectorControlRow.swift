@@ -164,19 +164,9 @@ struct InspectorControlRow: View {
     }
 
     private var linkButton: some View {
-        Button {
+        LinkToggle(isLinked: control.linked, height: Design.PanelControl.height) {
             onEdit { $0.linked.toggle() }
-        } label: {
-            Image(systemName: "link")
-                .font(Design.Typeface.micro)
-                .foregroundStyle(control.linked ? Design.textPrimary : Design.textTertiary)
-                .frame(width: 14, height: Design.PanelControl.height)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(control.linked ? "Width and height change together" : "Width and height change separately")
-        .accessibilityLabel("Link width and height")
-        .accessibilityValue(control.linked ? "on" : "off")
     }
 
     /// A color's checkbox, which leaves it out when off, its well and its
