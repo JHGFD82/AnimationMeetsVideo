@@ -178,4 +178,30 @@ import Testing
         #expect(!EffectKind.pathMask.isLook)
         #expect(EffectKind.all.contains(.pathMask) && EffectKind.generators.contains(.path))
     }
+
+    @Test func convertToPathKeepsTheShapeAndItsPaint() throws {
+        var box = Effect(kind: .rectangle)
+        box.changeControl(.shapeSize) { $0.number = AnimatedValue(ComponentValue(values: [200, 100])) }
+        box.changeControl(.shapePosition) { $0.number = AnimatedValue(ComponentValue(values: [30, -10])) }
+        box.changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [1, 0, 0, 1])) }
+        let path = try #require(box.convertedToPath(at: .zero))
+        #expect(path.kind == .path)
+        let outline = try #require(path.control(.path)).freePath(at: .zero)
+        #expect(outline.closed && outline.vertices.count == 4)
+        #expect(outline.vertices.allSatisfy { path.control(.path) != nil && $0.inTangent == .zero && $0.outTangent == .zero })
+        #expect(outline.cgPath().boundingBox == CGRect(x: -100, y: -50, width: 200, height: 100))
+        #expect(path.control(.shapePosition)?.values(at: .zero) == [30, -10])
+        #expect(path.control(.fill)?.values(at: .zero) == [1, 0, 0, 1])
+        // Drawn where it was.
+        let before = try #require(ShapeStep(box, at: .zero, center: CGPoint(x: 960, y: 540))).path.boundingBox
+        let after = try #require(ShapeStep(path, at: .zero, center: CGPoint(x: 960, y: 540))).path.boundingBox
+        #expect(abs(before.minX - after.minX) < 0.01 && abs(before.maxY - after.maxY) < 0.01)
+
+        // An ellipse: four curves, every point ease.
+        let ellipse = try #require(Effect(kind: .ellipse).convertedToPath(at: .zero))
+        let round = try #require(ellipse.control(.path)).freePath(at: .zero)
+        #expect(round.closed && round.vertices.count == 4)
+        #expect(round.vertices.indices.allSatisfy { round.kind(of: $0) == .ease })
+        #expect(Effect(kind: .text).convertedToPath(at: .zero) == nil)
+    }
 }

@@ -305,6 +305,103 @@ struct FreePath: Equatable, Sendable {
     }
 }
 
+// MARK: - From other outlines
+
+extension FreePath {
+    /// The first outline of `path`, as points and tangents: a line is a
+    /// stretch between linear points, a curve sets the tangents either
+    /// side of it (a quadratic one raised to a cubic), and closing it
+    /// joins its last point to its first. Nil when it has fewer than two
+    /// points.
+    init?(cgPath path: CGPath) {
+        var vertices: [Vertex] = []
+        var closed = false
+        var done = false
+        path.applyWithBlock { element in
+            guard !done else { return }
+            let e = element.pointee
+            switch e.type {
+            case .moveToPoint:
+                if !vertices.isEmpty {
+                    done = true
+                    return
+                }
+                vertices.append(Vertex(e.points[0]))
+            case .addLineToPoint:
+                vertices.append(Vertex(e.points[0]))
+            case .addQuadCurveToPoint:
+                guard let last = vertices.last else { return }
+                let c = e.points[0], end = e.points[1]
+                let c1 = FreePath.lerp(last.point, c, 2.0 / 3), c2 = FreePath.lerp(end, c, 2.0 / 3)
+                vertices[vertices.count - 1].outTangent = c1 - last.point
+                vertices.append(Vertex(end, in: c2 - end))
+            case .addCurveToPoint:
+                guard let last = vertices.last else { return }
+                vertices[vertices.count - 1].outTangent = e.points[0] - last.point
+                vertices.append(Vertex(e.points[2], in: e.points[1] - e.points[2]))
+            case .closeSubpath:
+                closed = true
+                done = true
+            @unknown default:
+                break
+            }
+        }
+        // A closing stretch drawn out to the first point ends on it: the
+        // two are one point.
+        if closed, vertices.count > 2, let first = vertices.first, let last = vertices.last,
+           hypot(Double(first.point.x - last.point.x), Double(first.point.y - last.point.y)) < 1e-6 {
+            vertices[0].inTangent = last.inTangent
+            vertices.removeLast()
+        }
+        guard vertices.count >= 2 else { return nil }
+        self.init(vertices: vertices, closed: closed)
+    }
+}
+
+extension Effect {
+    /// The kinds Convert to Path turns into a Path.
+    static let convertibleToPath: Set<EffectKind> = [.rectangle, .ellipse, .polygon, .star]
+
+    /// This Rectangle, Ellipse, Polygon or Star as a Path of the same shape
+    /// at source time `time`, filled, stroked and placed as it is: its
+    /// Position, Fill and Stroke controls come along as they are,
+    /// keyframes and all; what made its outline (its size, corners,
+    /// points) is the path's points now, and isn't keyframed. Nil for any
+    /// other kind, or one with no size.
+    func convertedToPath(at time: CMTime) -> Effect? {
+        guard Self.convertibleToPath.contains(kind), let step = ShapeStep(self, at: time, center: .zero) else { return nil }
+        let offset = control(.shapePosition).flatMap { $0.enabled ? $0.values(at: time) : nil } ?? [0, 0]
+        let back = CGAffineTransform(translationX: -(offset.first ?? 0), y: -(offset.count > 1 ? offset[1] : 0))
+        guard var outline = FreePath(cgPath: step.path.copy(using: [back]) ?? step.path) else { return nil }
+        // Points to a hundredth, tangents to a tenth, so the numbers read
+        // as numbers in the file.
+        for index in outline.vertices.indices {
+            let point = outline.vertices[index].point
+            outline.vertices[index].point = CGPoint(x: (point.x * 100).rounded() / 100, y: (point.y * 100).rounded() / 100)
+            outline.vertices[index].inTangent = PenTool.tenths(outline.vertices[index].inTangent)
+            outline.vertices[index].outTangent = PenTool.tenths(outline.vertices[index].outTangent)
+        }
+        var path = Effect(kind: .path, name: name)
+        path.enabled = enabled
+        path.changeControl(.path) { $0.setPath(outline, at: time) }
+        for (index, control) in path.controls.enumerated() where control.kind != .path {
+            if let own = self.control(control.kind) {
+                var kept = own
+                kept.id = control.id
+                path.controls[index] = kept
+            }
+        }
+        return path
+    }
+}
+
+private extension CGPath {
+    func copy(using transform: [CGAffineTransform]) -> CGPath? {
+        var matrix = transform[0]
+        return copy(using: &matrix)
+    }
+}
+
 // MARK: - Vector arithmetic
 
 extension CGVector {
