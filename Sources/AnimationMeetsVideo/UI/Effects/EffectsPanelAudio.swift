@@ -51,7 +51,8 @@ extension EffectsPanel {
                 Text("The EQ is no longer there.").foregroundStyle(Design.textSecondary)
             }
             HStack {
-                Text("Drag a band to move it, ⌥-drag or scroll over it to change its Q, double-click to switch it on or off.")
+                Text("Drag a band to move it, ⌥-drag for its Q, double-click to turn it on or off.")
+                    .help("Scrolling over a band changes its Q too.")
                     .font(Design.Typeface.micro)
                     .foregroundStyle(Design.textTertiary)
                 Spacer()

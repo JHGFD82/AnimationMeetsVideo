@@ -79,7 +79,8 @@ struct GeneratorsList: View {
             }
             .sunken(.sunken)
 
-            Text("Drag one onto the timeline to make a clip there, or double-click it to add a layer at the playhead. Dropped on a text or shape clip, it joins that clip.")
+            Text("Drag onto the timeline, or double-click to add at the playhead.")
+                .help("Double-clicking adds a layer with the clip at the playhead. Dropped on a text or shape clip, it joins that clip.")
                 .font(Design.Typeface.micro)
                 .foregroundStyle(Design.textTertiary)
                 .padding(.horizontal, Design.Space.group)

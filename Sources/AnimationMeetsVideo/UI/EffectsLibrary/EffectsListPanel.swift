@@ -61,7 +61,10 @@ struct EffectsListPanel: View {
             .accessibilityAction(named: "New Effect Package") { NewEffectPackagePrompt.shared.ask() }
             .accessibilityAction(named: "Show Effects Folder") { NewEffectPackagePrompt.showEffectsFolder() }
 
-            Text("Drag an effect onto a clip or into the stack, or double-click it to add it to the selected clip. Text and shapes are in the browser's Generators tab, and keyframes made from a sound, the beats or a wiggle in Keyframe Designer… in an effect's ⋯ menu.")
+            // One line in place; where the rest is, on hover and for
+            // VoiceOver, which reads the help as the hint.
+            Text("Drag onto a clip, or double-click to add to the selected clip.")
+                .help("Drop an effect into the effects panel's stack to put it in a place of your own. Text and shapes are in the browser's Generators tab; keyframes made from a sound, the beats or a wiggle are in Keyframe Designer…, in an effect's ⋯ menu.")
                 .font(Design.Typeface.micro)
                 .foregroundStyle(Design.textTertiary)
                 .padding(.horizontal, Design.Space.group)
