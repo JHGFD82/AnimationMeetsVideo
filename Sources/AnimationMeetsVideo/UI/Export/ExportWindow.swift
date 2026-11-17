@@ -50,7 +50,7 @@ final class ExportWindow {
     @ObservationIgnored private var task: Task<Void, Never>?
     /// Set once the export under way and those queued behind it are told to
     /// stop (`cancel`), until it has ended, so one winding down isn't asked
-    /// about again, as when closing the last window quits the app.
+    /// about again, as when quitting.
     @ObservationIgnored private var isStopping = false
     @ObservationIgnored private var closeObserver: NSObjectProtocol?
 

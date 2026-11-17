@@ -17,8 +17,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Closing the last project's window puts the start sheet back up
+    /// instead (`ProjectWindows.unregister`); only Quit quits.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
+    }
+
+    /// The Dock icon clicked with no editor window open (every window was
+    /// closed some other way) opens one with the start sheet.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            guard !ProjectWindows.shared.hasEditorWindow else { return true }
+            ProjectWindows.shared.openStartWindow()
+            return false
+        }
     }
 
     /// Each open project's unsaved changes are offered for saving first

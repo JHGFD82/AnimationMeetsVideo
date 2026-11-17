@@ -130,7 +130,11 @@ own window restoration is off for the app, so the two don't race. A
 window with no project shows a start sheet offering New Project and Open
 Project until one exists; while another window has a project, it offers
 Close Window in place of Quit, and a window opened for a project that
-then fails to open closes by itself once its alert is answered. New
+then fails to open closes by itself once its alert is answered.
+Closing the last editor window doesn't quit the app: a new window opens
+with the start sheet, as Final Cut Pro goes back to its project
+chooser, and so does clicking the Dock icon with no window open; Quit
+on the start sheet or ⌘Q quits. New
 Project asks where to save before the editor opens and writes the
 package and an empty `project.json` right away. New Project, Open Project and Open Recent use the window in front
 while its start sheet is up, and a new window otherwise; a project

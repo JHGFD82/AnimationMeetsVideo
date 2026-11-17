@@ -4,8 +4,9 @@ import SwiftUI
 /// Every open project window's session, for what spans them: sending a
 /// project to the window that has it open (or to an empty one, or a new
 /// one), remembering which projects were open so the next launch opens
-/// them again, keeping the recent projects, and asking about unsaved
-/// changes in each before quitting.
+/// them again, keeping the recent projects, asking about unsaved changes
+/// in each before quitting, and putting the start sheet back up when the
+/// last editor window closes rather than quitting.
 @MainActor
 final class ProjectWindows {
     static let shared = ProjectWindows()
@@ -21,8 +22,13 @@ final class ProjectWindows {
     /// A project Finder asked to open before launch was handled.
     var openedAtLaunch: URL?
     /// While quitting, windows closing don't take their projects off the
-    /// list to reopen.
+    /// list to reopen, and the last one closing opens no start window.
     private var isTerminating = false
+
+    /// Opens editor windows from outside one: kept from the windows as
+    /// they appear, so the app can open a start window once the last one
+    /// has gone, or when its Dock icon is clicked with none open.
+    var openWindow: OpenWindowAction?
 
     var sessions: [ProjectSession] { entries.compactMap(\.session) }
 
@@ -34,7 +40,32 @@ final class ProjectWindows {
     func unregister(_ session: ProjectSession) {
         entries.removeAll { $0.session == nil || $0.session === session }
         openProjectsChanged()
+        if sessions.isEmpty { openStartWindowSoon() }
     }
+
+    // MARK: - The start window
+
+    /// The last editor window has closed: the app stays open and shows the
+    /// start sheet in a new window, as Final Cut Pro and Logic Pro go back
+    /// to their project choosers, rather than quitting. Not while quitting.
+    /// Once the closing window is gone, and only if nothing has opened
+    /// another meanwhile.
+    private func openStartWindowSoon() {
+        guard !isTerminating else { return }
+        Task { @MainActor in
+            guard sessions.isEmpty, !isTerminating else { return }
+            openStartWindow()
+        }
+    }
+
+    /// Opens an editor window with no project, which shows the start sheet.
+    func openStartWindow() {
+        guard let openWindow else { return }
+        openWindow(id: ProjectWindow.groupID)
+    }
+
+    /// Whether an editor window is open, empty or not, for the Dock icon.
+    var hasEditorWindow: Bool { !sessions.isEmpty }
 
     func session(showing url: URL) -> ProjectSession? {
         sessions.first { $0.isOpen(url) }
