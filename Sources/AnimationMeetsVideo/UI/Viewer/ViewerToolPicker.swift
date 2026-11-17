@@ -61,8 +61,7 @@ private struct PenColorWell: View {
                     set: { if let picked = $0 { hex = picked.hex } }
                 )) {
                     ForEach(BarColor.presetRows[row]) { preset in
-                        Image(systemName: preset.color == color ? "checkmark.circle.fill" : "circle.fill")
-                            .foregroundStyle(Design.color(preset.color))
+                        Image(nsImage: ColorSwatch.image(preset.color, checked: preset.color == color))
                             .help(preset.name)
                             .accessibilityLabel(preset.name)
                             .tag(Optional(preset.color))
@@ -77,8 +76,8 @@ private struct PenColorWell: View {
                 BarColorPanel.shared.show(current: color) { picked in hex = picked.hex }
             }
         } label: {
-            Image(systemName: "circle.fill")
-                .foregroundStyle(Design.color(color))
+            // Its own picture: a menu button draws a symbol as a template.
+            Image(nsImage: ColorSwatch.image(color, side: 16))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

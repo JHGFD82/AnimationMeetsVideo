@@ -111,6 +111,11 @@ grid (an `NSHostingView` of 64 swatch buttons), which means building
 that submenu in AppKit. Keep `BarColorMenu`'s inputs the same either
 way so its four call sites don't change.
 
+Seen on screen in the pen's color well, which is built the same way:
+a menu draws a symbol as a template, in its own text color, so the
+tinted `circle.fill` swatches all came out alike. Each swatch is now a
+picture drawn in its color (`ColorSwatch`), checked when picked.
+
 ### The color picker
 
 `UI/Components/BarColorPanel.swift`, one for the app:

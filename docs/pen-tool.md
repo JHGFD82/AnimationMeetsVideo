@@ -562,6 +562,10 @@ settled while building:
   handles (and the pen) mapped presses, and the picture sat, as before
   the last pinch or scroll until something else changed. Each now reads
   the zoom and the place in its body (`ViewerFramingRedrawTests`).
+- **The path color's well** draws its swatches as pictures of their own
+  (`ColorSwatch`): a menu draws a tinted symbol as a template, so every
+  swatch came out alike. Bars' Color menu had the same fault and uses
+  them too.
 
 ## Not in this plan
 
