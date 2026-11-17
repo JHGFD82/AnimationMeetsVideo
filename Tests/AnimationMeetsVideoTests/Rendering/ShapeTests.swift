@@ -383,3 +383,79 @@ extension DrawingFixture {
         #expect(read.effects[0].control(.cornerRadius)?.squircle == true)
     }
 }
+
+// MARK: - Free paths (docs/pen-tool.md)
+
+extension DrawingFixture {
+    /// Sets the clip's first path control to `path`.
+    mutating func setPath(_ path: FreePath, ofClip clipID: UUID) {
+        project.editClip(clipID, in: timelineID) { clip in
+            for e in clip.effects.indices {
+                if let c = clip.effects[e].controls.firstIndex(where: { $0.kind == .path }) {
+                    clip.effects[e].controls[c].setPath(path, at: .zero)
+                    return
+                }
+            }
+        }
+    }
+}
+
+@Suite struct FreePathShapeTests {
+    private let second = CMTime(seconds: 1, preferredTimescale: 600)
+
+    /// A box 40 by 40 about the middle of the 128 by 72 frame: 44 to 84
+    /// across, 16 to 56 down.
+    private func box(closed: Bool) -> FreePath {
+        FreePath(vertices: [
+            .init(CGPoint(x: -20, y: -20)), .init(CGPoint(x: 20, y: -20)),
+            .init(CGPoint(x: 20, y: 20)), .init(CGPoint(x: -20, y: 20)),
+        ], closed: closed)
+    }
+
+    private func level(_ x: Double, _ y: Double, of composed: ComposedTimeline) async throws -> Int {
+        try await grayLevel(of: composed, at: second, x: (x + 0.5) / 128, y: (y + 0.5) / 72)
+    }
+
+    @Test func anOpenPathIsStrokedNotFilledAndAClosedOneFilled() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let shape = try fixture.addShape(.path)
+        fixture.setControl(.fill, [1, 1, 1, 1], ofClip: shape.clipID)
+        fixture.setControl(.stroke, [1, 1, 1, 1], ofClip: shape.clipID)
+        fixture.setControl(.strokeWidth, [4], ofClip: shape.clipID)
+        fixture.setPath(box(closed: false), ofClip: shape.clipID)
+
+        var composed = try await fixture.build()
+        // Its top edge is stroked; its middle isn't filled, and the side it
+        // was never closed along (the left) isn't stroked.
+        #expect(try await level(64, 16, of: composed) > 200)
+        #expect(try await level(64, 36, of: composed) < 10)
+        #expect(try await level(44, 36, of: composed) < 10)
+
+        fixture.setPath(box(closed: true), ofClip: shape.clipID)
+        composed = try await fixture.build()
+        #expect(try await level(64, 36, of: composed) > 220)
+        #expect(try await level(44, 36, of: composed) > 200)
+    }
+
+    @Test func aPathStaysSharpScaledUp() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        // A box 4 across, scaled 800% about its middle: 32 across, sharp
+        // at its edges, 48 to 80.
+        let shape = try fixture.addShape(.path)
+        fixture.setControl(.fill, [1, 1, 1, 1], ofClip: shape.clipID)
+        fixture.setPath(FreePath(vertices: [
+            .init(CGPoint(x: -2, y: -2)), .init(CGPoint(x: 2, y: -2)), .init(CGPoint(x: 2, y: 2)), .init(CGPoint(x: -2, y: 2)),
+        ], closed: true), ofClip: shape.clipID)
+        var scale = Effect(kind: .transform, controls: [EffectControl(kind: .scale)])
+        scale.controls[0].number = AnimatedValue(ComponentValue(values: [800, 800]))
+        fixture.project.editClip(shape.clipID, in: fixture.timelineID) { $0.effects.append(scale) }
+
+        let composed = try await fixture.build()
+        #expect(try await level(49, 36, of: composed) > 220)
+        #expect(try await level(46, 36, of: composed) < 10)
+        #expect(try await level(78, 36, of: composed) > 220)
+        #expect(try await level(81, 36, of: composed) < 10)
+    }
+}

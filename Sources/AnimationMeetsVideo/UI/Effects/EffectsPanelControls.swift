@@ -133,9 +133,12 @@ extension EffectsPanel {
                     onSeek: onSeek,
                     // A curve's numbers are its points, shaped on its effect's
                     // graph, not values with eases to graph.
-                    onShowGraph: control.kind.isCurve ? nil : graphs.map { graphs in { graphs.show(key) } },
+                    // A path's numbers are its vertices, drawn with the pen.
+                    onShowGraph: control.kind.isCurve || control.kind.isPath ? nil : graphs.map { graphs in { graphs.show(key) } },
                     color: control.kind.isColor ? colorBinding(control, of: effect, c) : nil,
-                    summary: control.kind.isCurve ? curveSummary(shown, at: c.sourceNow(animated: control.isAnimated)) : nil,
+                    summary: control.kind.isCurve
+                        ? curveSummary(shown, at: c.sourceNow(animated: control.isAnimated))
+                        : control.kind.isPath ? pathSummary(shown, of: effect, at: c.sourceNow(animated: control.isAnimated)) : nil,
                     method: methodBadge(.control(effectID: effect.id, controlID: control.id), c),
                     onOpenMethod: { openDesigner(on: .control(effectID: effect.id, controlID: control.id), of: clip) },
                     menu: menu
@@ -157,6 +160,19 @@ extension EffectsPanel {
     private func curveSummary(_ control: EffectControl, at time: CMTime) -> String {
         let curve = control.curve(at: time)
         return curve.isIdentity ? "Straight" : "\(curve.points.count) points"
+    }
+
+    /// What a path control's row says of it: that it has no path yet, or
+    /// how many points and whether it is closed. A Path Mask's says what it
+    /// needs to cut anything.
+    private func pathSummary(_ control: EffectControl, of effect: Effect, at time: CMTime) -> String {
+        let path = control.freePath(at: time)
+        if path.isEmpty {
+            return effect.kind == .pathMask ? "Draw its path with the pen to cut the picture." : "No path"
+        }
+        let count = path.vertices.count
+        let text = "\(count) \(count == 1 ? "point" : "points"), \(path.closed ? "closed" : "open")"
+        return effect.kind == .pathMask && !path.encloses ? text + ". Close it to cut the picture." : text
     }
 
     /// A variable font axis of a Text effect's font, as a control's row is,
@@ -379,7 +395,7 @@ extension EffectsPanel {
             ))
         }
         Button(control.enabled ? "Disable" : "Enable") { editControl(control.id, of: effect, in: clip) { $0.enabled.toggle() } }
-        if !control.kind.isChoice, !control.kind.isCurve {
+        if !control.kind.isChoice, !control.kind.isCurve, !control.kind.isPath {
             keyframeDesignerItem(effect, in: clip, control: control)
         }
         Divider()

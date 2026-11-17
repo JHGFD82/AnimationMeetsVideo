@@ -12,7 +12,7 @@ extension EditingProject {
     /// offered: it drives, it isn't driven.
     static func designableControls(of effect: Effect) -> [EffectControl] {
         guard !effect.kind.isKeyframing, effect.missing == nil else { return [] }
-        return effect.controls.filter { !$0.kind.isChoice && !$0.kind.isCurve }
+        return effect.controls.filter { !$0.kind.isChoice && !$0.kind.isCurve && !$0.kind.isPath }
     }
 
     /// The Keyframing effect that writes to `target` on a clip: the top one

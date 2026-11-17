@@ -67,3 +67,15 @@ enum StrokeCap: String, CaseIterable, Identifiable, Sendable {
         }
     }
 }
+
+/// Which side of a mask's path a Path Mask keeps.
+enum MaskKeep: String, CaseIterable, Sendable {
+    case inside, outside
+
+    var name: String {
+        switch self {
+        case .inside: "Inside"
+        case .outside: "Outside"
+        }
+    }
+}

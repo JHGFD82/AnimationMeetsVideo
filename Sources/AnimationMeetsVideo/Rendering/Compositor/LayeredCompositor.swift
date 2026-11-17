@@ -1033,6 +1033,12 @@ struct Drawing {
                 edges = []
                 guard let input = clip.inputs[effectID], let matte = matteImage(input, frame: frameSize, start: start) else { continue }
                 picture = cut(picture, by: matte, mode: mode, amount: amount, frame: frameSize)
+            case .pathMask(let mask):
+                // Needs pixels: shapes above it are drawn first, then cut.
+                settleOpacity()
+                drawShapes()
+                edges = []
+                picture = cut(picture, by: mask, frameToOutput: frameToOutput, frame: frameSize)
             case .blend(let mode, let amount, let against):
                 settleOpacity()
                 drawShapes()
@@ -1077,6 +1083,25 @@ struct Drawing {
                 .concatenating(group.toOuter)
             return nested.transformed(by: toFrame.concatenating(start).concatenating(toOutput))
         }
+    }
+
+    /// `picture` cut to a Path Mask: its area filled white with Core
+    /// Graphics at the size it ends up (`ShapeRendering.draw`), softened
+    /// across its feather by a Gaussian blur, whose ramp is centered on
+    /// the edge, then cut as a Matte's alpha cuts.
+    private func cut(_ picture: CIImage, by mask: PathMaskStep, frameToOutput: CGAffineTransform, frame frameSize: CGSize) -> CIImage {
+        let canvas = canvasRect(of: frameSize)
+        let paint = ShapeRendering.Paint(area: mask.area, color: [1, 1, 1, 1], transform: frameToOutput)
+        var matte = ShapeRendering.draw([paint], within: canvas) ?? CIImage.empty()
+        if mask.feather > 0 {
+            // A blurred hard edge is half covered at the edge; across
+            // ±2σ it goes from nearly all to nearly nothing.
+            let sigma = mask.feather * Double(scale.width) / 4
+            matte = matte.composited(over: CIImage(color: .clear).cropped(to: canvas))
+                .applyingGaussianBlur(sigma: sigma)
+                .cropped(to: canvas)
+        }
+        return cut(picture, by: matte, mode: mask.keepsOutside ? .invertedAlpha : .alpha, amount: mask.amount, frame: frameSize)
     }
 
     /// `picture` shown only where `matte` says: its alpha or its brightness,

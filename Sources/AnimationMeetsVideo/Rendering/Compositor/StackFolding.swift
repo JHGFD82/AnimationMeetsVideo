@@ -68,6 +68,8 @@ enum ResolvedStep: Equatable, Sendable {
     case matte(effect: UUID, mode: MatteMode, amount: Double)
     /// Draws a shape over the picture.
     case shape(ShapeStep)
+    /// Cuts the picture to a path drawn with the pen (`PathMaskStep`).
+    case pathMask(PathMaskStep)
     /// Strokes the outline of the shapes above, their strokes included.
     case outlineStroke(ShapeStroke)
     /// One of the looks of docs/psychedelic-effects.md (`LookRenderer`).
@@ -238,7 +240,7 @@ enum StackFolding {
                 guard amount > 0 else { continue }
                 flush()
                 steps.append(.matte(effect: effect.id, mode: take.matteMode, amount: amount))
-            case .rectangle, .ellipse, .polygon, .star, .text:
+            case .rectangle, .ellipse, .polygon, .star, .path, .text:
                 // Drawn over what the steps above made of the picture, so
                 // they come first.
                 // Text takes the Text Animators directly below it.
@@ -257,6 +259,11 @@ enum StackFolding {
                 guard let shape = ShapeStep(effect, at: time, center: center, animators: animators, followed: followed) else { continue }
                 flush()
                 steps.append(.shape(shape))
+            case .pathMask:
+                // An open or empty path cuts nothing.
+                guard let mask = PathMaskStep(effect, at: time, center: center) else { continue }
+                flush()
+                steps.append(.pathMask(mask))
             case .stroke:
                 guard let style = ShapeStroke(effect, at: time) else { continue }
                 flush()
@@ -283,5 +290,60 @@ enum StackFolding {
         }
         flush()
         return steps
+    }
+}
+
+/// A Path Mask at one moment, ready to draw: its path in the frame's
+/// pixels (origin top left, y down), how far it is grown or shrunk and
+/// softened, which side is kept and how much of the cut is applied.
+struct PathMaskStep: Equatable, Sendable {
+    var path: FreePath
+    /// The middle of the frame, which the path's points are measured from.
+    var center: CGPoint
+    /// Pixels the path is grown by; negative shrinks it.
+    var expand: Double
+    /// Pixels across which the edge goes from kept to cut, centered on it.
+    var feather: Double
+    var keepsOutside: Bool
+    /// 0...1.
+    var amount: Double
+
+    /// The step `effect` draws at source time `time`; nil when it cuts
+    /// nothing: its path off, open or of fewer than two points, or mixed in
+    /// at 0%.
+    init?(_ effect: Effect, at time: CMTime, center: CGPoint) {
+        guard let control = effect.control(.path), control.enabled else { return nil }
+        let path = control.freePath(at: time)
+        guard path.encloses else { return nil }
+        func single(_ kind: ControlKind) -> Double {
+            guard let control = effect.control(kind), control.enabled else { return kind.defaultValues.first ?? 0 }
+            return kind.clamped(control.values(at: time).first ?? 0)
+        }
+        amount = 1
+        if let control = effect.control(.amount), control.enabled, let percent = control.values(at: time).first {
+            amount = (percent / 100).clamped(between: 0, and: 1)
+        }
+        guard amount > 0 else { return nil }
+        self.path = path
+        self.center = center
+        expand = single(.maskExpand)
+        feather = max(0, single(.maskFeather))
+        keepsOutside = effect.choice(.maskKeep, as: MaskKeep.self) == .outside && effect.control(.maskKeep)?.enabled != false
+    }
+
+    /// The area kept, before feathering, in the frame's pixels: the path,
+    /// grown or shrunk by `expand` with Core Graphics' path operations.
+    var area: CGPath {
+        let outline = path.cgPath(origin: center)
+        guard expand != 0 else { return outline }
+        let band = outline.copy(strokingWithWidth: abs(expand) * 2, lineCap: .round, lineJoin: .round, miterLimit: 10)
+        return expand > 0 ? outline.union(band) : outline.subtracting(band)
+    }
+
+    /// What it cuts, in words, for a render's key.
+    var keyText: String {
+        func n(_ value: Double) -> String { String(format: "%.5f", value) }
+        return "q \(n(center.x)),\(n(center.y)) \(n(expand)) \(n(feather)) \(keepsOutside ? "o" : "i") \(n(amount)) "
+            + path.values.map(n).joined(separator: ",")
     }
 }

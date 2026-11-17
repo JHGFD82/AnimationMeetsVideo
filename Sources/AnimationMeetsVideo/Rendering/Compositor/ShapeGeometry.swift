@@ -15,6 +15,9 @@ struct ShapeStep: Equatable, Sendable {
         case polygon(center: CGPoint, points: Int, radius: Double, innerRadius: Double?, cornerRadius: Double, rotation: Double)
         /// A block of text, whose outline is its glyphs.
         case text(TextOutline)
+        /// A free path drawn with the pen, its points offset by `origin`
+        /// (the middle of the frame plus the shape's Position).
+        case path(FreePath, origin: CGPoint)
     }
 
     var outline: Outline
@@ -24,9 +27,10 @@ struct ShapeStep: Equatable, Sendable {
     /// Nil when it isn't stroked.
     var stroke: ShapeStroke?
 
-    /// The shape of a Rectangle, Ellipse, Polygon, Star or Text effect at
-    /// source time `time`, centered on `center` plus its Position. Nil when
-    /// it has no size, or is text with no words. A shape with neither a fill nor a stroke draws nothing
+    /// The shape of a Rectangle, Ellipse, Polygon, Star, Path or Text
+    /// effect at source time `time`, centered on `center` plus its
+    /// Position. Nil when it has no size, is text with no words, or a path
+    /// of fewer than two points. A shape with neither a fill nor a stroke draws nothing
     /// but still has an outline for a Stroke below it to follow.
     /// A Text effect's `animators` are the Text Animator effects below it,
     /// and `followed` the outline of the shape above it, which it follows
@@ -57,6 +61,11 @@ struct ShapeStep: Equatable, Sendable {
                 innerRadius: effect.kind == .star ? max(0, single(.innerRadius)) : nil,
                 cornerRadius: max(0, single(.cornerRadius)), rotation: single(.shapeRotation)
             )
+        case .path:
+            guard let control = effect.control(.path), control.enabled else { return nil }
+            let path = control.freePath(at: time)
+            guard path.vertices.count >= 2 else { return nil }
+            outline = .path(path, origin: middle)
         case .text:
             guard let setting = TextOutline.Setting(effect, at: time) else { return nil }
             var text = TextOutline(setting: setting, center: middle, animators: animators.compactMap { TextOutline.Animator($0, at: time) })
@@ -104,7 +113,16 @@ struct ShapeStep: Equatable, Sendable {
             return Self.closedPath(through: vertices, cornerRadius: corner)
         case .text(let text):
             return text.path
+        case .path(let path, let origin):
+            return path.cgPath(origin: origin)
         }
+    }
+
+    /// Whether its outline can be filled: every shape's but an open path's,
+    /// which has no inside. A path is filled from the moment it closes.
+    var isFillable: Bool {
+        if case .path(let path, _) = outline { return path.closed }
+        return true
     }
 
     /// What it paints, bottom first: its fill, then its stroke, each an
@@ -133,7 +151,7 @@ struct ShapeStep: Equatable, Sendable {
         }
         let outline = path
         var result: [(area: CGPath, color: [Double])] = []
-        if let fill { result.append((outline, fill)) }
+        if let fill, isFillable { result.append((outline, fill)) }
         if let stroke { result.append((stroke.area(around: outline), stroke.color)) }
         return result
     }
@@ -160,6 +178,8 @@ struct ShapeStep: Equatable, Sendable {
             text = "h p\(points) \(n(c.x)),\(n(c.y)) \(n(radius)) \(inner.map(n) ?? "-") \(n(corner)) \(n(rotation))"
         case .text(let outline):
             text = outline.keyText
+        case .path(let path, let origin):
+            text = "h v\(path.closed ? "c" : "o") \(n(origin.x)),\(n(origin.y)) " + path.values.map(n).joined(separator: ",")
         }
         text += " f" + (fill ?? []).map(n).joined(separator: ",")
         text += " s" + (stroke?.keyText ?? "-")
