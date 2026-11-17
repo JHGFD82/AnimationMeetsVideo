@@ -149,7 +149,7 @@ struct TimelinesList: View {
                     project: project, activeTimelineID: activeTimelineID, order: all,
                     picked: $picked, renamingID: $renamingID, dropHovered: $dropHovered,
                     onOpen: open, onRename: onRename, onEmbedInto: onEmbedInto,
-                    onEmbed: embedOrBeep, onDuplicate: onDuplicate, onDelete: deleteOrBeep, onFindAll: findAll,
+                    onEmbed: embedOrRefuse, onDuplicate: onDuplicate, onDelete: deleteOrRefuse, onFindAll: findAll,
                     menu: { id in AnyView(Menu(list: self, id: id, order: all)) }
                 )
                 .onChange(of: all) { _, order in picked.keep(only: order) }
