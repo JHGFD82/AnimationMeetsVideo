@@ -5,6 +5,11 @@ import SwiftUI
 /// disables the menu.
 struct TimelineActions {
     var togglePlayback: () -> Void
+    /// J and L: plays backward or forward, faster each time (see
+    /// `PlaybackModel.shuttle`).
+    var shuttle: (_ forward: Bool) -> Void
+    /// K: stops playing.
+    var pause: () -> Void
     /// Moves the playhead a number of frames, back when negative.
     var step: (Int) -> Void
     var goToStart: () -> Void
@@ -96,6 +101,12 @@ struct TimelineCommands: Commands {
     var body: some Commands {
         CommandMenu("Timeline") {
             Button("Play/Pause  Space") { actions?.togglePlayback() }
+                .disabled(!offers(\.canPlay))
+            Button("Play Backward  J") { actions?.shuttle(false) }
+                .disabled(!offers(\.canPlay))
+            Button("Stop  K") { actions?.pause() }
+                .disabled(!offers(\.canPlay))
+            Button("Play Forward  L") { actions?.shuttle(true) }
                 .disabled(!offers(\.canPlay))
 
             Divider()

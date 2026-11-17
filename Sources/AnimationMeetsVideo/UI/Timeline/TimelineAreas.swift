@@ -34,7 +34,7 @@ struct LayerBlock: Identifiable {
     /// have a layer volume, video layers only their clips'.
     let hasProperties: Bool
     let showsVolume: Bool
-    /// Whether the layer's clips draw their volume across them: while L is
+    /// Whether the layer's clips draw their volume across them: while ⇧L is
     /// on, for every layer with sound.
     let showsVolumeLines: Bool
     /// Everything the layer shows, top to bottom, separator included. The

@@ -60,7 +60,7 @@ struct LayerHeaderRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help(isExpanded ? "Hide volume (L)" : "Show volume (L)")
+                    .help(isExpanded ? "Hide volume (⇧L)" : "Show volume (⇧L)")
                     .accessibilityLabel("Volume of \(displayName)")
                     .accessibilityValue(isExpanded ? "Shown" : "Hidden")
                 } else {

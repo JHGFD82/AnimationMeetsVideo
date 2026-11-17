@@ -25,6 +25,7 @@ struct KeyboardShortcutsView: View {
     static let groups: [Group] = [
         Group(title: "Playback and the playhead", shortcuts: [
             Shortcut(keys: "Space", does: "Play or pause"),
+            Shortcut(keys: "J K L", does: "Play backward, stop, play forward; J or L again plays faster, up to 8×"),
             Shortcut(keys: "← →", does: "Step a frame; ten with ⇧"),
             Shortcut(keys: "↑ ↓", does: "Previous or next edit"),
             Shortcut(keys: "Home End", does: "Go to the start or the end"),
@@ -46,7 +47,7 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "N", does: "Snapping on or off"),
             Shortcut(keys: "= −", does: "Zoom in or out"),
             Shortcut(keys: "\\", does: "Fit the timeline to the window"),
-            Shortcut(keys: "L", does: "Show or hide volume rows"),
+            Shortcut(keys: "⇧L", does: "Show or hide volume rows"),
             Shortcut(keys: "⇧E", does: "Show the selected clip's effects"),
             Shortcut(keys: "⇧F", does: "Show the selected clip's footage in the Clips list"),
         ]),

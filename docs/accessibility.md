@@ -75,6 +75,7 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | Keys | Does |
 | --- | --- |
 | Space | Play or pause |
+| J / K / L | Play backward, stop, play forward, as in Final Cut Pro, Premiere and Resolve; J or L again while playing that way plays twice as fast, up to eight times, and the other way turns around at normal speed. Backward and faster than normal only where the timeline's player allows; backward play doesn't loop (also Timeline > Play Backward, Stop and Play Forward) |
 | ← / → | Step the playhead a frame; ten with Shift |
 | ↑ / ↓ | Go to the previous or next edit (any clip's start or end, or the end of the timeline) |
 | Home / End | Go to the start or the end |
@@ -90,7 +91,7 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | A / B / Y | Arrow, blade and slip tools |
 | N | Snapping on or off |
 | = / − / \\ | Zoom in, zoom out, fit the timeline to the window |
-| L | Show or hide volume rows (position, scale, rotation and opacity are in the effects panel) |
+| ⇧L | Show or hide volume rows (position, scale, rotation and opacity are in the effects panel) |
 | V | Turn the selected clips off, or on again |
 | ⇧E | Show the selected clip's effects |
 | ⇧F | Show the selected clip's footage in the browser's Clips tab |
