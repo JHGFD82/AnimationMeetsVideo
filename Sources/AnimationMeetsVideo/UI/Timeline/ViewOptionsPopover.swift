@@ -22,7 +22,7 @@ struct ViewOptionsPopover: View {
     @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.group + 2) {
+        PopoverFrame {
             SheetSection("Zoom") {
                 Slider(value: $zoomFraction, in: 0...1)
                     .accessibilityLabel("Zoom")
@@ -101,8 +101,5 @@ struct ViewOptionsPopover: View {
                 }
             }
         }
-        .padding(Design.Space.rail)
-        .frame(width: 300)
-        .background(Design.Surface.overlay.color)
     }
 }

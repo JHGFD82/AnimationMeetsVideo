@@ -141,7 +141,7 @@ struct BrowserPanel: View {
 
     /// The order, time per thumbnail and thumbnail size, for every browser tab.
     private var settings: some View {
-        VStack(alignment: .leading, spacing: Design.Space.group) {
+        PopoverFrame(spacing: Design.Space.group) {
             Picker("Sort by", selection: $sort) {
                 ForEach(BrowserSort.allCases) { order in
                     Text(order.title).tag(order)
@@ -202,8 +202,6 @@ struct BrowserPanel: View {
                 .help("Put video on the timeline with its sound muted; detaching the sound unmutes it")
         }
         .font(Design.Typeface.label)
-        .padding(Design.Space.group)
-        .frame(width: 260)
     }
 
     private var timelinesList: some View {

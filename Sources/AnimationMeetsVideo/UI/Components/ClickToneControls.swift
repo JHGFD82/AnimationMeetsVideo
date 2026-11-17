@@ -30,7 +30,7 @@ struct ClickToneControls: View {
                 Button(action: onPreview) {
                     Image(systemName: "speaker.wave.2")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.icon)
                 .help("Preview the tick")
                 .accessibilityLabel("Preview the tick")
             }

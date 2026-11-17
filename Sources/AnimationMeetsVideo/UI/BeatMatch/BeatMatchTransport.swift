@@ -98,9 +98,9 @@ private struct TickControls: View {
                 // The arrow on the button's bottom edge: the popover hangs
                 // below, into the window, from the transport at its top.
                 .popover(isPresented: $showsSettings, arrowEdge: .bottom) {
-                    ClickToneControls(frequency: $frequency, volume: $volume) { session.clicks.preview() }
-                        .frame(width: 300)
-                        .padding(Design.Space.group)
+                    PopoverFrame {
+                        ClickToneControls(frequency: $frequency, volume: $volume) { session.clicks.preview() }
+                    }
                 }
             }
         }

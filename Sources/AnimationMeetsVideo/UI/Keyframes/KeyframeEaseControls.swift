@@ -10,9 +10,11 @@ struct KeyframeEaseControls: View {
     let time: CMTime
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.group) {
+        PopoverFrame(spacing: Design.Space.group) {
+            // Headed as a popover's or sheet's group is.
             Text("Ease Handles")
                 .font(Design.Typeface.groupTitle)
+                .foregroundStyle(Design.textSecondary)
                 .accessibilityAddTraits(.isHeader)
             if let value = hud.project.components(of: key),
                let index = value.keyframes.firstIndex(where: { $0.time == time }) {
@@ -33,8 +35,6 @@ struct KeyframeEaseControls: View {
         }
         .font(Design.Typeface.label)
         .controlSize(.small)
-        .padding(Design.Space.group)
-        .frame(width: 300)
     }
 
     private func side(_ name: String, ease: KeyframeEase?, available: Bool, outgoing: Bool) -> some View {
