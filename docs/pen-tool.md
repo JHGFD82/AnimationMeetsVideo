@@ -4,8 +4,7 @@ Status: **planned, not implemented**. Nothing here is built. The
 document says what the person sees, then the model and the drawing
 underneath, then where each piece goes in the code and the order to
 build it in. Choices the request didn't settle are listed under
-[Decisions made here](#decisions-made-here); the ones worth a second
-look before building are marked **(open)**.
+[Decisions made here](#decisions-made-here).
 
 A **pen** in the viewer draws **paths**: Bezier outlines of points and
 curves, drawn as Adobe Illustrator's pen draws them. A path is either a
@@ -111,14 +110,12 @@ With **Option** held the pen converts points between **linear** and
 **ease**, as Illustrator's Anchor Point tool converts between corner
 and smooth:
 
-- **Option-click a point**: switches it. An ease point becomes linear:
-  its tangents go and the path runs straight through it. A linear point
-  becomes ease, with tangents worked out for it: in line with each
-  other, parallel to the line between its two neighbours, each a third
-  of the way to its neighbour. An end point gets one, toward its
-  neighbour.
+- **Option-click an ease point**: makes it linear: its tangents go and
+  the path runs straight through it. Option-click on a linear point does
+  nothing.
 - **Option-drag from a point**: pulls fresh mirrored tangents out of it
-  by hand, whatever it was.
+  by hand, whatever it was. It is the only way the pointer makes a point
+  ease.
 - **Option-drag a tangent's handle**: moves that tangent alone, breaking
   the pair.
 - **Option-drag a stretch**: bends it to pass under the pointer, by
@@ -137,10 +134,9 @@ hand), by the same rules as a two-finger scroll (48 points of the frame
 always stay in the well). Letting go of Space gives the pen back with
 the draw exactly as it was. Nothing is placed, nothing plays.
 
-- **Space never plays while a path is being drawn.**
-- With the pen picked and nothing being drawn, a **tap** of Space (down
-  and up within 300 ms, no press of the mouse between) still plays or
-  pauses. Held longer, or with a drag, it is only the hand. **(open)**
+- **Space never plays while the pen is picked**, whether or not a path
+  is being drawn: it is only the hand. Play with the play button, or put
+  the pen down (P) first.
 - Space going down **during** a point's drag moves that point instead
   (the table above); the hand is for when the button is up.
 - If the window stops being the key window while Space is down, the
@@ -315,7 +311,7 @@ point with an in and an out tangent, and whether it is closed.
 - `FreePath` does the geometry, with no views: the `CGPath`; splitting a
   stretch at a point (de Casteljau, keeping the shape); removing a
   vertex; the nearest point on the path to a place; a vertex's kind
-  read from its tangents; the tangents an Option-click gives; bending a
+  read from its tangents; the tangents Make Ease gives; bending a
   stretch through a point.
 - Self-crossing paths fill by the nonzero rule, as Illustrator's do.
 
@@ -400,7 +396,7 @@ Path).
   text is typed as `KeyPressMonitor` does. `ViewerCanvas` uses it for
   Space while the pen is picked. It takes the key down before the play
   button's shortcut sees it (`ViewerPanel`'s
-  `.keyboardShortcut(.space)`), and plays itself on a tap.
+  `.keyboardShortcut(.space)`), so Space never plays then.
   `ViewerCanvas` already owns the pinch and the scroll; the hand's drag
   goes through the same `framing.apply(mapping.scrolled(by:))`.
 - **`ViewerToolPicker`** (`UI/Viewer/`) in `ViewerPanel`'s rail and the
@@ -434,7 +430,7 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
   | --- | --- | --- |
   | Add Point After | ⌘Return | A point halfway along the stretch after the picked one, or past the end of an open path, picked so the arrows can place it. With no path yet, the first point, at the middle of the frame. |
   | Remove Point | ⌫ | Removes the picked point. While a path is being drawn this is the last point. (With the arrow, Delete still deletes the clip.) |
-  | Make Linear / Make Ease | ⌥Return | The Option-click. |
+  | Make Linear / Make Ease | ⌥Return | Linear: the Option-click. Ease: tangents worked out for it (in line with each other, parallel to the line between its two neighbours, each a third of the way to its neighbour; an end point gets one, toward its neighbour), since the keyboard has no drag. |
   | Close Path / Open Path | on the path's element | |
   | End Path | Return | |
 
@@ -449,7 +445,7 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 
 - `FreePathTests` (`Model/Effects/`): numbers to path and back; the
   `CGPath` of corners and curves; a split keeping the shape at every
-  sample; removing a point; the kind read from tangents; Option-click's
+  sample; removing a point; the kind read from tangents; Make Ease's
   tangents; bending a stretch through a point; blending with equal
   counts and holding with unequal ones.
 - `PenToolTests` (`Model/ViewerHandles/`): a click and a drag; Shift on
@@ -474,7 +470,7 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
   Show Handles off; one undo step a point, and undo after closing
   reopening; Escape mid-drag, mid-draw and with nothing drawn; Space
   held and dragged scrolling the picture, placing nothing and not
-  playing; a tap of Space playing only when nothing is drawn; a scroll
+  playing; a tap of Space not playing with the pen picked; a scroll
   and a pinch between two points leaving both on the picture; P; no
   presses taken while playing.
 - `UISnapshots`: `penDrawing` (a path half drawn with its preview, over
@@ -489,10 +485,9 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
   is a preference, not a color per path.
 - **Escape cancels the whole draw** and Return ends it, where
   Illustrator's Escape ends it. The cancel is itself undoable.
-- **A tap of Space still plays when nothing is being drawn. (open)**
-  The alternative is that Space never plays while the pen is picked,
-  which is simpler to explain and means reaching for the play button or
-  putting the pen down to watch what was drawn.
+- **Space never plays while the pen is picked**: it is only the hand.
+  Watching what was drawn means the play button or putting the pen
+  down.
 - **The path is in the project from its first point**, not a draft.
   That is what makes each point an undo step and lets undo after
   closing reopen the path. The cost is that an unfinished path is
@@ -500,10 +495,10 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 - **An open path is never filled**, finished or not: "no fill until
   complete" as a rule of the shape, not of the tool, so the compositor
   needs to know nothing about the pen.
-- **Option-click on a linear point gives it tangents**, where
-  Illustrator needs a drag. It makes Option-click a switch between
-  linear and ease, as asked; Option-drag still sets them by hand.
-  **(open)**
+- **Option-click on a linear point does nothing**, as in Illustrator:
+  only Option-drag makes a point ease with the pointer. Option-click on
+  an ease point makes it linear. The keyboard's Make Ease works the
+  tangents out, since it has no drag.
 - **Option means convert only with the pen.** With the arrow it stays
   "a tenth", as on every other handle.
 - **Space during a point's drag moves the point**, as in Illustrator,
