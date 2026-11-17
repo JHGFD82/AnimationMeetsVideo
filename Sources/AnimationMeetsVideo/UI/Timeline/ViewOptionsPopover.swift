@@ -28,7 +28,7 @@ struct ViewOptionsPopover: View {
                     .accessibilityLabel("Zoom")
                     .accessibilityValue("\(Int((zoomFraction * 100).rounded())) percent")
                 Button("Fit to Window", action: onFit)
-                    .help("Also on the \\ key")
+                    .help("Fit the whole timeline in view (\\)")
                 Toggle("Follow the playhead while playing", isOn: $followsPlayhead)
                     .help("When zoomed in, the view turns a page each time playback runs off its edge")
             }

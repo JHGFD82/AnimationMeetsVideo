@@ -31,6 +31,7 @@ struct KeyframeEaseControls: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("This keyframe is no longer present.")
+                    .foregroundStyle(Design.textTertiary)
             }
         }
         .font(Design.Typeface.label)

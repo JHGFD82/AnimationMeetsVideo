@@ -105,7 +105,7 @@ private struct RecentProjectRow: View {
             .padding(.vertical, Design.Space.tight + 1)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
                     .fill(isHovered ? Design.Surface.raised.color : .clear)
             )
         }

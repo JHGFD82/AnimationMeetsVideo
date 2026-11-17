@@ -40,7 +40,7 @@ struct JoinedTransitionBridge: View {
         let width = max(6, transition.duration.seconds * pixelsPerSecond)
         let cutX = joint.lead.seconds * pixelsPerSecond
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 3)
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                 .fill(Color.black.opacity(0.45))
             TransitionWedge(curve: transition.curve, edge: .leading)
                 .fill(Color.white.opacity(isSelected ? 0.32 : 0.22))
@@ -60,7 +60,7 @@ struct JoinedTransitionBridge: View {
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .overlay(
-            RoundedRectangle(cornerRadius: 3)
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                 .strokeBorder(isSelected || isDropTarget ? Design.accent : Design.textOnColor.opacity(0.6), lineWidth: isSelected || isDropTarget ? 1.5 : 1)
         )
         .contentShape(Rectangle())
@@ -190,9 +190,9 @@ struct TransitionFootageLane: View {
             bar(from: cutX, to: x(joint.incoming.endOffset), y: bottomY, color: Design.ClipTone.video.color, opacity: 0.45, label: "In: \(incomingName)", alignLabel: .leading)
 
             // The transition across both rows.
-            RoundedRectangle(cornerRadius: 3)
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                 .fill(Design.accent.opacity(0.18))
-                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Design.accent, lineWidth: 1.5))
+                .overlay(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous).strokeBorder(Design.accent, lineWidth: 1.5))
                 .frame(width: max(4, endX - startX), height: Self.height - 8)
                 .contentShape(Rectangle())
                 .offset(x: startX, y: 4)

@@ -154,7 +154,7 @@ struct LoopBar: View {
 
     private var glyph: some View {
         Image(systemName: Design.Symbol.loop)
-            .font(.system(size: 9, weight: .semibold))
+            .font(Design.Typeface.tag)
     }
 
     /// `region` as the player has it, drawn as `shown` (the draft while
