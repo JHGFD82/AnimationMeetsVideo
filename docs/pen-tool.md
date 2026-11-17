@@ -1,10 +1,12 @@
 # The pen tool
 
-Status: **planned, not implemented**. Nothing here is built. The
-document says what the person sees, then the model and the drawing
-underneath, then where each piece goes in the code and the order to
-build it in. Choices the request didn't settle are listed under
-[Decisions made here](#decisions-made-here).
+Status: **built** (all nine steps of [Building it](#building-it)),
+tested with unit, compositor, real-event and snapshot tests, but **not
+yet tried in the running app**. The document says what the person sees,
+then the model and the drawing underneath, then where each piece is in
+the code. Choices the request didn't settle are listed under
+[Decisions made here](#decisions-made-here); where the code differs
+from what this plan first said is under [As built](#as-built).
 
 A **pen** in the viewer draws **paths**: Bezier outlines of points and
 curves, drawn as Adobe Illustrator's pen draws them. A path is either a
@@ -339,9 +341,9 @@ point with an in and an out tangent, and whether it is closed.
 
 Additions, so the format version stays, as for the other shapes
 ([graphic-layers.md](graphic-layers.md#saving)): effects of kind
-`"path"` and `"pathMask"`, whose Path control is written as
-`"vertices": [[x, y, inX, inY, outX, outY], …]` and `"closed": true`
-(left out while open), each keyframe with its own `vertices`. Loading
+`"path"` and `"pathMask"`, whose Path control's `value` is its
+vertices, `[[x, y, inX, inY, outX, outY], …]`, with `"closed": true`
+(left out while open), each keyframe's `value` its own vertices. Loading
 stays strict: six finite numbers a vertex. An older version of the app
 reports a file with them as invalid, naming the kind.
 
@@ -363,34 +365,43 @@ up). "Being drawn" is read from the project each time: the effect is
 still there and its path is open. So an undo that takes the effect away
 ends the draw without the pen being told.
 
-`ProjectChange` names the steps (Add Point, Remove Point, Convert
-Point, Move Point, Close Path, Draw Path for the first point, Cancel
-Path).
+Each press names its step through `ProjectHistory.nameNextStep`, which
+also keeps it from merging with the one before: Draw Path for the first
+point, Add Point, Remove Point, Convert Point, Move Point, Bend Path,
+Carry On Path, Close Path, End Path (Return on a shape whose Stroke it
+turned on) and Cancel Path.
 
 ## Where it goes in the code
 
 - **`ViewerTool.pen`** (`Model/ViewerHandles/ViewerTool.swift`), with a
-  name, glyph and key as `TimelineTool` has. `ViewerHandleSets.active`
-  returns `PathHandles` for a selected Path or Path Mask, and for the
-  pen's path.
+  name, glyph and help as `TimelineTool` has. `ViewerHandleSets.active`
+  returns `PathHandles` for a selected Path or Path Mask.
+- **`FreePath`** (`Model/Effects/FreePath.swift`): the geometry, the
+  path control's reading (`EffectControl.freePath(at:)`, `setPath`,
+  `mapPath`), `FreePath(cgPath:)` and `Effect.convertedToPath(at:)`.
 - **`PathHandles`** (`Model/ViewerHandles/PathHandles.swift`): a
   `ViewerHandleSet` for vertices and tangents, in the effect's
   coordinates through `StackFolding.placement(after:)` as
-  `PointControlHandles` is. `HandleGlyph` gains `vertex` and `tangent`;
-  `ViewerOutline`, which is straight lines today, gains curves and a
-  style in the path color.
+  `PointControlHandles` is, with the edits the pen and VoiceOver share
+  (adding after a point, converting). `HandleGlyph` gains `vertex`,
+  `pickedVertex` and `tangent`; `ViewerOutline` gains the `path` and
+  `tangent` styles, its curves cut into short lines; `HandleContext`
+  carries the picked handle, whose point shows its tangents.
 - **`PenTool`** (`Model/ViewerHandles/PenTool.swift`): the pen as plain
-  logic, tested without a window. Given the path, what is under the
-  pointer, the modifiers and a press, drag or release, it returns the
-  edit (a `HandleEdit`) and the pointer to show. The canvas gives a
-  press that hits no handle to the tool, as the framework planned, and
-  with the pen picked asks the tool first.
-- **`ViewerHandlesOverlay`** runs the pen's presses through its existing
-  drag bookkeeping (`HandleDragBook`: the slop, modifiers as they
-  change, `DragEscape`, the hold), draws the preview stretch, and shows
-  with the pen picked whether or not Show Handles is on. The pen's
-  pointers are drawn by `HandleCursors` from `pencil.tip` with a small
-  badge (ring, caret, slash, plus, minus).
+  logic, tested without a window, with `PenState`. `hit` finds what is
+  under the pointer, `action` what a press there does, `begin` readies
+  a press (making a new path's effect, clip and layer in the project it
+  starts from), `step` works out the project after the press so far
+  from a `Stroke`, and `end` and `cancel` are Return and Escape.
+- **`PenOverlay`** (`UI/Viewer/PenOverlay.swift`): the pen's view, shown
+  by `ViewerCanvas` in place of `ViewerHandlesOverlay` while the pen is
+  picked, whether or not Show Handles is on. It keeps a press book of
+  its own, as the handles do (the slop, modifiers as they change,
+  `DragEscape`, the hold), draws the path and the preview stretch, and
+  takes the pen's keys. Command's arrow runs `PathHandles.edit`. The
+  pen's pointers are drawn by `HandleCursors` from `pencil.tip` with a
+  small badge (ring, caret, slash, plus, minus). `PathDrawing` draws
+  paths for both overlays.
 - **`KeyHoldMonitor`** (`UI/Components/`, new): key down and key up for
   one key in the view's window, repeats dropped, standing aside while
   text is typed as `KeyPressMonitor` does. `ViewerCanvas` uses it for
@@ -401,14 +412,22 @@ Path).
   goes through the same `framing.apply(mapping.scrolled(by:))`.
 - **`ViewerToolPicker`** (`UI/Viewer/`) in `ViewerPanel`'s rail and the
   external display's top bar, with the Shape | Mask choice and the
-  color well. **P** is taken where **H** is (`toggleKey`).
+  color well. **P** is taken by `ViewerCanvas`'s key monitor, beside
+  the zoom keys.
 - **Effects**: the kinds, controls and library order in
-  `BuiltInEffects`; `EffectRegistry`; the Path row in
-  `UI/Effects/EffectsPanelControls.swift` (a view of its own,
-  `PathControlRow`); `GeneratorsList` and `NewShapePopover` list Path by
-  themselves, since they list every kind that draws a shape.
+  `BuiltInEffects`; `EffectRegistry` (`ControlDefinition.isPath`); the
+  Path row's summary and its Draw with Pen button in
+  `UI/Effects/EffectsPanelControls.swift`, on `ParameterRow`'s
+  `summaryAction`; Convert to Path in `EffectsPanelEffects.swift`. The
+  Generators tab and the New Shape Layer menu list Path by themselves,
+  since they list every kind that draws a shape.
+- **Picking the pen for a new Path or Path Mask**:
+  `TimelineEditorSurface` notices one with no path yet that an edit
+  added (`EditingProject.pathsAwaitingPen`), whichever way it came,
+  selects it and calls `ViewerCanvasState.drawWithPen`. The Path row's
+  button reaches the canvas through `EffectsPanelState.drawWithPen`.
 - **Compositor**: `ShapeGeometry` (the outline), `StackFolding` (the
-  step) and `LayeredCompositor` (drawing the mask).
+  step, `PathMaskStep`) and `LayeredCompositor` (drawing the mask).
 - **`Preferences.penColor`**, in `App/Preferences.swift`.
 
 ## Accessibility
@@ -511,6 +530,34 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 - **Path Mask is Swift, not a package.**
 - **P** for the pen, as in Illustrator; no key of its own for the
   viewer's arrow, since A is the timeline's.
+
+## As built
+
+Where the code differs from what this plan first said, and what was
+settled while building:
+
+- **The pen has a view of its own** (`PenOverlay`) rather than running
+  through `ViewerHandlesOverlay`: a press of the pen can make a layer,
+  a clip and an effect and change the selection, which the handles'
+  one-clip edits (`HandleEdit`) can't. It keeps its own press book in
+  the same way.
+- **Saving** writes the path in the control's `value`, as every control
+  is written, not in a key of its own (`vertices`).
+- **Return on an open shape with no stroke** turns its Stroke on in its
+  fill's color, 4 pixels wide.
+- **Option-click on a linear point does nothing**, and Space never
+  plays with the pen picked (the two decisions that were open).
+- **Convert to Path** takes the shape at the playhead: its Position,
+  Fill and Stroke controls come along, keyframes and all, but what made
+  its outline (size, corners, points) isn't keyframed in the path.
+- **Path Mask's feather** is a Gaussian blur of a quarter of Feather,
+  so the edge goes from nearly kept to nearly cut across Feather,
+  centered on the path.
+- **The canvas draws again on a zoom or a scroll.** `ViewerCanvas` read
+  the framing only inside its `GeometryReader`, which didn't draw it
+  again when the framing changed, so the handles (and now the pen)
+  mapped presses as the picture was before the last pinch or scroll
+  until something else changed. Found by the pen's scroll test.
 
 ## Not in this plan
 

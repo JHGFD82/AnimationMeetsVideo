@@ -738,6 +738,8 @@ kernel:
 - Transform, Blending, Color and Matte: the stack's foundations, folded
   and pushed into nested timelines by `StackFolding`.
 - The shapes and Stroke: vector drawing, sized to the frame.
+- Path Mask: its path is a drawing, filled with Core Graphics, not
+  numbers a kernel takes ([pen-tool.md](pen-tool.md)).
 - The sound effects: biquad filters and Audio Units.
 - The Keyframing effects: they write keyframes, not pictures.
 

@@ -8,6 +8,9 @@ its color, its brightness, a clean plate or a shape, and tidy the alpha
 they leave. They take their places in the library from
 `BuiltInEffects.libraryOrder`, after the Matte effect, which cuts a clip
 by a dropped picture and stays in Swift (see [effects.md](effects.md)).
+An eleventh, Path Mask, is Swift too: it cuts the picture to a path
+drawn with the pen, which a package's kernel can't take (see
+[pen-tool.md](pen-tool.md)).
 
 Each leaves the picture's color as it is and changes its alpha
 (premultiplied, as the compositor keeps it), so the layers below show
@@ -26,6 +29,7 @@ it mixes its alpha in.
 | Box Mask | color | Keeps inside (or outside) a rectangle. Controls: Center, Size, Roundness, Feather, Angle, Keep. |
 | Ellipse Mask | color | Keeps inside (or outside) an ellipse. Controls: Center, Size, Feather, Angle, Keep. |
 | Corner Mask | color | Keeps inside (or outside) four corners, a garbage matte. Controls: Top Left, Top Right, Bottom Right, Bottom Left, Feather, Keep. |
+| Path Mask | Swift | Keeps inside (or outside) a closed path drawn with the pen. Controls: Path, Feather, Expand, Keep. Adding it picks the pen. |
 | Gradient Mask | color | Fades the picture out from Start to End, linearly or as a circle. Controls: Shape, Start, End, Keep. |
 | Alpha Tools | color | Invert Alpha, Alpha from Luma, Make Opaque, Premultiply, Unpremultiply, Show Alpha. |
 
@@ -99,6 +103,14 @@ even all the way round. The Corner Mask's corners can make any
 four-sided shape; one that crosses itself keeps the two triangles it
 makes.
 
+Path Mask isn't a kernel: the compositor fills its path white with Core
+Graphics at the size it ends up, grown or shrunk by Expand with path
+operations, blurs it across Feather (a Gaussian of a quarter of it, so
+the ramp is centered on the edge) and cuts the picture with it as the
+Matte does. Its path is in the frame's pixels at its place in the
+stack, so a Transform below it moves it with the picture. Open, or with
+fewer than two points, it cuts nothing.
+
 Gradient Mask is opaque at Start and clear at End, linearly between:
 along the line from Start to End (Linear), or out from Start in a
 circle reaching End (Radial). Keep End reverses it. Animating End across
@@ -140,6 +152,6 @@ check that every kernel compiles and the library keeps its order.
   corners, size and angle have handles in the viewer while the mask is
   selected, with its outline drawn
   ([viewer-handles.md](viewer-handles.md#an-effects-own-handles)).
-- **Free-form masks** of many points, drawn as Bezier paths: a Path
-  Mask drawn with a pen, planned in [pen-tool.md](pen-tool.md).
+- **Several outlines in one Path Mask** (holes) and mask modes (Add,
+  Subtract, Intersect); see [pen-tool.md](pen-tool.md#not-in-this-plan).
 - **Light wrap** and edge color correction for composites.

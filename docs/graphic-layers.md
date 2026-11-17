@@ -5,7 +5,9 @@ are **built** (steps 1, 2a and 2b, not yet tried in the running app), as
 is text (step 3: Illustrator's character, paragraph and OpenType
 settings, styled runs, kerning by hand and optical kerning, hyphenation,
 variable axes, animators and text on a path, set in the inspector);
-gradients, free paths, path operations, text on a path of its own,
+free paths (the Path effect, drawn and edited with the pen of
+[pen-tool.md](pen-tool.md)) are **built** too, also not yet tried in
+the running app; gradients, path operations, text on a path of its own,
 [editing in the viewer](#editing-in-the-viewer) (handles, typing text
 in place, ink turned into a shape) and stills as effect inputs are
 **planned** (see [Building it](#building-it)).
@@ -199,15 +201,17 @@ anything with an outline can be stroked, however often:
   so a Stroke after one has nothing to follow, and the effects panel says
   so.
 
+- **Free paths** (built). A Path effect: a closed flag and a list of
+  vertices, each a point with an in and an out tangent, in pixels from
+  the frame's center plus its Position, keyframed whole: between two
+  keyframes with the same number of vertices each point and tangent
+  blends; with different counts it holds until the next. An open path is
+  stroked, never filled. Convert to Path in a primitive's ⋯ menu keeps
+  its shape at the playhead. Drawn and edited with the pen; see
+  [pen-tool.md](pen-tool.md).
+
 Still to come:
 
-- **Free paths.** A closed flag and a list of vertices, each a point with
-  an in and an out tangent, in pixels from the frame's center, keyframed
-  whole: between two keyframes with the same number of vertices each point
-  and tangent blends; with different counts it holds until the next.
-  Converting a primitive to a free path keeps its current shape. Editing
-  vertices needs the viewer's handles (step 4). Planned in detail, with
-  the pen that draws them, in [pen-tool.md](pen-tool.md).
 - **Gradient fills** (linear and radial, with stops), for fills and
   strokes alike.
 - **Path operations.** Union, intersection, subtraction and exclusion of
@@ -494,8 +498,8 @@ Built (step 3a):
     up makes the path longer, not the letters bigger. Stack folding still
     gives the text the outline as drawn, for its render key and wherever
     no compositor draws it.
-  - **Its own path.** Text can't have a path of its own yet: that needs
-    free paths (step 2d), which aren't built, so it follows a shape's.
+  - **Its own path.** Text can't have a path of its own yet, so it
+    follows a shape's, a Path's included.
 - **Anchor** is a Paragraph choice of nine points (Top Left to Bottom
   Right, Middle at first): which point of the block, as wide as its wrap
   width or widest line and as tall as its lines, sits at the frame's
@@ -522,9 +526,10 @@ Still to come:
 
 ## Editing in the viewer
 
-Partly built: a primitive's and a text block's handles are; vertices
-and tangents, which need free paths, and selecting a clip by clicking
-it in the viewer aren't. With nothing selected in the effects panel a
+Partly built: a primitive's and a text block's handles are, and a
+Path's points and tangents (`PathHandles`, see
+[pen-tool.md](pen-tool.md#editing-a-path)); selecting a clip by
+clicking it in the viewer isn't. With nothing selected in the effects panel a
 graphic clip gets the Transform handles, whose box is the rectangle
 round what its shapes draw. With a shape or text effect selected, it
 gets that effect's own handles instead (`ShapeHandles`, a handle set of
@@ -544,7 +549,7 @@ value is animated. Following [accessibility.md](accessibility.md), each
 is an adjustable VoiceOver element, and Tab and the arrow keys pick and
 nudge them (ten with Shift, a tenth with Option). The pen tool, which
 draws shapes rather than ink over the picture where the external
-display's markup once was, waits on free paths.
+display's markup once was, is in [pen-tool.md](pen-tool.md).
 
 ## Saving
 
@@ -555,9 +560,10 @@ display's markup once was, waits on free paths.
   or, for Edge, Join and Cap, the option's name. A size's link is written only when
   it differs from a new control's. A Text effect (`"text"`) also has
   `"text": {"string": …, "font": <PostScript name>}`; its Alignment is
-  saved as the option's name like the other choices. Free paths, when they come, will be
-  arrays of vertices (`[x, y, inX, inY, outX, outY]`) so they can be read
-  and edited by hand. Loading stays strict.
+  saved as the option's name like the other choices. A Path (`"path"`)
+  writes its Path control's value as an array of vertices
+  (`[x, y, inX, inY, outX, outY]`), so it can be read and edited by
+  hand, and `"closed": true` while it is closed. Loading stays strict.
 - These are additions, so the format version stays the same: files
   without them read as before, and an older version of the app reports a
   file with them as invalid (strict loading names the unknown kind)
@@ -588,7 +594,8 @@ display's markup once was, waits on free paths.
    stroke around a stroke, a star's notches against a pentagon, dashes,
    and saving the choices. Choice controls now list their own options,
    which also fixes Matte's Take listing blend modes. (c) Gradients.
-   (d) Free paths and their keyframes. (e) Path operations and trim
+   (d, done) Free paths and their keyframes ([pen-tool.md](pen-tool.md)).
+   (e) Path operations and trim
    paths.
 3. **Text.** (a, done) The Text effect, `TextContent`, Core Text layout
    and glyph paths (`TextLayout`) with the Character, Paragraph and
@@ -624,7 +631,8 @@ display's markup once was, waits on free paths.
 4. **Viewer handles.** (a, done) Handles for primitives and a text
    block's wrap width, with their keyboard paths; `ShapeHandlesTests`
    checks each, through a Transform below, with a linked Size, and the
-   keyframe rule. (b) Vertices and tangents, with free paths. Selecting a
+   keyframe rule. (b, done) Vertices and tangents, with free paths
+   (`PathHandlesTests`). Selecting a
    clip by clicking it in the viewer is left out
    ([viewer-handles.md](viewer-handles.md#not-in-this-plan)).
 5. **Stills as effect inputs**, so a PNG can be a Matte's input.
