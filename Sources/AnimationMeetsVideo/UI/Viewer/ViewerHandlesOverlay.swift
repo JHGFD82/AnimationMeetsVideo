@@ -570,7 +570,7 @@ struct ViewerHandlesOverlay: View {
         guard let projectState else {
             switch refusal {
             case .locked: ClipLockRefusal.signal()
-            case .driven: RefusalNotice.shared.tell("A Keyframing effect writes this control's keyframes. Bake them to change it by hand.")
+            case .driven: RefusalNotice.shared.tell(RefusalReason.drivenControl)
             }
             return true
         }

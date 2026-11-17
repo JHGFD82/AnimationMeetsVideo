@@ -142,4 +142,8 @@ enum RefusalReason {
     /// A paste refused: a nested timeline into itself, or clips whose
     /// footage didn't come along.
     static let paste = "Those clips can't be pasted here. A timeline can't be pasted into itself or into a timeline it contains."
+
+    /// A drag on the viewer refused because a Keyframing effect writes the
+    /// control it would change, where there's no warning to offer baking.
+    static let drivenControl = "A Keyframing effect writes this control's keyframes. Bake them to change it by hand."
 }

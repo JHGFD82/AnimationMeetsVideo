@@ -459,11 +459,11 @@ struct PenOverlay: View {
         switch refusal {
         case .nothingToMask:
             show(notice: refusal.message ?? "")
-        case .locked:
-            if let projectState { projectState.onRefused(.lockedClip) } else { NSSound.beep() }
+        case .locked, .driven(.locked):
+            if let projectState { projectState.onRefused(.lockedClip) } else { ClipLockRefusal.signal() }
         case .driven(.driven(let keyframingID, let effectID, let controlID)):
             guard let projectState, let clip = project.clipAndLayer(current()?.target.clipID ?? UUID(), in: source.timelineID)?.clip else {
-                NSSound.beep()
+                RefusalNotice.shared.tell(RefusalReason.drivenControl)
                 return
             }
             projectState.onRefused(.drivenKeyframes(DrivenKeyframesEdit(
@@ -471,8 +471,6 @@ struct PenOverlay: View {
                 controlName: project.name(of: .control(effectID: effectID, controlID: controlID), in: clip),
                 methodName: clip.effect(id: keyframingID)?.kind.name ?? "Keyframing"
             )))
-        case .driven:
-            NSSound.beep()
         }
     }
 
