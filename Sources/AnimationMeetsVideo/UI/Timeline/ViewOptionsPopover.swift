@@ -27,7 +27,7 @@ struct ViewOptionsPopover: View {
                 Slider(value: $zoomFraction, in: 0...1)
                     .accessibilityLabel("Zoom")
                     .accessibilityValue("\(Int((zoomFraction * 100).rounded())) percent")
-                Button("Fit to window", action: onFit)
+                Button("Fit to Window", action: onFit)
                     .help("Also on the \\ key")
                 Toggle("Follow the playhead while playing", isOn: $followsPlayhead)
                     .help("When zoomed in, the view turns a page each time playback runs off its edge")

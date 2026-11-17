@@ -15,7 +15,7 @@ struct ProjectCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New Project") {
+            Button("New Project…") {
                 Task {
                     guard let url = await ProjectSession.createProject() else { return }
                     ProjectWindows.shared.open(url, from: session, openWindow: openWindow)
