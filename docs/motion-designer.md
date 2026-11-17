@@ -70,8 +70,9 @@ else around it, by dragging frames along a time graph.
   when the panel closes it is recorded as a step of its own, under the
   retiming's, so undoing the retiming keeps it.
 - **The panel** floats over the editor like the beat match panel: the
-  editor is darkened and takes no input while it is open, not even
-  hovering or skimming (`WindowInputBlock`); the Timeline menu and the
+  editor is dimmed, with a note saying the designer is open, and takes no
+  clicks, hovering or skimming while it is open (`WindowInputBlock`),
+  though the timeline can still be scrolled and zoomed to look along it; the Timeline menu and the
   Edit menu's commands for the timeline and effects rest
   (`focusedSceneValueUnlessDrafting`), and the panel
   has an undo of its own for its changes, which the timeline follows.
