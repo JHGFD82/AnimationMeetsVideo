@@ -1763,3 +1763,68 @@ private struct Sandbox {
         #expect(try await loadingMessage { _ in } == "loaded")
     }
 }
+
+// MARK: - Free paths (docs/pen-tool.md, "Saving")
+
+extension ProjectStoreTests {
+    @Test func roundTripKeepsPathsAndPathMasks() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        let path = FreePath(vertices: [
+            .init(CGPoint(x: -20, y: -10), out: CGVector(dx: 5, dy: -5)),
+            .init(CGPoint(x: 20, y: -10), in: CGVector(dx: -5, dy: -5), out: CGVector(dx: 5, dy: 5)),
+            .init(CGPoint(x: 0, y: 30)),
+        ], closed: true)
+        let added = project.addEffect(.pathMask, toClip: clipID, in: timelineID)
+        let maskID = try #require(added)
+        project.editEffect(maskID, ofClip: clipID, in: timelineID) { effect in
+            effect.changeControl(.path) { control in
+                control.number.setAnimated(true, at: .zero)
+                control.setPath(path, at: .zero)
+                var later = path
+                later.vertices[2].point.y = 40
+                control.setPath(later, at: CMTime(value: 1, timescale: 1))
+            }
+        }
+        let layer = project.addShapeLayer(.path, to: timelineID)
+        let shape = try #require(layer)
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            clip.effects[0].changeControl(.path) { $0.setPath(FreePath(vertices: path.vertices, closed: false), at: .zero) }
+        }
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(json.contains("\"pathMask\"") && json.contains("\"closed\""))
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter).project
+        let mask = try #require(loaded.clipAndLayer(clipID, in: timelineID)?.clip.effect(id: maskID)?.control(.path))
+        #expect(mask.closed)
+        #expect(mask.number.keyframes.count == 2)
+        #expect(mask.freePath(at: .zero) == path)
+        let open = try #require(loaded.clipAndLayer(shape.clipID, in: timelineID)?.clip.effects.first?.control(.path))
+        #expect(!open.closed)
+        #expect(open.freePath(at: .zero).vertices == path.vertices)
+    }
+
+    @Test func loadingRefusesAVertexOfFiveNumbers() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        let layer = project.addShapeLayer(.path, to: project.rootTimelineID)
+        let shape = try #require(layer)
+        project.editClip(shape.clipID, in: project.rootTimelineID) { clip in
+            clip.effects[0].changeControl(.path) {
+                $0.setPath(FreePath(vertices: [.init(CGPoint(x: 1.5, y: 2.5)), .init(CGPoint(x: 3.5, y: 4.5))]), at: .zero)
+            }
+        }
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        var json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        let range = try #require(json.range(of: #"\[\s*1\.5,\s*2\.5,\s*0,\s*0,\s*0,\s*0\s*\]"#, options: .regularExpression))
+        json.replaceSubrange(range, with: "[1.5, 2.5, 0, 0, 0]")
+        try json.write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
+        await #expect(throws: (any Error).self) {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        }
+    }
+}

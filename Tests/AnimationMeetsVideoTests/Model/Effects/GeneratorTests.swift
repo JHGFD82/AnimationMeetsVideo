@@ -20,7 +20,7 @@ import Testing
     }
 
     @Test @MainActor func theGeneratorsAreTextThenTheShapesAndNoneIsInTheEffectsLibrary() {
-        #expect(EffectKind.generators == [.text, .rectangle, .ellipse, .polygon, .star])
+        #expect(EffectKind.generators == [.text, .rectangle, .ellipse, .polygon, .star, .path])
         let library = EffectsListPanel.kinds
         #expect(library.allSatisfy { !$0.drawsShape })
         // What works on text and shapes in their clip's stack stays.

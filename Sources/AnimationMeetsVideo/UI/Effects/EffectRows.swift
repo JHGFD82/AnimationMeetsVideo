@@ -115,6 +115,9 @@ struct ParameterRow<MenuContent: View>: View {
     /// Shown instead of the values, for a control edited elsewhere: a
     /// curve, on its effect's graph.
     var summary: String?
+    /// A button after the summary that goes where it is edited: a path's
+    /// Draw with Pen.
+    var summaryAction: (title: String, help: String, action: () -> Void)?
     /// The method making its keyframes, if one does, as a badge that opens
     /// the Keyframe Designer.
     var method: KeyframeMethodBadgeInfo?
@@ -178,6 +181,13 @@ struct ParameterRow<MenuContent: View>: View {
                 Text(summary)
                     .foregroundStyle(Design.textTertiary)
                     .lineLimit(1)
+                if let summaryAction {
+                    Button(summaryAction.title, action: summaryAction.action)
+                        .controlSize(.mini)
+                        .help(summaryAction.help)
+                        .accessibilityLabel("\(summaryAction.title), \(name)")
+                        .accessibilityHint(summaryAction.help)
+                }
             } else if let color {
                 HeldColorWell(name: name, selection: color)
                     .labelsHidden()

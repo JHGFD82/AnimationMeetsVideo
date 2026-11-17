@@ -14,6 +14,12 @@ extension EffectKind {
     static let ellipse = EffectKind(builtIn: "ellipse")
     static let polygon = EffectKind(builtIn: "polygon")
     static let star = EffectKind(builtIn: "star")
+    /// A free path drawn with the pen (see docs/pen-tool.md).
+    static let path = EffectKind(builtIn: "path")
+    /// Cuts the picture to a free path drawn with the pen: Swift, not a
+    /// package, since a package's kernel takes numbers and a path is a
+    /// drawing.
+    static let pathMask = EffectKind(builtIn: "pathMask")
     /// A block of text whose outline is its glyphs, set with Core Text.
     static let text = EffectKind(builtIn: "text")
     /// Moves, scales, turns, fades and recolors a range of the letters of
@@ -145,6 +151,11 @@ extension ControlKind {
     static let shapeRotation = ControlKind(builtIn: "shapeRotation")
     // Star
     static let innerRadius = ControlKind(builtIn: "innerRadius")
+    // Path and Path Mask
+    static let path = ControlKind(builtIn: "path")
+    static let maskFeather = ControlKind(builtIn: "maskFeather")
+    static let maskExpand = ControlKind(builtIn: "maskExpand")
+    static let maskKeep = ControlKind(builtIn: "maskKeep")
     // Text
     static let fontSize = ControlKind(builtIn: "fontSize")
     static let leading = ControlKind(builtIn: "leading")
@@ -275,7 +286,7 @@ enum BuiltInEffects {
         "gaussianBlur", "directionalBlur", "zoomBlur", "spinBlur", "lensBlur", "tiltShift", "surfaceBlur", "sharpen", "unsharpMask",
         // Keying & Masks
         "chromaKey", "lumaKey", "differenceKey", "spillSuppressor", "matteChoker",
-        "rectangleMask", "ellipseMask", "fourPointMask", "gradientMask", "alphaTools",
+        "rectangleMask", "ellipseMask", "fourPointMask", "pathMask", "gradientMask", "alphaTools",
         // Light
         "glow", "bloom", "halation", "lightRays", "lensFlare", "lightLeak", "spotlight", "vignette",
         // Stylize
@@ -286,7 +297,7 @@ enum BuiltInEffects {
         "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",
         "displace", "liquid", "twirl", "wave", "kaleidoscope", "mirrorTile", "chromaticAberration",
         "flowSmear", "slitScan", "feedback",
-        "rectangle", "ellipse", "polygon", "star", "text", "textAnimator", "stroke",
+        "rectangle", "ellipse", "polygon", "star", "path", "text", "textAnimator", "stroke",
         "equalizer", "compressor", "limiter", "voiceIsolation",
         "audioKeys", "beatKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot", "expression",
     ]
@@ -326,6 +337,14 @@ enum BuiltInEffects {
         EffectDefinition(
             .star, "Star", .shapes, "star",
             sections: EffectKind.shapeSections([.points, .radius, .innerRadius, .cornerRadius, .shapeRotation, .shapePosition])
+        ),
+        // Drawn with the pen; filled only once its path is closed.
+        EffectDefinition(.path, "Path", .shapes, "pencil.tip", sections: EffectKind.shapeSections([.path, .shapePosition])),
+        // Cuts the picture to a path drawn with the pen, in the frame's
+        // pixels at its place in the stack.
+        EffectDefinition(
+            .pathMask, "Path Mask", .keying, "pencil.and.outline",
+            controls: [.path, .maskFeather, .maskExpand, .maskKeep, .amount], dependsOnPixelSize: true
         ),
         // Its outline is its glyphs, so it fills, strokes and stays sharp
         // as the other shapes do.
@@ -454,6 +473,13 @@ enum BuiltInEffects {
         ControlDefinition(.shapeRotation, "Rotation", .polygon, defaults: [0], unit: "°"),
         // Star
         ControlDefinition(.innerRadius, "Inner Radius", .star, defaults: [90], unit: " px", range: 0...50_000),
+        // Path: its vertices, six numbers each (`FreePath`); none at first.
+        ControlDefinition(path: .path, "Path", .path),
+        // Path Mask: the edge softened across Feather, centered on it; the
+        // path grown by Expand (shrunk when negative); which side is kept.
+        ControlDefinition(.maskFeather, "Feather", .pathMask, defaults: [0], unit: " px", range: 0...10_000),
+        ControlDefinition(.maskExpand, "Expand", .pathMask, defaults: [0], unit: " px", range: -10_000...10_000),
+        ControlDefinition(.maskKeep, "Keep", .pathMask, choice: MaskKeep.inside),
         // Text
         // Character
         ControlDefinition(.fontSize, "Size", .text, defaults: [120], unit: " px", range: 1...10_000),

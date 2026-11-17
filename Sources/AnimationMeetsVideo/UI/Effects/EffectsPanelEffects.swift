@@ -1,3 +1,4 @@
+import AppKit
 import CoreMedia
 import SwiftUI
 
@@ -246,6 +247,7 @@ extension EffectsPanel {
                 .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
             Button("Rename") { renamingEffectID = effect.id }
         }
+        convertToPathItem(effect, in: clip)
         Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
         keyframeDesignerItem(effect, in: clip)
         if !effect.kind.isAudio, effect.missing == nil {
@@ -308,11 +310,39 @@ extension EffectsPanel {
         graphs?.showDesigner(KeyframeDesignerKey(timelineID: timelineID, clipID: clip.id), target: target)
     }
 
+    /// Convert to Path, for a Rectangle, Ellipse, Polygon or Star: the same
+    /// shape as a Path, in its place in the stack, its points the shape's
+    /// at the playhead, to edit with the pen (see docs/pen-tool.md).
+    @ViewBuilder
+    private func convertToPathItem(_ effect: Effect, in clip: TimelineClip) -> some View {
+        if Effect.convertibleToPath.contains(effect.kind) {
+            Button("Convert to Path") {
+                // Read as it acts: the panel isn't drawn again as the
+                // playhead moves.
+                let time = clip.sourceTime(atTimelineTime: playhead.time)
+                guard let path = effect.convertedToPath(at: time) else {
+                    NSSound.beep()
+                    return
+                }
+                editClip(clip.id) { clip in
+                    guard let index = clip.effects.index(of: effect.id) else { return }
+                    clip.effects[index] = path
+                }
+                // A method writing to the shape's outline has nothing left
+                // to write to.
+                project.removeOrphanedKeyframing(onClip: clip.id, in: timelineID)
+                state.select(effect: path.id)
+            }
+            .help("Turn the shape into a path of points, to edit with the pen")
+        }
+    }
+
     /// The ⋯ menu of a graphic clip's drawing: what changes its settings,
     /// not what would treat it as an effect in the stack.
     @ViewBuilder
     private func drawingMenu(_ effect: Effect, in clip: TimelineClip) -> some View {
         keyframeDesignerItem(effect, in: clip)
+        convertToPathItem(effect, in: clip)
         Button("Reset") { editEffect(effect.id, in: clip) { $0.reset(in: timeline?.frameSize) } }
             .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
         let addable = effect.missingControlKinds.filter { effect.kind.panelLists($0) }

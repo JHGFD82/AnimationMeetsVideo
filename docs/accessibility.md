@@ -98,6 +98,7 @@ the glyphs badly or not at all; a new glyph needs a name there.
 | ⌃⌥H | Hold the keyframes at the playhead |
 | H | Show or hide handles in the viewer on the selected clip (also View > Show Handles) |
 | ⌘+ / ⌘− / ⌘0 / ⇧⌘0 | Zoom the viewer in, out, to fit, or center its frame (View menu; ⌘= zooms in too) |
+| P | Pick the pen in the viewer; P again picks the arrow (see [pen-tool.md](pen-tool.md)) |
 
 The viewer's handles take keys of their own once the viewer is clicked
 while they show (see [viewer-handles.md](viewer-handles.md#keys)): Tab
@@ -203,6 +204,35 @@ playhead to the middle of the view when it lands out of view.
 - **The external display**, synced, has the same canvas and elements
   over its picture, and a Show Handles switch in its top bar; the zoom
   keys work there too, since the canvas takes them itself.
+
+### The pen
+
+See [pen-tool.md](pen-tool.md#accessibility). Once the viewer is
+clicked with the pen picked, it takes Return (end the path; a mask is
+closed), Escape (cancel the path being drawn, or with nothing drawn
+put the arrow back), ⌘Return (add a point after the picked one, or the
+first at the middle of the frame), ⌥Return (make the picked point
+linear or ease), ⌫ (remove the picked points, or the last while
+drawing), ⌘A (pick every point), Tab and ⇧Tab (pick a point) and the
+arrows (nudge the picked points). With the arrow and a Path or Path
+Mask selected, ⌘A picks every point too, while the viewer has the
+keys. Space
+held is the hand and never plays while the pen is picked, except that a
+control with the keyboard keeps Space to press it.
+
+- **Each point** is an adjustable element ("Point 3, X, ease"), across
+  and down, with actions Add Point After, Remove Point, Make Linear or
+  Make Ease, and Close Path or Open Path; with the arrow, also Add to
+  Picked Points (or Remove from Picked Points) and Pick All Points,
+  VoiceOver's ⌘-click. The pen itself is a group named "Pen" with End
+  Path, Cancel Path, Add Point and Pick All Points.
+- **The chip** saying a Path or Path Mask waits for its path is read
+  once as it appears; a refusal ("Select a clip to mask.") is read too.
+- **The tool picker** in the viewer's rail is labelled "Viewer Tool"
+  with Arrow and Pen; beside it while the pen is picked, "New Path"
+  (Shape or Mask) and the "Path Color" well with its color's name.
+- **The Path row's** Draw with Pen or Edit with Pen button names the
+  row it is on. The pen's lines, points and preview are decorative.
 
 ### Effects panel lanes
 

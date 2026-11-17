@@ -191,7 +191,7 @@ struct ResolvedClip: Equatable {
     var changesPixels: Bool {
         steps.contains {
             switch $0 {
-            case .blend, .color, .matte, .shape, .outlineStroke, .look: true
+            case .blend, .color, .matte, .pathMask, .shape, .outlineStroke, .look: true
             case .place, .mark: false
             }
         }

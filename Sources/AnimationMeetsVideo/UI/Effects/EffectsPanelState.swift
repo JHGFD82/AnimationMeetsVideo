@@ -14,6 +14,10 @@ final class EffectsPanelState {
     private(set) var pickedRows = SelectionSet<UUID>()
     /// The keyframes picked in the lanes.
     let keyframes = LaneKeyframePicks()
+    /// Picks the viewer's pen to draw or edit the path of an effect (a
+    /// Path or Path Mask), by its clip and its ID: the Path row's Draw with
+    /// Pen. Set by the surface that has the viewer.
+    @ObservationIgnored var drawWithPen: ((_ clipID: UUID, _ effectID: UUID) -> Void)?
     /// Effects folded up in the stack; the rest show their controls.
     var collapsed: Set<UUID> = []
     /// The clip's own sections folded up, the same for every clip.

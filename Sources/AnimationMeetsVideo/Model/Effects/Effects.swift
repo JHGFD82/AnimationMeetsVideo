@@ -278,6 +278,10 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// `ToneCurve`), not as numbers.
     var isCurve: Bool { definition.isCurve }
 
+    /// Whether it is a free path (`FreePath`), drawn with the pen, not
+    /// typed.
+    var isPath: Bool { definition.isPath }
+
     /// The color a curve's line is drawn in.
     var curveTint: CurveTint { definition.curveTint }
 
@@ -390,6 +394,8 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     /// corner easing into the edge as an app icon's does, instead of a
     /// circular arc meeting it abruptly. Found in the control's menu.
     var squircle = false
+    /// For a path: whether it is closed. Not keyframed.
+    var closed = false
 
     init(id: UUID = UUID(), kind: ControlKind, enabled: Bool = true) {
         self.id = id
@@ -437,13 +443,13 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     /// doesn't count.
     var isAtDefault: Bool {
         let definition = kind.definition
-        return !number.isAnimated && number.value == definition.defaultValue && choice == definition.defaultChoice && !squircle
+        return !number.isAnimated && number.value == definition.defaultValue && choice == definition.defaultChoice && !squircle && !closed
     }
 
     /// Whether it holds what `fresh`, a new control of its kind as its
     /// effect would make it (a shape's size fitted to the frame), does.
     func isAtDefault(like fresh: EffectControl) -> Bool {
-        !number.isAnimated && number.value == fresh.number.value && choice == fresh.choice && !squircle
+        !number.isAnimated && number.value == fresh.number.value && choice == fresh.choice && !squircle && closed == fresh.closed
     }
 
     /// The control's components at `source time`.
@@ -460,6 +466,7 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         number = fresh.number
         choice = fresh.choice
         squircle = fresh.squircle
+        closed = fresh.closed
     }
 
     /// Sets one component at `time` (a keyframe when animated). Linked
@@ -468,7 +475,7 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         guard newValue.isFinite, !kind.isChoice else { return }
         var values = number.value(at: time).values
         assert(
-            kind.definition.isCurve || kind.definition.effectKind.definition.package == nil || values.count == kind.defaultValues.count,
+            kind.definition.isCurve || kind.definition.isPath || kind.definition.effectKind.definition.package == nil || values.count == kind.defaultValues.count,
             "\(kind.rawValue) holds \(values.count) numbers, not its package's \(kind.defaultValues.count): it wasn't fitted (Effect.fitToPackage)"
         )
         guard values.indices.contains(index) else { return }
@@ -580,6 +587,14 @@ struct Effect: Identifiable, Equatable, Sendable {
         if definition.isLook {
             guard let amount = control(.amount), amount.enabled else { return false }
             return !amount.number.isAnimated && amount.number.value.values.first == 0
+        }
+        if kind == .pathMask {
+            // Without a closed path, or at 0%, nothing is cut.
+            guard let path = control(.path), path.enabled, FreePath(values: path.number.value.values, closed: path.closed).encloses
+                    || path.number.keyframes.contains(where: { FreePath(values: $0.value.values, closed: path.closed).encloses })
+            else { return true }
+            guard let amount = control(.amount) else { return false }
+            return amount.enabled && !amount.number.isAnimated && amount.number.value.values.first == 0
         }
         if kind == .matte {
             // Without a picture to cut with, or at 0%, nothing changes.

@@ -5,8 +5,9 @@ the handles, the zoom and scroll, the keys and VoiceOver, and the
 opacity chip, in every editor surface's viewer and on the synced
 external display, whose markup is gone; the point controls' handles;
 the loupe a held press opens; the handles and guides packages declare
-in `viewer`; and a selected shape's or text block's handles. A pen tool
-and free paths' vertices wait on free paths in the model. None of it
+in `viewer`; and a selected shape's or text block's handles. The pen
+and a selected path's points and tangents are built, described in
+[pen-tool.md](pen-tool.md). None of it
 has been built or run yet (see [As built](#as-built)). Where the code differs from what follows is listed
 under [As built](#as-built). The document says what the person sees,
 then the framework the handles are built on, then where each piece goes
@@ -556,7 +557,10 @@ place (`ViewerHandleSets.active(for:)`):
 - `TransformHandles` for a visual clip that isn't an adjustment clip,
   unless the effect selected in the panel has handles of its own;
 - that effect's handles (later stages) when it has;
-- a tool's own set (a pen's path being drawn) when the tool says so.
+- for a Path or Path Mask, `PathHandles`, its points and tangents;
+- with the pen picked, the pen's own view (`PenOverlay`) in place of
+  them all, whether or not Show Handles is on
+  ([pen-tool.md](pen-tool.md)).
 
 ### Tools
 
@@ -567,10 +571,14 @@ canvas's cursor, as `TimelineTool` does for the tracks.
 enum ViewerTool: String, CaseIterable, Identifiable {
     /// Drags handles. A press on nothing does nothing.
     case arrow
-    // Later: pen (a press adds a vertex), rectangle, ellipse, text,
-    // hand (a drag scrolls the view), each with its own key.
+    /// Draws paths (see pen-tool.md); P.
+    case pen
+    // Later: rectangle, ellipse, text, each with its own key.
 }
 ```
+
+The pen brought the picker (`ViewerToolPicker`) into the viewer's rail
+and the external display's top bar.
 
 With one tool there is no picker. The second tool brings one into the
 viewer's rail, built as `TimelineToolPicker` is.
@@ -707,8 +715,9 @@ picture follows.
 
 ## An effect's own handles
 
-Point controls, declared handles and the shapes' handles are built
-(steps 8, 10 and 11); a pen tool waits on free paths.
+Point controls, declared handles, the shapes' handles and a path's
+points and tangents are built (steps 8, 10 and 11, and
+[pen-tool.md](pen-tool.md)).
 
 - **Point controls** (step 8, built). A package's `point` control is "a
   position from the middle of the frame, in the timeline's pixels"
@@ -739,11 +748,9 @@ Point controls, declared handles and the shapes' handles are built
   `viewerHandles: (any ViewerHandleSet)?`. First the shapes (Size,
   Position, Rotation, Corner Radius) and a text box's width, which is
   step 4 of [graphic-layers.md](graphic-layers.md#building-it).
-- **A pen tool** is a `ViewerTool` whose press on nothing adds a vertex,
-  plus a `PathHandles` set for vertices and tangents. It waits on free
-  paths in the model ([graphic-layers.md](graphic-layers.md#saving)).
-  Masks drawn the same way wait on a mask effect that takes a path
-  ([effects-keying.md](effects-keying.md)).
+- **The pen** (built) is a `ViewerTool` whose press on nothing adds a
+  point, with a `PathHandles` set for a Path's or Path Mask's points
+  and tangents, which the arrow drags. See [pen-tool.md](pen-tool.md).
 
 An adjustment clip gets no Transform handles, but the effects on it can
 show their own: a Spotlight on an adjustment clip is placed in the
@@ -936,11 +943,12 @@ Following [accessibility.md](accessibility.md#rules-for-new-ui):
 - **Snapping** to the frame's middle and edges, and guides.
 - **Motion paths**: a keyframed Position drawn as a path with its
   keyframes as handles.
-- **A hand tool** and Space-drag to scroll the viewer, zooming with a
-  mouse's wheel, and a menu of zoom sizes.
+- **A hand tool** of its own, and Space-drag to scroll the viewer with
+  the arrow (the pen's Space is a hand: [pen-tool.md](pen-tool.md)),
+  zooming with a mouse's wheel, and a menu of zoom sizes.
 - **Crop and corner pin** handles.
-- The pen, shape and text tools themselves, and free paths; this plan
-  only makes room for them.
+- Shape and text tools; the pen and free paths are in
+  [pen-tool.md](pen-tool.md).
 
 ## As built
 

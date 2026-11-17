@@ -288,7 +288,8 @@ struct EffectDefinition: Sendable {
 
     fileprivate func resolved() -> EffectDefinition {
         var resolved = self
-        resolved.isLook = EffectPackageStore.categories.contains(category)
+        // Path Mask is in Keying & Masks but drawn by Swift, as its own step.
+        resolved.isLook = EffectPackageStore.categories.contains(category) && kind != .pathMask
         resolved.drawsShape = category == .shapes && kind != .stroke && kind != .textAnimator
         if let package {
             resolved.readsBesidePixels = (package.kernelType != .color && !package.readsOnlyItsPixel) || !package.after.isEmpty
@@ -330,6 +331,9 @@ struct ControlDefinition: Sendable {
     var isCurve = false
     /// For a curve: the color its line is drawn in on the graph.
     var curveTint = CurveTint.white
+    /// Whether it is a free path (`FreePath`), its vertices' numbers in
+    /// turn, drawn with the pen rather than typed.
+    var isPath = false
     /// For an EQ band's control: the band.
     var equalizerBand: EqualizerBand?
     /// Whether it is a package's `point`: a position from the middle of
@@ -395,6 +399,15 @@ struct ControlDefinition: Sendable {
         curveTint = tint
     }
 
+    /// A free path, holding no vertices until it is drawn.
+    init(path kind: ControlKind, _ name: String, _ effectKind: EffectKind) {
+        self.kind = kind
+        self.name = name
+        self.effectKind = effectKind
+        componentNames = []
+        isPath = true
+    }
+
     /// With what follows from the rest filled in; `owner` is the definition
     /// of `effectKind`.
     fileprivate func resolved(owner: EffectDefinition?) -> ControlDefinition {
@@ -443,3 +456,4 @@ extension OscillatorWave: ControlChoice {}
 extension LoopMode: ControlChoice {}
 extension LoopSide: ControlChoice {}
 extension KeyCurve: ControlChoice {}
+extension MaskKeep: ControlChoice {}

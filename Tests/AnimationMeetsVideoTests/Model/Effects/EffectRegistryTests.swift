@@ -45,7 +45,8 @@ import Testing
     }
 
     @Test func numbersStartWithinTheirRange() {
-        for control in BuiltInEffects.controls where !control.kind.isChoice {
+        // A path starts with no vertices: it is drawn with the pen.
+        for control in BuiltInEffects.controls where !control.kind.isChoice && !control.isPath {
             #expect(!control.defaultValues.isEmpty, "\(control.kind.rawValue)")
             for (index, value) in control.defaultValues.enumerated() {
                 #expect(control.kind.clamped(value, index: index) == value, "\(control.kind.rawValue)[\(index)]")
@@ -58,7 +59,8 @@ import Testing
     @Test func whatIsWorkedOutAgreesWithTheDefinitions() {
         for kind in registry.effects.map(\.kind) {
             let definition = kind.definition
-            #expect(kind.isLook == EffectPackageStore.categories.contains(definition.category), "\(kind.rawValue)")
+            // Path Mask is in Keying & Masks but Swift's own step.
+            #expect(kind.isLook == (EffectPackageStore.categories.contains(definition.category) && kind != .pathMask), "\(kind.rawValue)")
             #expect(kind.drawsShape == (kind.isShape && kind != .stroke && kind != .textAnimator), "\(kind.rawValue)")
             for control in kind.controlKinds where control.effectKind == kind {
                 let neutral = switch kind {

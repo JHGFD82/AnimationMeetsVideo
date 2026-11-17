@@ -50,9 +50,10 @@ final class EventHarness {
         NSApp.sendEvent(event)
     }
 
-    func key(code: UInt16, characters: String, flags: NSEvent.ModifierFlags = []) {
+    /// A key going down, or with `.keyUp` coming up.
+    func key(code: UInt16, characters: String, flags: NSEvent.ModifierFlags = [], type: NSEvent.EventType = .keyDown) {
         guard let event = NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+            with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters,
             isARepeat: false, keyCode: code
         ) else { return }

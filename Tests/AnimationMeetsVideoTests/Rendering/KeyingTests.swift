@@ -100,9 +100,11 @@ private struct Picture {
         let keying = EffectKind.all.filter { $0.category == .keying }.map(\.rawValue)
         #expect(keying == [
             "chromaKey", "lumaKey", "differenceKey", "spillSuppressor", "matteChoker",
-            "rectangleMask", "ellipseMask", "fourPointMask", "gradientMask", "alphaTools",
+            "rectangleMask", "ellipseMask", "fourPointMask", "pathMask", "gradientMask", "alphaTools",
         ])
-        for id in keying {
+        // Path Mask is Swift's: a path is a drawing, not numbers a kernel takes.
+        #expect(EffectKind.pathMask.definition.package == nil)
+        for id in keying where id != "pathMask" {
             let package = try #require(try Self.kind(id).definition.package)
             #expect(PackageKernels.problem(for: package) == nil, "\(id)")
         }
@@ -341,5 +343,141 @@ private struct Picture {
         let luma = try run("fromLuma")
         #expect(luma[1].w == 1 && luma[0].w < 0.25 && luma[0].w > 0)
         #expect(try run("invert", amount: 0) == draw([], h))
+    }
+}
+
+// MARK: - Path Mask (docs/pen-tool.md)
+
+/// Path Mask, which is Swift, drawn through the compositor: a white clip
+/// over black, cut to a box 40 by 40 about the middle of the 128 by 72
+/// frame (44 to 84 across, 16 to 56 down).
+@Suite struct PathMaskTests {
+    private let second = CMTime(seconds: 1, preferredTimescale: 600)
+
+    private var box: FreePath {
+        FreePath(vertices: [
+            .init(CGPoint(x: -20, y: -20)), .init(CGPoint(x: 20, y: -20)),
+            .init(CGPoint(x: 20, y: 20)), .init(CGPoint(x: -20, y: 20)),
+        ], closed: true)
+    }
+
+    /// A white clip with a Path Mask set by `change`, after `before` (the
+    /// effects above it).
+    private func masked(
+        _ fixture: inout DrawingFixture, before: [Effect] = [], after: [Effect] = [], _ change: (inout Effect) -> Void = { _ in }
+    ) async throws -> UUID {
+        let clip = try await fixture.addClip(luma: 255)
+        var mask = Effect(kind: .pathMask)
+        mask.changeControl(.path) { $0.setPath(box, at: .zero) }
+        change(&mask)
+        fixture.project.editClip(clip.clipID, in: fixture.timelineID) { $0.effects = before + [mask] + after }
+        return clip.clipID
+    }
+
+    private func level(_ x: Double, _ y: Double, of composed: ComposedTimeline) async throws -> Int {
+        try await grayLevel(of: composed, at: second, x: (x + 0.5) / 128, y: (y + 0.5) / 72)
+    }
+
+    private func set(_ kind: ControlKind, _ values: [Double]) -> (inout Effect) -> Void {
+        { effect in effect.changeControl(kind) { $0.number = AnimatedValue(ComponentValue(values: values)) } }
+    }
+
+    @Test func opaqueInsideAndClearOutside() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        try await masked(&fixture)
+        let composed = try await fixture.build()
+        #expect(try await level(64, 36, of: composed) > 240)
+        #expect(try await level(46, 18, of: composed) > 240)
+        #expect(try await level(40, 36, of: composed) < 10)
+        #expect(try await level(64, 10, of: composed) < 10)
+    }
+
+    @Test func halfAtTheEdgeOfItsFeather() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        try await masked(&fixture, set(.maskFeather, [16]))
+        let composed = try await fixture.build()
+        // The edge is at x = 44; the ramp centered on it.
+        let edge = try await grayLevel(of: composed, at: second, x: 44 / 128, y: 36.5 / 72)
+        #expect((80...175).contains(edge), "\(edge)")
+        #expect(try await level(64, 36, of: composed) > 240)
+        #expect(try await level(30, 36, of: composed) < 10)
+        let inner = try await level(48, 36, of: composed), outer = try await level(40, 36, of: composed)
+        #expect(inner > outer)
+    }
+
+    @Test func expandGrowsAndShrinks() async throws {
+        var grown = try DrawingFixture()
+        defer { grown.cleanUp() }
+        try await masked(&grown, set(.maskExpand, [8]))
+        var composed = try await grown.build()
+        #expect(try await level(39, 36, of: composed) > 240)
+        #expect(try await level(33, 36, of: composed) < 10)
+
+        var shrunk = try DrawingFixture()
+        defer { shrunk.cleanUp() }
+        try await masked(&shrunk, set(.maskExpand, [-8]))
+        composed = try await shrunk.build()
+        #expect(try await level(48, 36, of: composed) < 10)
+        #expect(try await level(54, 36, of: composed) > 240)
+    }
+
+    @Test func keepOutsideCutsTheInside() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        try await masked(&fixture) { $0.changeControl(.maskKeep) { $0.choice = MaskKeep.outside.rawValue } }
+        let composed = try await fixture.build()
+        #expect(try await level(64, 36, of: composed) < 10)
+        #expect(try await level(20, 36, of: composed) > 240)
+    }
+
+    @Test func amountZeroAndAnOpenPathCutNothing() async throws {
+        var none = try DrawingFixture()
+        defer { none.cleanUp() }
+        try await masked(&none, set(.amount, [0]))
+        var composed = try await none.build()
+        #expect(try await level(20, 36, of: composed) > 240)
+
+        var open = try DrawingFixture()
+        defer { open.cleanUp() }
+        try await masked(&open) { $0.changeControl(.path) { $0.closed = false } }
+        composed = try await open.build()
+        #expect(try await level(20, 36, of: composed) > 240)
+    }
+
+    @Test func aLayerBelowShowsWhereItIsCut() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        // A gray clip below, then the masked white one above it.
+        try await fixture.addClip(luma: 128)
+        try await masked(&fixture)
+        let composed = try await fixture.build()
+        #expect(try await level(64, 36, of: composed) > 240)
+        let below = try await level(20, 36, of: composed)
+        #expect((100...160).contains(below), "\(below)")
+    }
+
+    @Test func aTransformBelowMovesTheMaskAndOneAboveDoesNot() async throws {
+        func moved(by dx: Double) -> Effect {
+            var effect = Effect(kind: .transform, controls: [EffectControl(kind: .position)])
+            effect.controls[0].number = AnimatedValue(ComponentValue(values: [dx, 0]))
+            return effect
+        }
+        var below = try DrawingFixture()
+        defer { below.cleanUp() }
+        try await masked(&below, after: [moved(by: 30)])
+        var composed = try await below.build()
+        // The box moved with the picture, to 74 to 114.
+        #expect(try await level(100, 36, of: composed) > 240)
+        #expect(try await level(60, 36, of: composed) < 10)
+
+        var above = try DrawingFixture()
+        defer { above.cleanUp() }
+        try await masked(&above, before: [moved(by: 30)])
+        composed = try await above.build()
+        // The picture moved under a box that stayed put.
+        #expect(try await level(60, 36, of: composed) > 240)
+        #expect(try await level(100, 36, of: composed) < 10)
     }
 }

@@ -255,15 +255,8 @@ struct TransitionCurve: Equatable, Sendable {
     }
 }
 
+// `+` and `-` between points and vectors are FreePath.swift's.
 private extension CGPoint {
-    static func + (point: CGPoint, offset: CGVector) -> CGPoint {
-        CGPoint(x: point.x + offset.dx, y: point.y + offset.dy)
-    }
-
-    static func - (a: CGPoint, b: CGPoint) -> CGVector {
-        CGVector(dx: a.x - b.x, dy: a.y - b.y)
-    }
-
     func lerp(_ other: CGPoint, _ s: CGFloat) -> CGPoint {
         CGPoint(x: x + (other.x - x) * s, y: y + (other.y - y) * s)
     }

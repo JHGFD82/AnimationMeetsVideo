@@ -424,6 +424,8 @@ struct ProjectFile: Codable {
     enum ControlValueEntry: Codable, Equatable {
         case number(Double)
         case numbers([Double])
+        /// A path's vertices, six numbers each (`FreePath`).
+        case vertices([[Double]])
         case text(String)
 
         init(from decoder: Decoder) throws {
@@ -432,6 +434,8 @@ struct ProjectFile: Codable {
                 self = .number(number)
             } else if let numbers = try? container.decode([Double].self) {
                 self = .numbers(numbers)
+            } else if let vertices = try? container.decode([[Double]].self) {
+                self = .vertices(vertices)
             } else {
                 self = .text(try container.decode(String.self))
             }
@@ -442,8 +446,16 @@ struct ProjectFile: Codable {
             switch self {
             case .number(let number): try container.encode(number)
             case .numbers(let numbers): try container.encode(numbers)
+            case .vertices(let vertices): try container.encode(vertices)
             case .text(let text): try container.encode(text)
             }
+        }
+
+        /// A path's numbers as its vertices.
+        init(path components: ComponentValue) {
+            let n = FreePath.numbersPerVertex
+            let values = components.values
+            self = .vertices(stride(from: 0, to: values.count - n + 1, by: n).map { Array(values[$0..<($0 + n)]) })
         }
 
         init(_ components: ComponentValue) {
@@ -454,6 +466,7 @@ struct ProjectFile: Codable {
             switch self {
             case .number(let number): ComponentValue(values: [number])
             case .numbers(let numbers): ComponentValue(values: numbers)
+            case .vertices(let vertices): ComponentValue(values: vertices.flatMap { $0 })
             case .text: nil
             }
         }
@@ -479,6 +492,8 @@ struct ProjectFile: Codable {
         var linked: Bool?
         /// Corners only; absent unless squircle.
         var squircle: Bool?
+        /// Paths only; absent while open.
+        var closed: Bool?
         var value: ControlValueEntry?
         var keyframes: [KeyframeEntry<ControlValueEntry>]?
 
@@ -488,8 +503,15 @@ struct ProjectFile: Codable {
             enabled = control.enabled ? nil : false
             linked = control.kind.isLinkable && control.linked != control.kind.linksByDefault ? control.linked : nil
             squircle = control.kind == .cornerRadius && control.squircle ? true : nil
+            closed = control.kind.isPath && control.closed ? true : nil
             if control.kind.isChoice {
                 value = .text(control.choice ?? control.kind.defaultChoice ?? "")
+            } else if control.kind.isPath {
+                if control.number.isAnimated {
+                    keyframes = control.number.keyframes.map { KeyframeEntry($0, value: ControlValueEntry(path: $0.value)) }
+                } else {
+                    value = ControlValueEntry(path: control.number.value)
+                }
             } else if control.number.isAnimated {
                 keyframes = control.number.keyframes.map { KeyframeEntry($0, value: ControlValueEntry($0.value)) }
             } else {
@@ -505,6 +527,7 @@ struct ProjectFile: Codable {
             var control = EffectControl(id: id, kind: kind, enabled: enabled ?? true)
             control.linked = linked ?? kind.linksByDefault
             control.squircle = squircle ?? false
+            control.closed = kind.isPath && closed == true
             if kind.isChoice {
                 if case .text(let name) = value { control.choice = name }
                 return control
@@ -585,7 +608,7 @@ struct ProjectFile: Codable {
             combine = setup.combine == .add ? nil : setup.combine.rawValue
             start = setup.range.map { TimeEntry($0.start) }
             end = setup.range.map { TimeEntry($0.end) }
-            base = setup.base.map { PropertyEntry($0, encode: ControlValueEntry.init) }
+            base = setup.base.map { PropertyEntry($0, encode: { ControlValueEntry($0) }) }
             beatLayer = setup.beatLayer
             switch setup.audioSource {
             case .mix?: listensToMix = true
@@ -1276,6 +1299,8 @@ extension ProjectFile {
             case _ where kind.isChoice: .choice(kind.choiceOptions.map(\.id), noun: kind.name.lowercased())
             // A curve's points, as many as it has.
             case _ where kind.isCurve: .numbers(count: nil)
+            // A path's vertices, six numbers each.
+            case _ where kind.isPath: .array(.numbers(count: FreePath.numbersPerVertex))
             default: count > 1 ? .numbers(count: count) : .number
             }
             var fields: [O.Field] = [
@@ -1288,6 +1313,7 @@ extension ProjectFile {
             }
             if kind.isLinkable { fields.append(.optional("linked", .bool)) }
             if kind == .cornerRadius { fields.append(.optional("squircle", .bool)) }
+            if kind.isPath { fields.append(.optional("closed", .bool)) }
             return object(fields, oneOf: kind.isChoice ? [] : [["value", "keyframes"]])
         }
 

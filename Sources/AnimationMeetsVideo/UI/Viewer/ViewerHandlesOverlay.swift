@@ -42,6 +42,7 @@ struct ViewerHandlesOverlay: View {
     let showsOtherPicture: Bool
 
     @AppStorage(Preferences.viewerHandles) private var showsHandles = false
+    @AppStorage(Preferences.penColor) private var penColor = Preferences.defaultPenColor
     @Environment(ProjectState.self) private var projectState: ProjectState?
     @Environment(\.projectHistory) private var history
     @Environment(ActivePanel.self) private var activePanel: ActivePanel?
@@ -109,7 +110,7 @@ struct ViewerHandlesOverlay: View {
         .focused($isFocused)
         .claimsKeys(Self.keys, while: $isFocused)
         .onKeyPress(keys: Self.keys) { press in handleKey(press, shown) }
-        .background(KeyPressMonitor { toggleKey($0) })
+        .background(KeyPressMonitor { toggleKey($0) || selectAllKey($0) })
         .accessibilityElement(children: .contain)
         .accessibilityLabel(shown.map { "Handles of \($0.name)" } ?? "")
         .accessibilityHidden(shown == nil)
@@ -167,9 +168,18 @@ struct ViewerHandlesOverlay: View {
             selectedEffectID: source.effectsState.selectedEffectID,
             shownUpTo: showing?.clipID == original.id ? showing?.effectID : nil,
             pixelsPerPoint: mapping.pixelsPerPoint,
-            isLocked: projectState?.lockedClipIDs.contains(original.id) ?? false
+            isLocked: projectState?.lockedClipIDs.contains(original.id) ?? false,
+            picked: source.state.picked,
+            pickedPoints: Self.pickedPoints(of: drawn, source.effectsState.selectedEffectID, at: sourceTime, state: source.state)
         )
         return Shown(clip: drawn, original: original, context: context, sets: sets, name: project.clipName(original.id, in: source.timelineID))
+    }
+
+    /// The points of the selected path picked together, while it has as
+    /// many points as when they were picked.
+    static func pickedPoints(of clip: TimelineClip, _ effectID: UUID?, at time: CMTime, state: ViewerCanvasState) -> Set<Int> {
+        guard let effectID, let control = clip.effect(id: effectID)?.control(.path) else { return [] }
+        return state.pickedPoints(of: effectID, count: control.freePath(at: time).vertices.count)
     }
 
     /// The clip as the handles draw it: as the canvas's drag has it, or
@@ -243,6 +253,7 @@ struct ViewerHandlesOverlay: View {
         _ shown: Shown, _ list: [ViewerHandle], through map: ViewerMapping, inLoupe: Bool = false, in context: inout GraphicsContext
     ) {
         let drag = source.state.drag.flatMap { $0.clipID == shown.original.id ? $0 : nil }
+        let pathColor = PathDrawing.color(penColor)
         for set in shown.sets {
             for outline in set.outlines(shown.context) {
                 var path = Path()
@@ -257,6 +268,10 @@ struct ViewerHandlesOverlay: View {
                     // the clip's box.
                     context.stroke(path, with: .color(.black.opacity(0.35)), lineWidth: 2.5)
                     context.stroke(path, with: .color(.white.opacity(0.85)), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                case .path:
+                    PathDrawing.line(path, color: pathColor, in: &context)
+                case .tangent:
+                    PathDrawing.tangentLine(path, color: pathColor, in: &context)
                 }
             }
         }
@@ -284,7 +299,8 @@ struct ViewerHandlesOverlay: View {
             // While dragging, only the crosshair stays, for a scale or a
             // turn; the loupe shows them all, for what is near.
             // A point being dragged stays, as it is all there is to see.
-            let isDraggedPoint = (handle.glyph == .round || handle.glyph == .diamond) && handle.id == drag?.handle
+            let isPoint = [HandleGlyph.round, .diamond, .vertex, .pickedVertex, .tangent].contains(handle.glyph)
+            let isDraggedPoint = isPoint && handle.id == drag?.handle
             if drag != nil, !inLoupe, !(levered && handle.id == .anchor), !isDraggedPoint { continue }
             let place = map.toView(handle.place)
             let alpha = handle.isEnabled ? 1.0 : 0.4
@@ -308,6 +324,10 @@ struct ViewerHandlesOverlay: View {
                 diamond.closeSubpath()
                 context.fill(diamond, with: .color(.white.opacity(alpha)))
                 context.stroke(diamond, with: .color(Design.accent.opacity(alpha)), lineWidth: 1)
+            case .vertex, .pickedVertex:
+                PathDrawing.vertex(at: place, picked: handle.glyph == .pickedVertex, color: pathColor, alpha: alpha, in: &context)
+            case .tangent:
+                PathDrawing.tangentEnd(at: place, color: pathColor, alpha: alpha, in: &context)
             case .crosshair:
                 var cross = Path()
                 cross.move(to: CGPoint(x: place.x - 5, y: place.y))
@@ -585,9 +605,16 @@ struct ViewerHandlesOverlay: View {
             book.set = id.flatMap { owner(of: $0, shown, at: value.startLocation) }
             if let id, book.set != nil {
                 if refuse(id, shown) || list.first(where: { $0.id == id })?.isEnabled == false { book.isDead = true }
+                if !book.isDead, book.set is PathHandles { pickPoint(id, shown) }
             } else {
-                // The arrow tool: a press on nothing does nothing.
+                // The arrow tool: a press on nothing does nothing, but for
+                // ⌘ on a path's, which lets its picked points go.
                 book.isDead = true
+                if NSEvent.modifierFlags.contains(.command), shown.sets.contains(where: { $0 is PathHandles }),
+                   let effectID = source.effectsState.selectedEffectID {
+                    source.state.pickPoints([], of: effectID, count: 0)
+                    if PathHandles.Part(source.state.picked) != nil { source.state.picked = .move }
+                }
             }
             // Held still on a handle that is a place on the picture, the
             // press opens the loupe; the opacity chip has nothing to show,
@@ -664,6 +691,7 @@ struct ViewerHandlesOverlay: View {
         context.newTransform = TransformHandles.newTransform(for: context.clip)
         book.shown = context
         book.began = true
+        book.didDrag = true
         let flags = NSEvent.modifierFlags
         book.drag = HandleDrag(handle: id, start: mapping.toFrame(book.startView), shift: flags.contains(.shift), option: flags.contains(.option))
         history?.beginGesture()
@@ -732,8 +760,66 @@ struct ViewerHandlesOverlay: View {
     }
 
     private func dragEnded() {
+        // A click, never dragged, picks as a click does (`PathPointPicking`).
+        if let click = book.pointsOnClick, !book.didDrag {
+            source.state.pickPoints(click.points, of: click.effectID, count: click.count)
+            if !click.points.contains(PathHandles.Part(source.state.picked)?.vertex ?? -1) {
+                source.state.picked = click.points.min().map { PathHandles.Part.vertex($0).handle } ?? .move
+            }
+        }
         finishDrag()
         book.release()
+    }
+
+    // MARK: Picking a path's points
+
+    /// A press on a path's point picks as `PathPointPicking` says: the
+    /// points a drag moves now, and what a click leaves for the release.
+    private func pickPoint(_ id: HandleID, _ shown: Shown) {
+        guard case .vertex(let index)? = PathHandles.Part(id), let effectID = source.effectsState.selectedEffectID,
+              let located = PathHandles.locate(effectID, shown.context)
+        else { return }
+        let count = located.path.vertices.count
+        let press = PathPointPicking.press(
+            on: index, picked: PathHandles.selected(shown.context, in: located.path),
+            command: NSEvent.modifierFlags.contains(.command)
+        )
+        source.state.picked = id
+        source.state.pickPoints(press.points, of: effectID, count: count)
+        book.pointsOnClick = (effectID, count, press.onClick)
+        book.shown?.picked = id
+        book.shown?.pickedPoints = press.points
+    }
+
+    /// ⌘A picks every point of the selected path, while the viewer has the
+    /// keys and the path's handles show.
+    private func selectAllKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard isFocused, flags == .command, event.charactersIgnoringModifiers?.lowercased() == "a" else { return false }
+        return pickAllPoints()
+    }
+
+    @discardableResult
+    private func pickAllPoints() -> Bool {
+        guard let shown = resolve(), shown.sets.contains(where: { $0 is PathHandles }),
+              let effectID = source.effectsState.selectedEffectID, let located = PathHandles.locate(effectID, shown.context),
+              !located.path.isEmpty
+        else { return false }
+        let count = located.path.vertices.count
+        if PathHandles.Part(source.state.picked) == nil { source.state.picked = PathHandles.Part.vertex(0).handle }
+        source.state.pickPoints(Set(0..<count), of: effectID, count: count)
+        return true
+    }
+
+    /// VoiceOver's way to ⌘-click a point: it joins the points picked, or
+    /// leaves them.
+    private func togglePicked(_ handle: HandleID, _ shown: Shown) {
+        guard case .vertex(let index)? = PathHandles.Part(handle), let effectID = source.effectsState.selectedEffectID,
+              let located = PathHandles.locate(effectID, shown.context)
+        else { return }
+        var points = PathHandles.selected(shown.context, in: located.path)
+        if points.contains(index) { points.remove(index) } else { points.insert(index) }
+        source.state.pickPoints(points, of: effectID, count: located.path.vertices.count)
     }
 
     /// The drag let go: its last step goes to the project, as one undo.
@@ -879,6 +965,11 @@ struct ViewerHandlesOverlay: View {
                 Button(axis.larger.increment) { nudge(handle, on: set, axis.increment, .large, shown) }
                 Button(axis.larger.decrement) { nudge(handle, on: set, axis.decrement, .large, shown) }
                 Button("Reset") { reset(handle, on: set, shown) }
+                if set is PathHandles {
+                    let picked = PathHandles.Part(handle).map { shown.context.pickedPoints.contains($0.vertex) } ?? false
+                    Button(picked ? "Remove from Picked Points" : "Add to Picked Points") { togglePicked(handle, shown) }
+                    Button("Pick All Points") { pickAllPoints() }
+                }
                 ForEach(Array(target.actions.enumerated()), id: \.offset) { _, action in
                     Button(action.name) { perform(action, on: handle, shown) }
                 }
@@ -929,12 +1020,20 @@ private final class HandleDragBook {
     /// y up) as the drag took it, for putting it back.
     private var grabbedOnScreen = CGPoint.zero
 
+    /// A drag began during this press.
+    var didDrag = false
+    /// The points of a path a click, if it isn't dragged, leaves picked
+    /// (`PathPointPicking`).
+    var pointsOnClick: (effectID: UUID, count: Int, points: Set<Int>)?
+
     func press(at point: CGPoint) {
         isPressed = true
         startView = point
         pointer = point
         isDead = false
         began = false
+        didDrag = false
+        pointsOnClick = nil
     }
 
     /// Calls `onChange` as Shift or Option is pressed or let go, with the

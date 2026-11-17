@@ -120,6 +120,7 @@ struct ExternalViewerContent: View {
                     Toggle("Show Handles", isOn: $showsHandles)
                         .toggleStyle(.switch)
                         .help("Show handles on the clip selected in the timeline (H)")
+                    ViewerToolPicker(state: canvasState)
                 }
                 Spacer()
                 Button("Close") { onClose() }

@@ -21,7 +21,10 @@ final class TimelinePreview {
 
     private let build: Task<ComposedTimeline?, Never>
     private var generators: [Int: AVAssetImageGenerator] = [:]
-    private let pictures = NSCache<NSString, NSImage>()
+    /// The pictures made, kept until there are too many or memory runs
+    /// short (`PictureCache`): about sixteen megabytes' worth, some hundreds
+    /// of a filmstrip's frames.
+    private let pictures = PictureCache(pixelLimit: 4_000_000)
 
     /// Pictures made at once across every timeline, as for files.
     private static let limiter = FrameThumbnails.Limiter(slots: 2)
@@ -58,7 +61,9 @@ final class TimelinePreview {
         build.cancel()
     }
 
-    /// The picture `image(at:height:)` made, if it is still kept.
+    /// The picture `image(at:height:)` made, if it is still kept: until a
+    /// few hundred others have been made since it was last asked for, or
+    /// the system warns that memory is low.
     func cachedImage(at time: CMTime, height: CGFloat) -> NSImage? {
         pictures.object(forKey: Self.pictureKey(time, pixels: Self.pixels(height)))
     }
