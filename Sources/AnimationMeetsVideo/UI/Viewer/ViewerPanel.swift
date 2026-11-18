@@ -43,10 +43,9 @@ struct ViewerPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                // The well is the darkest surface in the app and the only
-                // one with nothing behind it, so the composition's own
-                // frame edge stays visible even on a black frame.
-                Design.Surface.well.color
+                // A dim grey, not black, so a black frame's edge stays
+                // visible against what's around it.
+                Design.viewerSurround
                 // Always there, emptied timeline or not: the picture it shows
                 // stays until a newer one replaces it, so a timeline emptied
                 // and filled again (an undo) never shows black between.
@@ -60,7 +59,7 @@ struct ViewerPanel: View {
                 ViewerFramingChips(framing: framing)
                 if !hasContent {
                     ZStack {
-                        Design.Surface.well.color
+                        Design.viewerSurround
                         ContentUnavailableView("No clips yet", systemImage: "film",
                                                description: Text("Import media into the Clips list (⌘I), then drag a scene onto the timeline."))
                     }

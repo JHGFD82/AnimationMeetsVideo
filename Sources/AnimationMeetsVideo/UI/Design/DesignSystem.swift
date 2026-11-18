@@ -11,7 +11,7 @@ import SwiftUI
 /// Three rules hold the look together:
 ///
 /// 1. **Depth means function.** Surfaces run on one ladder from `well` (the
-///    viewer backdrop) up to `floating` (sheets). Anything you *operate*
+///    deepest recess) up to `floating` (sheets). Anything you *operate*
 ///    — rails, headers, buttons — sits on a raised surface with a bevel.
 ///    Anything you *look into* — the picture, the track area — is sunken.
 ///    `Surfaces.swift` turns a level into pixels.
@@ -35,7 +35,7 @@ enum Design {
     /// a slight blue cast, so stacked panels separate without any one
     /// reading as tinted.
     enum Surface {
-        /// Behind the picture, and behind nothing else.
+        /// The deepest recess: fields, meters, wells you type or look into.
         case well
         /// Recessed areas you look into: the track area, list bodies.
         case sunken
@@ -59,6 +59,13 @@ enum Design {
             }
         }
     }
+
+    /// Around the picture in the viewer. A step lighter than `well`, and
+    /// off the ladder: video black has to read as the frame's own, never
+    /// as the space around it, so the surround is a dim grey that stays
+    /// clearly apart from black yet still darker than the panel round it
+    /// (`Surface.base`).
+    static let viewerSurround = hex(0x181B1F)
 
     /// The dark line between surfaces. Paired with `bevelLight` below it,
     /// this is the groove that separates layers and panels.
