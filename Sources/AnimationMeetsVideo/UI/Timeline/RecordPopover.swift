@@ -25,7 +25,7 @@ struct RecordPopover: View {
     @AppStorage(Preferences.recordingSource) private var sourceKey = "input:"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.group + 2) {
+        PopoverFrame {
             SheetSection("Record from") {
                 Picker("Record from", selection: $sourceKey) {
                     Section("Inputs") {
@@ -88,8 +88,6 @@ struct RecordPopover: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(Design.Space.rail)
-        .frame(width: 300)
         .onAppear { apps = AudioApps.list() }
     }
 

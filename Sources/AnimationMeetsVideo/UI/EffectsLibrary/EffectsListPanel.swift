@@ -127,7 +127,7 @@ struct EffectLibraryChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: problem == nil ? kind.systemImage : "exclamationmark.triangle")
+            Image(systemName: problem == nil ? kind.systemImage : Design.Symbol.warning)
                 .foregroundStyle(problem != nil ? Design.statusWarning : isHovering ? Design.textPrimary : Design.textSecondary)
                 .frame(width: 16)
             Text(kind.name)

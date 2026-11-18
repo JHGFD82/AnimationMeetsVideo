@@ -22,7 +22,7 @@ struct PackageProblemRow: View {
                     .textSelection(.enabled)
             }
         } icon: {
-            Image(systemName: "exclamationmark.triangle")
+            Image(systemName: Design.Symbol.warning)
                 .foregroundStyle(Design.statusWarning)
         }
         .font(Design.Typeface.label)

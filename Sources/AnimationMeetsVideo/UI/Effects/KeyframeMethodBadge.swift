@@ -34,7 +34,7 @@ struct KeyframeMethodBadge: View {
     var body: some View {
         let tone = info.attention == nil ? Design.generatedKeyframe : Design.statusWarning
         Button(action: onOpen) {
-            Image(systemName: info.attention == nil ? info.systemImage : "exclamationmark.triangle.fill")
+            Image(systemName: info.attention == nil ? info.systemImage : Design.Symbol.warning)
                 .font(Design.Typeface.glyphTiny)
                 .foregroundStyle(tone)
                 .frame(width: 22, height: 14)

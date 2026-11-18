@@ -31,7 +31,7 @@ struct TransitionSoundLane: View {
 
         ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 3)
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                     .fill(tone.opacity(0.14))
                 CrossfadeCurve(shape: shape, rising: false)
                     .stroke(tone.opacity(0.7), lineWidth: 1.5)
@@ -47,7 +47,7 @@ struct TransitionSoundLane: View {
                     .offset(x: cutX)
             }
             .frame(width: spanWidth, height: Self.height, alignment: .topLeading)
-            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(tone, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous).strokeBorder(tone, lineWidth: 1))
             .contentShape(Rectangle())
             .contextMenu { menu }
             .help("\(shape.name) crossfade of the two clips' sound. Its timing follows the transition; detach the sound to fade it by hand.")

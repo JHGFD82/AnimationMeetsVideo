@@ -226,7 +226,7 @@ struct EqualizerGraph: View {
             endDrag()
         }
         .opacity(isDimmed ? 0.55 : 1)
-        .background(Color.black.opacity(0.18))
+        .background(Design.Surface.sunken.color)
         .focusable()
         .focusEffectDisabled()
         .focused($isFocused)

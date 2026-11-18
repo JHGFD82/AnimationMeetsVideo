@@ -7,19 +7,18 @@ struct NewShapePopover: View {
     let onAdd: (EffectKind) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        PopoverFrame(width: Design.PopoverWidth.compact, spacing: 2) {
             Text("New Shape Layer")
-                .font(Design.Typeface.label)
+                .font(Design.Typeface.groupTitle)
                 .foregroundStyle(Design.textSecondary)
-                .padding(.horizontal, 6)
-                .padding(.bottom, 2)
+                .accessibilityAddTraits(.isHeader)
+                .padding(.bottom, Design.Space.tight)
             ForEach(EffectKind.all.filter(\.drawsShape)) { kind in
                 Button {
                     onAdd(kind)
                 } label: {
                     Label(kind.name, systemImage: kind.systemImage)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .contentShape(Rectangle())
                 }
@@ -30,7 +29,5 @@ struct NewShapePopover: View {
                       : "Add a shape layer with a \(kind.name.lowercased()) at the playhead")
             }
         }
-        .padding(Design.Space.step)
-        .frame(minWidth: 170)
     }
 }

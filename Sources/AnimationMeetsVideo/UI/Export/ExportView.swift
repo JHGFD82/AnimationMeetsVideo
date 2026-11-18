@@ -136,7 +136,7 @@ struct ExportView: View {
     private var pasteChangesNote: some View {
         let count = export.pasteChangeCount
         return HStack(alignment: .firstTextBaseline, spacing: Design.Space.group) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: Design.Symbol.warning)
                 .foregroundStyle(Design.statusWarning)
                 .accessibilityHidden(true)
             Text("\(count) pasted effect change\(count == 1 ? "" : "s") to resolve before exporting.")

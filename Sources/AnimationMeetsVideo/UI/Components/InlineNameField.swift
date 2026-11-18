@@ -60,9 +60,9 @@ struct InlineNameField: View {
             // Just outside the name, so the text stays where it was.
             .padding(.horizontal, 3)
             .padding(.vertical, 1)
-            .background(Design.Surface.well.color, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .background(Design.Surface.well.color, in: RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                     .strokeBorder(Design.accent, lineWidth: 1.5)
             }
             .padding(.horizontal, -3)

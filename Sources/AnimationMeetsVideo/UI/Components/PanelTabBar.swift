@@ -38,7 +38,7 @@ struct PanelTabBar<Tab: Hashable & Identifiable, Accessory: View>: View {
                 .accessibilityLabel(closeHelp)
             }
         }
-        .padding(.horizontal, Design.Space.group)
+        .padding(.horizontal, Design.Space.rail)
         .padding(.vertical, Design.Space.close)
         .rail(.raised)
     }

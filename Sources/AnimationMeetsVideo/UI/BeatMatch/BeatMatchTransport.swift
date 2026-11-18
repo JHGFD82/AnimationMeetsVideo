@@ -17,6 +17,7 @@ struct BeatMatchTransport: View {
                     Image(systemName: session.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
                         .frame(width: 18)
                 }
+                .buttonStyle(.icon)
                 .disabled(!session.canPlay)
                 .help(session.isPlaying ? "Pause (Space)" : session.canPlay ? "Play (Space)" : "Play (Space), once the song is read")
                 .accessibilityLabel(session.isPlaying ? "Pause" : "Play")
@@ -97,9 +98,9 @@ private struct TickControls: View {
                 // The arrow on the button's bottom edge: the popover hangs
                 // below, into the window, from the transport at its top.
                 .popover(isPresented: $showsSettings, arrowEdge: .bottom) {
-                    ClickToneControls(frequency: $frequency, volume: $volume) { session.clicks.preview() }
-                        .frame(width: 300)
-                        .padding(Design.Space.group)
+                    PopoverFrame {
+                        ClickToneControls(frequency: $frequency, volume: $volume) { session.clicks.preview() }
+                    }
                 }
             }
         }

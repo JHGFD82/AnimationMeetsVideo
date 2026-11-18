@@ -35,7 +35,7 @@ struct ExpressionEditor: View {
                 notAllowed
             }
             if let failure {
-                Label(failure, systemImage: "exclamationmark.triangle")
+                Label(failure, systemImage: Design.Symbol.warning)
                     .font(Design.Typeface.micro)
                     .foregroundStyle(Design.statusWarning)
                     .fixedSize(horizontal: false, vertical: true)

@@ -25,7 +25,7 @@ struct MotionDesignSidebar: View {
                         guidance
                     }
                     if let message = session.message {
-                        Label(message, systemImage: "exclamationmark.triangle.fill")
+                        Label(message, systemImage: Design.Symbol.warning)
                             .font(Design.Typeface.label)
                             .foregroundStyle(Design.statusWarning)
                             .fixedSize(horizontal: false, vertical: true)

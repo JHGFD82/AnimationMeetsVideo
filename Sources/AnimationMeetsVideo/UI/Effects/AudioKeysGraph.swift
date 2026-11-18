@@ -70,8 +70,8 @@ struct AudioKeysGraph: View {
             .gesture(dragGesture(plot: plot))
         }
         .onDisappear(perform: endDrag)
-        .background(Color.black.opacity(0.25))
-        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        .background(Design.Surface.sunken.color)
+        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
         .opacity(isDimmed ? 0.5 : 1)
         .help("Drag the box's edges to choose the frequencies it listens to and the levels that read as nothing and as full; drag inside to move it")
         .accessibilityElement()

@@ -58,8 +58,8 @@ struct ProjectStartView: View {
                     Button("Quit") { NSApp.terminate(nil) }
                 }
                 Spacer()
-                Button("Open project…", action: onOpen)
-                Button("New project…", action: onNew)
+                Button("Open Project…", action: onOpen)
+                Button("New Project…", action: onNew)
                     .buttonStyle(.borderedProminent)
                     .tint(Design.accentFill)
                     .keyboardShortcut(.defaultAction)
@@ -105,7 +105,7 @@ private struct RecentProjectRow: View {
             .padding(.vertical, Design.Space.tight + 1)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
                     .fill(isHovered ? Design.Surface.raised.color : .clear)
             )
         }

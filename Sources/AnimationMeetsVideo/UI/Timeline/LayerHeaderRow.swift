@@ -53,16 +53,11 @@ struct LayerHeaderRow: View {
         HStack(spacing: 6) {
             Group {
                 if let isExpanded {
-                    Button(action: onToggleExpanded) {
-                        Image(systemName: "chevron.right")
-                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                            .frame(width: 12, height: 12)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help(isExpanded ? "Hide volume (⇧L)" : "Show volume (⇧L)")
-                    .accessibilityLabel("Volume of \(displayName)")
-                    .accessibilityValue(isExpanded ? "Shown" : "Hidden")
+                    DisclosureChevron(
+                        isExpanded: isExpanded, label: "Volume of \(displayName)",
+                        help: isExpanded ? "Hide volume (⇧L)" : "Show volume (⇧L)",
+                        action: onToggleExpanded
+                    )
                 } else {
                     Color.clear
                 }

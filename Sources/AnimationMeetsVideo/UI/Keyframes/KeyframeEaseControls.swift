@@ -10,16 +10,18 @@ struct KeyframeEaseControls: View {
     let time: CMTime
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.group) {
+        PopoverFrame(spacing: Design.Space.group) {
+            // Headed as a popover's or sheet's group is.
             Text("Ease Handles")
                 .font(Design.Typeface.groupTitle)
+                .foregroundStyle(Design.textSecondary)
                 .accessibilityAddTraits(.isHeader)
             if let value = hud.project.components(of: key),
                let index = value.keyframes.firstIndex(where: { $0.time == time }) {
                 let frame = value.keyframes[index]
                 side("Ease In", ease: frame.easeIn,
                      available: index > 0 && !value.keyframes[index - 1].hold, outgoing: false)
-                Divider()
+                Groove()
                 side("Ease Out", ease: frame.easeOut,
                      available: index + 1 < value.keyframes.count && !frame.hold, outgoing: true)
                 Text("Speed is a percent of the steady speed between keyframes.")
@@ -29,12 +31,11 @@ struct KeyframeEaseControls: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("This keyframe is no longer present.")
+                    .foregroundStyle(Design.textTertiary)
             }
         }
         .font(Design.Typeface.label)
         .controlSize(.small)
-        .padding(Design.Space.group)
-        .frame(width: 300)
     }
 
     private func side(_ name: String, ease: KeyframeEase?, available: Bool, outgoing: Bool) -> some View {

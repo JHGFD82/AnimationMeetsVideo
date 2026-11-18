@@ -177,16 +177,15 @@ struct KeyframeGraphView: View {
             let c = context(draft ?? committed ?? stored, timeline: timeline, axis: axis)
             VStack(spacing: 0) {
                 toolbar(c)
-                Divider()
                 if shared == nil {
                     HStack(spacing: Design.Space.step) {
                         KeyframeEasePresets(hud: hud, key: key, targets: presetTargets(c), axis: c.axis, timeline: c.timeline)
                     }
                     .font(Design.Typeface.label)
                     .controlSize(.small)
-                    .padding(.horizontal, Design.Space.step)
+                    .padding(.horizontal, Design.Space.rail)
                     .padding(.vertical, Design.Space.close)
-                    Divider()
+                    .rail(.raised)
                 }
                 GeometryReader { geometry in
                     // The time row over the first graph of a panel, to
@@ -223,11 +222,13 @@ struct KeyframeGraphView: View {
                     }
                 }
                 if shared == nil {
-                    Divider()
+                    Groove()
                     zoomBar(c)
                 }
             }
-            .background(Color.black.opacity(0.2))
+            // The plot is looked into, as the track area is; the bars
+            // around it are rails.
+            .background(Design.Surface.sunken.color)
             .onChange(of: stored) { _, stored in
                 committed = nil
                 // An undo, or an edit elsewhere, can take selected
@@ -462,8 +463,9 @@ struct KeyframeGraphView: View {
             ZoomSlider(fraction: timeZoomFraction(c), label: "Time zoom", help: "Zoom time about the playhead (pinch)")
             fitButton
         }
-        .padding(.horizontal, Design.Space.step)
+        .padding(.horizontal, Design.Space.rail)
         .frame(height: Self.zoomBarHeight)
+        .rail(.raised)
     }
 
     static let zoomBarHeight: CGFloat = 24
@@ -653,7 +655,7 @@ struct KeyframeGraphView: View {
                 GraphLoopToggle()
             }
             if names.count > 1 {
-                Toggle(isOn: $viewport.separateScales) { Image(systemName: "arrow.up.and.down.text.horizontal") }
+                Toggle(isOn: $viewport.separateScales) { Image(systemName: Design.Symbol.separateScales) }
                     .toggleStyle(.icon)
                     .help(viewport.separateScales
                           ? "Draw every component on one value scale"
@@ -677,8 +679,9 @@ struct KeyframeGraphView: View {
         }
         .font(Design.Typeface.label)
         .controlSize(.small)
-        .padding(.horizontal, Design.Space.step)
+        .padding(.horizontal, Design.Space.rail)
         .padding(.vertical, Design.Space.close)
+        .rail(.raised)
     }
 
     /// The graph's name in a linked panel; clicking it, or the graph, has
@@ -987,13 +990,8 @@ struct KeyframeGraphView: View {
     @ViewBuilder
     private var lassoOverlay: some View {
         if let lassoRect {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(Design.accent.opacity(0.12))
-                .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Design.accent.opacity(0.9), lineWidth: 1) }
-                .frame(width: lassoRect.width, height: lassoRect.height)
+            LassoRectangle(size: lassoRect.size)
                 .offset(x: lassoRect.minX, y: lassoRect.minY)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
         }
     }
 

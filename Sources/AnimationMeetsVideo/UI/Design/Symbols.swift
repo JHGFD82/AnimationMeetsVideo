@@ -36,6 +36,8 @@ extension Design {
         static let close = "xmark"
         static let remove = "minus.circle"
         static let edit = "pencil"
+        /// Starting over, and a value put back where it began
+        /// (`RowResetButton`): both take back what was changed.
         static let startOver = "arrow.counterclockwise"
         static let undo = "arrow.uturn.backward"
         static let redo = "arrow.uturn.forward"
@@ -51,5 +53,15 @@ extension Design {
 
         /// Something asked for that wasn't done (`RefusalNotice`).
         static let refused = "exclamationmark.circle"
+        /// Something that needs a look: a missing file, a failed read, a
+        /// paste that changed things, a sheet's warning. Outlined, as the
+        /// refusal and the sheets' other callouts are, in every size.
+        static let warning = "exclamationmark.triangle"
+
+        /// Bringing another open graph into a graph editor panel.
+        static let linkGraph = "link.badge.plus"
+        /// Drawing each of a graph's components on a value scale of its
+        /// own. Not the text leading's glyph, which looks alike.
+        static let separateScales = "ruler"
     }
 }

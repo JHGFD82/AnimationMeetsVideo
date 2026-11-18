@@ -276,7 +276,7 @@ struct SheetCallout: View {
         var symbol: String {
             switch self {
             case .info: "info.circle"
-            case .warning: "exclamationmark.triangle"
+            case .warning: Design.Symbol.warning
             case .danger: "xmark.octagon"
             }
         }

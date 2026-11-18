@@ -91,7 +91,7 @@ struct EditorToolbar: View {
                     exportAfterAccepting = false
                     showsPasteChanges = true
                 } label: {
-                    Label("\(pasteChanges.count)", systemImage: "exclamationmark.triangle.fill")
+                    Label("\(pasteChanges.count)", systemImage: Design.Symbol.warning)
                         .foregroundStyle(Design.statusWarning)
                 }
                 .help("\(pasteChanges.count) pasted effect change\(pasteChanges.count == 1 ? "" : "s") to resolve before exporting")

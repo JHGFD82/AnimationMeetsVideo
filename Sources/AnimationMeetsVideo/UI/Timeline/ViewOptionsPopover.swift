@@ -22,13 +22,13 @@ struct ViewOptionsPopover: View {
     @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.group + 2) {
+        PopoverFrame {
             SheetSection("Zoom") {
                 Slider(value: $zoomFraction, in: 0...1)
                     .accessibilityLabel("Zoom")
                     .accessibilityValue("\(Int((zoomFraction * 100).rounded())) percent")
-                Button("Fit to window", action: onFit)
-                    .help("Also on the \\ key")
+                Button("Fit to Window", action: onFit)
+                    .help("Fit the whole timeline in view (\\)")
                 Toggle("Follow the playhead while playing", isOn: $followsPlayhead)
                     .help("When zoomed in, the view turns a page each time playback runs off its edge")
             }
@@ -101,8 +101,5 @@ struct ViewOptionsPopover: View {
                 }
             }
         }
-        .padding(Design.Space.rail)
-        .frame(width: 300)
-        .background(Design.Surface.overlay.color)
     }
 }

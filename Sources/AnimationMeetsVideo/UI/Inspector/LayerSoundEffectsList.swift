@@ -55,16 +55,9 @@ struct LayerSoundEffectsList: View {
     private func header(_ effect: Effect, at index: Int) -> some View {
         let isOpen = open.contains(effect.id)
         return HStack(spacing: Design.Space.step) {
-            Button {
+            DisclosureChevron(isExpanded: isOpen, label: "\(effect.displayName)'s settings") {
                 if isOpen { open.remove(effect.id) } else { open.insert(effect.id) }
-            } label: {
-                Image(systemName: isOpen ? "chevron.down" : "chevron.right")
-                    .frame(width: 12)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Design.textSecondary)
-            .help(isOpen ? "Hide \(effect.displayName)'s settings" : "Show \(effect.displayName)'s settings")
-            .accessibilityLabel(isOpen ? "Hide \(effect.displayName)'s settings" : "Show \(effect.displayName)'s settings")
             Toggle(effect.displayName, isOn: Binding(
                 get: { effect.enabled },
                 set: { value in edit(effect) { $0.enabled = value } }
@@ -72,7 +65,7 @@ struct LayerSoundEffectsList: View {
             .toggleStyle(.checkbox)
             .opacity(effect.isNoOp ? 0.6 : 1)
             Spacer(minLength: 0)
-            Menu {
+            RowMenu(name: effect.displayName, help: "Move, reset or delete \(effect.displayName)") {
                 Button("Move Up") { project.moveEffect(effect.id, ofLayer: layer.id, in: timelineID, toIndex: index - 1) }
                     .disabled(index == 0)
                 Button("Move Down") { project.moveEffect(effect.id, ofLayer: layer.id, in: timelineID, toIndex: index + 1) }
@@ -80,14 +73,7 @@ struct LayerSoundEffectsList: View {
                 Button("Reset") { edit(effect) { $0.reset() } }
                 Divider()
                 Button("Delete", role: .destructive) { project.removeEffect(effect.id, fromLayer: layer.id, in: timelineID) }
-            } label: {
-                Image(systemName: "ellipsis")
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Move, reset or delete \(effect.displayName)")
-            .accessibilityLabel("\(effect.displayName) options")
         }
         .font(Design.Typeface.label)
     }

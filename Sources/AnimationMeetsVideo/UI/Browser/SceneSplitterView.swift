@@ -127,8 +127,8 @@ private struct SplitterTransport: View {
                 .accessibilityLabel("Back one frame")
                 .help("Move the marker back one frame (←, Shift for ten)")
             Button { splitter.togglePlay() } label: {
-                Image(systemName: splitter.skim.isPlaying ? "pause.fill" : "play.fill")
-                    .frame(width: 16)
+                Image(systemName: splitter.skim.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
+                    .frame(width: 18)
                     .contentTransition(.symbolEffect(.replace))
             }
             .accessibilityLabel(splitter.skim.isPlaying ? "Pause" : "Play")
@@ -155,13 +155,13 @@ private struct SplitterTransport: View {
                 Image(systemName: splitter.isSoundOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
                     .frame(width: 18)
             }
-            .toggleStyle(.button)
+            .toggleStyle(.icon)
             .accessibilityLabel("Sound")
             .accessibilityValue(splitter.isSoundOn ? "on" : "off")
             .help(splitter.isSoundOn ? "Skimming and playing are heard. Click to silence them." : "Skimming and playing are silent. Click to hear them.")
         }
-        .buttonStyle(.borderless)
-        .font(Design.Typeface.icon)
+        // The same quiet glyphs as the other designers' transports.
+        .buttonStyle(.icon)
     }
 }
 

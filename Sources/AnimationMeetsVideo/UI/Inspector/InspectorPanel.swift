@@ -224,12 +224,12 @@ struct InspectorPanel: View {
 
                 InspectorGroup("Arrange") {
                     if project.canDetachAudio(timelineClip) {
-                        Button("Detach audio") {
+                        Button("Detach Audio") {
                             project.detachAudio(of: [timelineClip.id], in: timelineID, layer: selection.layerID)
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    Button("Delete clip", role: .destructive) {
+                    Button("Delete Clip", role: .destructive) {
                         project.deleteClip(selection.timelineClipID, in: timelineID, layer: selection.layerID)
                         onDeleteSelection()
                     }
