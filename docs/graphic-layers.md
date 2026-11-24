@@ -27,8 +27,11 @@ special to them.
   as effects.md already says for stills. Keyframes count in it, so moving
   the clip moves its animation with it.
 - **No end to run out of.** A still, shape or text clip can be trimmed as
-  long as anyone wants, the way an adjustment clip can. Speed changes
-  nothing a still shows, but still changes how its keyframes play.
+  long as anyone wants, the way an adjustment clip can, at either end:
+  drawing its start out earlier than its source's start leaves the trim
+  start below zero, so its keyframes stay where they were on the
+  timeline. Speed changes nothing a still shows, but still changes how
+  its keyframes play.
 - **No sound.** They never have volume, pan or sound effects, and never
   go on Sound or Music layers.
 - **Drawn by the compositor.** They have no composition track. The

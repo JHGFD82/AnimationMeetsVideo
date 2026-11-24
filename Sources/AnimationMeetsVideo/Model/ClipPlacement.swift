@@ -81,7 +81,7 @@ extension EditingProject {
         let nearest = timeline.frameAligned(clip.placedDuration, .nearest)
         let isNearWhole = abs(CMTimeSubtract(clip.placedDuration, nearest).seconds) < Timeline.abutmentTolerance.seconds
         let lasting = clip.lasting(nearest)
-        let fits = sourceDuration(for: clip.source).map { lasting.trimEnd <= $0 && lasting.trimStart >= .zero } ?? true
+        let fits = hasEndlessSource(clip) || (sourceDuration(for: clip.source).map { lasting.trimEnd <= $0 && lasting.trimStart >= .zero } ?? true)
         let length = isNearWhole && fits ? nearest : timeline.frameAligned(clip.placedDuration, .down)
         guard length > .zero, length != clip.placedDuration else { return clip }
         return clip.lasting(length)
@@ -264,6 +264,11 @@ extension EditingProject {
     /// the previous clip, or shrink below the minimum length. Given the
     /// assets' scores, it also can't reach into the scene before the one
     /// its first frame is in (see `trimFootage(of:sceneTracks:)`).
+    ///
+    /// A source with no footage to run out of (shapes, text, an adjustment
+    /// or a still) has no start either: its start can be drawn out past
+    /// it, leaving the trim before zero in the source. The source keeps
+    /// its place on the timeline, so its keyframes stay where they are.
     func resolvedTrimStart(
         of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime,
         sceneTracks: [UUID: ChangeScoreTrack]? = nil
@@ -272,7 +277,10 @@ extension EditingProject {
         let locked = isFrameLocked(clip)
         // Where the source's own start would play, on the timeline.
         // (Backwards, the leading edge is the end of the trim.)
-        var lowest = CMTimeMaximum(.zero, clip.timelineTime(forSourceTime: clip.isReversed ? (sourceDuration(for: clip.source) ?? clip.trimEnd) : .zero))
+        var lowest = CMTime.zero
+        if !hasEndlessSource(clip) {
+            lowest = CMTimeMaximum(lowest, clip.timelineTime(forSourceTime: clip.isReversed ? (sourceDuration(for: clip.source) ?? clip.trimEnd) : .zero))
+        }
         if let footage = trimFootage(of: clip, sceneTracks: sceneTracks) {
             lowest = CMTimeMaximum(lowest, clip.timelineTime(forSourceTime: clip.isReversed ? footage.end : footage.start))
         }
@@ -390,6 +398,12 @@ extension EditingProject {
     /// The length of a source with no footage to run out of (a still, an
     /// adjustment or shapes): as long as anyone would want.
     static let unboundedLength = CMTime(value: 36_000, timescale: 1)
+
+    /// Whether the clip's source has no footage to run out of, so its trim
+    /// can reach past either end of it.
+    func hasEndlessSource(_ clip: TimelineClip) -> Bool {
+        sourceDuration(for: clip.source) == Self.unboundedLength
+    }
 
     func sourceDuration(for source: ClipSource) -> CMTime? {
         switch resolvedInfo(for: source) {

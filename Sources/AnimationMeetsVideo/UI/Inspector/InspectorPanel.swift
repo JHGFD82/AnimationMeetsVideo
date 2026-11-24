@@ -138,7 +138,9 @@ struct InspectorPanel: View {
                             get: { timelineClip.trimStart.seconds },
                             set: { setTrimStart($0, selection: selection) }
                         ),
-                        in: 0...max(0, timelineClip.trimEnd.seconds - 0.1),
+                        // Shapes, text and the like have no start to stop
+                        // at, so their in point can go before zero.
+                        in: earliestTrimStart(timelineClip)...max(earliestTrimStart(timelineClip), timelineClip.trimEnd.seconds - 0.1),
                         step: 0.5
                     ) {
                         trimLabel("In", time: timelineClip.trimStart)
@@ -310,6 +312,10 @@ struct InspectorPanel: View {
                 }
             }
         }
+    }
+
+    private func earliestTrimStart(_ clip: TimelineClip) -> Double {
+        project.hasEndlessSource(clip) ? -EditingProject.unboundedLength.seconds : 0
     }
 
     private func setTrimStart(_ seconds: Double, selection: TimelineSelection) {
