@@ -215,29 +215,43 @@ private struct Fixture {
         #expect(clip.startOffset >= previous.endOffset)
     }
 
-    @Test func shapesStartCanBeDrawnOutWithoutMovingKeyframes() {
+    @Test func drawingOutAShapesStartBeginsItsSourceAgainThere() {
         var f = Fixture()
         var shapes = TimelineClip(source: .graphic, startOffset: seconds(5), trimStart: .zero, trimEnd: seconds(4))
         shapes.anchorPoint = AnimatedValue(.zero, keyframes: [
             Keyframe(time: seconds(1), value: Vector2.zero),
             Keyframe(time: seconds(3), value: Vector2(x: 10, y: 0)),
         ])
+        var text = Effect(kind: .text)
+        text.text = TextContent(variations: [TextVariation(axis: "wght", value: AnimatedValue(400, keyframes: [
+            Keyframe(time: seconds(0.5), value: 400), Keyframe(time: seconds(2), value: 700),
+        ]))])
+        shapes.effects = [text]
         let t = f.project.timelines.firstIndex { $0.id == f.timelineID }!
         let l = f.project.timelines[t].layers.firstIndex { $0.id == f.layerID }!
         f.project.timelines[t].layers[l].clips = [shapes]
-        let keyframesOnTimeline = { (clip: TimelineClip) in clip.anchorPoint.keyframes.map { clip.timelineTime(forSourceTime: $0.time) } }
-        let before = keyframesOnTimeline(shapes)
+        func onTimeline(_ clip: TimelineClip) -> [CMTime] {
+            (clip.anchorPoint.keyframes.map(\.time) + clip.effects[0].text!.variations[0].value.keyframes.map(\.time))
+                .map { clip.timelineTime(forSourceTime: $0) }
+        }
+        let before = onTimeline(shapes)
 
         f.project.trimClipStart(shapes.id, in: f.timelineID, layer: f.layerID, to: seconds(-2))
         let extended = f.clips.first { $0.id == shapes.id }!
         #expect(extended.startOffset == seconds(3))
-        #expect(extended.trimStart == seconds(-2))
         #expect(extended.endOffset == seconds(9))
-        #expect(keyframesOnTimeline(extended) == before)
+        // Its source now starts where the clip does.
+        #expect(extended.trimStart == .zero)
+        #expect(extended.trimEnd == seconds(6))
+        #expect(extended.anchorPoint.keyframes.map(\.time) == [seconds(3), seconds(5)])
+        #expect(onTimeline(extended) == before)
 
         // Still stops at the timeline's start.
         f.project.trimClipStart(shapes.id, in: f.timelineID, layer: f.layerID, to: seconds(-20))
-        #expect(f.clips.first { $0.id == shapes.id }!.startOffset == .zero)
+        let atZero = f.clips.first { $0.id == shapes.id }!
+        #expect(atZero.startOffset == .zero)
+        #expect(atZero.trimStart == .zero)
+        #expect(onTimeline(atZero) == before)
     }
 
     @Test func trimEndBoundedBySourceDuration() {

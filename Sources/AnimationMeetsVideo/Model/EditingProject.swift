@@ -298,11 +298,25 @@ struct EditingProject: Identifiable, Equatable {
     /// Drags the clip's leading edge, non-destructively revealing or hiding
     /// source frames. Unlike a plain move, trimming the start keeps the
     /// clip's *end* fixed in time; see `resolvedTrimStart(of:in:layer:to:)`.
+    ///
+    /// Shapes, text and other sources with no start of their own can be
+    /// drawn out before their source's start. When the trim is committed
+    /// their source time is begun again at the new start, as After Effects
+    /// moves a solid's start with its in point: everything kept in source
+    /// time moves with it, so keyframes stay where they were on the
+    /// timeline, and `source_time` in an expression counts from the new
+    /// start when it runs again.
     mutating func trimClipStart(
         _ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime,
         sceneTracks: [UUID: ChangeScoreTrack]? = nil
     ) {
-        guard let trimmed = resolvedTrimStart(of: id, in: timelineID, layer: layerID, to: proposedTrimStart, sceneTracks: sceneTracks) else { return }
+        guard var trimmed = resolvedTrimStart(of: id, in: timelineID, layer: layerID, to: proposedTrimStart, sceneTracks: sceneTracks) else { return }
+        if hasEndlessSource(trimmed), !trimmed.isReversed, trimmed.trimStart < .zero {
+            let delta = CMTimeMultiply(trimmed.trimStart, multiplier: -1)
+            trimmed.trimStart = .zero
+            trimmed.trimEnd = CMTimeAdd(trimmed.trimEnd, delta)
+            trimmed.shiftSourceTimes(by: delta)
+        }
         updateClip(id, in: timelineID, layer: layerID) { $0 = trimmed }
     }
 

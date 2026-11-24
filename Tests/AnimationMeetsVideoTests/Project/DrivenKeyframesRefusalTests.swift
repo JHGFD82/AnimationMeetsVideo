@@ -121,7 +121,7 @@ struct DrivenKeyframesRefusalTests {
         let restored = f.position
         #expect(restored != made)
         f.state.writeDerived {
-            f.state.value.editClip(f.clipID, in: f.timelineID) { $0.shiftKeyframes(by: seconds(0.25)) }
+            f.state.value.editClip(f.clipID, in: f.timelineID) { $0.shiftSourceTimes(by: seconds(0.25)) }
         }
         #expect(f.position != restored)
         #expect(f.refusals().isEmpty)

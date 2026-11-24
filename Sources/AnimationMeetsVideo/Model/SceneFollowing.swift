@@ -197,7 +197,7 @@ extension EditingProject {
         outer.streams = .videoAndAudio
         outer.soundMuted = false
         outer.autoMatteEnabled = false
-        outer.shiftKeyframes(by: CMTimeMultiply(clip.trimStart, multiplier: -1))
+        outer.shiftSourceTimes(by: CMTimeMultiply(clip.trimStart, multiplier: -1))
         return (outer, nested)
     }
 
@@ -325,20 +325,32 @@ extension TimelineClip {
         return ranges.compactMap { $0 }
     }
 
-    /// Moves every keyframe on the clip by `delta`.
-    mutating func shiftKeyframes(by delta: CMTime) {
+    /// Moves everything on the clip kept in its source time by `delta`:
+    /// every keyframe (text styles and variations among them), the spans
+    /// and bases its Keyframing effects write to, and the frame it is tied
+    /// to the music by. Driven keyframes that hadn't been edited by hand
+    /// still count as not edited once moved.
+    mutating func shiftSourceTimes(by delta: CMTime) {
+        let untouched = Set(effects.compactMap { effect -> UUID? in
+            guard let setup = effect.keyframing, let target = setup.target, let number = number(of: target),
+                  setup.writtenPrint == EditingProject.fingerprint(of: number)
+            else { return nil }
+            return effect.id
+        })
         anchorPoint = anchorPoint.shifted(by: delta)
         volume = volume.shifted(by: delta)
         pan = pan.shifted(by: delta)
         time.speed = time.speed.shifted(by: delta)
         for e in effects.indices {
-            for c in effects[e].controls.indices {
-                effects[e].controls[c].number = effects[e].controls[c].number.shifted(by: delta)
-            }
+            effects[e].shiftSourceTimes(by: delta)
         }
         for e in audioEffects.indices {
-            for c in audioEffects[e].controls.indices {
-                audioEffects[e].controls[c].number = audioEffects[e].controls[c].number.shifted(by: delta)
+            audioEffects[e].shiftSourceTimes(by: delta)
+        }
+        if let frame = music?.frame { music?.frame = CMTimeAdd(frame, delta) }
+        for e in effects.indices where untouched.contains(effects[e].id) {
+            if let target = effects[e].keyframing?.target, let number = number(of: target) {
+                effects[e].keyframing?.writtenPrint = EditingProject.fingerprint(of: number)
             }
         }
     }
@@ -381,5 +393,32 @@ extension AnimatedValue {
         frames.append(start)
         frames += next.keyframes.filter { CMTimeCompare($0.time, cut) > 0 }
         return AnimatedValue(value, keyframes: frames)
+    }
+}
+
+extension Effect {
+    /// Moves everything on the effect kept in its clip's source time by
+    /// `delta`; see `TimelineClip.shiftSourceTimes(by:)`.
+    mutating func shiftSourceTimes(by delta: CMTime) {
+        for c in controls.indices {
+            controls[c].number = controls[c].number.shifted(by: delta)
+        }
+        if text != nil {
+            for v in text!.variations.indices {
+                text!.variations[v].value = text!.variations[v].value.shifted(by: delta)
+            }
+            for r in text!.runs.indices {
+                for path in TextRunStyle.numbers {
+                    text!.runs[r].style[keyPath: path] = text!.runs[r].style[keyPath: path]?.shifted(by: delta)
+                }
+                for path in TextRunStyle.colors {
+                    text!.runs[r].style[keyPath: path] = text!.runs[r].style[keyPath: path]?.shifted(by: delta)
+                }
+            }
+        }
+        if keyframing != nil {
+            keyframing!.range = keyframing!.range.map { CMTimeRange(start: CMTimeAdd($0.start, delta), duration: $0.duration) }
+            keyframing!.base = keyframing!.base?.shifted(by: delta)
+        }
     }
 }

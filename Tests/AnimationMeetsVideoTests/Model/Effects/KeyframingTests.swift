@@ -484,10 +484,34 @@ private struct KeyframingFixture {
         // every keyframe on it change together.
         f.project.editClip(f.clipID, in: f.timelineID) { clip in
             clip.trimEnd = seconds(3)
-            clip.shiftKeyframes(by: seconds(0.5))
+            clip.shiftSourceTimes(by: seconds(0.5))
         }
         #expect(f.control(.position).number != made.clipAndLayer(f.clipID, in: f.timelineID)?.clip.effect(id: f.transformID)?.control(.position)?.number)
         #expect(f.project.drivenKeyframesEdit(since: made) == nil)
+    }
+
+    @Test func drawingOutAShapesStartKeepsItsDrivenKeyframesInPlace() {
+        var f = KeyframingFixture()
+        f.project.editClip(f.clipID, in: f.timelineID) { $0.source = .graphic; $0.startOffset = seconds(2) }
+        let oscillator = f.add(.oscillator)
+        let clipBefore = f.clip
+        let before = f.control(.position).number.keyframes.map { clipBefore.timelineTime(forSourceTime: $0.time) }
+        #expect(!before.isEmpty)
+
+        let layerID = f.project.clipAndLayer(f.clipID, in: f.timelineID)!.layer.id
+        f.project.trimClipStart(f.clipID, in: f.timelineID, layer: layerID, to: seconds(-1))
+        #expect(f.clip.trimStart == .zero)
+        #expect(f.clip.startOffset == seconds(1))
+        let timeline = f.project.timeline(id: f.timelineID)!
+        // Not taken for an edit by hand: making them again needs no asking.
+        #expect(f.project.keyframingFreshness(of: f.effect(oscillator), in: f.clip, of: timeline) != .outOfDateWithEdits)
+        f.project.refreshKeyframing()
+        let clipAfter = f.clip
+        let after = f.control(.position).number.keyframes.map { clipAfter.timelineTime(forSourceTime: $0.time) }
+        // The span it writes to grew with the clip and now begins a second
+        // earlier, so all but the one that began it are where they were.
+        #expect(after.first == seconds(1))
+        #expect(Set(before.dropFirst()).isSubset(of: Set(after)))
     }
 
     @Test func editingTheBeatMapMakesBeatKeysAgain() throws {
