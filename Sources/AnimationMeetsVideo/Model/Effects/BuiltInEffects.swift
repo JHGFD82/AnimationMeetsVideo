@@ -28,6 +28,10 @@ extension EffectKind {
     /// Strokes the outline of the shapes above it in the stack, strokes
     /// and all, so a stroke can have a stroke of its own.
     static let stroke = EffectKind(builtIn: "stroke")
+    /// A sound's wave or spectrum, drawn over the picture (see
+    /// docs/waveform-effect.md). A generator, and an effect any visual
+    /// clip can take.
+    static let waveform = EffectKind(builtIn: "waveform")
     /// Sound effects (see docs/audio.md, "Sound effects").
     static let equalizer = EffectKind(builtIn: "equalizer")
     static let compressor = EffectKind(builtIn: "compressor")
@@ -267,6 +271,32 @@ extension ControlKind {
     static let strobeLevels = ControlKind(builtIn: "strobeLevels")
     static let swing = ControlKind(builtIn: "swing")
     static let skipChance = ControlKind(builtIn: "skipChance")
+    // Waveform; Fill, Stroke and Stroke Width are the shapes'.
+    static let waveMode = ControlKind(builtIn: "waveMode")
+    static let waveFrequencies = ControlKind(builtIn: "waveFrequencies")
+    static let waveShape = ControlKind(builtIn: "waveShape")
+    static let waveStart = ControlKind(builtIn: "waveStart")
+    static let waveEnd = ControlKind(builtIn: "waveEnd")
+    static let waveCenter = ControlKind(builtIn: "waveCenter")
+    static let waveRadius = ControlKind(builtIn: "waveRadius")
+    static let waveAngle = ControlKind(builtIn: "waveAngle")
+    static let waveSweep = ControlKind(builtIn: "waveSweep")
+    static let waveSide = ControlKind(builtIn: "waveSide")
+    static let waveSamples = ControlKind(builtIn: "waveSamples")
+    static let waveWindow = ControlKind(builtIn: "waveWindow")
+    static let waveAlign = ControlKind(builtIn: "waveAlign")
+    static let waveDraw = ControlKind(builtIn: "waveDraw")
+    static let waveSmooth = ControlKind(builtIn: "waveSmooth")
+    static let waveFillsToBaseline = ControlKind(builtIn: "waveFillsToBaseline")
+    static let dotSize = ControlKind(builtIn: "dotSize")
+    static let barWidth = ControlKind(builtIn: "barWidth")
+    static let barEnds = ControlKind(builtIn: "barEnds")
+    static let waveStereo = ControlKind(builtIn: "waveStereo")
+    static let waveHeight = ControlKind(builtIn: "waveHeight")
+    static let waveGain = ControlKind(builtIn: "waveGain")
+    static let waveRelease = ControlKind(builtIn: "waveRelease")
+    static let waveColoring = ControlKind(builtIn: "waveColoring")
+    static let rightColor = ControlKind(builtIn: "rightColor")
     // Wiggler
     static let wiggleFrequency = ControlKind(builtIn: "wiggleFrequency")
     static let magnitude = ControlKind(builtIn: "magnitude")
@@ -325,7 +355,7 @@ enum BuiltInEffects {
         "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",
         "displace", "liquid", "twirl", "wave", "kaleidoscope", "mirrorTile", "chromaticAberration",
         "flowSmear", "slitScan", "feedback",
-        "rectangle", "ellipse", "polygon", "star", "path", "text", "textAnimator", "stroke",
+        "rectangle", "ellipse", "polygon", "star", "path", "text", "textAnimator", "stroke", "waveform",
         "equalizer", "compressor", "limiter", "voiceIsolation",
         "audioKeys", "beatKeys", "strobeKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot", "expression",
     ]
@@ -386,6 +416,22 @@ enum BuiltInEffects {
                     "Letters",
                     [.animatorPosition, .animatorScale, .animatorRotation, .animatorOpacity, .animatorFill, .animatorStroke, .animatorTracking]
                 ),
+            ]
+        ),
+        // Draws a sound over the picture handed down to it, as the shapes
+        // draw: a generator, which any visual clip's stack also takes.
+        EffectDefinition(
+            .waveform, "Waveform", .shapes, "waveform",
+            sections: [
+                ControlSection("Sound", [.waveMode, .waveFrequencies, .waveWindow, .waveAlign, .waveStereo, .waveGain, .waveRelease]),
+                ControlSection("Shape", [
+                    .waveShape, .waveStart, .waveEnd, .waveCenter, .waveRadius, .waveAngle, .waveSweep, .waveSide, .waveSamples,
+                    .waveHeight,
+                ]),
+                ControlSection("Draw", [
+                    .waveDraw, .waveSmooth, .waveFillsToBaseline, .dotSize, .barWidth, .barEnds, .waveColoring,
+                    .fill, .stroke, .strokeWidth, .rightColor,
+                ]),
             ]
         ),
         // Strokes the outline of the shapes above it in the stack, strokes
@@ -636,6 +682,37 @@ enum BuiltInEffects {
         ControlDefinition(.beatShape, "Shape", .beatKeys, choice: BeatShape.pulse),
         ControlDefinition(.peak, "Peak", .beatKeys, defaults: [10]),
         ControlDefinition(.decay, "Decay", .beatKeys, defaults: [250], unit: " ms", range: 0...10_000),
+        // Waveform. Its points are measured from the middle of the frame,
+        // in the timeline's pixels, down positive, as a package's are, so
+        // the viewer shows a handle for each (`PointControlHandles`).
+        ControlDefinition(.waveMode, "Mode", .waveform, choice: WaveformMode.wave),
+        ControlDefinition(
+            .waveFrequencies, "Frequencies", .waveform, defaults: [20, 20_000], unit: " Hz",
+            range: Spectrogram.lowestFrequency...Spectrogram.highestFrequency, componentNames: ["Low", "High"]
+        ),
+        ControlDefinition(.waveShape, "Shape", .waveform, choice: WaveformShape.line),
+        BuiltInEffects.point(.waveStart, "Start", .waveform, defaults: [-400, 0]),
+        BuiltInEffects.point(.waveEnd, "End", .waveform, defaults: [400, 0]),
+        BuiltInEffects.point(.waveCenter, "Center", .waveform, defaults: [0, 0]),
+        ControlDefinition(.waveRadius, "Radius", .waveform, defaults: [200], unit: " px", range: 0...100_000),
+        ControlDefinition(.waveAngle, "Angle", .waveform, defaults: [0], unit: "°"),
+        ControlDefinition(.waveSweep, "Sweep", .waveform, defaults: [360], unit: "°", range: -360...360),
+        ControlDefinition(.waveSide, "Side", .waveform, choice: WaveformSide.one),
+        ControlDefinition(.waveSamples, "Samples", .waveform, defaults: [256], range: 2...2048, isWhole: true),
+        ControlDefinition(.waveWindow, "Window", .waveform, defaults: [50], unit: " ms", range: 0.1...60_000),
+        ControlDefinition(.waveAlign, "Align", .waveform, choice: WaveformAlign.middle),
+        ControlDefinition(.waveDraw, "Draw", .waveform, choice: WaveformDraw.lines),
+        ControlDefinition(.waveSmooth, "Smooth", .waveform, choice: OnOff.on),
+        ControlDefinition(.waveFillsToBaseline, "Fill to Baseline", .waveform, choice: OnOff.off),
+        ControlDefinition(.dotSize, "Dot Size", .waveform, defaults: [4], unit: " px", range: 0...1000),
+        ControlDefinition(.barWidth, "Bar Width", .waveform, defaults: [60], unit: "%", range: 1...100),
+        ControlDefinition(.barEnds, "Bar Ends", .waveform, choice: WaveformEnds.square),
+        ControlDefinition(.waveStereo, "Stereo", .waveform, choice: WaveformStereo.mixed),
+        ControlDefinition(.waveHeight, "Height", .waveform, defaults: [100], unit: " px", range: -100_000...100_000),
+        ControlDefinition(.waveGain, "Gain", .waveform, defaults: [0], unit: " dB", dragStep: 0.5, range: -48...48),
+        ControlDefinition(.waveRelease, "Release", .waveform, defaults: [0], unit: " ms", range: 0...5000),
+        ControlDefinition(.waveColoring, "Color", .waveform, choice: WaveformColoring.paint),
+        ControlDefinition(.rightColor, "Right Channel", .waveform, defaults: [0.4, 0.8, 1, 1], dragStep: 0.01, range: 0...1, isColor: true),
         // Strobe Keys. Its defaults stay under three flashes a second (see
         // docs/psychedelic-effects.md, "Safety: flashing").
         ControlDefinition(.strobeTiming, "Timing", .strobeKeys, choice: StrobeTiming.perSecond),
@@ -700,4 +777,14 @@ enum BuiltInEffects {
         ControlDefinition(.expressionKeys, "Keyframes", .expression, choice: ExpressionKeys.smooth),
         ControlDefinition(.betweenFrames, "Between Frames", .expression, choice: BetweenFrames.auto),
     ]
+}
+
+extension BuiltInEffects {
+    /// A position in the frame with a handle in the viewer, from the middle
+    /// of the frame in the timeline's pixels, down positive.
+    static func point(_ kind: ControlKind, _ name: String, _ effectKind: EffectKind, defaults: [Double]) -> ControlDefinition {
+        var definition = ControlDefinition(kind, name, effectKind, defaults: defaults, unit: " px", componentNames: ["x", "y"])
+        definition.isPoint = true
+        return definition
+    }
 }

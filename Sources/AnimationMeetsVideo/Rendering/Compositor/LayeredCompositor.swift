@@ -937,6 +937,15 @@ struct Drawing {
                     shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, gradient: paint.gradient, transform: frameToOutput))
                 }
                 edges.append(ShapeRendering.Edge(area: shape.edge, transform: frameToOutput))
+            case .waveform(let wave):
+                // Drawn as a shape is, over the picture as the steps above
+                // left it; its marks are edges for a Stroke below.
+                settleOpacity()
+                let paints = WaveformDrawing.paints(wave, sound: clip.stack.sounds[wave.effectID], frame: CGRect(origin: .zero, size: frameSize))
+                for paint in paints {
+                    shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, gradient: paint.gradient, transform: frameToOutput))
+                    edges.append(ShapeRendering.Edge(area: paint.area, transform: frameToOutput))
+                }
             case .outlineStroke(let style):
                 // Around everything the shapes above drew, strokes and all,
                 // where those shapes now are.

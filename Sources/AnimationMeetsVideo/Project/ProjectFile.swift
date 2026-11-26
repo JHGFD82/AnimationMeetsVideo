@@ -927,6 +927,10 @@ struct ProjectFile: Codable {
         var text: TextEntry?
         /// For an Expression, its Python code.
         var expression: String?
+        /// For a Waveform, the layer or clip it listens to; neither for the
+        /// whole mix.
+        var listensToLayer: UUID?
+        var listensToClip: UUID?
         /// Absent unless some are unresolved.
         var pasteChanges: [PasteChangeRecord]?
         /// Presets only: what the effect's input and Against were called
@@ -939,7 +943,8 @@ struct ProjectFile: Codable {
         var saved: JSONValue?
 
         private enum CodingKeys: String, CodingKey {
-            case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, expression, pasteChanges, inputName, againstName, controls
+            case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, expression, listensToLayer, listensToClip
+            case pasteChanges, inputName, againstName, controls
         }
 
         init(_ effect: Effect) {
@@ -964,6 +969,13 @@ struct ProjectFile: Codable {
             keyframing = effect.keyframing.map(KeyframingEntry.init)
             text = effect.kind == .text ? effect.text.map(TextEntry.init) : nil
             expression = effect.kind == .expression ? effect.expression ?? "" : nil
+            if effect.kind == .waveform {
+                switch effect.listensTo {
+                case .layer(let id)?: listensToLayer = id
+                case .clip(let id)?: listensToClip = id
+                case .mix?, nil: break
+                }
+            }
             pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
             // A control its package stopped listing while the app ran is
             // left out, as the package no longer reads it (see
@@ -993,6 +1005,8 @@ struct ProjectFile: Codable {
             keyframing = try container.decodeIfPresent(KeyframingEntry.self, forKey: .keyframing)
             text = try container.decodeIfPresent(TextEntry.self, forKey: .text)
             expression = try container.decodeIfPresent(String.self, forKey: .expression)
+            listensToLayer = try container.decodeIfPresent(UUID.self, forKey: .listensToLayer)
+            listensToClip = try container.decodeIfPresent(UUID.self, forKey: .listensToClip)
             pasteChanges = try container.decodeIfPresent([PasteChangeRecord].self, forKey: .pasteChanges)
             inputName = try container.decodeIfPresent(String.self, forKey: .inputName)
             againstName = try container.decodeIfPresent(String.self, forKey: .againstName)
@@ -1021,6 +1035,8 @@ struct ProjectFile: Codable {
             try container.encodeIfPresent(keyframing, forKey: .keyframing)
             try container.encodeIfPresent(text, forKey: .text)
             try container.encodeIfPresent(expression, forKey: .expression)
+            try container.encodeIfPresent(listensToLayer, forKey: .listensToLayer)
+            try container.encodeIfPresent(listensToClip, forKey: .listensToClip)
             try container.encodeIfPresent(pasteChanges, forKey: .pasteChanges)
             try container.encodeIfPresent(inputName, forKey: .inputName)
             try container.encodeIfPresent(againstName, forKey: .againstName)
@@ -1055,6 +1071,7 @@ struct ProjectFile: Codable {
             if kind.isKeyframing { effect.keyframing = keyframing?.setup ?? KeyframingSetup() }
             if kind == .text { effect.text = text?.content ?? TextContent() }
             if kind == .expression { effect.expression = expression ?? "" }
+            if kind == .waveform { effect.listensTo = listensToLayer.map { .layer($0) } ?? listensToClip.map { .clip($0) } ?? .mix }
             effect.pasteChanges = (pasteChanges ?? []).compactMap(\.change)
             if let saved, case .array(let entries)? = saved["controls"] {
                 // A saved control that didn't read as one of the package's,
@@ -1392,6 +1409,7 @@ extension ProjectFile {
             }
             if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframingShape(for: kind)))) }
             if kind == .expression { fields.append(.optional("expression", .string)) }
+            if kind == .waveform { fields += [.optional("listensToLayer", .uuid), .optional("listensToClip", .uuid)] }
             if kind == .text {
                 fields.append(.optional("text", .object(object([
                     .required("string", .string), .required("font", .string), .optional("runs", .array(TextRunEntry.shape)),

@@ -365,6 +365,11 @@ extension InspectorPanel {
                 } else {
                     ShapeInspectorGroup(effect: effect, playhead: sourceNow, onEdit: onEdit, onSeek: onSeek)
                 }
+                if effect.kind == .waveform {
+                    WaveformListenGroup(
+                        effect: effect, options: project.audioSourceOptions(current: effect.listensTo, in: timeline), onEdit: onEdit
+                    )
+                }
                 if effect.kind.drawsShape {
                     PaintInspectorGroup(
                         effect: effect, title: named ? "\(effect.displayName) · Fill & Stroke" : "Fill & Stroke",

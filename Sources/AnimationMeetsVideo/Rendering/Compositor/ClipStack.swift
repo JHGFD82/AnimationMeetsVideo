@@ -34,6 +34,9 @@ struct ClipStack: @unchecked Sendable {
     /// long a frame of its timeline lasts, which the shutter is part of.
     var shutter = ClipShutter()
     var frameDuration = CMTime.zero
+    /// What each Waveform effect of the stack hears, by effect, made when
+    /// the timeline is built (`EditingProject.waveformSounds`).
+    var sounds: [UUID: WaveformSound] = [:]
 
     init(
         clip: TimelineClip, center: CGPoint, shift: CMTime, edges: EdgeTransitions? = nil,
@@ -75,7 +78,9 @@ struct ClipStack: @unchecked Sendable {
     func resolve(atRoot time: CMTime) -> ResolvedClip {
         let local = localTime(atRoot: time)
         return ResolvedClip(
-            steps: StackFolding.steps(effects: effects, anchorPoint: anchorPoint, at: sourceTime(atLocal: local), center: center),
+            steps: StackFolding.steps(
+                effects: effects, anchorPoint: anchorPoint, at: sourceTime(atLocal: local), center: center, timelineTime: local
+            ),
             transition: edges?.effect(at: local)
         )
     }
@@ -191,7 +196,7 @@ struct ResolvedClip: Equatable {
     var changesPixels: Bool {
         steps.contains {
             switch $0 {
-            case .blend, .color, .matte, .pathMask, .shape, .outlineStroke, .look: true
+            case .blend, .color, .matte, .pathMask, .shape, .outlineStroke, .look, .waveform: true
             case .place, .mark: false
             }
         }

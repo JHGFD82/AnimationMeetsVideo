@@ -525,6 +525,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// For an Expression: its Python code (nil for every other kind), kept
     /// in the project file so undo, copying and presets carry it.
     var expression: String?
+    /// For a Waveform: the sound it draws, as Audio Keys listens (nil for
+    /// every other kind).
+    var listensTo: AudioKeysSource?
     /// What pasting or applying a preset couldn't bring over, until each is
     /// marked resolved (see docs/effects.md, "Paste changes").
     var pasteChanges: [PasteChange] = []
@@ -543,6 +546,7 @@ struct Effect: Identifiable, Equatable, Sendable {
         self.controls = controls ?? kind.controlKinds.map { EffectControl(kind: $0, enabled: $0.startsEnabled) }
         keyframing = kind.isKeyframing ? KeyframingSetup() : nil
         if kind == .audioKeys { keyframing?.audioSource = .mix }
+        if kind == .waveform { listensTo = .mix }
         text = kind == .text ? TextContent() : nil
         expression = kind == .expression ? "value" : nil
     }
@@ -644,10 +648,12 @@ struct Effect: Identifiable, Equatable, Sendable {
         guard missing == nil else { return }
         let setup = keyframing
         let content = text
+        let heard = listensTo
         self = Effect(id: id, kind: kind, name: name)
         if let frame { sizeShape(to: frame) }
         keyframing = setup
         text = content
+        listensTo = heard
     }
 
     /// The control of `kind` a new effect of this one's kind starts with,
@@ -694,7 +700,10 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// Cycle that turns, a palette that cycles. Its clip is drawn afresh
     /// at every frame then.
     var changesOnItsOwn: Bool {
-        // Only looks change by themselves, and every look is a package's.
+        // A Waveform moves with the sound.
+        if kind == .waveform { return enabled }
+        // Otherwise only looks change by themselves, and every look is a
+        // package's.
         guard enabled, !isNoOp, let package = kind.definition.package else { return false }
         return package.changesEveryFrame || package.rateControls.contains { moves(control($0)) }
     }

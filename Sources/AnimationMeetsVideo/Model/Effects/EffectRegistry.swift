@@ -455,6 +455,14 @@ extension BeatDivision: ControlChoice {}
 extension StrobeTimes: ControlChoice {}
 extension StrobeCurve: ControlChoice {}
 extension StrobeOverlap: ControlChoice {}
+extension WaveformMode: ControlChoice {}
+extension WaveformShape: ControlChoice {}
+extension WaveformSide: ControlChoice {}
+extension WaveformDraw: ControlChoice {}
+extension WaveformStereo: ControlChoice {}
+extension WaveformAlign: ControlChoice {}
+extension WaveformEnds: ControlChoice {}
+extension WaveformColoring: ControlChoice {}
 extension WiggleType: ControlChoice {}
 extension WiggleDimensions: ControlChoice {}
 extension OscillatorWave: ControlChoice {}

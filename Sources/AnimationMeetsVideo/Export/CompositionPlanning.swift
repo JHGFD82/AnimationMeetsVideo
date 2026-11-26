@@ -271,6 +271,9 @@ extension CompositionExporter {
                     text += mask.keyText
                 case .look(let look):
                     text += "l \(clip.stack.colorSpace.rawValue) " + look.keyText
+                case .waveform(let wave):
+                    // What it hears is part of what it draws.
+                    text += wave.keyText + " " + String(clip.stack.sounds[wave.effectID]?.fingerprint ?? 0, radix: 16)
                 }
                 text += " "
             }

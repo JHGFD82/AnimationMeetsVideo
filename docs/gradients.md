@@ -29,8 +29,8 @@ a **paint**: a solid color, as now, or a gradient.
 - **The Stroke effect** (built): its stroke, which goes around
   everything above it, in its own group, the gradient laid over what it
   outlines.
-- **The Waveform effect** (not yet): its Along and By level colors (see
-  ideas.md, "Waveform effect") are this builder.
+- **The Waveform effect** (built): its Fill and Stroke are the shapes',
+  so Along and By Level are this builder ([waveform-effect.md](waveform-effect.md)).
 - **Effect packages** (not yet): a new `gradient` control type, handed to the
   kernel as a 256 × 1 picture of the gradient to sample, as Gradient
   Map draws its stops today
@@ -203,5 +203,6 @@ with a paint, or a gradient's without) load as a new control's.
    yet.
 4. **Viewer handles** (not yet) for a selected item's gradient.
 5. **Packages' `gradient` control** (not yet), with Gradient Map moved
-   to it, and the Waveform effect's colors.
+   to it. The Waveform effect's colors are done, through its Fill and
+   Stroke.
 6. **Strokes Along and Across** (not yet), and saved gradients.

@@ -8,7 +8,7 @@ import Foundation
 /// name by ID within the stack, which a paste keeps.
 enum LookRecipes {
     /// Bumped when the recipes change, so an update installs the new ones.
-    static let version = 1
+    static let version = 2
 
     static var all: [(name: String, bundle: EffectBundle)] {
         [
@@ -17,6 +17,7 @@ enum LookRecipes {
             ("Melting Rainbow", meltingRainbow), ("Oil Slick", oilSlick), ("Thermal Dream", thermalDream),
             ("Eightfold Mandala", eightfoldMandala), ("Moiré Breathing", moireBreathing),
         ].map { ($0.0, EffectBundle(effects: $0.1.map { EffectBundle.Effect(effect: $0) }, origin: .zero)) }
+            + waveformStyles.map { ($0.0, EffectBundle(effects: $0.1.map { EffectBundle.Effect(effect: $0) }, origin: .zero)) }
     }
 
     // MARK: Building
@@ -61,6 +62,67 @@ enum LookRecipes {
         var blending = effect(.blending, choices: [.mode: mode.rawValue])
         blending.against = earlier.id
         return blending
+    }
+
+    // MARK: Waveform styles
+
+    /// The Waveform's preset styles (docs/waveform-effect.md, "Presets"),
+    /// each one Waveform to start from.
+    static var waveformStyles: [(String, [Effect])] {
+        func wave(_ numbers: [ControlKind: [Double]] = [:], _ choices: [ControlKind: String] = [:], fill: [[Double]]? = nil, along: GradientKind = .linear) -> [Effect] {
+            var made = effect(.waveform, numbers, choices: choices)
+            // A gradient from the first stop to the last, which By Level
+            // reads from quiet to loud.
+            if let stops = fill, stops.count >= 2 {
+                made.changeControl(.fill) { control in
+                    control.setPaint(along)
+                    control.editGradient(at: .zero) { gradient in
+                        gradient.stops = stops.enumerated().map { PaintGradient.Stop(color: $1, location: Double($0) / Double(stops.count - 1)) }
+                    }
+                }
+            }
+            return [made]
+        }
+        let mint = [0.4, 1, 0.6, 1], white = [1.0, 1, 1, 1], ice = [0.4, 0.8, 1, 1], amber = [1.0, 0.7, 0.2, 1], rose = [1.0, 0.3, 0.5, 1]
+        let on = OnOff.on.rawValue
+        return [
+            ("Oscilloscope", wave([.waveWindow: [20], .waveSamples: [512], .stroke: mint, .strokeWidth: [2]])),
+            ("Mirrored", wave(
+                [.waveWindow: [2000], .fill: [1, 1, 1, 0.6], .strokeWidth: [1]],
+                [.waveSide: WaveformSide.both.rawValue, .waveFillsToBaseline: on]
+            )),
+            ("Mirrored Bars", wave(
+                [.waveWindow: [1500], .waveSamples: [64], .barWidth: [70]],
+                [.waveDraw: WaveformDraw.bars.rawValue, .barEnds: WaveformEnds.round.rawValue, .waveSide: WaveformSide.both.rawValue,
+                 .waveColoring: WaveformColoring.byLevel.rawValue],
+                fill: [ice, white, rose]
+            )),
+            ("Ring", wave(
+                [.waveWindow: [1000], .fill: [1, 1, 1, 0.4]],
+                [.waveShape: WaveformShape.radial.rawValue, .waveFillsToBaseline: on]
+            )),
+            ("Dot Ring", wave(
+                [.waveWindow: [1000], .waveSamples: [128], .dotSize: [5], .fill: ice],
+                [.waveShape: WaveformShape.radial.rawValue, .waveDraw: WaveformDraw.dots.rawValue, .waveSide: WaveformSide.both.rawValue]
+            )),
+            ("Scroll", wave(
+                [.waveWindow: [4000], .fill: [1, 1, 1, 0.8], .strokeWidth: [0]],
+                [.waveAlign: WaveformAlign.end.rawValue, .waveSide: WaveformSide.both.rawValue, .waveFillsToBaseline: on]
+            )),
+            ("Spectrum Bars", wave(
+                [.waveSamples: [64], .waveRelease: [200], .barWidth: [75]],
+                [.waveMode: WaveformMode.spectrum.rawValue, .waveDraw: WaveformDraw.bars.rawValue,
+                 .waveColoring: WaveformColoring.byLevel.rawValue],
+                fill: [ice, mint, amber, rose]
+            )),
+            ("Spectrum Ring", wave(
+                [.waveSamples: [128], .waveRelease: [200], .barWidth: [60]],
+                [.waveMode: WaveformMode.spectrum.rawValue, .waveShape: WaveformShape.radial.rawValue, .waveDraw: WaveformDraw.bars.rawValue],
+                fill: [rose, amber, mint, ice, rose], along: .angular
+            )),
+            ("Split Stereo", wave([.waveWindow: [500], .stroke: amber, .rightColor: ice], [.waveStereo: WaveformStereo.split.rawValue])),
+            ("Stereo Scope", wave([.waveWindow: [20], .waveSamples: [1024], .stroke: mint, .strokeWidth: [1]], [.waveStereo: WaveformStereo.xy.rawValue])),
+        ]
     }
 
     // MARK: Recipes

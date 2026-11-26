@@ -19,9 +19,10 @@ struct ShapeInspectorGroup: View {
 
     var body: some View {
         // A Stroke effect is all stroke; a shape's paint has its own group.
+        // A Waveform's, only those of how it is set now.
         let kinds = effect.kind == .stroke
             ? effect.kind.controlKinds
-            : effect.kind.controlKinds.filter { !EffectKind.paintControls.contains($0) }
+            : effect.kind.controlKinds.filter { !EffectKind.paintControls.contains($0) && effect.waveformShows($0) }
         InspectorGroup(effect.displayName) {
             // A Stroke effect's color can be a gradient, laid over what it
             // outlines (docs/gradients.md).

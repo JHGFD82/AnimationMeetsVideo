@@ -922,6 +922,34 @@ struct UISnapshots {
         )
     }
 
+    /// The inspector for a Waveform clip drawing round-ended bars of the
+    /// spectrum round a ring, by level: its Sound, Shape and Draw settings,
+    /// only those of a ring, Spectrum and bars, then Listen To and its Fill
+    /// & Stroke, the fill a gradient.
+    @Test func waveformInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.waveform, to: t)
+        let shape = try #require(added)
+        project.editClip(shape.clipID, in: t) { clip in
+            clip.effects[0].changeControl(.waveMode) { $0.choice = WaveformMode.spectrum.rawValue }
+            clip.effects[0].changeControl(.waveShape) { $0.choice = WaveformShape.radial.rawValue }
+            clip.effects[0].changeControl(.waveDraw) { $0.choice = WaveformDraw.bars.rawValue }
+            clip.effects[0].changeControl(.barEnds) { $0.choice = WaveformEnds.round.rawValue }
+            clip.effects[0].changeControl(.waveColoring) { $0.choice = WaveformColoring.byLevel.rawValue }
+            clip.effects[0].changeControl(.fill) { $0.setPaint(.angular) }
+        }
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: shape.layerID, timelineClipID: shape.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "waveform-inspector", size: CGSize(width: 340, height: 1100)
+        )
+    }
+
     /// The audio meter mid-song: left in the red with a held peak, right
     /// in the yellow, and the left clip lamp lit.
     @Test func audioMeter() throws {
