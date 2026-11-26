@@ -30,6 +30,9 @@ struct ShapeInspectorGroup: View {
             // of how it is set now.
             let kinds = effect.kind.controlKinds.filter { !EffectKind.paintControls.contains($0) && effect.waveformShows($0) }
             InspectorGroup(effect.displayName, rowsOf: effect.id, controls: kinds.compactMap { effect.control($0)?.id }) {
+                if effect.kind == .waveform {
+                    WaveformGraphPicker(effect: effect, onEdit: onEdit)
+                }
                 InspectorControls(
                     effect: effect, kinds: kinds, playhead: playhead, keyframing: effect.kind == .textAnimator,
                     onEdit: onEdit, onSeek: onSeek

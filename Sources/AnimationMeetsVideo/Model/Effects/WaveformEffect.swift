@@ -64,6 +64,89 @@ enum WaveformSide: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The kinds of graph a Waveform draws, each a setting of its Mode, Draw,
+/// Shape, Stereo and Fill to Baseline, picked at once from the top of its
+/// inspector group (`WaveformGraphPicker`). The settings stay as they
+/// are, to change one by one after.
+enum WaveformGraph: String, CaseIterable, Identifiable, Sendable {
+    /// The sound's wave as a line.
+    case wave
+    /// The wave as a line filled down to its baseline.
+    case filled
+    /// The wave as dots.
+    case dots
+    /// The spectrum as bars.
+    case bars
+    /// The wave round a circle.
+    case ring
+    /// Left against right, as an oscilloscope draws stereo.
+    case scope
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .wave: "Wave"
+        case .filled: "Filled"
+        case .dots: "Dots"
+        case .bars: "Bars"
+        case .ring: "Ring"
+        case .scope: "Scope"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .wave: "waveform.path"
+        case .filled: "chart.line.uptrend.xyaxis"
+        case .dots: "circle.dotted"
+        case .bars: "chart.bar.fill"
+        case .ring: "circle.circle"
+        case .scope: "scribble"
+        }
+    }
+
+    /// The choices it sets.
+    private var settings: [(ControlKind, String)] {
+        let fills = (ControlKind.waveFillsToBaseline, (self == .filled ? OnOff.on : .off).rawValue)
+        switch self {
+        case .wave, .filled:
+            return [(.waveMode, WaveformMode.wave.rawValue), (.waveDraw, WaveformDraw.lines.rawValue), (.waveShape, WaveformShape.line.rawValue), fills]
+        case .dots:
+            return [(.waveMode, WaveformMode.wave.rawValue), (.waveDraw, WaveformDraw.dots.rawValue), (.waveShape, WaveformShape.line.rawValue)]
+        case .bars:
+            return [(.waveMode, WaveformMode.spectrum.rawValue), (.waveDraw, WaveformDraw.bars.rawValue), (.waveShape, WaveformShape.line.rawValue)]
+        case .ring:
+            return [(.waveMode, WaveformMode.wave.rawValue), (.waveDraw, WaveformDraw.lines.rawValue), (.waveShape, WaveformShape.radial.rawValue), fills]
+        case .scope:
+            return [(.waveMode, WaveformMode.wave.rawValue), (.waveDraw, WaveformDraw.lines.rawValue), (.waveStereo, WaveformStereo.xy.rawValue)]
+        }
+    }
+
+    /// The graph `effect` is set up as, if it is one of these.
+    static func current(of effect: Effect) -> WaveformGraph? {
+        allCases.first { $0.matches(effect) }
+    }
+
+    private func matches(_ effect: Effect) -> Bool {
+        func picked(_ kind: ControlKind) -> String? { effect.control(kind)?.choice ?? kind.defaultChoice }
+        // Only Scope draws left against right.
+        guard (picked(.waveStereo) == WaveformStereo.xy.rawValue) == (self == .scope) else { return false }
+        return settings.allSatisfy { picked($0.0) == $0.1 }
+    }
+
+    /// Sets `effect` up as this graph: its choices, and Stereo off X–Y for
+    /// any other.
+    func apply(to effect: inout Effect) {
+        for (kind, choice) in settings {
+            effect.changeControl(kind) { $0.choice = choice; $0.enabled = true }
+        }
+        if self != .scope, effect.choice(.waveStereo, as: WaveformStereo.self) == .xy {
+            effect.changeControl(.waveStereo) { $0.choice = WaveformStereo.mixed.rawValue }
+        }
+    }
+}
+
 /// How a Waveform's points are drawn.
 enum WaveformDraw: String, CaseIterable, Identifiable, Sendable {
     case lines, dots, bars

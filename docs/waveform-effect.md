@@ -117,6 +117,17 @@ again (by any change of structure).
   loud; a bar shaded up its length is not built yet. With Stereo set to
   Split or Two, the right channel is in **Right Channel**.
 
+**In the inspector**, the Waveform's group starts with **Graph**, a row
+of icons that sets several of the settings below at once
+(`WaveformGraph`, `WaveformGraphPicker`): **Wave** (Wave, Lines, Line),
+**Filled** (the same, Fill to Baseline on), **Dots**, **Bars** (Spectrum,
+Bars), **Ring** (Wave, Lines, Radial) and **Scope** (Stereo X–Y). Every
+graph but Scope takes Stereo off X–Y. The settings stay where they were
+set, to change one by one after; none of the icons is lit while they
+match none of the graphs. Mode, Shape and Draw are icon buttons rather
+than menus. The effects panel's Waveform header doesn't have the picker
+yet.
+
 Every numeric setting can be keyframed and driven by a Keyframing
 method, so a Beat Keys pulse can swell its height on the beat. Start,
 End and Center are points, measured from the middle of the frame, so

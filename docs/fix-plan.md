@@ -59,6 +59,10 @@ the ones that don't apply. None of it has been tried in the running app.
 "many features missing".
 
 1. **A graph-type control at the top of the Waveform's inspector group**
+   (built: Graph with Wave, Filled, Dots, Bars, Ring and Scope, and Mode,
+   Shape and Draw as icon buttons; see docs/waveform-effect.md. Left:
+   the same picker in the effects panel's Waveform header, and the new
+   types of step 2.)
    (`ShapeInspectorGroup` / a new `UI/Inspector/WaveformGraphPicker.swift`):
    - A segmented control of icons for the kind of graph, mapping to existing
      controls: **Wave** (`waveMode = wave, waveDraw = lines`), **Bars**

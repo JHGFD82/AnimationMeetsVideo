@@ -55,6 +55,23 @@ enum InspectorGlyphs {
             StrokeCap.allCases.map { cap in
                 PanelSegment(value: cap.rawValue, glyph: .drawn { StrokeGlyphs.cap(cap, &$0, $1, $2) }, name: "\(cap.name) Cap")
             }
+        // A Waveform's Mode, Shape and Draw.
+        case .waveMode:
+            [
+                PanelSegment(value: WaveformMode.wave.rawValue, glyph: .symbol("waveform.path"), name: "Wave"),
+                PanelSegment(value: WaveformMode.spectrum.rawValue, glyph: .symbol("chart.bar.xaxis"), name: "Spectrum"),
+            ]
+        case .waveShape:
+            [
+                PanelSegment(value: WaveformShape.line.rawValue, glyph: .symbol("line.diagonal"), name: "Along a Line"),
+                PanelSegment(value: WaveformShape.radial.rawValue, glyph: .symbol("circle.dashed"), name: "Round a Circle"),
+            ]
+        case .waveDraw:
+            [
+                PanelSegment(value: WaveformDraw.lines.rawValue, glyph: .symbol("point.topleft.down.to.point.bottomright.curvepath"), name: "Lines"),
+                PanelSegment(value: WaveformDraw.dots.rawValue, glyph: .symbol("circle.dotted"), name: "Dots"),
+                PanelSegment(value: WaveformDraw.bars.rawValue, glyph: .symbol("chart.bar.fill"), name: "Bars"),
+            ]
         default: nil
         }
     }

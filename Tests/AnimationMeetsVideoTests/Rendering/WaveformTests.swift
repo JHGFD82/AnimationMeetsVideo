@@ -200,3 +200,28 @@ import Testing
         #expect(peak(4000) < 0.01)
     }
 }
+
+/// The Graph picker's presets (docs/waveform-effect.md, "In the
+/// inspector").
+@Suite struct WaveformGraphTests {
+    @Test func eachGraphIsRecognizedOnceApplied() {
+        for graph in WaveformGraph.allCases {
+            var effect = Effect(kind: .waveform)
+            graph.apply(to: &effect)
+            #expect(WaveformGraph.current(of: effect) == graph)
+        }
+    }
+
+    @Test func aNewWaveformIsAWaveAndLeavingScopeTakesStereoOffXY() {
+        var effect = Effect(kind: .waveform)
+        #expect(WaveformGraph.current(of: effect) == .wave)
+        WaveformGraph.scope.apply(to: &effect)
+        #expect(effect.choice(.waveStereo, as: WaveformStereo.self) == .xy)
+        WaveformGraph.bars.apply(to: &effect)
+        #expect(effect.choice(.waveStereo, as: WaveformStereo.self) == .mixed)
+        #expect(effect.choice(.waveMode, as: WaveformMode.self) == .spectrum)
+        // Settings that match none of the graphs light none.
+        effect.changeControl(.waveShape) { $0.choice = WaveformShape.radial.rawValue }
+        #expect(WaveformGraph.current(of: effect) == nil)
+    }
+}

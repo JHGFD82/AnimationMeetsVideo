@@ -1007,7 +1007,9 @@ struct UISnapshots {
     }
 
     /// The inspector for a Waveform clip drawing round-ended bars of the
-    /// spectrum round a ring, by level: its Sound, Shape and Draw settings,
+    /// spectrum round a ring, by level: the Graph picker on top with none
+    /// lit (no preset is set up so), Mode, Shape and Draw as icon buttons,
+    /// its Sound, Shape and Draw settings,
     /// only those of a ring, Spectrum and bars, then Listen To and its Fill
     /// & Stroke, the fill a gradient.
     @Test func waveformInspector() throws {
