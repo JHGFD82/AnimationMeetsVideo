@@ -1,7 +1,7 @@
 # Waveform effect
 
 Status: **built**, not yet tried in the running app; what is left is
-under [Not yet](#not-yet). It was talked through in ideas.md first.
+under [Not yet](#not-yet).
 
 An effect that draws a sound's waveform over the picture, moving with
 the sound as it plays: along a **straight line** or around a **circle**

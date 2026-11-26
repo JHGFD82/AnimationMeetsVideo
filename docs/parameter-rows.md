@@ -1,8 +1,7 @@
 # Parameters in the timeline
 
 Status: **partly built** (steps 1 to 3 of [Building it](#building-it),
-not yet tried in the running app). The rest is planned. It was talked through in
-ideas.md first.
+not yet tried in the running app). The rest is planned.
 
 
 Effect parameters edited in rows under their layer in the timeline, as

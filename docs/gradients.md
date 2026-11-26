@@ -8,7 +8,7 @@ planned.
 One gradient builder for everything that has a fill or a stroke, so any
 of them can be painted with a gradient instead of a single color. It is
 step (c), Gradients, of [graphic-layers.md](graphic-layers.md), widened
-to the whole app. It was talked through in ideas.md first.
+to the whole app.
 
 ### Where it is offered
 
