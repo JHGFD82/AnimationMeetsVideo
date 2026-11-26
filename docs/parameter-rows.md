@@ -110,7 +110,8 @@ other than Keyframing ones, and of its sound effects.
   them as picked by hand (`keepKeyframedRows`).
 - **Hide parameter rows**: in Settings ▸ Timeline, hides every parameter
   row without forgetting them, for a compact timeline; turning it back
-  on shows the same rows. Its View option is not built yet.
+  on shows the same rows. Also Parameter rows in the timeline's view
+options, under Areas.
 - Which rows each clip has, and which effects' arrows are closed, is
   kept in the project's `view-state.json`
   ([project-package.md](project-package.md#view-state)) as each
