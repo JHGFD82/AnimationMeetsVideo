@@ -537,3 +537,131 @@ with their previews and saved and shared as any effect preset is
   sound, its volume or its EQ.
 - Under motion blur, it is drawn at each moment between frames from the
   sound at that moment.
+
+## Gradient builder
+
+One gradient builder for everything that has a fill or a stroke, so any
+of them can be painted with a gradient instead of a single color. It is
+step (c), Gradients, of [graphic-layers.md](graphic-layers.md), which
+plans linear and radial gradient fills for fills and strokes alike;
+this entry is that plan widened to the whole app.
+
+### Where it is offered
+
+Everywhere a fill or stroke is a color today, the color is replaced by
+a **paint**: a solid color, as now, or a gradient.
+
+- **Shapes and free paths**: Fill and Stroke in Fill & Stroke
+  (`PaintInspectorGroup`) and the effects panel.
+- **Text**: the block's fill and stroke, and each styled run's own,
+  which paint their letters.
+- **The Stroke effect**, whose stroke goes around everything above it.
+- **The Waveform effect**: its Along and By level colors (see
+  [Waveform effect](#waveform-effect)) are this builder.
+- **Effect packages**: a new `gradient` control type, handed to the
+  kernel as a 256 × 1 picture of the gradient to sample, as Gradient
+  Map draws its stops today
+  ([psychedelic-effects.md](psychedelic-effects.md)). Gradient Map moves
+  to it, so it has as many stops as it likes rather than three.
+
+### Kinds
+
+- **Linear**: from a start point to an end point.
+- **Radial**: from a center out to a radius, with a **focal point**
+  that can move off the center for a lit-sphere look, and an aspect
+  and angle for an ellipse.
+- **Angular**: round a center from a start angle, as a conic gradient,
+  which suits a radial waveform's ring.
+- **Repeat**: past its ends a gradient holds its end colors (the
+  default), repeats, or reflects back and forth.
+
+### Stops
+
+- **A bar of stops** under the gradient's preview, as in Illustrator:
+  each stop a color with opacity, at a location from 0 to 100%. Click
+  the bar to add a stop with the color the gradient has there, drag a
+  stop to move it, drag it off the bar or press Delete to take it out,
+  Option-drag to copy it. Two stops at the same place make a hard edge.
+- **A midpoint** between each pair of stops, a diamond dragged to where
+  the two colors are half and half, for a gradient that leans one way.
+- **The picked stop** has its color (the Mac's color picker, with its
+  eyedropper), its opacity and its location as fields.
+- **Reverse**, and **Distribute** to space the stops evenly.
+- **Blend in**: the timeline's own values (as colors are drawn today)
+  or a perceptual space (OKLab), whose middles don't go gray or muddy
+  between saturated colors.
+
+### Where it lies
+
+- **Relative to the item** (the default): its points are in the item's
+  bounds, so it moves, scales and turns with the shape or text, and a
+  gradient copied to another shape fits it. **Relative to the frame**
+  keeps it still while the item moves through it.
+- **Handles in the viewer**
+  ([viewer-handles.md](viewer-handles.md)): a selected item's gradient
+  shows its line (start and end, or center, radius and focal point)
+  over the picture, with its stops on it to drag, as Illustrator's
+  gradient annotator does.
+- **Text**: over the whole block (the default) or over **each letter**,
+  each painted with the whole gradient.
+
+### On strokes
+
+A stroke's gradient can lie three ways, as Illustrator's can:
+
+- **Within**: in space, as a fill's does, the stroke showing the part of
+  the gradient under it.
+- **Along**: following the path from its start to its end, so a line
+  drawn on changes color as it goes.
+- **Across**: from one edge of the stroke to the other, the same all
+  along it.
+
+Along and Across need how far along the path and how far across the
+stroke each pixel is, which Core Graphics doesn't give; the stroke is
+drawn with those as a second picture, from the path cut into short
+pieces, and the gradient looked up from it.
+
+### Animating
+
+Every stop's color, opacity, location and midpoint, the points, angle,
+radius and focal point are keyframed like any control. Stops are
+matched by their order, so two keyframes always blend stop by stop:
+adding or removing a stop does it in every keyframe at once (at the
+color the gradient has there), and the count never differs between
+keyframes.
+
+### Presets
+
+The paint popover keeps **saved gradients**, kept for the Mac rather
+than the project, beside a set that ships: a few neutrals, a sunset, a rainbow, a metal sheen and
+transparent-to-color fades. Saving the one being edited adds it. Each
+is copied in when picked, so changing a saved gradient later doesn't
+change what was painted with it.
+
+### Drawing and saving
+
+- **Drawing**: Core Graphics draws linear and radial gradients clipped
+  to each fill or stroke's area, in 32-bit floats as fills are drawn
+  now (`ShapeRendering`), and conic gradients on the macOS versions
+  that have them, with a kernel otherwise. A **Dither** setting (on by
+  default) adds a little noise so a slow gradient doesn't band once
+  exported at 8 bits.
+- **Sharpness**: a gradient follows its item through the moves that
+  keep shapes sharp, as its outline does.
+- **Render key**: the paint is part of the shape's step, so changing a
+  stop re-renders it.
+- **Saving**: a paint is saved as a color, as now, or as an object of
+  its kind, stops, midpoints, points, repeat, blending space and
+  where it lies; a project saved before gradients loads every color as
+  a solid paint.
+
+### Accessibility
+
+Following [accessibility.md](accessibility.md): the stop bar is an
+accessibility element with each stop a child, adjustable for its
+location, with actions to add a stop after it, remove it, and pick the
+next or previous. Tab moves between stops, ← → move the picked one a
+percent (ten with Shift), Return opens its color, and Delete takes it
+out. The paint well says whether it holds a color or a gradient and of
+which kind, and the viewer's gradient handles have the actions the
+other handles have.
