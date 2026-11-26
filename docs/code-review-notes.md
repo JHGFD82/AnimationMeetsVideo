@@ -3,7 +3,9 @@
 Status: **review notes** for the first pass of
 [code-review-plan.md](code-review-plan.md). Phase 1 (scope and build
 baseline) is done, apart from the decisions and review projects listed
-under "Still open in phase 1"; phases 2 to 12 haven't started. Each
+under "Still open in phase 1", and so is phase 2 (architecture and
+maintainability), with its open findings listed; phases 3 to 12 haven't
+started. Each
 finding gives its phase, area, severity from the plan's
 [triage order](code-review-plan.md#triage-order), place, how to see it,
 and whether it was already failing at the baseline. Fixes are marked
@@ -265,3 +267,187 @@ These need the person who owns the project, not more running:
 - **Review projects.** None assembled: they need footage and music the
   project holds the rights to, at a fixed path outside the repository.
   Until then `UIResponsivenessBenchmark` runs without `AMV_PROJECT`.
+
+## Phase 2: Architecture and maintainability
+
+Baseline: the phase 1 branch at `ad3c3dc0`. Six read-only reviews ran
+side by side, one per group of the plan's items: the edit's one source
+of truth and shared state, preview against export, the mix, logic in
+`UI/` and oversized files, errors and testability, and the docs. Every
+finding fixed below was checked against the code before it was fixed,
+and each fix has a regression test unless it says otherwise. Open
+findings say **verified** where the code path was read again here, and
+**reported** where only the review read it.
+
+### Fixed
+
+8. **A failed export lost the file it was replacing. (Phase 2,
+   `Export/`, severity 1; fixed in `35d82288`.)** The movie and WAV Mix
+   exports deleted the destination before they began
+   (`CompositionExporter.swift:454`, `AudioExport.swift:97`), and stems
+   deleted each old stem before writing it, so an export that failed
+   or was stopped left nothing where the confirmed Replace had been.
+   Each now writes to a hidden file beside the destination
+   (`Export/ExportFile.swift`) and swaps it in only once it is whole.
+   Tests stop a mix and a stems export halfway over earlier ones.
+
+9. **A take that couldn't be copied into the project was deleted.
+   (Phase 2, `Recording/`, severity 1; fixed in `f2de65a3`.)**
+   `AudioRecorder.keep` removed the take in a `defer` whether or not
+   the copy succeeded, so a full disk or an unwritable package lost the
+   only copy of a recording. It is now kept in the Recordings folder an
+   unsaved project uses, and the error names it.
+
+10. **An outside edit was marked seen while the Motion Designer refused
+    it. (Phase 2, `App/`, severity 1; fixed in `d95d143a`.)** A
+    `project.json` changed outside the app that touched clips the
+    Motion Designer locks was refused by `writeRestored`, yet the
+    session took the file as saved and acknowledged it
+    (`ProjectSession.swift:509–511`); the next save wrote over the
+    edit. It now waits, unacknowledged, until the locks are gone.
+
+11. **Stale background renders for effect inputs. (Phase 2, `Export/`
+    and `Rendering/`, severity 3; fixed in `7452ceb5`.)** The render
+    key never read `DrawClip.inputs`, so changing a Matte's or package
+    look's input (its offset, its file, or a clip inside a nested
+    timeline taken as one) reused the old render in the viewer and in
+    ProRes 422 exports, while ProRes 4444 drew the new picture. The key
+    now names the input's file, stamp and played stretches, or
+    describes the nested timeline. The test fails all three ways
+    without the fix.
+
+12. **The Waveform and Audio Keys heard silenced clips. (Phase 2,
+    `Model/`, severity 3; fixed in `b023f30b`.)** Both chose clips by
+    `playsAudio` alone, hearing clips with their sound muted, retimed to
+    Sound Mute, or reversed; Audio Keys also heard turned-off clips.
+    One check, `EditingProject.soundIsHeard`, now states the mix's rule.
+
+13. **Beat match played different sound from the timeline. (Phase 2,
+    `UI/BeatMatch`, severity 3; fixed in `b8aa816e`, no test.)** The
+    panel's player mixed every enabled sound track, while its waveform,
+    the timeline and export use only the first; on a file with two
+    languages, beats were confirmed against sound never played. It
+    plays the first track now.
+
+14. **Status lines behind the code. (Phase 2, docs; fixed in
+    `14b20a60`.)** Viewer handles, the loop region, bar colors and
+    Python scripting's later steps still said they had never been
+    compiled; graphic layers, gradients and parameter rows listed built
+    work as planned; the index left out Path Mask and Expression; the
+    Waveform claimed to hear each clip "as heard".
+
+### Open: data and edits (severity 1)
+
+- **Beat match's Confirm writes over a beat map changed meanwhile.**
+  Reported. `BeatMatchController.swift:85–93` writes the draft without
+  comparing the song's current `beatMap` with the one the panel opened
+  on; a script, a reload or another timeline window of the project can
+  change it in between. Undo brings it back.
+- **A viewer handle drag puts back the clip as it was at its start.**
+  Reported, a narrow window. `ViewerHandlesOverlay.swift:839` commits
+  the whole clip from drag start; a script finishing during the held
+  drag (`ScriptRunner.swift:159` sees no `editCount` change while
+  writes are held) has its change to that clip undone on release.
+- **Volumes without `flock` open unlocked, and only `NSLog` says so.**
+  Reported. `ProjectLock.swift:42`. Two Macs on a share can both save
+  the same project; `trashPackage(checkingLock:)` can trash one open
+  elsewhere.
+- **Provenance rewritten from nothing after a failed read.** Reported.
+  `ProjectStore+Provenance.swift:18–46`: `readProvenance` returns `[:]`
+  on any failure and the next record writes only the new kind, which
+  can drop `.originalScores` for good.
+- **Backups ordered by name, not date.** Reported, rare. Names carry
+  local time without an offset, so in the hour repeated when clocks go
+  back `unsavedBackup` can offer an older autosave and pruning can
+  delete newer ones (`ProjectStore+Backups.swift:27–43`,
+  `ProjectBackups.swift:127–139`).
+
+### Open: timing, sync and export (severity 3)
+
+- **Volume and effect keyframes drift on speed-ramped clips.**
+  Verified. `CompositionFlattening.swift:76–83` gives a clip's mix
+  stage the speed at its in point, so on a ramp keyframes are heard
+  late, in playback and export alike, while the volume line shows them
+  in place. Fixing it means the mix following the clip's time map.
+- **The Waveform builds its own mix.** Reported, partly verified.
+  `WaveformAudio` sums volumes and runs EQs but leaves out pan, fades
+  and crossfades, the Compressor, Limiter and Voice Isolation, and Keep
+  Pitch, and indexes samples from the track's first rather than its
+  start time, so a late-starting track draws early. Now said in
+  [waveform-effect.md](waveform-effect.md).
+- **A typed value edit while paused leaves rendered stretches stale.**
+  Reported. `PlaybackModel.showValues` (`:304`) returns once the paused
+  frame redraws, so other stretches keep playing renders with the old
+  value until the next structural edit; export is right.
+- **A mono clip's pan is dropped silently** when its stereo copy can't
+  be made (`CompositionExporter.swift:150–156`,
+  `StereoProxies.swift:126`). Reported.
+- **A stale Matroska reference movie is used** when remaking it fails
+  (`MatroskaMedia.swift:48`). Reported, suspected.
+- **The Python console edits the wrong project** with a Timeline window
+  in front: `ScriptConsole.swift:67–72` matches only project windows
+  and falls back to the first session. Reported.
+- **A render stretch may start between frames**
+  (`SegmentRenderer.swift:26`), showing content a fraction of a frame
+  early. Reported, suspected.
+- **Open projects can share IDs** (Save As keeps them all), while
+  `DetectedBeats`, `TimelinePreviews`, `EqualizerSpectrum` and
+  `ExpressionRunner.running` key app-wide tables by them. Reported.
+
+### Open: performance and usability (severity 4 to 5)
+
+- `TimelinePreviews.shared` is one table for every project: an edit in
+  one drops the other's previews (`TimelinePreview.swift:141–229`).
+- Browser skim and effect thumbnails draw as export does, Optical Flow
+  and full motion blur included (`TimelinePreview.swift:40`,
+  `EffectThumbnails.swift:103`).
+- Tape scrub restarts the sound effects every 2 s piece
+  (`TapeScrub.swift:193–198`). Suspected.
+- Beat-marker choices are per-project data kept in app-wide defaults
+  (`TimelineView.swift:113`).
+- Closing any editor window ends the bar color panel
+  (`EditorView.swift:238`); a refusal shows in whichever window is key.
+- Failures nobody hears: cut matching in `MediaReplacer.swift:127`, a
+  failed waveform or spectrogram read cached as empty
+  (`Waveform.swift:174`, `Spectrogram.swift:254`), folders skipped in
+  Save As, presets marked installed when writing failed
+  (`PresetStore.swift:89`), `BlankFrame.swift:33`, and
+  `EffectFolderWatcher.swift:44` turning live reload off.
+
+### Open: testability
+
+- `PlaybackModel` paces scrubbing on `CACurrentMediaTime` and real
+  sleeps (`:692`, `:699`, `:773`) though `ScrubPacing` takes `now`: the
+  cause of finding 5. The same pattern is in three `PlaybackSkimTests`.
+  It wants a clock, as `ViewerPipeline` takes.
+- `ScrubCache.swift:150` and `RenderScheduler.swift:246–250` read Low
+  Power Mode and thermal state directly, so their tests time out on a
+  laptop in Low Power Mode.
+- Gesture-driven views without an `EventHarness` suite: `TimelineRuler`,
+  `BeatMatchWaveform`, `ToneGraph`, `EqualizerGraph`, the keyframe,
+  section and volume lanes, the transition curve editor, the gradient
+  editor, `NumericField` scrubbing, the tape scrubber and the scene
+  splitter, among others; `ViewerHandlesOverlay` and `KeyframeGraphView`
+  are covered only in part.
+
+### Open: structure (severity 5 to 6)
+
+- Logic in `UI/` that wants a home outside it: the export queue and its
+  format dispatch (`UI/Export/ExportWindow.swift`, which `App/` relies
+  on for quitting); change detection, folder matching and replacement in
+  `MediaReplacementController` (a third "file changed" check beside
+  `ProjectStore+Load.swift:41` and `AssetAnalysis.changedFiles`);
+  media import in `MediaImportFlow`, untested and bypassed by
+  recordings; `TimelineEditorSurface.handle(_:)`, untested.
+- Files with more than one job: `Keyframing.swift` (editing, signal
+  math, Strobe Keys), `AssetAnalysis.swift` (runner and results
+  store), `EffectPackageStore.swift` (`EffectPackageStatus` apart),
+  `ClipTransition.swift` (render-time evaluation apart),
+  `BeatMatchSession.swift` (transport apart) and, mildly,
+  `LayeredCompositor.swift` and `Effects.swift`. `ProjectFile`,
+  `BeatFitting`, `ViewerHandlesOverlay`, `MotionDesignLanes` and
+  `ClipBlockView` each have one.
+- [loose-ends.md](loose-ends.md): every item is still true, but the
+  Motion Designer's locks are now shown in the Timeline menu's Split,
+  Nudge and Delete; the keys, lanes, browser and drops still only
+  refuse.
