@@ -101,6 +101,46 @@ import Testing
         try await waitForPlayer(playback, at: 1.5)
     }
 
+    /// A fast drag seeks roughly, the playhead staying exactly where it was
+    /// moved, and the player lands exactly where the drag stopped.
+    @Test func aFastDragLandsExactlyOnceItRests() async throws {
+        let (playback, url) = try await makePlayback(parkedAt: 0.5)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Two frames every 10 ms: eight times normal speed.
+        for frame in stride(from: 12, through: 90, by: 2) {
+            let time = CMTime(value: Int64(frame), timescale: 24)
+            playback.seek(to: time)
+            #expect(playback.currentTime == time)
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let last = CMTime(value: 90, timescale: 24)
+        try await waitForPlayer(playback, at: last.seconds)
+        // Landed, its ticks are the playhead's again, and agree.
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(playback.currentTime == last)
+        #expect(playback.shownFrame() == nil || abs((playback.shownFrame()?.time.seconds ?? 0) - last.seconds) < 0.001)
+    }
+
+    /// Play straight after a fast drag starts from the frame it stopped on,
+    /// not from near it.
+    @Test func playingAfterAFastDragStartsExactly() async throws {
+        let (playback, url) = try await makePlayback(parkedAt: 0.5)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        for frame in stride(from: 12, through: 60, by: 2) {
+            playback.seek(to: CMTime(value: Int64(frame), timescale: 24))
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        playback.togglePlayback()
+        defer { playback.player.pause() }
+        try await waitUntil("playback to start", every: .milliseconds(5)) { playback.isPlaying }
+        // Played on from near 2.5 s, it would still be short of it.
+        try await Task.sleep(for: .milliseconds(150))
+        let played = playback.player.currentTime().seconds
+        #expect(played >= 2.5 && played < 3.2, "at \(played) s")
+    }
+
     @Test func showingAnotherTimelineLetsTheSkimGoAndParksThePlayhead() async throws {
         let (playback, url) = try await makePlayback(parkedAt: 1)
         defer { try? FileManager.default.removeItem(at: url) }

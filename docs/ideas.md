@@ -200,9 +200,10 @@ the app works and proposes doing without the copies first.
 
 ### Why scrubbing is heavy now
 
-- **Every scrub is an exact seek.** Moving the playhead or skimming
-  seeks the player to the exact frame (`PlaybackModel`, tolerances of
-  zero), one seek at a time with the newest move next. H.264 and HEVC
+- **Every scrub was an exact seek.** Moving the playhead or skimming
+  seeked the player to the exact frame (`PlaybackModel`, tolerances of
+  zero), one seek at a time with the newest move next; step 1 below now
+  seeks roughly while it moves fast. H.264 and HEVC
   are long-GOP: a frame can only be decoded from the keyframe before it,
   often a second or more back, so each step of a scrub decodes up to a
   whole GOP to show one frame. Playing forward is cheap, since the
@@ -253,11 +254,11 @@ writes ProRes for its render cache. But:
 
 In order, each measured on a laptop before the next:
 
-1. **Rough, then exact.** While the playhead or the skimmer moves fast,
-   seek to the nearest keyframe (or with a tolerance) and show that;
-   once it rests (about 100 ms, as playback already waits 250 ms before
-   prerolling) land on the exact frame. Final Cut and Premiere scrub
-   this way. It is a change to the seek queue alone, and costs no disk.
+1. **Rough, then exact** (built, not yet measured on a laptop): see
+   [rendering.md](rendering.md#rough-then-exact). Fast moves of the
+   playhead or the skimmer seek with a tolerance, and the player lands
+   on the exact frame 100 ms after they stop. A change to the seek queue
+   alone, costing no disk.
 2. **A scrub cache.** Paused, decode the footage around the playhead,
    forward from each keyframe as the hardware decoder likes, at the
    viewer's size, and keep the frames in memory, as

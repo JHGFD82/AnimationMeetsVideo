@@ -330,7 +330,9 @@ the app left) takes the viewer back to the playhead.
   taking them; a drag sends none, so dragging clips or the playhead
   doesn't skim. Skimming waits while playing or tape scrubbing.
 - `PlaybackModel.skim(to:)` seeks the player through the same queue as
-  the playhead (one seek at a time, the newest move next) without
+  the playhead (one seek at a time, the newest move next, roughly while
+  it moves fast and exactly once it rests: see rendering.md, "Rough, then
+  exact") without
   touching the parked time; the player's time-jumped ticks are ignored
   until it is back at the playhead, so a skim never moves it.
 - Moving the playhead (a click in the ruler, a drag, the keys) ends the
