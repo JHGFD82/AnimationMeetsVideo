@@ -30,10 +30,15 @@ struct LayerBlock: Identifiable {
     /// always, video layers while their linked audio is shown.
     let canShowChannels: Bool
     let showsChannels: Bool
-    /// Whether the layer has a volume row to show: Sound and Music layers
-    /// have a layer volume, video layers only their clips'.
+    /// Whether the layer has rows to show: Sound and Music layers have a
+    /// layer volume, video layers only their clips'; and any layer whose
+    /// clips have put parameters in the timeline.
     let hasProperties: Bool
     let showsVolume: Bool
+    /// The parameters its clips have put in the timeline, by effect, and
+    /// whether they show (docs/parameter-rows.md).
+    let parameterGroups: [ParameterRowGroup]
+    let showsParameters: Bool
     /// Whether the layer's clips draw their volume across them: while ⇧L is
     /// on, for every layer with sound.
     let showsVolumeLines: Bool
@@ -59,6 +64,8 @@ extension TimelineView {
     /// The layers an area shows, top to bottom, laid out.
     func blocks(for kind: LayerKind) -> [LayerBlock] {
         let layout = shownAreaLayout
+        let rows = parameterRows
+        let selected = selectedClipIDs
         var blocks: [LayerBlock] = []
         var top: CGFloat = 0
         for layer in timeline.layers where layer.kind == kind {
@@ -77,13 +84,19 @@ extension TimelineView {
             let lane = max(22, (layerHeight * 0.6).rounded())
             let audioLaneHeight = showsChannels ? max(lane, Self.channelBandHeight) * 2 : lane
             let playsAudio = project.layerPlaysAudio(layer)
-            let hasProperties = layer.kind.isAudio && playsAudio
-            let showsVolume = volumeRevealed.contains(layer.id) && hasProperties
+            let parameterGroups = project.parameterRows(
+                on: layer, rows: rows, addsKeyframed: addsKeyframedParameters, selected: selected
+            )
+            let hasVolume = layer.kind.isAudio && playsAudio
+            let hasProperties = hasVolume || !parameterGroups.isEmpty
+            let showsVolume = volumeRevealed.contains(layer.id) && hasVolume
+            let showsParameters = volumeRevealed.contains(layer.id) && !parameterGroups.isEmpty && !hidesParameterRows
             let clipRowHeight = Self.clipRowHeight(of: layer, height: layerHeight, showsChannels: showsChannels)
             let height = clipRowHeight
                 + (joint == nil ? 0 : TransitionFootageLane.height + (jointHasSound ? TransitionSoundLane.height : 0))
                 + (showsLinkedAudio ? audioLaneHeight : 0)
                 + (showsVolume ? VolumeLane.height : 0)
+                + (showsParameters ? ParameterRowMetrics.height(of: parameterGroups) { rows.isClosed($0, on: layer.id) } : 0)
                 + separatorHeight
             blocks.append(LayerBlock(
                 layer: layer,
@@ -101,6 +114,8 @@ extension TimelineView {
                 showsChannels: showsChannels,
                 hasProperties: hasProperties,
                 showsVolume: showsVolume,
+                parameterGroups: parameterGroups,
+                showsParameters: showsParameters,
                 showsVolumeLines: volumeRevealed.contains(layer.id) && playsAudio,
                 height: height
             ))
@@ -125,10 +140,30 @@ extension TimelineView {
         return max(height, channelBandHeight) * 2
     }
 
-    /// Wider while a volume row is showing, to fit its values. Only a
-    /// revealed layer is asked whether it has one, which walks its clips.
+    /// Wider while a volume or parameter row is showing, to fit its
+    /// values. Only a revealed layer is asked whether it has one, which
+    /// walks its clips.
     var labelColumnWidth: CGFloat {
-        volumeRevealed.isEmpty || !timeline.layers.contains { showsVolume(of: $0) } ? 150 : 300
+        volumeRevealed.isEmpty || !timeline.layers.contains { showsVolume(of: $0) || showsParameterRows(of: $0) } ? 150 : 300
+    }
+
+    /// Whether `layer` shows parameter rows now.
+    func showsParameterRows(of layer: TimelineLayer) -> Bool {
+        guard volumeRevealed.contains(layer.id), !hidesParameterRows else { return false }
+        return !project.parameterRows(on: layer, rows: parameterRows, addsKeyframed: addsKeyframedParameters, selected: selectedClipIDs).isEmpty
+    }
+
+    /// Which parameters each clip of the timeline has in its rows.
+    var parameterRows: TimelineParameterRows {
+        viewMemory?.parameterRows.rows(of: timelineID) ?? TimelineParameterRows()
+    }
+
+    /// The clips selected in this timeline: the one selected and those
+    /// picked with a lasso.
+    var selectedClipIDs: Set<UUID> {
+        var ids = groupSelection
+        if let selection, selection.timelineID == timelineID { ids.insert(selection.timelineClipID) }
+        return ids
     }
 
     func showsVolume(of layer: TimelineLayer) -> Bool {
@@ -140,7 +175,7 @@ extension TimelineView {
     // The host's actions as the closures the rows take, typed, so the
     // rows' long initializers don't have to infer them.
 
-    private var scrubAction: (CMTime) -> Void {
+    var scrubAction: (CMTime) -> Void {
         { [host] time in host.dispatch(.scrub(time)) }
     }
 
@@ -234,7 +269,7 @@ extension TimelineView {
                         height: block.clipRowHeight,
                         canMoveUp: index > 0,
                         canMoveDown: index < blocks.count - 1,
-                        isExpanded: block.hasProperties ? block.showsVolume : nil,
+                        isExpanded: block.hasProperties ? volumeRevealed.contains(layer.id) : nil,
                         onToggleExpanded: { toggleExpanded(layer) },
                         isAudioExpanded: block.hasLinkedAudio ? block.showsLinkedAudio : nil,
                         onToggleAudio: { toggleLinkedAudio(layer) },
@@ -278,6 +313,9 @@ extension TimelineView {
                     }
                     if block.showsVolume {
                         volumeHeader(of: layer)
+                    }
+                    if block.showsParameters {
+                        parameterHeaders(of: block)
                     }
                     separator
                 }
@@ -695,6 +733,9 @@ extension TimelineView {
                                 onEase: { time, preset in host.dispatch(TimelineAction.editVolume(layer: layer.id) { $0.applyEase(preset, at: time) }) }
                             )
                         }
+                    }
+                    if block.showsParameters {
+                        parameterLanes(of: block, pixelsPerSecond: pixelsPerSecond, width: contentWidth)
                     }
                     separator
                 }

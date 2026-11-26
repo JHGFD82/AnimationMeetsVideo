@@ -922,6 +922,63 @@ struct UISnapshots {
         )
     }
 
+    /// A layer's parameter rows: Transform open with Position (keyframed,
+    /// its value at the playhead, the keyframe buttons) and Opacity, whose
+    /// clips differ ("Mixed"), and Color closed; beside them, the lanes
+    /// with Position's keyframes on both clips.
+    @Test func parameterRows() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let media = MediaClip(
+            name: "Walk", kind: .video, url: nil, duration: CMTime(value: 10, timescale: 1), frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let placed = try #require(project.importClip(media, intoTimeline: t))
+        _ = project.addEffect(.transform, toClip: placed.clipID, in: t)
+        _ = project.addEffect(.color, toClip: placed.clipID, in: t)
+        let clip = try #require(project.clipAndLayer(placed.clipID, in: t)?.clip)
+        let transform = try #require(clip.effects.first { $0.kind == .transform })
+        project.editEffect(transform.id, ofClip: placed.clipID, in: t) { effect in
+            effect.changeControl(.position) { control in
+                control.number = AnimatedValue(ComponentValue(values: [0, 0]), keyframes: [
+                    Keyframe(time: .zero, value: ComponentValue(values: [0, 0])),
+                    Keyframe(time: CMTime(value: 2, timescale: 1), value: ComponentValue(values: [120, -40]), easeIn: .easy),
+                ])
+            }
+        }
+        var rows = TimelineParameterRows()
+        rows.show(
+            [ParameterRowKey(effectKind: .transform, ordinal: 0, control: .opacity), ParameterRowKey(effectKind: .color, ordinal: 0, control: .exposure)],
+            on: [placed.clipID]
+        )
+        let layer = try #require(project.clipAndLayer(placed.clipID, in: t)?.layer)
+        rows.setClosed(true, "color#0", on: layer.id)
+        let groups = project.parameterRows(on: layer, rows: rows, addsKeyframed: true, selected: [])
+        let time = CMTime(value: 1, timescale: 1)
+        let view = HStack(alignment: .top, spacing: 0) {
+            ParameterRowHeaders(
+                groups: groups, isClosed: { rows.isClosed($0, on: layer.id) }, onToggle: { _, _ in },
+                state: { row in
+                    ParameterRowState(
+                        values: row.key.control == ControlKind.opacity.rawValue ? nil : [60, -20], actingClipCount: 1,
+                        isAnimated: row.key.control == ControlKind.position.rawValue,
+                        keyframeTimes: row.key.control == ControlKind.position.rawValue ? [.zero, CMTime(value: 2, timescale: 1)] : [],
+                        unit: " px", dragStep: 1, range: nil, componentNames: ["Δx", "Δy"]
+                    )
+                },
+                onSetComponent: { _, _, _ in }, onToggleAnimated: { _ in }, onToggleKeyframe: { _ in }, onRemove: { _ in }, onSeek: { _ in },
+                time: time
+            )
+            .frame(width: 300)
+            ParameterRowLanes(
+                groups: groups, isClosed: { rows.isClosed($0, on: layer.id) },
+                lane: { row in ParameterLaneMarks(row.key, of: layer.clips) }, currentTime: time, pixelsPerSecond: 80, width: 500,
+                snap: { $0 }, onSeek: { _ in }, onEdit: { _, _, _ in }
+            )
+        }
+        .background(Design.Surface.base.color)
+        try SnapshotSupport.render(view, "parameter-rows", size: CGSize(width: 800, height: 120))
+    }
+
     /// The inspector for a Waveform clip drawing round-ended bars of the
     /// spectrum round a ring, by level: its Sound, Shape and Draw settings,
     /// only those of a ring, Spectrum and bars, then Listen To and its Fill

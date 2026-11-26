@@ -270,6 +270,7 @@ extension EffectsPanel {
                 }
             }
         }
+        timelineRowsItem(effect, in: clip)
         Divider()
         Button("Copy") { copy(effect, from: clip) }
             .keyboardShortcut("c", modifiers: .command)

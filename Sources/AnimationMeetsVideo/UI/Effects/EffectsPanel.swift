@@ -57,6 +57,9 @@ struct EffectsPanel: View {
     @Environment(ProjectState.self) var projectState: ProjectState?
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
+    /// The window's view state, which keeps which parameters each clip has
+    /// in the timeline's rows (docs/parameter-rows.md).
+    @Environment(\.timelineViewMemory) var viewMemory
     /// Whether each row shows its keyframe lane, with the ruler and
     /// playhead over them. Kept between launches.
     @AppStorage(Preferences.effectsPanelShowsKeyframeLanes) var showsKeyframeLanes = true

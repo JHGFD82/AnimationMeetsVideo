@@ -55,8 +55,14 @@ struct TimelineView: View {
     @State var shownFocusID: UUID?
     /// The focus whose clip is lit, until its light has faded.
     @State var highlightedFocus: TimelineClipFocus?
-    /// Layers showing their volume under their clips.
+    /// Layers showing their rows under their clips: a Sound or Music
+    /// layer's volume, and the parameters its clips have put in the
+    /// timeline (docs/parameter-rows.md).
     @State var volumeRevealed: Set<UUID> = []
+    /// Whether keyframing a control puts it in the rows, and whether the
+    /// rows are hidden for a compact timeline.
+    @AppStorage(Preferences.addsKeyframedParameters) var addsKeyframedParameters = true
+    @AppStorage(Preferences.hidesParameterRows) var hidesParameterRows = false
     /// Layers showing their video clips' linked audio.
     @State var audioRevealed: Set<UUID> = []
     /// Layers whose sound shows each channel apart: the clips of sound
@@ -274,6 +280,21 @@ struct TimelineView: View {
                     .foregroundStyle(Design.textPrimary)
                     // Scripts read the lasso's clips as the selection.
                     .onChange(of: groupSelection, initial: true) { _, picked in scriptWindow?.groupSelection = picked }
+                    // A parameter put in the timeline from the effects
+                    // panel opens its layer's rows, so it shows.
+                    .onChange(of: parameterRows) { old, new in
+                        for (clipID, keys) in new.picked where !keys.isSubset(of: old.picked[clipID] ?? []) {
+                            if let layer = timeline.layers.first(where: { $0.clips.contains { $0.id == clipID } }) { volumeRevealed.insert(layer.id) }
+                        }
+                    }
+                    // Turned off, adding keyframed parameters leaves the
+                    // rows already shown.
+                    .onChange(of: addsKeyframedParameters) { _, adds in
+                        guard !adds, let store = viewMemory?.parameterRows else { return }
+                        for timeline in project.timelines {
+                            store.change(timeline.id) { $0.keepKeyframedRows(of: timeline.layers.flatMap(\.clips)) }
+                        }
+                    }
                 TimelineToolPicker(current: tool, tool: $tool)
                     .equatable()
                 Spacer()

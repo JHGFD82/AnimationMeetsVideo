@@ -423,6 +423,7 @@ extension EffectsPanel {
         if !control.kind.isChoice, !control.kind.isCurve, !control.kind.isPath {
             keyframeDesignerItem(effect, in: clip, control: control)
         }
+        timelineRowItem(control, of: effect, in: clip)
         Divider()
         Button("Delete", role: .destructive) {
             editEffect(effect.id, in: clip) { $0.removeControl(control.id) }

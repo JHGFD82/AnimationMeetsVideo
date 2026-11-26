@@ -97,6 +97,8 @@ private struct TimelineSettings: View {
     @AppStorage(Preferences.snapping) private var snapping = true
     @AppStorage(Preferences.followsPlayhead) private var followsPlayhead = true
     @AppStorage(Preferences.timelineSkimming) private var skimming = true
+    @AppStorage(Preferences.addsKeyframedParameters) private var addsKeyframed = true
+    @AppStorage(Preferences.hidesParameterRows) private var hidesRows = false
     @AppStorage(Preferences.clickOnBeats) private var clickOnBeats = false
     @AppStorage(ClickToneSettings.frequencyKey) private var frequency = ClickToneSettings.defaultFrequency
     @AppStorage(ClickToneSettings.volumeKey) private var volume = ClickToneSettings.defaultVolume
@@ -120,6 +122,13 @@ private struct TimelineSettings: View {
                     Toggle("Show the frame under the pointer", isOn: $skimming)
                 }
                 SheetNote("While paused, moving the pointer over the timeline shows its frames in the viewer, and the playhead stays put. Space plays from there. Also in the Timeline menu.")
+                SheetRow("Parameters", alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Add parameters to the timeline when keyframed", isOn: $addsKeyframed)
+                        Toggle("Hide parameter rows", isOn: $hidesRows)
+                    }
+                }
+                SheetNote("An effect's control gets a row under its layer once it has keyframes, or from Show in Timeline in its menu. Turning adding off keeps the rows already shown; hiding them keeps them for later.")
             }
             Groove()
             SheetSection("Beat tick") {
