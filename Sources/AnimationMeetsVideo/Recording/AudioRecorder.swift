@@ -101,22 +101,38 @@ final class AudioRecorder {
         return Take(url: writer.url, start: CMTimeMaximum(.zero, writer.start ?? playhead))
     }
 
+    /// Where the takes of a project not saved yet are kept.
+    static var recordingsFolder: URL {
+        FileManager.default.urls(for: .musicDirectory, in: .userDomainMask)[0]
+            .appending(path: "Animation Meets Video/Recordings", directoryHint: .isDirectory)
+    }
+
     /// Moves a take's file to where it is kept: the project's Media folder,
-    /// or for a project not saved yet a Recordings folder in Music. Named
-    /// for when it was recorded.
-    static func keep(_ take: URL, packageURL: URL?, recordedAt date: Date = Date()) async throws -> URL {
+    /// or for a project not saved yet `recordings`. Named for when it was
+    /// recorded. A take that can't be copied into the project is the only
+    /// copy of what was recorded, so it is kept in `recordings` instead
+    /// and the error says where.
+    static func keep(
+        _ take: URL, packageURL: URL?, recordedAt date: Date = Date(), recordings: URL = recordingsFolder
+    ) async throws -> URL {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
         let named = take.deletingLastPathComponent().appending(path: "Recording \(formatter.string(from: date)).caf")
         try FileManager.default.moveItem(at: take, to: named)
-        if let packageURL {
-            defer { try? FileManager.default.removeItem(at: named) }
-            return try await PackageCoordinator.shared.run(on: [packageURL]) {
+        guard let packageURL else { return try keep(named, in: recordings) }
+        do {
+            let kept = try await PackageCoordinator.shared.run(on: [packageURL]) {
                 try ProjectStore.copyIntoPackage(named, packageURL: packageURL)
             }
+            try? FileManager.default.removeItem(at: named)
+            return kept
+        } catch {
+            let kept = try keep(named, in: recordings)
+            throw RecordingError.notCopiedIntoProject(keptAt: kept, because: error.localizedDescription)
         }
-        let folder = FileManager.default.urls(for: .musicDirectory, in: .userDomainMask)[0]
-            .appending(path: "Animation Meets Video/Recordings", directoryHint: .isDirectory)
+    }
+
+    private static func keep(_ named: URL, in folder: URL) throws -> URL {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let destination = folder.appending(path: named.lastPathComponent)
         try FileManager.default.moveItem(at: named, to: destination)

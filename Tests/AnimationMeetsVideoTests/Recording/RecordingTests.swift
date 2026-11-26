@@ -65,6 +65,34 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: take.path))
     }
 
+    /// A take that can't be copied into the project is the only copy of
+    /// what was recorded: it is kept where an unsaved project's takes go,
+    /// and the error says where, never deleted.
+    @Test func aTakeThatCantBeCopiedInIsKeptElsewhere() async throws {
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "amv-keep-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        // A file where the package should be: nothing can be copied into it.
+        let package = scratch.appending(path: "Not a package.amv")
+        try Data().write(to: package)
+        let recordings = scratch.appending(path: "Recordings", directoryHint: .isDirectory)
+        let take = scratch.appending(path: "take.caf")
+        let writer = try TakeWriter(url: take, format: format) { _ in .zero }
+        try write(1, to: writer)
+        writer.finish()
+
+        do {
+            _ = try await AudioRecorder.keep(take, packageURL: package, recordings: recordings)
+            Issue.record("Keeping the take into a file should have failed")
+        } catch RecordingError.notCopiedIntoProject(let kept, _) {
+            #expect(kept.deletingLastPathComponent().standardizedFileURL == recordings.standardizedFileURL)
+            #expect(FileManager.default.fileExists(atPath: kept.path))
+            // The one 0.1 s buffer written, all of it.
+            let file = try AVAudioFile(forReading: kept)
+            #expect(file.length == 4_800)
+        }
+    }
+
     @Test func aRecordingGoesOnANewSoundLayer() throws {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID
