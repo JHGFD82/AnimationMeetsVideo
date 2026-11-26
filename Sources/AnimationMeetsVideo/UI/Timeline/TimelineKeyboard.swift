@@ -133,6 +133,13 @@ extension TimelineView {
             }
         }
         if key == "l" { return toggleVolumeRows() }
+        // U, as After Effects': the animated parameters; pressed twice
+        // quickly, the changed ones; again, the rows picked.
+        if key == "u", !flags.contains(.shift) { return pressParameterFilter() }
+        if event.keyCode == 53, parameterFilter != nil {
+            parameterFilter = nil
+            return true
+        }
         if key == "v", !flags.contains(.shift) { return toggleSelectedClipsEnabled() }
         // Shift-F, as Final Cut's Reveal in Browser.
         if key == "f", flags == .shift { return showSelectedClipInBrowser() }
@@ -347,6 +354,21 @@ extension TimelineView {
     /// again hides it; L alone plays forward): each clip's as a line across it, and a Sound or Music layer's as
     /// a row under it. Acts on the selected clip's layer, or on every layer
     /// with sound when nothing is selected.
+    /// U: the animated parameters' rows on every layer, the changed ones'
+    /// when pressed again within 0.4 s, or back to the rows picked.
+    func pressParameterFilter() -> Bool {
+        let now = Date()
+        if parameterFilter == .animated, let last = lastParameterFilterPress, now.timeIntervalSince(last) < 0.4 {
+            parameterFilter = .changed
+            lastParameterFilterPress = nil
+        } else {
+            parameterFilter = parameterFilter == nil ? .animated : nil
+            lastParameterFilterPress = now
+        }
+        AccessibilityNotification.Announcement(parameterFilter?.note ?? "Parameter rows picked").post()
+        return true
+    }
+
     func toggleVolumeRows() -> Bool {
         let targets: [TimelineLayer]
         if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {

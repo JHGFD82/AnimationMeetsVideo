@@ -112,6 +112,22 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(f.project.parameterValue(opacity, of: [f.clip(f.first), f.clip(f.second)], at: seconds(1)) == nil)
     }
 
+    @Test func uShowsTheAnimatedAndUUTheChangedWhateverIsPicked() {
+        var f = Fixture()
+        var rows = TimelineParameterRows()
+        rows.show([f.key(.color, .exposure)], on: [f.first])
+        f.keyframe(.rotation, of: .transform, on: f.first)
+        let color = f.clip(f.first).effects.first { $0.kind == .color }!
+        f.project.editEffect(color.id, ofClip: f.first, in: f.timelineID) { effect in
+            effect.changeControl(.saturation) { $0.setComponent(0, to: 150, at: .zero) }
+        }
+        func names(_ filter: ParameterRowFilter) -> [String] {
+            f.project.parameterRows(on: f.layer, rows: rows, addsKeyframed: false, selected: [], filter: filter).flatMap { $0.rows.map(\.name) }
+        }
+        #expect(names(.animated) == [ControlKind.rotation.name])
+        #expect(Set(names(.changed)) == [ControlKind.rotation.name, ControlKind.saturation.name])
+    }
+
     @Test func turningAddingOffKeepsTheRowsShown() {
         var f = Fixture()
         f.keyframe(.rotation, of: .transform, on: f.first)

@@ -85,12 +85,15 @@ extension TimelineView {
             let audioLaneHeight = showsChannels ? max(lane, Self.channelBandHeight) * 2 : lane
             let playsAudio = project.layerPlaysAudio(layer)
             let parameterGroups = project.parameterRows(
-                on: layer, rows: rows, addsKeyframed: addsKeyframedParameters, selected: selected
+                on: layer, rows: rows, addsKeyframed: addsKeyframedParameters, selected: selected,
+                filter: parameterFilter, frame: timeline.frameSize
             )
             let hasVolume = layer.kind.isAudio && playsAudio
             let hasProperties = hasVolume || !parameterGroups.isEmpty
             let showsVolume = volumeRevealed.contains(layer.id) && hasVolume
-            let showsParameters = volumeRevealed.contains(layer.id) && !parameterGroups.isEmpty && !hidesParameterRows
+            // U and UU show their rows on every layer.
+            let showsParameters = (volumeRevealed.contains(layer.id) || parameterFilter != nil) && !parameterGroups.isEmpty
+                && !hidesParameterRows
             let clipRowHeight = Self.clipRowHeight(of: layer, height: layerHeight, showsChannels: showsChannels)
             let height = clipRowHeight
                 + (joint == nil ? 0 : TransitionFootageLane.height + (jointHasSound ? TransitionSoundLane.height : 0))
@@ -144,13 +147,16 @@ extension TimelineView {
     /// values. Only a revealed layer is asked whether it has one, which
     /// walks its clips.
     var labelColumnWidth: CGFloat {
-        volumeRevealed.isEmpty || !timeline.layers.contains { showsVolume(of: $0) || showsParameterRows(of: $0) } ? 150 : 300
+        (volumeRevealed.isEmpty && parameterFilter == nil) || !timeline.layers.contains { showsVolume(of: $0) || showsParameterRows(of: $0) } ? 150 : 300
     }
 
     /// Whether `layer` shows parameter rows now.
     func showsParameterRows(of layer: TimelineLayer) -> Bool {
-        guard volumeRevealed.contains(layer.id), !hidesParameterRows else { return false }
-        return !project.parameterRows(on: layer, rows: parameterRows, addsKeyframed: addsKeyframedParameters, selected: selectedClipIDs).isEmpty
+        guard volumeRevealed.contains(layer.id) || parameterFilter != nil, !hidesParameterRows else { return false }
+        return !project.parameterRows(
+            on: layer, rows: parameterRows, addsKeyframed: addsKeyframedParameters, selected: selectedClipIDs,
+            filter: parameterFilter, frame: timeline.frameSize
+        ).isEmpty
     }
 
     /// Which parameters each clip of the timeline has in its rows.

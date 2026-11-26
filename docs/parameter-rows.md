@@ -1,7 +1,7 @@
 # Parameters in the timeline
 
-Status: **partly built** (step 1 of [Building it](#building-it), not yet
-tried in the running app). The rest is planned. It was talked through in
+Status: **partly built** (steps 1 and 2 of [Building it](#building-it),
+not yet tried in the running app). The rest is planned. It was talked through in
 ideas.md first.
 
 
@@ -122,7 +122,7 @@ other than Keyframing ones, and of its sound effects.
   is saved. Whether a layer's arrow is open is not kept, as for the
   volume rows.
 
-### Animated and changed (not yet)
+### Animated and changed
 
 As After Effects' U and UU, **U** in the timeline shows only the
 controls of the layers' clips (as above) that have **keyframes**, and **U pressed twice**
@@ -132,6 +132,14 @@ change to what is picked: pressing U again, or Escape in the label
 column, goes back to the picked rows. A note in the layer header says
 which filter is on. The same is in the View menu, as Show Animated
 Parameters and Show Changed Parameters.
+
+Built as a note in the timeline's title bar, rather than in each layer
+header, which also turns the filter off when clicked; while one is on,
+every layer with such parameters shows its rows, whether or not its
+arrow is open (`ParameterRowFilter`). Escape anywhere in the timeline, not only
+the label column, turns it off. Changed is measured against what
+a new effect of the kind has, its shapes sized to the frame. The View
+menu's items are not built yet.
 
 ### Graph mode (not yet)
 
@@ -220,7 +228,9 @@ volume row's. The rest below is not built yet:
   clips' rows; a row acts on the selected clips or the one under the
   playhead, reads "Mixed" where they differ, and sets them all as one
   edit; turning adding off keeps the rows shown; rows of clips and
-  layers that are gone are let go; and `view-state.json` keeps them.
+  layers that are gone are let go; `view-state.json` keeps them; and U
+  shows the animated parameters and UU the changed ones, whatever is
+  picked.
 - `UISnapshots.parameterRows`: the rows in the names column and their
   lanes.
 
@@ -230,7 +240,8 @@ volume row's. The rest below is not built yet:
    effects panel's menus or by keyframing, their values, stopwatch,
    keyframe buttons and lanes, the settings in Settings ▸ Timeline, and
    the view state.
-2. **U and UU** (not yet), and the effects panel's U.
+2. **U and UU** (done), but for the View menu's items and the effects
+   panel's U.
 3. **Copying keyframes** (not yet), with picks across lanes.
 4. **Graph mode** (not yet).
 5. **Other kinds of lanes** (not yet): text runs, axes, speed, and the

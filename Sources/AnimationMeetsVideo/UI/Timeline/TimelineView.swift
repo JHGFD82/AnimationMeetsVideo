@@ -63,6 +63,10 @@ struct TimelineView: View {
     /// rows are hidden for a compact timeline.
     @AppStorage(Preferences.addsKeyframedParameters) var addsKeyframedParameters = true
     @AppStorage(Preferences.hidesParameterRows) var hidesParameterRows = false
+    /// U's or UU's filter over the parameter rows, while one is on.
+    @State var parameterFilter: ParameterRowFilter?
+    /// When U was last pressed, to tell UU from two presses.
+    @State var lastParameterFilterPress: Date?
     /// Layers showing their video clips' linked audio.
     @State var audioRevealed: Set<UUID> = []
     /// Layers whose sound shows each channel apart: the clips of sound
@@ -297,6 +301,19 @@ struct TimelineView: View {
                     }
                 TimelineToolPicker(current: tool, tool: $tool)
                     .equatable()
+                if let parameterFilter {
+                    Button {
+                        self.parameterFilter = nil
+                    } label: {
+                        Label(parameterFilter.note, systemImage: "xmark.circle.fill")
+                            .font(Design.Typeface.label)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Design.accent)
+                    .help("Showing only these parameters' rows; press U or Escape to go back to the rows picked")
+                    .accessibilityLabel("\(parameterFilter.note), on")
+                    .accessibilityHint("Shows the rows picked again")
+                }
                 Spacer()
                 PlayheadReader(playhead: playhead) { parked in
                     PlayheadTimecode(playback: playback, parked: parked, frameRate: timeline.frameRate)

@@ -152,6 +152,41 @@ extension TimelineClip {
     }
 }
 
+/// A filter over the rows, as After Effects' U and UU: only the parameters
+/// with keyframes, or only those changed from their defaults, keyframed
+/// or not, put in the timeline or not.
+enum ParameterRowFilter: Equatable, Sendable {
+    case animated
+    case changed
+
+    /// What the timeline says while it is on.
+    var note: String {
+        switch self {
+        case .animated: "Animated parameters (U)"
+        case .changed: "Changed parameters (UU)"
+        }
+    }
+}
+
+extension TimelineClip {
+    /// The keys of its parameters `filter` shows: keyframed ones, or those
+    /// changed from what a new effect of the kind has (its shapes sized to
+    /// `frame`).
+    func parameterKeys(_ filter: ParameterRowFilter, frame: CGSize?) -> Set<ParameterRowKey> {
+        var keys: Set<ParameterRowKey> = []
+        for effect in parameterEffects {
+            for control in effect.controls where control.isDrivable {
+                let shows = switch filter {
+                case .animated: control.isAnimated
+                case .changed: control.isAnimated || !control.isAtDefault(like: effect.freshControl(control.kind, in: frame))
+                }
+                if shows { keys.insert(ParameterRowKey(effectKind: effect.kind, ordinal: ordinal(of: effect), control: control.kind)) }
+            }
+        }
+        return keys
+    }
+}
+
 /// An effect's rows under a layer: its name and its controls' rows.
 struct ParameterRowGroup: Identifiable, Equatable {
     var effectKey: String
@@ -176,16 +211,18 @@ extension EditingProject {
     /// The rows `layer` shows: the parameters of its clips in `selected`,
     /// or of every clip on it when none of them is, one row a parameter
     /// whatever clips have it, grouped by effect, in the order the clips
-    /// and their stacks have them.
+    /// and their stacks have them. With `filter`, those it shows instead of
+    /// those put in the timeline, a new effect's shapes sized to `frame`.
     func parameterRows(
-        on layer: TimelineLayer, rows: TimelineParameterRows, addsKeyframed: Bool, selected: Set<UUID>
+        on layer: TimelineLayer, rows: TimelineParameterRows, addsKeyframed: Bool, selected: Set<UUID>,
+        filter: ParameterRowFilter? = nil, frame: CGSize? = nil
     ) -> [ParameterRowGroup] {
         let clips = layer.clips.sorted { $0.startOffset < $1.startOffset }
         let picked = clips.filter { selected.contains($0.id) }
         let shown = picked.isEmpty ? clips : picked
         var groups: [ParameterRowGroup] = []
         for clip in shown {
-            let keys = rows.keys(of: clip, addsKeyframed: addsKeyframed)
+            let keys = filter.map { clip.parameterKeys($0, frame: frame) } ?? rows.keys(of: clip, addsKeyframed: addsKeyframed)
             guard !keys.isEmpty else { continue }
             for effect in clip.parameterEffects {
                 let ordinal = clip.ordinal(of: effect)
