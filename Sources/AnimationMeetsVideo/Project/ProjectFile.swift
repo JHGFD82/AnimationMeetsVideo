@@ -494,6 +494,9 @@ struct ProjectFile: Codable {
         var squircle: Bool?
         /// Paths only; absent while open.
         var closed: Bool?
+        /// Fill and Stroke only: the gradient it paints, its numbers then
+        /// the gradient's; absent while it paints one color.
+        var paint: PaintEntry?
         var value: ControlValueEntry?
         var keyframes: [KeyframeEntry<ControlValueEntry>]?
 
@@ -504,6 +507,7 @@ struct ProjectFile: Codable {
             linked = control.kind.isLinkable && control.linked != control.kind.linksByDefault ? control.linked : nil
             squircle = control.kind == .cornerRadius && control.squircle ? true : nil
             closed = control.kind.isPath && control.closed ? true : nil
+            paint = control.kind.takesGradient ? control.paint.map(PaintEntry.init) : nil
             if control.kind.isChoice {
                 value = .text(control.choice ?? control.kind.defaultChoice ?? "")
             } else if control.kind.isPath {
@@ -533,6 +537,18 @@ struct ProjectFile: Codable {
                 return control
             }
             control.number = number(default: control.number.value)
+            if kind.takesGradient {
+                // A gradient's numbers, or a color's four: whichever its
+                // paint says, else a new control's.
+                let fits: (ComponentValue) -> Bool = paint == nil
+                    ? { $0.values.count == kind.defaultValues.count }
+                    : { PaintGradient(values: $0.values) != nil }
+                if fits(control.number.value), control.number.keyframes.allSatisfy({ fits($0.value) }) {
+                    control.paint = paint?.style
+                } else {
+                    control.number = AnimatedValue(ComponentValue(values: kind.defaultValues))
+                }
+            }
             return control
         }
 
@@ -541,6 +557,39 @@ struct ProjectFile: Codable {
             let frames = (keyframes ?? []).compactMap { entry in entry.value.components.map(entry.keyframe) }
             return AnimatedValue(value?.components ?? frames.first?.value ?? fallback, keyframes: frames)
         }
+    }
+
+    /// How a color paints a gradient (`PaintStyle`), each absent at its
+    /// default: linear, holding its ends, in the timeline's values, over
+    /// the item.
+    struct PaintEntry: Codable {
+        var kind: String?
+        var repeats: String?
+        var blend: String?
+        var space: String?
+
+        init(_ style: PaintStyle) {
+            kind = style.kind == .linear ? nil : style.kind.rawValue
+            repeats = style.repeats == .hold ? nil : style.repeats.rawValue
+            blend = style.blend == .values ? nil : style.blend.rawValue
+            space = style.space == .item ? nil : style.space.rawValue
+        }
+
+        var style: PaintStyle {
+            PaintStyle(
+                kind: kind.flatMap(GradientKind.init(rawValue:)) ?? .linear,
+                repeats: repeats.flatMap(GradientRepeat.init(rawValue:)) ?? .hold,
+                blend: blend.flatMap(GradientBlend.init(rawValue:)) ?? .values,
+                space: space.flatMap(GradientSpace.init(rawValue:)) ?? .item
+            )
+        }
+
+        static let shape = JSONObjectShape(fields: [
+            .optional("kind", .choice(GradientKind.allCases.map(\.rawValue), noun: "gradient kind")),
+            .optional("repeats", .choice(GradientRepeat.allCases.map(\.rawValue), noun: "gradient repeat")),
+            .optional("blend", .choice(GradientBlend.allCases.map(\.rawValue), noun: "gradient blend")),
+            .optional("space", .choice(GradientSpace.allCases.map(\.rawValue), noun: "gradient space")),
+        ])
     }
 
     /// The picture an effect takes: an asset or a timeline of the project,
@@ -1310,6 +1359,8 @@ extension ProjectFile {
             case _ where kind.isCurve: .numbers(count: nil)
             // A path's vertices, six numbers each.
             case _ where kind.isPath: .array(.numbers(count: FreePath.numbersPerVertex))
+            // A color's four numbers, or a gradient's points and stops.
+            case _ where kind.takesGradient: .numbers(count: nil)
             default: count > 1 ? .numbers(count: count) : .number
             }
             var fields: [O.Field] = [
@@ -1323,6 +1374,7 @@ extension ProjectFile {
             if kind.isLinkable { fields.append(.optional("linked", .bool)) }
             if kind == .cornerRadius { fields.append(.optional("squircle", .bool)) }
             if kind.isPath { fields.append(.optional("closed", .bool)) }
+            if kind.takesGradient { fields.append(.optional("paint", .object(PaintEntry.shape))) }
             return object(fields, oneOf: kind.isChoice ? [] : [["value", "keyframes"]])
         }
 

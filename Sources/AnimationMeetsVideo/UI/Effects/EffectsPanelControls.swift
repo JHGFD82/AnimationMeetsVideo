@@ -134,11 +134,15 @@ extension EffectsPanel {
                     // A curve's numbers are its points, shaped on its effect's
                     // graph, not values with eases to graph.
                     // A path's numbers are its vertices, drawn with the pen.
-                    onShowGraph: control.kind.isCurve || control.kind.isPath ? nil : graphs.map { graphs in { graphs.show(key) } },
-                    color: control.kind.isColor ? colorBinding(control, of: effect, c) : nil,
+                    // A gradient's numbers are its points and stops, set in
+                    // the inspector.
+                    onShowGraph: control.kind.isCurve || control.kind.isPath || control.paint != nil
+                        ? nil : graphs.map { graphs in { graphs.show(key) } },
+                    color: control.kind.isColor && control.paint == nil ? colorBinding(control, of: effect, c) : nil,
                     summary: control.kind.isCurve
                         ? curveSummary(shown, at: c.sourceNow(animated: control.isAnimated))
-                        : control.kind.isPath ? pathSummary(shown, of: effect, at: c.sourceNow(animated: control.isAnimated)) : nil,
+                        : control.kind.isPath ? pathSummary(shown, of: effect, at: c.sourceNow(animated: control.isAnimated))
+                        : control.paint != nil ? gradientSummary(shown, at: c.sourceNow(animated: control.isAnimated)) : nil,
                     summaryAction: control.kind.isPath ? penAction(control, of: effect, in: clip) : nil,
                     method: methodBadge(.control(effectID: effect.id, controlID: control.id), c),
                     onOpenMethod: { openDesigner(on: .control(effectID: effect.id, controlID: control.id), of: clip) },
@@ -154,6 +158,14 @@ extension EffectsPanel {
             )
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(EffectStackLayout.space)) }, action: placed)
         }
+    }
+
+    /// What a Fill or Stroke painting a gradient says of it in its row:
+    /// its kind and how many stops it has. Its stops are set in the
+    /// inspector (docs/gradients.md).
+    private func gradientSummary(_ control: EffectControl, at time: CMTime) -> String {
+        let count = control.gradient(at: time)?.stops.count ?? 0
+        return "\(control.paint?.kind.name ?? "Linear") gradient, \(count) stops"
     }
 
     /// What a curve control's row says of it: how many points it has, or

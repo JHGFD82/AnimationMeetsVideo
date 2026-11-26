@@ -934,7 +934,7 @@ struct Drawing {
                     pathOutline = ShapeRendering.Edge(area: shape.path, transform: frameToOutput)
                 }
                 for paint in shape.paints {
-                    shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, transform: frameToOutput))
+                    shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, gradient: paint.gradient, transform: frameToOutput))
                 }
                 edges.append(ShapeRendering.Edge(area: shape.edge, transform: frameToOutput))
             case .outlineStroke(let style):
@@ -943,7 +943,9 @@ struct Drawing {
                 settleOpacity()
                 guard let outline = ShapeRendering.union(of: edges, current: frameToOutput) else { continue }
                 let area = style.area(around: outline)
-                shapes.append(ShapeRendering.Paint(area: area, color: style.color, transform: frameToOutput))
+                // A gradient lies over what it outlines, or the frame.
+                let gradient = style.gradient?.placed(item: outline.boundingBoxOfPath, frame: CGRect(origin: .zero, size: frameSize))
+                shapes.append(ShapeRendering.Paint(area: area, color: style.color, gradient: gradient, transform: frameToOutput))
                 edges.append(ShapeRendering.Edge(area: area, transform: frameToOutput))
             case .mark(let id):
                 settleOpacity()

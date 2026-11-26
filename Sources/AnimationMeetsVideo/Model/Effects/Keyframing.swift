@@ -270,6 +270,13 @@ extension KeyframingPrint {
 
 // MARK: - Targets
 
+extension EffectControl {
+    /// Whether a Keyframing method can drive it: a number or a color, not
+    /// a choice, a curve, a path or a gradient, whose numbers are points
+    /// rather than values to move.
+    var isDrivable: Bool { !kind.isChoice && !kind.isCurve && !kind.isPath && paint == nil }
+}
+
 extension TimelineClip {
     /// The numbers of a target, as components.
     func number(of target: KeyframingTarget) -> AnimatedValue<ComponentValue>? {
@@ -314,7 +321,7 @@ extension EditingProject {
     func keyframingTargets(in clip: TimelineClip) -> [KeyframingTarget] {
         func numeric(_ effects: ArraySlice<Effect>) -> [KeyframingTarget] {
             effects.filter { !$0.kind.isKeyframing }.flatMap { effect in
-                effect.controls.filter { !$0.kind.isChoice && !$0.kind.isCurve && !$0.kind.isPath }.map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
+                effect.controls.filter(\.isDrivable).map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
             }
         }
         var targets = numeric(clip.effects[...])
@@ -336,7 +343,7 @@ extension EditingProject {
             func holds(_ effects: ArraySlice<Effect>) -> Bool {
                 effects.contains { effect in
                     effect.id == effectID && !effect.kind.isKeyframing
-                        && effect.controls.contains { $0.id == controlID && !$0.kind.isChoice && !$0.kind.isCurve && !$0.kind.isPath }
+                        && effect.controls.contains { $0.id == controlID && $0.isDrivable }
                 }
             }
             return holds(clip.effects[...]) || (playsAudio(clip) && holds(clip.audioEffects[...]))

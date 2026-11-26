@@ -396,6 +396,10 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     var squircle = false
     /// For a path: whether it is closed. Not keyframed.
     var closed = false
+    /// For a Fill or Stroke color (`ControlKind.takesGradient`): how it
+    /// paints a gradient, its numbers then the gradient's (`Gradient`);
+    /// nil while it paints one color. Not keyframed. See docs/gradients.md.
+    var paint: PaintStyle?
 
     init(id: UUID = UUID(), kind: ControlKind, enabled: Bool = true) {
         self.id = id
@@ -444,12 +448,14 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     var isAtDefault: Bool {
         let definition = kind.definition
         return !number.isAnimated && number.value == definition.defaultValue && choice == definition.defaultChoice && !squircle && !closed
+            && paint == nil
     }
 
     /// Whether it holds what `fresh`, a new control of its kind as its
     /// effect would make it (a shape's size fitted to the frame), does.
     func isAtDefault(like fresh: EffectControl) -> Bool {
         !number.isAnimated && number.value == fresh.number.value && choice == fresh.choice && !squircle && closed == fresh.closed
+            && paint == fresh.paint
     }
 
     /// The control's components at `source time`.
@@ -467,6 +473,7 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         choice = fresh.choice
         squircle = fresh.squircle
         closed = fresh.closed
+        paint = fresh.paint
     }
 
     /// Sets one component at `time` (a keyframe when animated). Linked

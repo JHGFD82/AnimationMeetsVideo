@@ -219,8 +219,8 @@ anything with an outline can be stroked, however often:
 
 Still to come:
 
-- **Gradient fills** (linear and radial, with stops), for fills and
-  strokes alike.
+- **Gradient fills** for fills and strokes alike: built for shapes, the
+  rest planned; see [gradients.md](gradients.md).
 - **Path operations.** Union, intersection, subtraction and exclusion of
   shapes (Core Graphics' `CGPath` boolean operations, macOS 13 and later),
   offset paths, and **trim paths** (start, end and offset in percent, for
@@ -600,7 +600,8 @@ display's markup once was, is in [pen-tool.md](pen-tool.md).
    Stroke effect; `ShapeTests` checks inside and outside strokes, a
    stroke around a stroke, a star's notches against a pentagon, dashes,
    and saving the choices. Choice controls now list their own options,
-   which also fixes Matte's Take listing blend modes. (c) Gradients.
+   which also fixes Matte's Take listing blend modes. (c, shapes done)
+   Gradients, in [gradients.md](gradients.md).
    (d, done) Free paths and their keyframes ([pen-tool.md](pen-tool.md)).
    (e) Path operations and trim
    paths.

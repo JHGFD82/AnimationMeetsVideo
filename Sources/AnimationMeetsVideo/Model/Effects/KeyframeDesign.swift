@@ -8,11 +8,11 @@ import Foundation
 
 extension EditingProject {
     /// The controls of an effect the designer can drive: its numeric ones,
-    /// not choices or curves. A Keyframing effect's own settings aren't
-    /// offered: it drives, it isn't driven.
+    /// not choices, curves, paths or gradients. A Keyframing effect's own
+    /// settings aren't offered: it drives, it isn't driven.
     static func designableControls(of effect: Effect) -> [EffectControl] {
         guard !effect.kind.isKeyframing, effect.missing == nil else { return [] }
-        return effect.controls.filter { !$0.kind.isChoice && !$0.kind.isCurve && !$0.kind.isPath }
+        return effect.controls.filter(\.isDrivable)
     }
 
     /// The Keyframing effect that writes to `target` on a clip: the top one

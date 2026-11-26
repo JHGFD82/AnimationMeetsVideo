@@ -22,10 +22,16 @@ struct ShapeStep: Equatable, Sendable {
 
     var outline: Outline
     /// Red, green, blue and alpha (0...1, not premultiplied); nil when it
-    /// isn't filled.
+    /// isn't filled with one color.
     var fill: [Double]?
+    /// The gradient it is filled with instead, if any (see
+    /// docs/gradients.md). Text is filled with its first stop's color.
+    var fillGradient: GradientFill?
     /// Nil when it isn't stroked.
     var stroke: ShapeStroke?
+    /// The frame, in its own pixels, which a gradient relative to the frame
+    /// is laid out on.
+    var frame: CGRect
 
     /// The shape of a Rectangle, Ellipse, Polygon, Star, Path or Text
     /// effect at source time `time`, centered on `center` plus its
@@ -41,6 +47,7 @@ struct ShapeStep: Equatable, Sendable {
             return control.values(at: time)
         }
         func single(_ kind: ControlKind) -> Double { values(kind).first ?? 0 }
+        frame = CGRect(x: 0, y: 0, width: center.x * 2, height: center.y * 2)
         let offset = values(.shapePosition)
         guard offset.count == 2 else { return nil }
         let middle = CGPoint(x: center.x + offset[0], y: center.y + offset[1])
@@ -76,7 +83,7 @@ struct ShapeStep: Equatable, Sendable {
             }
             text.strokeGeometry = ShapeStroke(geometryOf: effect, at: time)
             if let color = effect.control(.stroke), color.enabled {
-                let rgba = color.values(at: time).map { $0.clamped(between: 0, and: 1) }
+                let rgba = color.solidColor(at: time).map { $0.clamped(between: 0, and: 1) }
                 text.strokeColor = rgba.count == 4 && rgba[3] > 0 ? rgba : nil
             }
             outline = .text(text)
@@ -84,10 +91,16 @@ struct ShapeStep: Equatable, Sendable {
             return nil
         }
         if let control = effect.control(.fill), control.enabled {
-            let rgba = control.values(at: time).map { $0.clamped(between: 0, and: 1) }
-            fill = rgba.count == 4 && rgba[3] > 0 ? rgba : nil
+            if effect.kind != .text, let gradient = control.gradient(at: time), let style = control.paint {
+                fillGradient = GradientFill(gradient: gradient, style: style)
+            } else {
+                let rgba = control.solidColor(at: time).map { $0.clamped(between: 0, and: 1) }
+                fill = rgba.count == 4 && rgba[3] > 0 ? rgba : nil
+            }
         }
         stroke = ShapeStroke(effect, at: time)
+        // Text strokes each run in a color of its own.
+        if effect.kind == .text { stroke?.gradient = nil }
     }
 
     /// The outline as a path in the frame's pixels.
@@ -126,16 +139,19 @@ struct ShapeStep: Equatable, Sendable {
     }
 
     /// What it paints, bottom first: its fill, then its stroke, each an
-    /// area filled with a color.
+    /// area filled with a color or a gradient, placed on the shape's
+    /// bounds or the frame.
     /// Text paints each group of letters drawn alike in its own colors and
     /// opacity, all the fills first, then the strokes.
-    var paints: [(area: CGPath, color: [Double])] {
+    var paints: [(area: CGPath, color: [Double], gradient: GradientPaint?)] {
         if case .text(let text) = outline {
             let pieces = text.pieces(fill: fill, stroke: text.strokeColor)
             func faded(_ color: [Double], _ opacity: Double) -> [Double] {
                 color.count == 4 ? [color[0], color[1], color[2], color[3] * opacity] : color
             }
-            var result = pieces.compactMap { piece in piece.fill.map { (piece.path as CGPath, faded($0, piece.opacity)) } }
+            var result: [(area: CGPath, color: [Double], gradient: GradientPaint?)] = pieces.compactMap { piece in
+                piece.fill.map { (piece.path as CGPath, faded($0, piece.opacity), nil) }
+            }
             // Stroked as the block strokes, at the run's width where it has
             // one.
             if let geometry = text.strokeGeometry {
@@ -144,15 +160,24 @@ struct ShapeStep: Equatable, Sendable {
                     var style = geometry
                     style.width = piece.strokeWidth ?? geometry.width
                     guard style.width > 0 else { return nil }
-                    return (style.area(around: piece.path), faded(color, piece.opacity))
+                    return (style.area(around: piece.path), faded(color, piece.opacity), nil)
                 }
             }
             return result
         }
         let outline = path
-        var result: [(area: CGPath, color: [Double])] = []
-        if let fill, isFillable { result.append((outline, fill)) }
-        if let stroke { result.append((stroke.area(around: outline), stroke.color)) }
+        let bounds = outline.boundingBoxOfPath
+        var result: [(area: CGPath, color: [Double], gradient: GradientPaint?)] = []
+        if isFillable {
+            if let fillGradient {
+                result.append((outline, [0, 0, 0, 0], fillGradient.placed(item: bounds, frame: frame)))
+            } else if let fill {
+                result.append((outline, fill, nil))
+            }
+        }
+        if let stroke {
+            result.append((stroke.area(around: outline), stroke.color, stroke.gradient?.placed(item: bounds, frame: frame)))
+        }
         return result
     }
 
@@ -181,7 +206,7 @@ struct ShapeStep: Equatable, Sendable {
         case .path(let path, let origin):
             text = "h v\(path.closed ? "c" : "o") \(n(origin.x)),\(n(origin.y)) " + path.values.map(n).joined(separator: ",")
         }
-        text += " f" + (fill ?? []).map(n).joined(separator: ",")
+        text += " f" + (fillGradient?.keyText ?? (fill ?? []).map(n).joined(separator: ","))
         text += " s" + (stroke?.keyText ?? "-")
         return text
     }
@@ -264,8 +289,11 @@ struct ShapeStep: Equatable, Sendable {
 /// How a stroke is drawn: its color and width, which side of the outline
 /// it goes, how it turns corners and ends dashes, and its dashes.
 struct ShapeStroke: Equatable, Sendable {
-    /// Red, green, blue and alpha, 0...1.
+    /// Red, green, blue and alpha, 0...1: the color, or a gradient's first
+    /// stop's.
     var color: [Double]
+    /// The gradient it is painted with instead of `color`, if any.
+    var gradient: GradientFill?
     var width: Double
     var edge: StrokeEdge
     var join: StrokeJoin
@@ -285,7 +313,7 @@ struct ShapeStroke: Equatable, Sendable {
             effect.control(kind).flatMap { $0.enabled ? $0.choice : nil } ?? kind.defaultChoice ?? ""
         }
         let dashes = values(.dash) ?? [0, 0]
-        color = values(.stroke) ?? [0, 0, 0, 0]
+        color = effect.control(.stroke).flatMap { $0.enabled ? $0.solidColor(at: time) : nil } ?? [0, 0, 0, 0]
         width = max(0, values(.strokeWidth)?.first ?? 0)
         edge = StrokeEdge(rawValue: choice(.strokeEdge)) ?? .center
         join = StrokeJoin(rawValue: choice(.strokeJoin)) ?? .miter
@@ -299,8 +327,14 @@ struct ShapeStroke: Equatable, Sendable {
     /// color is off or clear, or there is no width.
     init?(_ effect: Effect, at time: CMTime) {
         guard let colorControl = effect.control(.stroke), colorControl.enabled else { return nil }
-        let rgba = colorControl.values(at: time).map { $0.clamped(between: 0, and: 1) }
-        guard rgba.count == 4, rgba[3] > 0 else { return nil }
+        let rgba = colorControl.solidColor(at: time).map { $0.clamped(between: 0, and: 1) }
+        if let gradient = colorControl.gradient(at: time), let style = colorControl.paint {
+            // Painted while any of its stops shows.
+            guard gradient.stops.contains(where: { $0.color[3] > 0 }) else { return nil }
+            self.gradient = GradientFill(gradient: gradient, style: style)
+        } else {
+            guard rgba.count == 4, rgba[3] > 0 else { return nil }
+        }
         let widthControl = effect.control(.strokeWidth).flatMap { $0.enabled ? $0 : nil }
         let width = widthControl?.values(at: time).first ?? 0
         guard width > 0 else { return nil }
@@ -340,6 +374,6 @@ struct ShapeStroke: Equatable, Sendable {
     /// What it draws, in words, for a render's key.
     var keyText: String {
         func n(_ value: Double) -> String { String(format: "%.5f", value) }
-        return color.map(n).joined(separator: ",") + "@\(n(width)) \(edge.rawValue) \(join.rawValue) \(cap.rawValue) \(n(dash))/\(n(gap))"
+        return (gradient?.keyText ?? color.map(n).joined(separator: ",")) + "@\(n(width)) \(edge.rawValue) \(join.rawValue) \(cap.rawValue) \(n(dash))/\(n(gap))"
     }
 }

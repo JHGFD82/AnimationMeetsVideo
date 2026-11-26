@@ -845,7 +845,7 @@ struct UISnapshots {
             effects: [circle, text, animator, inside], anchorPoint: AnimatedValue(.zero), at: .zero, center: CGPoint(x: 350, y: 350)
         )
         var paints: [(area: CGPath, color: [Double])] = []
-        for case .shape(let shape) in steps { paints += shape.paints }
+        for case .shape(let shape) in steps { paints += shape.paints.map { ($0.area, $0.color) } }
         try SnapshotSupport.render(
             Canvas { context, _ in
                 for paint in paints where paint.color.count == 4 {
@@ -883,6 +883,42 @@ struct UISnapshots {
                 info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
             ),
             "shape-inspector", size: CGSize(width: 340, height: 820)
+        )
+    }
+
+    /// The inspector for a shape filled with a linear gradient of three
+    /// stops, the middle one leaning, and stroked with a radial one: each
+    /// color's paint menu, and under it the preview, the stop bar with its
+    /// midpoints, the picked stop's color, opacity and location, Reverse,
+    /// Distribute and Remove, and the repeat, blend and placement menus.
+    @Test func shapeInspectorGradients() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.ellipse, to: t)
+        let shape = try #require(added)
+        project.editClip(shape.clipID, in: t) { clip in
+            clip.effects[0].changeControl(.fill) { fill in
+                fill.number = AnimatedValue(ComponentValue(values: [0.95, 0.35, 0.2, 1]))
+                fill.setPaint(.linear)
+                fill.addGradientStop(at: 0.4, time: .zero)
+                fill.editGradient(at: .zero) { $0.stops[1].color = [1, 0.85, 0.2, 1]; $0.stops[1].midpoint = 0.3 }
+                fill.paint?.blend = .perceptual
+            }
+            clip.effects[0].changeControl(.stroke) { stroke in
+                stroke.number = AnimatedValue(ComponentValue(values: [1, 1, 1, 1]))
+                stroke.setPaint(.radial)
+                stroke.paint?.repeats = .reflect
+            }
+            clip.effects[0].changeControl(.strokeWidth) { $0.setComponent(0, to: 6, at: .zero) }
+        }
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: shape.layerID, timelineClipID: shape.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "shape-inspector-gradients", size: CGSize(width: 340, height: 900)
         )
     }
 
