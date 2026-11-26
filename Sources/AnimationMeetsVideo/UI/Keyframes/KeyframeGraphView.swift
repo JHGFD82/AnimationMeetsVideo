@@ -82,6 +82,8 @@ struct KeyframeGraphView: View {
     @State private var cache = KeyframeGraphCache()
     /// Whether the loop bar shows, here as in the timeline.
     @AppStorage(Preferences.timelineAreaLayout) private var areaLayout = TimelineAreaLayout()
+    /// How a retimed clip's time is laid out across (`GraphTimeBasis`).
+    @AppStorage(Preferences.keyframeGraphTimeBasis) private var timeBasis = GraphTimeBasis.timeline
 
     private enum Target: Equatable {
         case keyframe(CMTime, component: Int)
@@ -142,6 +144,9 @@ struct KeyframeGraphView: View {
         var sharedTimes: ClosedRange<Double>?
         /// The values' fit for a set of components, kept between redraws.
         var fitValues: (_ components: [Int]) -> ClosedRange<Double>
+        /// A retimed clip's time laid out as the timeline plays it, in
+        /// timeline time.
+        var warp: GraphTimeWarp?
     }
 
     /// The link when the graph shares its time with others in it.
@@ -253,14 +258,15 @@ struct KeyframeGraphView: View {
             segments: cache.segments(of: value), padded: padded,
             fit: cache.fitTimes(value, span: padded, frame: timeline.frameDuration.seconds),
             sharedTimes: shared?.keyTimes(for: axis, in: hud.project),
-            fitValues: { cache.fitValues(value, offset: offset, components: $0) }
+            fitValues: { cache.fitValues(value, offset: offset, components: $0) },
+            warp: axis.warp(timeBasis)
         )
     }
 
     private func layout(_ c: Context, size: CGSize) -> KeyframeGraphLayout {
         KeyframeGraphLayout(
             c.value, offset: c.offset, size: size, viewport: viewport, span: c.axis.span, frame: c.timeline.frameDuration.seconds,
-            times: c.sharedTimes ?? viewport.shownTimes(fit: c.fit, span: c.padded), fitValues: c.fitValues
+            times: c.sharedTimes ?? viewport.shownTimes(fit: c.fit, span: c.padded), fitValues: c.fitValues, warp: c.warp
         )
     }
 
@@ -654,6 +660,9 @@ struct KeyframeGraphView: View {
                 GraphSkimToggle(hud: hud)
                 GraphLoopToggle()
             }
+            if c.axis.offersTimeBasis {
+                timeBasisPicker
+            }
             if names.count > 1 {
                 Toggle(isOn: $viewport.separateScales) { Image(systemName: Design.Symbol.separateScales) }
                     .toggleStyle(.icon)
@@ -682,6 +691,25 @@ struct KeyframeGraphView: View {
         .padding(.horizontal, Design.Space.rail)
         .padding(.vertical, Design.Space.close)
         .rail(.raised)
+    }
+
+    /// Timeline Time or Clip Time, for a retimed clip: how far apart its
+    /// keyframes are drawn, as the timeline plays them or as the clip
+    /// stores them.
+    private var timeBasisPicker: some View {
+        Picker("Time", selection: $timeBasis) {
+            ForEach(GraphTimeBasis.allCases, id: \.self) { basis in
+                Text(basis.name).tag(basis)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .help(timeBasis == .timeline
+              ? "Keyframes are spaced as the timeline plays them; choose Clip Time to space them as the retimed clip stores them"
+              : "Keyframes are spaced as the retimed clip stores them; choose Timeline Time to space them as the timeline plays them")
+        .accessibilityLabel("Graph time")
+        .accessibilityValue(timeBasis.name)
     }
 
     /// The graph's name in a linked panel; clicking it, or the graph, has
@@ -1269,8 +1297,9 @@ extension KeyframeGraphView {
                         ? KeyframeEase.progress((seconds - t0) / length, leaving: from.easeOut, arriving: to.easeIn) : 1
                     return { from.value.values[$0] + (to.value.values[$0] - from.value.values[$0]) * progress }
                 }
-                // A linear blend is straight between its ends.
-                if from.easeOut != nil || to.easeIn != nil {
+                // A linear blend is straight between its ends, unless
+                // time is bent on its way across.
+                if from.easeOut != nil || to.easeIn != nil || layout.bendsLines {
                     var seconds = a
                     while step > 0, seconds < b {
                         add(seconds, blended(seconds))

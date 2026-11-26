@@ -18,18 +18,30 @@ struct ShapeInspectorGroup: View {
     let onSeek: (CMTime) -> Void
 
     var body: some View {
-        // A Stroke effect is all stroke; a shape's paint has its own group.
-        let kinds = effect.kind == .stroke
-            ? effect.kind.controlKinds
-            : effect.kind.controlKinds.filter { !EffectKind.paintControls.contains($0) }
-        InspectorGroup(effect.displayName) {
-            InspectorControls(
-                effect: effect, kinds: kinds, playhead: playhead, keyframing: effect.kind == .textAnimator, onEdit: onEdit, onSeek: onSeek
+        if effect.kind == .stroke {
+            // A Stroke effect is all stroke, shown as a shape's is: its
+            // color (a gradient laid over what it outlines,
+            // docs/gradients.md), then the stroke's shape while it is on.
+            PaintInspectorGroup(
+                effect: effect, title: effect.displayName, showsFill: false, playhead: playhead, onEdit: onEdit, onSeek: onSeek
             )
-            if !effect.enabled {
-                Text("Turned off in the effects panel, so it draws nothing.")
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textSecondary)
+        } else {
+            // A shape's paint has its own group. A Waveform's, only those
+            // of how it is set now.
+            let kinds = effect.kind.controlKinds.filter { !EffectKind.paintControls.contains($0) && effect.waveformShows($0) }
+            InspectorGroup(effect.displayName, rowsOf: effect.id, controls: kinds.compactMap { effect.control($0)?.id }) {
+                if effect.kind == .waveform {
+                    WaveformGraphPicker(effect: effect, onEdit: onEdit)
+                }
+                InspectorControls(
+                    effect: effect, kinds: kinds, playhead: playhead, keyframing: effect.kind == .textAnimator,
+                    onEdit: onEdit, onSeek: onSeek
+                )
+                if !effect.enabled {
+                    Text("Turned off in the effects panel, so it draws nothing.")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.textSecondary)
+                }
             }
         }
     }

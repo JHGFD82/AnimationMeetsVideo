@@ -136,8 +136,9 @@ final class PlaybackModel {
         ) { [weak self] time in
             MainActor.assumeIsolated {
                 // A seek is a jump of time too: while the player is off
-                // showing a skim, its time isn't the playhead's.
-                guard let self, self.isPlaying || !self.playerIsSkimmed else { return }
+                // showing a skim, or near the playhead after a rough seek,
+                // its time isn't the playhead's.
+                guard let self, self.isPlaying || (!self.playerIsSkimmed && !self.playerIsRough) else { return }
                 self.currentTime = time
             }
         }
@@ -318,7 +319,7 @@ final class PlaybackModel {
             fadesNextFrame = false
             return
         }
-        if !isSeeking, level != .full, redrawPausedFrame() { return }
+        if !isSeeking, !playerIsRough, level != .full, redrawPausedFrame() { return }
         display.show(buffer)
     }
 
@@ -455,6 +456,7 @@ final class PlaybackModel {
     func clearItem() {
         dropRedraw()
         prerenderer.cancel()
+        forgetRoughSeeks()
         capture.arm(at: nil)
         if player.rate != 0 { player.pause() }
         player.replaceCurrentItem(with: nil)
@@ -467,11 +469,12 @@ final class PlaybackModel {
 
     /// The picture on screen and the time of the item it shows (see
     /// `ViewerPipeline.Parked`). Not while a seek is under way, whose frame
-    /// may not be shown yet. The player's time, not the playhead's: a skim
+    /// may not be shown yet, nor after a rough one, whose frame is only
+    /// near where it was sent. The player's time, not the playhead's: a skim
     /// leaves the player and the picture elsewhere, and showing another
     /// timeline has moved the playhead already.
     func shownFrame() -> ViewerFrame? {
-        guard !isPlaying, !isSeeking, player.currentItem != nil, let buffer = display.buffer else { return nil }
+        guard !isPlaying, !isSeeking, !playerIsRough, player.currentItem != nil, let buffer = display.buffer else { return nil }
         let time = player.currentTime()
         return time.isNumeric ? ViewerFrame(buffer: buffer, time: time) : nil
     }
@@ -501,7 +504,7 @@ final class PlaybackModel {
         // playhead should land exactly where playing stopped. Not while a
         // seek is in flight: its target is already set, and the player
         // hasn't reached it yet.
-        if !playing, !isSeeking, !playerIsSkimmed { currentTime = player.currentTime() }
+        if !playing, !isSeeking, !playerIsSkimmed, !playerIsRough { currentTime = player.currentTime() }
         isPlaying = playing
         display.isPlaying = playing
         // The loop turns back only playing forward (see `shuttle`).
@@ -574,10 +577,26 @@ final class PlaybackModel {
 
     @ObservationIgnored private var isSeeking = false
     @ObservationIgnored private var pendingSeek: CMTime?
+    /// How far off, in seconds either way, the pending seek may land (see
+    /// `ScrubPacing`): 0 for exactly.
+    @ObservationIgnored private var pendingTolerance = 0.0
+    /// Whether the moves of the playhead and the skimmer go fast enough to
+    /// seek roughly.
+    @ObservationIgnored private var pacing = ScrubPacing()
+    /// Where the last move sent the player, for landing there exactly.
+    @ObservationIgnored private var lastTarget: CMTime?
+    /// Whether the player was sent somewhere roughly and hasn't yet landed
+    /// exactly: until it has, its time and its frame are only near where
+    /// it was sent, so neither is taken for the playhead's.
+    @ObservationIgnored private var playerIsRough = false
+    /// The exact seek waiting for rough moves to stop.
+    @ObservationIgnored private var landing: Task<Void, Never>?
 
     /// Scrub-friendly seek: only one seek is ever in flight, and a newer
     /// target replaces any that was queued behind it, so dragging the
-    /// playhead doesn't pile up zero-tolerance seeks.
+    /// playhead doesn't pile up zero-tolerance seeks. While the playhead
+    /// moves fast the seeks are rough, and it lands exactly once it rests
+    /// (`ScrubPacing`).
     ///
     /// The playhead is the master: moving it pauses playback, and what
     /// was playing doesn't start again from where it lands.
@@ -597,6 +616,7 @@ final class PlaybackModel {
         if isTapeScrubbing { stopTape() }
         if isPlaying || player.rate != 0 { player.pause() }
         pendingSeek = nil
+        forgetRoughSeeks()
         skimTime = nil
         playerIsSkimmed = false
         tapeScrub.cue(time.seconds)
@@ -604,13 +624,14 @@ final class PlaybackModel {
     }
 
     /// Moves the playhead and seeks the player, playing a grain of the
-    /// mix there unless the tape scrubber is playing it already.
-    private func move(to time: CMTime, playsGrain: Bool = true) {
+    /// mix there unless the tape scrubber is playing it already. `exact`
+    /// seeks exactly however fast the moves go, for play to start from.
+    private func move(to time: CMTime, playsGrain: Bool = true, exact: Bool = false) {
         if playsGrain { playGrain(at: time) }
         // Moving the playhead takes the viewer back from a skim.
         skimTime = nil
         currentTime = time
-        show(time)
+        show(time, exact: exact)
     }
 
     /// Shows the timeline at `time`, where the pointer is, without moving
@@ -640,9 +661,23 @@ final class PlaybackModel {
         scrubAudio.play(at: seconds, deviceUID: outputUID)
     }
 
-    /// Seeks the player to `time`, after any seek under way.
-    private func show(_ time: CMTime) {
+    /// Seeks the player to `time`, after any seek under way: roughly while
+    /// the moves go fast, then exactly once they rest, unless `exact`.
+    private func show(_ time: CMTime, exact: Bool = false) {
         pendingSeek = time
+        lastTarget = time
+        pendingTolerance = exact ? 0 : pacing.tolerance(forMoveTo: time.seconds, at: CACurrentMediaTime())
+        landing?.cancel()
+        landing = nil
+        if pendingTolerance > 0 {
+            playerIsRough = true
+            landing = Task { [weak self] in
+                try? await Task.sleep(for: ScrubPacing.rest)
+                guard !Task.isCancelled, let self else { return }
+                self.landing = nil
+                self.land()
+            }
+        }
         prerenderer.cancel()
         restingPreroll?.cancel()
         restingPreroll = nil
@@ -671,12 +706,20 @@ final class PlaybackModel {
     static let prerollRest: Duration = .milliseconds(250)
 
     private func drainSeeks() async {
+        var landedRoughly = false
         while let target = pendingSeek {
             pendingSeek = nil
-            _ = await player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+            let tolerance = CMTime(seconds: pendingTolerance, preferredTimescale: 600)
+            landedRoughly = pendingTolerance > 0
+            _ = await player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance)
         }
         isSeeking = false
         if skimTime == nil { playerIsSkimmed = false }
+        // Near where it was sent: it lands exactly once the moves rest,
+        // and settles then. Unless the rough seeks were let go meanwhile
+        // (`forgetRoughSeeks`), which takes the landing with them.
+        playerIsRough = landedRoughly && landing != nil
+        guard !playerIsRough else { return }
         // Settled: the frame is drawn at full size if it was drawn smaller.
         if !isPlaying, level != .full { redrawPausedFrame() }
         restingPreroll?.cancel()
@@ -686,6 +729,23 @@ final class PlaybackModel {
             self.restingPreroll = nil
             self.prerollIfPaused()
         }
+    }
+
+    /// The moves have rested after a rough seek: the player goes exactly
+    /// where the last one sent it.
+    private func land() {
+        guard playerIsRough, let lastTarget else { return }
+        show(lastTarget, exact: true)
+    }
+
+    /// Lets go of rough seeks and the moves that made them, for when the
+    /// player is sent somewhere exactly by other means (another item,
+    /// another timeline).
+    private func forgetRoughSeeks() {
+        landing?.cancel()
+        landing = nil
+        playerIsRough = false
+        pacing.reset()
     }
 
     /// The item was swapped while playing and has seeked and resumed.
@@ -704,13 +764,24 @@ final class PlaybackModel {
     /// the viewer shows it; inside the loop region when one is on; and from
     /// the start when at the end.
     private func cueForwardPlay() {
-        if let skimTime { move(to: skimTime, playsGrain: false) }
+        landBeforePlaying()
         if let start = loop.playStart(from: currentTime) {
             // A loop on: from the playhead inside it, else from its start.
-            if start != currentTime { move(to: start, playsGrain: false) }
+            if start != currentTime { move(to: start, playsGrain: false, exact: true) }
         } else if let item = player.currentItem, item.duration.isNumeric,
                   CMTimeCompare(player.currentTime(), item.duration) >= 0 {
             player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+    }
+
+    /// Before play starts: the playhead goes to the frame skimmed to, if
+    /// any, and the player lands exactly on it, rather than playing on
+    /// from near it after a rough seek.
+    private func landBeforePlaying() {
+        if let skimTime {
+            move(to: skimTime, playsGrain: false, exact: true)
+        } else if playerIsRough {
+            show(currentTime, exact: true)
         }
     }
 
@@ -749,7 +820,7 @@ final class PlaybackModel {
             if forward {
                 cueForwardPlay()
             } else {
-                if let skimTime { move(to: skimTime, playsGrain: false) }
+                landBeforePlaying()
                 guard CMTimeCompare(currentTime, .zero) > 0 else { return false }
             }
         }
@@ -832,7 +903,7 @@ final class PlaybackModel {
                 let seconds = frameRate > 0 ? (time.seconds * frameRate + 1e-6).rounded(.down) / frameRate : time.seconds
                 let frame = CMTime(seconds: seconds, preferredTimescale: 600_000)
                 tapeScrub.cue(frame.seconds)
-                move(to: frame, playsGrain: false)
+                move(to: frame, playsGrain: false, exact: true)
                 tapeFollower = nil
                 isTapeScrubbing = false
                 return

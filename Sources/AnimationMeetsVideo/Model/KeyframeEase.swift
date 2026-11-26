@@ -282,6 +282,70 @@ struct ParameterTimeAxis {
     }
 }
 
+extension ParameterTimeAxis {
+    /// How its graph lays out time in `basis`: warped onto the timeline for
+    /// a retimed clip in timeline time, else nil (its own seconds as they
+    /// are). A clip played backwards keeps its own time, since on the
+    /// timeline its keyframes would run right to left.
+    func warp(_ basis: GraphTimeBasis) -> GraphTimeWarp? {
+        guard basis == .timeline, let clip, offersTimeBasis else { return nil }
+        return GraphTimeWarp(clip)
+    }
+
+    /// Whether the graph offers a choice of time basis: for a retimed clip
+    /// played forwards, where the two differ.
+    var offersTimeBasis: Bool {
+        guard let clip else { return false }
+        return clip.isRetimed && !clip.isReversed
+    }
+}
+
+/// How a retimed clip's graph lays out time (docs/keyframing-effects.md,
+/// "The Keyframe Designer").
+enum GraphTimeBasis: String, CaseIterable {
+    /// As the timeline plays it, so retiming doesn't change how far apart
+    /// keyframes look: pulses a Keyframing method spaced evenly on the
+    /// timeline look even.
+    case timeline
+    /// As the clip stores its keyframes, in its source's time: their real
+    /// spacing in the media.
+    case clip
+
+    var name: String {
+        switch self {
+        case .timeline: "Timeline Time"
+        case .clip: "Clip Time"
+        }
+    }
+}
+
+/// A graph's time across warped from a clip's source seconds, where its
+/// keyframes are, onto the seconds the timeline plays them at. Holds only
+/// the clip's timing, so comparing two is cheap.
+struct GraphTimeWarp: Equatable {
+    private var timing: TimelineClip
+
+    init(_ clip: TimelineClip) {
+        var timing = TimelineClip(source: .graphic, startOffset: clip.startOffset, trimStart: clip.trimStart, trimEnd: clip.trimEnd, streams: .video)
+        timing.time = clip.time
+        self.timing = timing
+    }
+
+    /// Whether the warp is a straight scale and shift (a steady speed), so
+    /// a line in the clip's time is a line on the timeline.
+    var isLinear: Bool { !timing.time.speed.isAnimated }
+
+    /// The timeline's seconds at a key's.
+    func display(_ seconds: Double) -> Double {
+        timing.timelineTime(forSourceTime: CMTime(seconds: seconds, preferredTimescale: ParameterTimeAxis.timescale)).seconds
+    }
+
+    /// The key's seconds at the timeline's.
+    func key(_ seconds: Double) -> Double {
+        timing.sourceTime(atTimelineTime: CMTime(seconds: seconds, preferredTimescale: ParameterTimeAxis.timescale)).seconds
+    }
+}
+
 extension EditingProject {
     /// The time axis of a parameter's graph, or nil when what holds it is
     /// gone.

@@ -12,6 +12,9 @@ struct InspectorControls: View {
     /// an effect that exists to animate (a Text Animator). Everything else
     /// is keyframed in the effects panel.
     var keyframing = false
+    /// Whether a Fill or Stroke can paint a gradient here: a shape's,
+    /// text's and a Stroke effect's can (see docs/gradients.md).
+    var offersGradients = false
     let onEdit: ((inout Effect) -> Void) -> Void
     let onSeek: (CMTime) -> Void
 
@@ -19,9 +22,11 @@ struct InspectorControls: View {
         ForEach(kinds.compactMap { effect.control($0) }) { control in
             InspectorControlRow(
                 control: control, playhead: playhead, keyframing: keyframing,
+                offersGradient: offersGradients && control.kind.takesGradient,
                 onEdit: { change in onEdit { $0.changeControl(control.kind, change) } },
                 onSeek: onSeek
             )
+            .parameterRowMenu(effect: effect.id, control: control.id)
         }
     }
 }
@@ -55,6 +60,9 @@ struct InspectorControlRow: View {
     /// The playhead in the clip's source time, snapped to a frame.
     let playhead: PlayheadTime
     var keyframing = false
+    /// Whether a color here can paint a gradient instead (`PaintKindMenu`,
+    /// `GradientEditor`).
+    var offersGradient = false
     var layout = Layout.row
     let onEdit: ((inout EffectControl) -> Void) -> Void
     /// Moves the playhead to a time in the clip's source time.
@@ -119,17 +127,24 @@ struct InspectorControlRow: View {
     private var numberRow: some View {
         let time = playhead.shown(animated: control.isAnimated)
         let values = control.values(at: time)
-        return labelled {
-            if kind.isColor {
-                colorFields(values)
-            } else {
-                HStack(spacing: 4) {
-                    ForEach(Array(values.enumerated()), id: \.offset) { index, value in
-                        field(index, value, count: values.count)
-                        if index == 0, values.count == 2, kind.isLinkable { linkButton }
+        return VStack(alignment: .leading, spacing: 6) {
+            labelled {
+                if kind.isColor {
+                    colorFields(values)
+                } else {
+                    HStack(spacing: 4) {
+                        ForEach(Array(values.enumerated()), id: \.offset) { index, value in
+                            field(index, value, count: values.count)
+                            if index == 0, values.count == 2, kind.isLinkable { linkButton }
+                        }
                     }
+                    .disabled(!control.enabled)
                 }
-                .disabled(!control.enabled)
+            }
+            // A gradient's stops, under its row.
+            if offersGradient, control.paint != nil {
+                GradientEditor(control: control, time: time, isReadOnly: isReadOnly, onEdit: onEdit)
+                    .padding(.leading, layout == .cell ? 0 : Self.nameWidth + 4)
             }
         }
     }
@@ -178,33 +193,44 @@ struct InspectorControlRow: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .help(control.enabled ? "Turn off to leave the \(lowercaseName) out" : "Turn on to draw the \(lowercaseName)")
-            HeldColorWell(name: kind.name, selection: Binding(
-                get: {
-                    let rgba = values.map { CGFloat($0) }
-                    guard rgba.count == 4 else { return CGColor(gray: 1, alpha: 1) }
-                    return CGColor(srgbRed: rgba[0], green: rgba[1], blue: rgba[2], alpha: rgba[3])
-                },
-                set: { picked in
-                    // Read as sRGB, which is how the components are drawn.
-                    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-                          let srgb = picked.converted(to: space, intent: .defaultIntent, options: nil),
-                          let parts = srgb.components, parts.count >= 4
-                    else { return }
-                    let values = parts.prefix(4).map { kind.clamped(Double($0)) }
-                    let at = playhead.current
-                    onEdit { $0.number.set(ComponentValue(values: values), at: at) }
+            if offersGradient {
+                PaintKindMenu(control: control, onEdit: onEdit)
+                    .disabled(!control.enabled || isReadOnly)
+            }
+            if let style = control.paint, offersGradient {
+                // Its stops are under the row.
+                Text("\(style.kind.name), \(control.gradient(at: playhead.shown(animated: control.isAnimated))?.stops.count ?? 0) stops")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+            } else {
+                HeldColorWell(name: kind.name, selection: Binding(
+                    get: {
+                        let rgba = values.map { CGFloat($0) }
+                        guard rgba.count == 4 else { return CGColor(gray: 1, alpha: 1) }
+                        return CGColor(srgbRed: rgba[0], green: rgba[1], blue: rgba[2], alpha: rgba[3])
+                    },
+                    set: { picked in
+                        // Read as sRGB, which is how the components are drawn.
+                        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+                              let srgb = picked.converted(to: space, intent: .defaultIntent, options: nil),
+                              let parts = srgb.components, parts.count >= 4
+                        else { return }
+                        let values = parts.prefix(4).map { kind.clamped(Double($0)) }
+                        let at = playhead.current
+                        onEdit { $0.number.set(ComponentValue(values: values), at: at) }
+                    }
+                ))
+                .labelsHidden()
+                .controlSize(.small)
+                .accessibilityLabel(isReadOnly ? "\(kind.name), animated" : kind.name)
+                .disabled(!control.enabled || isReadOnly)
+                if values.count == 4 {
+                    Text("\(Int((values[3] * 100).rounded()))%")
+                        .font(Design.Typeface.numericSmall)
+                        .foregroundStyle(Design.textTertiary)
+                        .help("Opacity, set in the color well")
+                        .accessibilityLabel("\(kind.name) opacity")
                 }
-            ))
-            .labelsHidden()
-            .controlSize(.small)
-            .accessibilityLabel(isReadOnly ? "\(kind.name), animated" : kind.name)
-            .disabled(!control.enabled || isReadOnly)
-            if values.count == 4 {
-                Text("\(Int((values[3] * 100).rounded()))%")
-                    .font(Design.Typeface.numericSmall)
-                    .foregroundStyle(Design.textTertiary)
-                    .help("Opacity, set in the color well")
-                    .accessibilityLabel("\(kind.name) opacity")
             }
             Spacer(minLength: 0)
             animatedAccessory

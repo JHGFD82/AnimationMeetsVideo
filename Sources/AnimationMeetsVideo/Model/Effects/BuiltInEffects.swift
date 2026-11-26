@@ -28,6 +28,10 @@ extension EffectKind {
     /// Strokes the outline of the shapes above it in the stack, strokes
     /// and all, so a stroke can have a stroke of its own.
     static let stroke = EffectKind(builtIn: "stroke")
+    /// A sound's wave or spectrum, drawn over the picture (see
+    /// docs/waveform-effect.md). A generator, and an effect any visual
+    /// clip can take.
+    static let waveform = EffectKind(builtIn: "waveform")
     /// Sound effects (see docs/audio.md, "Sound effects").
     static let equalizer = EffectKind(builtIn: "equalizer")
     static let compressor = EffectKind(builtIn: "compressor")
@@ -37,6 +41,8 @@ extension EffectKind {
     /// keyframes onto a control below it, and draws nothing.
     static let audioKeys = EffectKind(builtIn: "audioKeys")
     static let beatKeys = EffectKind(builtIn: "beatKeys")
+    /// A repeating pulse with an envelope: a strobe, a flash, a gate.
+    static let strobeKeys = EffectKind(builtIn: "strobeKeys")
     static let wiggler = EffectKind(builtIn: "wiggler")
     static let oscillator = EffectKind(builtIn: "oscillator")
     static let smoother = EffectKind(builtIn: "smoother")
@@ -77,8 +83,12 @@ extension EffectKind {
     static let falseColor = EffectKind(package: "falseColor")
     static let neonEdges = EffectKind(package: "neonEdges")
 
+    /// The shape of a stroke, after its color: a shape's and the Stroke
+    /// effect's alike, so the two offer the same.
+    static let strokeShapeControls: [ControlKind] = [.strokeWidth, .strokeEdge, .strokeOffset, .strokeJoin, .strokeCap, .dash]
+
     /// How a shape is filled and stroked, after what shapes it.
-    static let paintControls: [ControlKind] = [.fill, .stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
+    static let paintControls: [ControlKind] = [.fill, .stroke] + strokeShapeControls
 
     /// A Text effect's settings, as Illustrator's Character, Paragraph and
     /// OpenType panels group them (see `TextInspectorGroup`).
@@ -142,6 +152,7 @@ extension ControlKind {
     static let stroke = ControlKind(builtIn: "stroke")
     static let strokeWidth = ControlKind(builtIn: "strokeWidth")
     static let strokeEdge = ControlKind(builtIn: "strokeEdge")
+    static let strokeOffset = ControlKind(builtIn: "strokeOffset")
     static let strokeJoin = ControlKind(builtIn: "strokeJoin")
     static let strokeCap = ControlKind(builtIn: "strokeCap")
     static let dash = ControlKind(builtIn: "dash")
@@ -239,6 +250,58 @@ extension ControlKind {
     static let beatShape = ControlKind(builtIn: "beatShape")
     static let peak = ControlKind(builtIn: "peak")
     static let decay = ControlKind(builtIn: "decay")
+    // Strobe Keys; Beats, Accent, Seed, Fade and Tolerance are the other
+    // methods'.
+    static let strobeTiming = ControlKind(builtIn: "strobeTiming")
+    static let strobeEvery = ControlKind(builtIn: "strobeEvery")
+    static let beatDivision = ControlKind(builtIn: "beatDivision")
+    static let strobeFrames = ControlKind(builtIn: "strobeFrames")
+    static let strobeRate = ControlKind(builtIn: "strobeRate")
+    static let beatShift = ControlKind(builtIn: "beatShift")
+    static let frameShift = ControlKind(builtIn: "frameShift")
+    static let strobeTimes = ControlKind(builtIn: "strobeTimes")
+    static let attackShare = ControlKind(builtIn: "attackShare")
+    static let decayShare = ControlKind(builtIn: "decayShare")
+    static let sustainForShare = ControlKind(builtIn: "sustainForShare")
+    static let releaseShare = ControlKind(builtIn: "releaseShare")
+    static let attackFrames = ControlKind(builtIn: "attackFrames")
+    static let decayFrames = ControlKind(builtIn: "decayFrames")
+    static let sustainForFrames = ControlKind(builtIn: "sustainForFrames")
+    static let releaseFrames = ControlKind(builtIn: "releaseFrames")
+    static let sustainLevel = ControlKind(builtIn: "sustainLevel")
+    static let attackCurve = ControlKind(builtIn: "attackCurve")
+    static let decayCurve = ControlKind(builtIn: "decayCurve")
+    static let releaseCurve = ControlKind(builtIn: "releaseCurve")
+    static let strobeOverlap = ControlKind(builtIn: "strobeOverlap")
+    static let strobeLevels = ControlKind(builtIn: "strobeLevels")
+    static let swing = ControlKind(builtIn: "swing")
+    static let skipChance = ControlKind(builtIn: "skipChance")
+    // Waveform; Fill, Stroke and Stroke Width are the shapes'.
+    static let waveMode = ControlKind(builtIn: "waveMode")
+    static let waveFrequencies = ControlKind(builtIn: "waveFrequencies")
+    static let waveShape = ControlKind(builtIn: "waveShape")
+    static let waveStart = ControlKind(builtIn: "waveStart")
+    static let waveEnd = ControlKind(builtIn: "waveEnd")
+    static let waveCenter = ControlKind(builtIn: "waveCenter")
+    static let waveRadius = ControlKind(builtIn: "waveRadius")
+    static let waveAngle = ControlKind(builtIn: "waveAngle")
+    static let waveSweep = ControlKind(builtIn: "waveSweep")
+    static let waveSide = ControlKind(builtIn: "waveSide")
+    static let waveSamples = ControlKind(builtIn: "waveSamples")
+    static let waveWindow = ControlKind(builtIn: "waveWindow")
+    static let waveAlign = ControlKind(builtIn: "waveAlign")
+    static let waveDraw = ControlKind(builtIn: "waveDraw")
+    static let waveSmooth = ControlKind(builtIn: "waveSmooth")
+    static let waveFillsToBaseline = ControlKind(builtIn: "waveFillsToBaseline")
+    static let dotSize = ControlKind(builtIn: "dotSize")
+    static let barWidth = ControlKind(builtIn: "barWidth")
+    static let barEnds = ControlKind(builtIn: "barEnds")
+    static let waveStereo = ControlKind(builtIn: "waveStereo")
+    static let waveHeight = ControlKind(builtIn: "waveHeight")
+    static let waveGain = ControlKind(builtIn: "waveGain")
+    static let waveRelease = ControlKind(builtIn: "waveRelease")
+    static let waveColoring = ControlKind(builtIn: "waveColoring")
+    static let rightColor = ControlKind(builtIn: "rightColor")
     // Wiggler
     static let wiggleFrequency = ControlKind(builtIn: "wiggleFrequency")
     static let magnitude = ControlKind(builtIn: "magnitude")
@@ -297,9 +360,9 @@ enum BuiltInEffects {
         "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",
         "displace", "liquid", "twirl", "wave", "kaleidoscope", "mirrorTile", "chromaticAberration",
         "flowSmear", "slitScan", "feedback",
-        "rectangle", "ellipse", "polygon", "star", "path", "text", "textAnimator", "stroke",
+        "rectangle", "ellipse", "polygon", "star", "path", "text", "textAnimator", "stroke", "waveform",
         "equalizer", "compressor", "limiter", "voiceIsolation",
-        "audioKeys", "beatKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot", "expression",
+        "audioKeys", "beatKeys", "strobeKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot", "expression",
     ]
 
     /// The effects written in Swift, in the library's order.
@@ -360,11 +423,27 @@ enum BuiltInEffects {
                 ),
             ]
         ),
+        // Draws a sound over the picture handed down to it, as the shapes
+        // draw: a generator, which any visual clip's stack also takes.
+        EffectDefinition(
+            .waveform, "Waveform", .shapes, "waveform",
+            sections: [
+                ControlSection("Sound", [.waveMode, .waveFrequencies, .waveWindow, .waveAlign, .waveStereo, .waveGain, .waveRelease]),
+                ControlSection("Shape", [
+                    .waveShape, .waveStart, .waveEnd, .waveCenter, .waveRadius, .waveAngle, .waveSweep, .waveSide, .waveSamples,
+                    .waveHeight,
+                ]),
+                ControlSection("Draw", [
+                    .waveDraw, .waveSmooth, .waveFillsToBaseline, .dotSize, .barWidth, .barEnds, .waveColoring,
+                    .fill, .stroke, .strokeWidth, .rightColor,
+                ]),
+            ]
+        ),
         // Strokes the outline of the shapes above it in the stack, strokes
         // and all, so a stroke can have a stroke of its own.
         EffectDefinition(
             .stroke, "Stroke", .shapes, "circle.dashed",
-            controls: [.stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
+            controls: [.stroke] + EffectKind.strokeShapeControls
         ),
         // Sound effects (see docs/audio.md, "Sound effects").
         EffectDefinition(.equalizer, "EQ", .sound, "slider.vertical.3", controls: Equalizer.controlKinds),
@@ -390,6 +469,23 @@ enum BuiltInEffects {
             sections: [
                 ControlSection("Beats", [.beatSelection, .everyBeats, .beatOffset, .accent]),
                 ControlSection("Keyframes", [.beatShape, .peak, .decay, .tolerance]),
+            ]
+        ),
+        EffectDefinition(
+            .strobeKeys, "Strobe Keys", .keyframing, "light.beacon.max",
+            sections: [
+                ControlSection("Timing", [
+                    .strobeTiming, .beatSelection, .strobeEvery, .beatDivision, .strobeFrames, .strobeRate,
+                    .beatShift, .frameShift, .accent,
+                ]),
+                ControlSection("Envelope", [
+                    .strobeTimes, .attackShare, .attackFrames, .attackCurve, .decayShare, .decayFrames, .decayCurve,
+                    .sustainLevel, .sustainForShare, .sustainForFrames, .releaseShare, .releaseFrames, .releaseCurve,
+                    .strobeOverlap,
+                ]),
+                ControlSection("Levels", [.strobeLevels]),
+                ControlSection("Variation", [.swing, .skipChance, .seed, .fade]),
+                ControlSection("Keyframes", [.tolerance]),
             ]
         ),
         EffectDefinition(
@@ -462,6 +558,7 @@ enum BuiltInEffects {
         ControlDefinition(.stroke, "Stroke", .rectangle, defaults: [0, 0, 0, 1], dragStep: 0.01, range: 0...1, isColor: true),
         ControlDefinition(.strokeWidth, "Stroke Width", .rectangle, defaults: [0], unit: " px", range: 0...10_000),
         ControlDefinition(.strokeEdge, "Edge", .rectangle, choice: StrokeEdge.center),
+        ControlDefinition(.strokeOffset, "Offset", .rectangle, defaults: [0], unit: " px", range: -10_000...10_000),
         ControlDefinition(.strokeJoin, "Join", .rectangle, choice: StrokeJoin.miter),
         ControlDefinition(.strokeCap, "Cap", .rectangle, choice: StrokeCap.butt),
         ControlDefinition(
@@ -591,6 +688,65 @@ enum BuiltInEffects {
         ControlDefinition(.beatShape, "Shape", .beatKeys, choice: BeatShape.pulse),
         ControlDefinition(.peak, "Peak", .beatKeys, defaults: [10]),
         ControlDefinition(.decay, "Decay", .beatKeys, defaults: [250], unit: " ms", range: 0...10_000),
+        // Waveform. Its points are measured from the middle of the frame,
+        // in the timeline's pixels, down positive, as a package's are, so
+        // the viewer shows a handle for each (`PointControlHandles`).
+        ControlDefinition(.waveMode, "Mode", .waveform, choice: WaveformMode.wave),
+        ControlDefinition(
+            .waveFrequencies, "Frequencies", .waveform, defaults: [20, 20_000], unit: " Hz",
+            range: Spectrogram.lowestFrequency...Spectrogram.highestFrequency, componentNames: ["Low", "High"]
+        ),
+        ControlDefinition(.waveShape, "Shape", .waveform, choice: WaveformShape.line),
+        BuiltInEffects.point(.waveStart, "Start", .waveform, defaults: [-400, 0]),
+        BuiltInEffects.point(.waveEnd, "End", .waveform, defaults: [400, 0]),
+        BuiltInEffects.point(.waveCenter, "Center", .waveform, defaults: [0, 0]),
+        ControlDefinition(.waveRadius, "Radius", .waveform, defaults: [200], unit: " px", range: 0...100_000),
+        ControlDefinition(.waveAngle, "Angle", .waveform, defaults: [0], unit: "°"),
+        ControlDefinition(.waveSweep, "Sweep", .waveform, defaults: [360], unit: "°", range: -360...360),
+        ControlDefinition(.waveSide, "Side", .waveform, choice: WaveformSide.one),
+        ControlDefinition(.waveSamples, "Samples", .waveform, defaults: [256], range: 2...2048, isWhole: true),
+        ControlDefinition(.waveWindow, "Window", .waveform, defaults: [50], unit: " ms", range: 0.1...60_000),
+        ControlDefinition(.waveAlign, "Align", .waveform, choice: WaveformAlign.middle),
+        ControlDefinition(.waveDraw, "Draw", .waveform, choice: WaveformDraw.lines),
+        ControlDefinition(.waveSmooth, "Smooth", .waveform, choice: OnOff.on),
+        ControlDefinition(.waveFillsToBaseline, "Fill to Baseline", .waveform, choice: OnOff.off),
+        ControlDefinition(.dotSize, "Dot Size", .waveform, defaults: [4], unit: " px", range: 0...1000),
+        ControlDefinition(.barWidth, "Bar Width", .waveform, defaults: [60], unit: "%", range: 1...100),
+        ControlDefinition(.barEnds, "Bar Ends", .waveform, choice: WaveformEnds.square),
+        ControlDefinition(.waveStereo, "Stereo", .waveform, choice: WaveformStereo.mixed),
+        ControlDefinition(.waveHeight, "Height", .waveform, defaults: [100], unit: " px", range: -100_000...100_000),
+        ControlDefinition(.waveGain, "Gain", .waveform, defaults: [0], unit: " dB", dragStep: 0.5, range: -48...48),
+        ControlDefinition(.waveRelease, "Release", .waveform, defaults: [0], unit: " ms", range: 0...5000),
+        ControlDefinition(.waveColoring, "Color", .waveform, choice: WaveformColoring.paint),
+        ControlDefinition(.rightColor, "Right Channel", .waveform, defaults: [0.4, 0.8, 1, 1], dragStep: 0.01, range: 0...1, isColor: true),
+        // Strobe Keys. Its defaults stay under three flashes a second (see
+        // docs/psychedelic-effects.md, "Safety: flashing").
+        ControlDefinition(.strobeTiming, "Timing", .strobeKeys, choice: StrobeTiming.perSecond),
+        ControlDefinition(.strobeEvery, "Every", .strobeKeys, defaults: [1], unit: " beats", range: 1...64, isWhole: true),
+        ControlDefinition(.beatDivision, "Division", .strobeKeys, choice: BeatDivision.whole),
+        ControlDefinition(.strobeFrames, "Every", .strobeKeys, defaults: [12], unit: " frames", range: 1...600, isWhole: true),
+        ControlDefinition(.strobeRate, "Rate", .strobeKeys, defaults: [2], unit: "/s", dragStep: 0.1, range: 0.01...60),
+        ControlDefinition(.beatShift, "Offset", .strobeKeys, defaults: [0], unit: " beats", dragStep: 0.25, range: -64...64),
+        ControlDefinition(.frameShift, "Offset", .strobeKeys, defaults: [0], unit: " frames", range: -600...600, isWhole: true),
+        ControlDefinition(.strobeTimes, "Times", .strobeKeys, choice: StrobeTimes.share),
+        ControlDefinition(.attackShare, "Attack", .strobeKeys, defaults: [0], unit: "%", range: 0...100),
+        ControlDefinition(.decayShare, "Decay", .strobeKeys, defaults: [0], unit: "%", range: 0...100),
+        ControlDefinition(.sustainForShare, "Sustain For", .strobeKeys, defaults: [25], unit: "%", range: 0...100),
+        ControlDefinition(.releaseShare, "Release", .strobeKeys, defaults: [25], unit: "%", range: 0...100),
+        ControlDefinition(.attackFrames, "Attack", .strobeKeys, defaults: [0], unit: " frames", range: 0...600, isWhole: true),
+        ControlDefinition(.decayFrames, "Decay", .strobeKeys, defaults: [0], unit: " frames", range: 0...600, isWhole: true),
+        ControlDefinition(
+            .sustainForFrames, "Sustain For", .strobeKeys, defaults: [2], unit: " frames", range: 0...600, isWhole: true
+        ),
+        ControlDefinition(.releaseFrames, "Release", .strobeKeys, defaults: [4], unit: " frames", range: 0...600, isWhole: true),
+        ControlDefinition(.sustainLevel, "Sustain", .strobeKeys, defaults: [100], unit: "%", range: 0...100),
+        ControlDefinition(.attackCurve, "Attack Curve", .strobeKeys, choice: StrobeCurve.linear),
+        ControlDefinition(.decayCurve, "Decay Curve", .strobeKeys, choice: StrobeCurve.exponential),
+        ControlDefinition(.releaseCurve, "Release Curve", .strobeKeys, choice: StrobeCurve.exponential),
+        ControlDefinition(.strobeOverlap, "Overlap", .strobeKeys, choice: StrobeOverlap.cut),
+        ControlDefinition(.strobeLevels, "Levels", .strobeKeys, defaults: [0, 10], componentNames: ["Min", "Max"]),
+        ControlDefinition(.swing, "Swing", .strobeKeys, defaults: [0], unit: "%", range: 0...90),
+        ControlDefinition(.skipChance, "Skip Chance", .strobeKeys, defaults: [0], unit: "%", range: 0...100),
         // Wiggler
         ControlDefinition(.wiggleFrequency, "Frequency", .wiggler, defaults: [2], unit: "/s", dragStep: 0.1, range: 0...60),
         ControlDefinition(.magnitude, "Magnitude", .wiggler, defaults: [10]),
@@ -627,4 +783,14 @@ enum BuiltInEffects {
         ControlDefinition(.expressionKeys, "Keyframes", .expression, choice: ExpressionKeys.smooth),
         ControlDefinition(.betweenFrames, "Between Frames", .expression, choice: BetweenFrames.auto),
     ]
+}
+
+extension BuiltInEffects {
+    /// A position in the frame with a handle in the viewer, from the middle
+    /// of the frame in the timeline's pixels, down positive.
+    static func point(_ kind: ControlKind, _ name: String, _ effectKind: EffectKind, defaults: [Double]) -> ControlDefinition {
+        var definition = ControlDefinition(kind, name, effectKind, defaults: defaults, unit: " px", componentNames: ["x", "y"])
+        definition.isPoint = true
+        return definition
+    }
 }

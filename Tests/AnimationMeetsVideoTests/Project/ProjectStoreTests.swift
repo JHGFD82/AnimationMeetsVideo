@@ -263,6 +263,34 @@ private struct Sandbox {
         #expect(restored.effect(id: listenerID)?.keyframing?.audioSource == .layer(layerID))
     }
 
+    @Test func roundTripKeepsStrobeKeysAndItsPattern() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        let added = project.addEffect(.transform, toClip: clipID, in: timelineID)
+        let transformID = try #require(added)
+        let opacity = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip.effect(id: transformID)?.control(.opacity))
+        let made = project.setKeyframing(
+            .strobeKeys, driving: .control(effectID: transformID, controlID: opacity.id), onClip: clipID, in: timelineID
+        )
+        let strobeID = try #require(made)
+        project.editEffect(strobeID, ofClip: clipID, in: timelineID) { effect in
+            effect.keyframing?.pattern = "x.X."
+            effect.changeControl(.strobeTiming) { $0.choice = StrobeTiming.frames.rawValue }
+            effect.changeControl(.releaseCurve) { $0.choice = StrobeCurve.eased.rawValue }
+        }
+        let before = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(before.effect(id: transformID)?.control(.opacity)?.number.keyframes.contains { $0.hold } == true)
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(restored.effects == before.effects)
+        #expect(restored.effect(id: strobeID)?.keyframing?.pattern == "x.X.")
+    }
+
     @Test func roundTripKeepsUnresolvedPasteChanges() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

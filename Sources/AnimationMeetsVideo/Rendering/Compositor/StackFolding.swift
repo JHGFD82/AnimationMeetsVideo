@@ -74,6 +74,9 @@ enum ResolvedStep: Equatable, Sendable {
     case outlineStroke(ShapeStroke)
     /// One of the looks of docs/psychedelic-effects.md (`LookRenderer`).
     case look(LookStep)
+    /// Draws a sound over the picture, as a shape is drawn
+    /// (`WaveformDrawing`).
+    case waveform(WaveformStep)
 }
 
 /// A look's settings at one moment, ready to draw: each control's numbers
@@ -193,8 +196,12 @@ enum StackFolding {
     }
 
     /// The steps to draw for the stack at source time `time`: nothing while
-    /// every control is at its default.
-    static func steps(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> [ResolvedStep] {
+    /// every control is at its default. `timelineTime` is the time in the
+    /// clip's timeline, which a Waveform hears the sound at; the source
+    /// time stands in for it when not given.
+    static func steps(
+        effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint, timelineTime: CMTime? = nil
+    ) -> [ResolvedStep] {
         var placement = FoldedPlacement(anchor: anchor(effects: effects, anchorPoint: anchorPoint, at: time, center: center))
         var colors: [ColorOp] = []
         var steps: [ResolvedStep] = []
@@ -268,6 +275,10 @@ enum StackFolding {
                 guard let style = ShapeStroke(effect, at: time) else { continue }
                 flush()
                 steps.append(.outlineStroke(style))
+            case .waveform:
+                guard let setup = WaveformSetup(effect, at: time, center: center) else { continue }
+                flush()
+                steps.append(.waveform(WaveformStep(effectID: effect.id, setup: setup, time: (timelineTime ?? time).seconds)))
             case .blending:
                 guard let mode = effect.control(.mode), mode.enabled, mode.blendMode != .normal else { continue }
                 var amount = 1.0

@@ -34,8 +34,59 @@ import Testing
 
     /// The tracks at width 450 once the 150-point names column takes 150
     /// more.
-    private func narrowed(to zoom: (pixelsPerSecond: CGFloat?, scrollX: CGFloat)) -> TimelineViewport {
-        TimelineViewport(durationSeconds: 60, frameRate: 24, width: 450, requestedPixelsPerSecond: zoom.pixelsPerSecond, requestedScrollX: zoom.scrollX)
+    private func narrowed(to zoom: (pixelsPerSecond: CGFloat?, scrollX: CGFloat, leadIn: CGFloat)) -> TimelineViewport {
+        TimelineViewport(
+            durationSeconds: 60, frameRate: 24, width: 450, requestedPixelsPerSecond: zoom.pixelsPerSecond, requestedScrollX: zoom.scrollX,
+            leadIn: zoom.leadIn
+        )
+    }
+
+    /// The tracks at width 600 once the names column narrows from 300 to 150.
+    private func widened(to zoom: (pixelsPerSecond: CGFloat?, scrollX: CGFloat, leadIn: CGFloat)) -> TimelineViewport {
+        TimelineViewport(
+            durationSeconds: 60, frameRate: 24, width: 600, requestedPixelsPerSecond: zoom.pixelsPerSecond, requestedScrollX: zoom.scrollX,
+            leadIn: zoom.leadIn
+        )
+    }
+
+    @Test func narrowingAtTheStartLeavesRoomBeforeItRatherThanMovingIt() {
+        // Wide names column, tracks scrolled to the start.
+        let wide = narrowed(to: (50, 0, 0))
+        let seconds = wide.seconds(atX: 100)
+        let kept = wide.keepingPlace(asLeftEdgeMovesBy: -150)
+        #expect(kept.leadIn == 150)
+        let after = widened(to: kept)
+        #expect(after.scrollX == -150)
+        // In the window, a moment is at the column's width plus its x.
+        #expect(abs((150 + after.x(atSeconds: seconds)) - (300 + 100)) < 0.001)
+        // No further than the lead-in.
+        #expect(widened(to: (50, -400, 150)).scrollX == -150)
+    }
+
+    @MainActor @Test func scrollingPastTheStartLetsTheLeadInGo() {
+        let model = TimelineViewportModel()
+        model.zoomedPixelsPerSecond = 50
+        model.scrollX = -150
+        model.leadIn = 150
+        model.scroll(to: -100)
+        #expect(model.leadIn == 100)
+        model.scroll(to: 50)
+        #expect(model.leadIn == 0)
+        #expect(model.viewport(durationSeconds: 60, frameRate: 24, width: 600).minScrollX == 0)
+        model.leadIn = 150
+        model.reset()
+        #expect(model.leadIn == 0)
+    }
+
+    @Test func aFittedTimelineKeepsItsPlaceNarrowingAtTheStart() {
+        // Fitted while narrow, widened (now a zoom), scrolled back to the
+        // start, then narrowed: the fit's scale is kept, with room before
+        // the start.
+        let widenedFit = narrowed(to: viewport().keepingPlace(asLeftEdgeMovesBy: 150))
+        let atStart = narrowed(to: (widenedFit.pixelsPerSecond, 0, 0))
+        let kept = atStart.keepingPlace(asLeftEdgeMovesBy: -150)
+        #expect(kept.pixelsPerSecond != nil)
+        #expect(widened(to: kept).scrollX == -150)
     }
 
     @Test func aWideningNamesColumnLeavesEveryMomentInPlace() {

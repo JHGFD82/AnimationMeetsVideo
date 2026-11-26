@@ -459,3 +459,48 @@ extension DrawingFixture {
         #expect(try await level(81, 36, of: composed) < 10)
     }
 }
+
+/// A stroke's Offset (docs/graphic-layers.md, "Strokes"): the outline
+/// moved out, or in, before it is stroked, around a 100 by 100 square.
+@Suite struct StrokeOffsetTests {
+    private func stroke(offset: Double) throws -> ShapeStroke {
+        var effect = Effect(kind: .rectangle)
+        effect.changeControl(.stroke) { $0.enabled = true }
+        effect.changeControl(.strokeWidth) { $0.enabled = true; $0.number = AnimatedValue(ComponentValue(values: [10])) }
+        effect.changeControl(.strokeOffset) { $0.enabled = true; $0.number = AnimatedValue(ComponentValue(values: [offset])) }
+        return try #require(ShapeStroke(effect, at: .zero))
+    }
+
+    private let square = CGPath(rect: CGRect(x: 0, y: 0, width: 100, height: 100), transform: nil)
+
+    @Test func anOutwardOffsetGrowsTheStrokeByTwiceIt() throws {
+        let plain = try stroke(offset: 0).area(around: square).boundingBoxOfPath
+        let grown = try stroke(offset: 20).area(around: square).boundingBoxOfPath
+        #expect(abs(plain.width - 110) < 0.01)
+        #expect(abs(grown.width - 150) < 0.01 && abs(grown.minX + 25) < 0.01)
+    }
+
+    @Test func anInwardOffsetShrinksIt() throws {
+        let shrunk = try stroke(offset: -20).area(around: square).boundingBoxOfPath
+        #expect(abs(shrunk.width - 70) < 0.01 && abs(shrunk.minX - 15) < 0.01)
+    }
+
+    @Test func anOpenPathIgnoresIt() throws {
+        let line = CGMutablePath()
+        line.move(to: .zero)
+        line.addLine(to: CGPoint(x: 100, y: 0))
+        let plain = try stroke(offset: 0).area(around: line).boundingBoxOfPath
+        let offset = try stroke(offset: 20).area(around: line).boundingBoxOfPath
+        #expect(plain == offset)
+    }
+
+    @Test func itIsInTheRenderKey() throws {
+        #expect(try stroke(offset: 0).keyText != stroke(offset: 20).keyText)
+    }
+
+    @Test func aShapeAndTheStrokeEffectOfferTheSameStroke() {
+        let shape = Set(EffectKind.rectangle.controlKinds).intersection(EffectKind.strokeShapeControls + [.stroke])
+        #expect(shape == Set(EffectKind.stroke.controlKinds))
+        #expect(Effect.shapeValues(of: .strokeWidth, in: .stroke, sizedTo: CGSize(width: 1920, height: 1080)) == [4])
+    }
+}

@@ -365,6 +365,11 @@ extension InspectorPanel {
                 } else {
                     ShapeInspectorGroup(effect: effect, playhead: sourceNow, onEdit: onEdit, onSeek: onSeek)
                 }
+                if effect.kind == .waveform {
+                    WaveformListenGroup(
+                        effect: effect, options: project.audioSourceOptions(current: effect.listensTo, in: timeline), onEdit: onEdit
+                    )
+                }
                 if effect.kind.drawsShape {
                     PaintInspectorGroup(
                         effect: effect, title: named ? "\(effect.displayName) · Fill & Stroke" : "Fill & Stroke",
@@ -372,6 +377,7 @@ extension InspectorPanel {
                     )
                 }
             }
+            .environment(\.parameterRowMenuTarget, ParameterRowMenuTarget(timelineID: timelineID, clip: timelineClip))
         }
     }
 }
@@ -419,10 +425,15 @@ extension InspectorPanel {
 /// the panel itself stays flat so the cards are the only thing with edges.
 struct InspectorGroup<Content: View>: View {
     let title: String
+    /// The effect whose controls the group shows, and which of them (nil:
+    /// all), for Show All in Timeline in the title's context menu.
+    var rows: (effectID: UUID, controlIDs: [UUID]?)?
     @ViewBuilder let content: () -> Content
+    @Environment(\.parameterRowMenuTarget) private var rowsTarget
 
-    init(_ title: String, @ViewBuilder content: @escaping () -> Content) {
+    init(_ title: String, rowsOf effectID: UUID? = nil, controls: [UUID]? = nil, @ViewBuilder content: @escaping () -> Content) {
         self.title = title
+        self.rows = effectID.map { ($0, controls) }
         self.content = content
     }
 
@@ -432,6 +443,15 @@ struct InspectorGroup<Content: View>: View {
                 .font(Design.Typeface.groupTitle)
                 .foregroundStyle(Design.textSecondary)
                 .accessibilityAddTraits(.isHeader)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .contextMenu {
+                    if let rowsTarget, let rows {
+                        ParameterRowMenuItems(
+                            timelineID: rowsTarget.timelineID, clip: rowsTarget.clip, effectID: rows.effectID, groupControlIDs: rows.controlIDs
+                        )
+                    }
+                }
             VStack(alignment: .leading, spacing: Design.Space.close) {
                 content()
             }

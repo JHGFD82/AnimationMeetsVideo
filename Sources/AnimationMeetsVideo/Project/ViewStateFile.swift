@@ -22,6 +22,9 @@ struct ViewState: Equatable {
         /// The stretch playback repeats; nil for none. See
         /// docs/loop-region.md, "Saving".
         var loop: LoopRegion?
+        /// Which parameters each clip has in the timeline's rows, and the
+        /// effects folded closed there. See docs/parameter-rows.md.
+        var parameterRows = TimelineParameterRows()
     }
 
     /// What the browser remembers of how it was left: the range last
@@ -99,6 +102,34 @@ enum ViewStateFile {
             var selection: Selection?
             /// Absent from files written before there were loop regions.
             var loop: Loop?
+            /// Absent while no clip has rows, and from files written before
+            /// there were parameter rows.
+            var rows: Rows?
+        }
+
+        /// Which parameters each clip has in the timeline's rows, by clip.
+        struct Rows: Codable {
+            var picked: [String: [ParameterRowKey]]?
+            var removed: [String: [ParameterRowKey]]?
+            var closed: [String]?
+
+            init(_ rows: TimelineParameterRows) {
+                func keyed(_ sets: [UUID: Set<ParameterRowKey>]) -> [String: [ParameterRowKey]]? {
+                    sets.isEmpty ? nil : Dictionary(uniqueKeysWithValues: sets.map { id, keys in
+                        (id.uuidString, keys.sorted { ($0.effectKind, $0.ordinal, $0.control) < ($1.effectKind, $1.ordinal, $1.control) })
+                    })
+                }
+                picked = keyed(rows.picked)
+                removed = keyed(rows.removed)
+                closed = rows.closed.isEmpty ? nil : rows.closed.sorted()
+            }
+
+            var rows: TimelineParameterRows {
+                func sets(_ keyed: [String: [ParameterRowKey]]?) -> [UUID: Set<ParameterRowKey>] {
+                    Dictionary(uniqueKeysWithValues: (keyed ?? [:]).compactMap { key, keys in UUID(uuidString: key).map { ($0, Set(keys)) } })
+                }
+                return TimelineParameterRows(picked: sets(picked), removed: sets(removed), closed: Set(closed ?? []))
+            }
         }
 
         /// A loop region. Read leniently: a damaged one reads with its
@@ -176,7 +207,8 @@ enum ViewStateFile {
                     // a time that isn't numeric.
                     loop: kept.loop.flatMap { region in
                         region.start.isNumeric && region.end.isNumeric && region.end > region.start ? Loop(region) : nil
-                    }
+                    },
+                    rows: kept.parameterRows.isEmpty ? nil : Rows(kept.parameterRows)
                 ))
             })
             let kept = state.browser
@@ -226,7 +258,8 @@ enum ViewStateFile {
                     areaOffsets: Dictionary(uniqueKeysWithValues: kept.areaScroll.compactMap { key, value in
                         LayerKind(rawValue: key).map { ($0, value) }
                     }),
-                    loop: kept.loop?.region
+                    loop: kept.loop?.region,
+                    parameterRows: kept.rows?.rows ?? TimelineParameterRows()
                 )
             }
             if let browser {

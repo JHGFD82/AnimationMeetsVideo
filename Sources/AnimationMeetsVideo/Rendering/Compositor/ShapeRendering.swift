@@ -14,8 +14,18 @@ enum ShapeRendering {
     struct Paint {
         var area: CGPath
         var color: [Double]
+        /// Painted instead of `color`, if any.
+        var gradient: GradientPaint?
         var transform: CGAffineTransform
         var alpha = 1.0
+
+        init(area: CGPath, color: [Double], gradient: GradientPaint? = nil, transform: CGAffineTransform, alpha: Double = 1) {
+            self.area = area
+            self.color = color
+            self.gradient = gradient
+            self.transform = transform
+            self.alpha = alpha
+        }
     }
 
     /// The edge of a shape drawn so far, for a Stroke below it to follow,
@@ -27,7 +37,7 @@ enum ShapeRendering {
 
     /// Colors are drawn as they are given, the timeline's encoded values,
     /// so the context and the colors share one space and nothing converts.
-    private static let space = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    static let space = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
     /// `paints` filled in order, the first at the bottom, in output pixels
     /// and kept to `canvas`. Nil when nothing of them is inside it.
@@ -44,13 +54,19 @@ enum ShapeRendering {
             return nil
         }
         context.translateBy(x: -bounds.minX, y: -bounds.minY)
-        for paint in paints where paint.alpha > 0 && paint.color.count == 4 {
+        for paint in paints where paint.alpha > 0 && (paint.gradient != nil || paint.color.count == 4) {
             context.saveGState()
             context.concatenate(paint.transform)
             context.setAlpha(min(paint.alpha, 1))
             context.addPath(paint.area)
-            context.setFillColor(CGColor(colorSpace: space, components: paint.color.map { CGFloat($0) }) ?? CGColor(gray: 0, alpha: 0))
-            context.fillPath()
+            if let gradient = paint.gradient {
+                // The gradient, cut to the area.
+                context.clip()
+                GradientRendering.draw(gradient, in: context, covering: paint.area.boundingBoxOfPath, space: space)
+            } else {
+                context.setFillColor(CGColor(colorSpace: space, components: paint.color.map { CGFloat($0) }) ?? CGColor(gray: 0, alpha: 0))
+                context.fillPath()
+            }
             context.restoreGState()
         }
         guard let image = context.makeImage() else { return nil }

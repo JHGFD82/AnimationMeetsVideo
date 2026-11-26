@@ -544,8 +544,8 @@ class Control(_Proxy):
 
     def drive(self, method, **settings):
         """Gives it a Keyframing method ("wiggler", "oscillator", …), with
-        the method's controls set from `settings` by kind, and gives the
-        method's effect."""
+        the method's controls set from `settings` by kind (and Strobe
+        Keys' `pattern`, such as "x.X."), and gives the method's effect."""
         arguments = {name: value_out(value) for name, value in settings.items()}
         return Effect(self._key[0], self._key[1], call("drive", target=self._target(), method=str(method), settings=arguments))
 

@@ -845,7 +845,7 @@ struct UISnapshots {
             effects: [circle, text, animator, inside], anchorPoint: AnimatedValue(.zero), at: .zero, center: CGPoint(x: 350, y: 350)
         )
         var paints: [(area: CGPath, color: [Double])] = []
-        for case .shape(let shape) in steps { paints += shape.paints }
+        for case .shape(let shape) in steps { paints += shape.paints.map { ($0.area, $0.color) } }
         try SnapshotSupport.render(
             Canvas { context, _ in
                 for paint in paints where paint.color.count == 4 {
@@ -883,6 +883,156 @@ struct UISnapshots {
                 info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
             ),
             "shape-inspector", size: CGSize(width: 340, height: 820)
+        )
+    }
+
+    /// The inspector for a rectangle followed by a Stroke effect, its color
+    /// on and moved out 12 pixels: the Stroke effect's group shows its
+    /// color, then Width, Edge, Offset, Join, Cap and Dash, as a shape's
+    /// Fill & Stroke does, without the Fill.
+    @Test func strokeEffectInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: t)
+        let shape = try #require(added)
+        _ = project.addEffect(.stroke, toClip: shape.clipID, in: t)
+        project.editClip(shape.clipID, in: t) { clip in
+            guard let index = clip.effects.firstIndex(where: { $0.kind == .stroke }) else { return }
+            clip.effects[index].changeControl(.stroke) { $0.enabled = true; $0.number = AnimatedValue(ComponentValue(values: [1, 0.8, 0.2, 1])) }
+            clip.effects[index].changeControl(.strokeOffset) { $0.setComponent(0, to: 12, at: .zero) }
+        }
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: shape.layerID, timelineClipID: shape.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "stroke-effect-inspector", size: CGSize(width: 340, height: 1100)
+        )
+    }
+
+    /// The inspector for a shape filled with a linear gradient of three
+    /// stops, the middle one leaning, and stroked with a radial one: each
+    /// color's paint menu, and under it the preview, the stop bar with its
+    /// midpoints, the picked stop's color, opacity and location, Reverse,
+    /// Distribute and Remove, and the repeat, blend and placement menus.
+    @Test func shapeInspectorGradients() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.ellipse, to: t)
+        let shape = try #require(added)
+        project.editClip(shape.clipID, in: t) { clip in
+            clip.effects[0].changeControl(.fill) { fill in
+                fill.number = AnimatedValue(ComponentValue(values: [0.95, 0.35, 0.2, 1]))
+                fill.setPaint(.linear)
+                fill.addGradientStop(at: 0.4, time: .zero)
+                fill.editGradient(at: .zero) { $0.stops[1].color = [1, 0.85, 0.2, 1]; $0.stops[1].midpoint = 0.3 }
+                fill.paint?.blend = .perceptual
+            }
+            clip.effects[0].changeControl(.stroke) { stroke in
+                stroke.number = AnimatedValue(ComponentValue(values: [1, 1, 1, 1]))
+                stroke.setPaint(.radial)
+                stroke.paint?.repeats = .reflect
+            }
+            clip.effects[0].changeControl(.strokeWidth) { $0.setComponent(0, to: 6, at: .zero) }
+        }
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: shape.layerID, timelineClipID: shape.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "shape-inspector-gradients", size: CGSize(width: 340, height: 900)
+        )
+    }
+
+    /// A layer's parameter rows: Transform open with Position (keyframed,
+    /// its value at the playhead, the keyframe buttons) and Opacity, whose
+    /// clips differ ("Mixed"), and Color closed; beside them, the lanes
+    /// with Position's keyframes on both clips.
+    @Test func parameterRows() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let media = MediaClip(
+            name: "Walk", kind: .video, url: nil, duration: CMTime(value: 10, timescale: 1), frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let imported = project.importClip(media, intoTimeline: t)
+        let placed = try #require(imported)
+        _ = project.addEffect(.transform, toClip: placed.clipID, in: t)
+        _ = project.addEffect(.color, toClip: placed.clipID, in: t)
+        let clip = try #require(project.clipAndLayer(placed.clipID, in: t)?.clip)
+        let transform = try #require(clip.effects.first { $0.kind == .transform })
+        project.editEffect(transform.id, ofClip: placed.clipID, in: t) { effect in
+            effect.changeControl(.position) { control in
+                control.number = AnimatedValue(ComponentValue(values: [0, 0]), keyframes: [
+                    Keyframe(time: .zero, value: ComponentValue(values: [0, 0])),
+                    Keyframe(time: CMTime(value: 2, timescale: 1), value: ComponentValue(values: [120, -40]), easeIn: .easy),
+                ])
+            }
+        }
+        var rows = TimelineParameterRows()
+        rows.show(
+            [ParameterRowKey(effectKind: .transform, ordinal: 0, control: .opacity), ParameterRowKey(effectKind: .color, ordinal: 0, control: .exposure)],
+            on: [placed.clipID]
+        )
+        let layer = try #require(project.clipAndLayer(placed.clipID, in: t)?.layer)
+        rows.setClosed(true, "color#0", on: layer.id)
+        let groups = project.parameterRows(on: layer, rows: rows, addsKeyframed: true, selected: [])
+        let time = CMTime(value: 1, timescale: 1)
+        let view = HStack(alignment: .top, spacing: 0) {
+            ParameterRowHeaders(
+                groups: groups, isClosed: { rows.isClosed($0, on: layer.id) }, onToggle: { _, _ in },
+                state: { row in
+                    ParameterRowState(
+                        values: row.key.control == ControlKind.opacity.rawValue ? nil : [60, -20], actingClipCount: 1,
+                        isAnimated: row.key.control == ControlKind.position.rawValue,
+                        keyframeTimes: row.key.control == ControlKind.position.rawValue ? [.zero, CMTime(value: 2, timescale: 1)] : [],
+                        unit: " px", dragStep: 1, range: nil, componentNames: ["Δx", "Δy"]
+                    )
+                },
+                onSetComponent: { _, _, _ in }, onToggleAnimated: { _ in }, onToggleKeyframe: { _ in }, onRemove: { _ in }, onSeek: { _ in },
+                time: time
+            )
+            .frame(width: 300)
+            ParameterRowLanes(
+                groups: groups, isClosed: { rows.isClosed($0, on: layer.id) },
+                lane: { row in ParameterLaneMarks(row.key, of: layer.clips) }, currentTime: time, pixelsPerSecond: 80, width: 500,
+                snap: { $0 }, onSeek: { _ in }, onEdit: { _, _, _ in }
+            )
+        }
+        .background(Design.Surface.base.color)
+        try SnapshotSupport.render(view, "parameter-rows", size: CGSize(width: 800, height: 120))
+    }
+
+    /// The inspector for a Waveform clip drawing round-ended bars of the
+    /// spectrum round a ring, by level: the Graph picker on top with none
+    /// lit (no preset is set up so), Mode, Shape and Draw as icon buttons,
+    /// its Sound, Shape and Draw settings,
+    /// only those of a ring, Spectrum and bars, then Listen To and its Fill
+    /// & Stroke, the fill a gradient.
+    @Test func waveformInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.waveform, to: t)
+        let shape = try #require(added)
+        project.editClip(shape.clipID, in: t) { clip in
+            clip.effects[0].changeControl(.waveMode) { $0.choice = WaveformMode.spectrum.rawValue }
+            clip.effects[0].changeControl(.waveShape) { $0.choice = WaveformShape.radial.rawValue }
+            clip.effects[0].changeControl(.waveDraw) { $0.choice = WaveformDraw.bars.rawValue }
+            clip.effects[0].changeControl(.barEnds) { $0.choice = WaveformEnds.round.rawValue }
+            clip.effects[0].changeControl(.waveColoring) { $0.choice = WaveformColoring.byLevel.rawValue }
+            clip.effects[0].changeControl(.fill) { $0.setPaint(.angular) }
+        }
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: shape.layerID, timelineClipID: shape.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "waveform-inspector", size: CGSize(width: 340, height: 1100)
         )
     }
 
@@ -2071,6 +2221,48 @@ struct UISnapshots {
         )
     }
 
+    /// A graph on a clip whose speed ramps from 100% to 300%, its Opacity
+    /// pulsing every half second of the timeline, as Strobe Keys would make
+    /// it: in Timeline Time (the toolbar's picker) the pulses are even; in
+    /// Clip Time they spread apart as the clip speeds up.
+    @Test func retimedKeyframeGraph() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID, duration: CMTime(value: 8, timescale: 1))
+        let shape = try #require(added)
+        let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+        let transformID = try #require(transform)
+        var controlID = UUID()
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            clip.time.speed = AnimatedValue(100, keyframes: [
+                Keyframe(time: .zero, value: 100), Keyframe(time: CMTime(value: 8, timescale: 1), value: 300),
+            ])
+            let e = clip.effects.index(of: transformID)!
+            let opacity = clip.effects[e].controls.first { $0.kind == .opacity }!
+            controlID = opacity.id
+            let pulses = (0...8).map { index in
+                Keyframe(
+                    time: clip.sourceTime(atTimelineTime: CMTime(seconds: Double(index) * 0.5, preferredTimescale: 600)),
+                    value: ComponentValue(values: [index.isMultiple(of: 2) ? 100 : 0]), hold: true
+                )
+            }
+            clip.effects[e].controls[clip.effects[e].controlIndex(controlID)!].number = AnimatedValue(ComponentValue(values: [100]), keyframes: pulses)
+        }
+        let hud = KeyframeGraphHUDs()
+        hud.update(project: project)
+        let key = ParameterKey(timelineID: timelineID, parameter: .control(.opacity, clipID: shape.clipID, effectID: transformID, controlID: controlID))
+        let defaults = UserDefaults.standard
+        let before = defaults.string(forKey: Preferences.keyframeGraphTimeBasis)
+        defer { defaults.set(before, forKey: Preferences.keyframeGraphTimeBasis) }
+        for basis in GraphTimeBasis.allCases {
+            defaults.set(basis.rawValue, forKey: Preferences.keyframeGraphTimeBasis)
+            try SnapshotSupport.render(
+                KeyframeGraphView(hud: hud, key: key, input: GraphInput()),
+                "keyframe-graph-retimed-\(basis.rawValue)", size: CGSize(width: 620, height: 320)
+            )
+        }
+    }
+
     /// Two shapes' Position graphs linked into one panel, the second shape
     /// starting 2 s after the first: one row of presets on top for the
     /// first, each graph's row with its name and Unlink, and one time slider
@@ -2151,6 +2343,40 @@ struct UISnapshots {
         hud.update(project: project)
         try SnapshotSupport.render(KeyframeEaseControls(hud: hud, key: graph, time: time),
                                    "keyframe-ease-controls", size: CGSize(width: 300, height: 310))
+    }
+
+    /// The Keyframe Designer with Strobe Keys driving a shape's Opacity five
+    /// times a second: the flashing warning under the methods, its settings
+    /// under Timing, Envelope (with Duty), Levels (with Swap and what Min
+    /// and Max mean under Multiply), Variation (with its pattern) and
+    /// Keyframes, the note that the rate falls between frames, and the
+    /// blinking opacity on the graph.
+    @Test func keyframeDesignerStrobeKeys() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+        let transformID = try #require(transform)
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip)
+        let opacity = try #require(clip.effect(id: transformID)?.control(.opacity))
+        let target = KeyframingTarget.control(effectID: transformID, controlID: opacity.id)
+        let made = project.setKeyframing(.strobeKeys, driving: target, onClip: shape.clipID, in: timelineID)
+        let strobeID = try #require(made)
+        project.editEffect(strobeID, ofClip: shape.clipID, in: timelineID) { effect in
+            effect.changeControl(.strobeRate) { $0.setComponent(0, to: 5, at: .zero) }
+            effect.keyframing?.pattern = "x.xX"
+        }
+        let hud = KeyframeGraphHUDs()
+        hud.update(project: project)
+        hud.playhead = CMTime(value: 1, timescale: 1)
+        try SnapshotSupport.render(
+            KeyframeDesigner(
+                hud: hud, key: KeyframeDesignerKey(timelineID: timelineID, clipID: shape.clipID),
+                focus: KeyframeDesignerFocus(target: target), input: GraphInput()
+            ),
+            "keyframe-designer-strobe-keys", size: CGSize(width: 900, height: 1100)
+        )
     }
 
     /// The Keyframe Designer with Audio Keys driving a shape's Scale from a

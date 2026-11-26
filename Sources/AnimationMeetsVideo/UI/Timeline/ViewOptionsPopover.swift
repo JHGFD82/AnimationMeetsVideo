@@ -20,6 +20,7 @@ struct ViewOptionsPopover: View {
     /// The person's, as in the Timeline menu and the Settings window.
     @AppStorage(Preferences.timelineSkimming) private var skimming = true
     @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
+    @AppStorage(Preferences.hidesParameterRows) private var hidesParameterRows = false
 
     var body: some View {
         PopoverFrame {
@@ -48,6 +49,9 @@ struct ViewOptionsPopover: View {
             Groove()
 
             SheetSection("Areas") {
+                Toggle("Parameter rows", isOn: Binding(get: { !hidesParameterRows }, set: { hidesParameterRows = !$0 }))
+                    .toggleStyle(.checkbox)
+                    .help("The rows under each layer for the parameters its clips have put in the timeline; hidden, they are kept for later")
                 Toggle("Loop row", isOn: $areaLayout.showsLoop)
                     .toggleStyle(.checkbox)
                     .help("The bar under the ruler for drawing the stretch that playback repeats")

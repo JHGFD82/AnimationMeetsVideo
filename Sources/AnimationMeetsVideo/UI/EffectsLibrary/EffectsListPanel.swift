@@ -99,10 +99,11 @@ struct EffectsListPanel: View {
     }
 
     /// What the library lists: every effect but the generators (text and
-    /// the shapes), which aren't effects but clips of their own, and the
+    /// the shapes), which aren't effects but clips of their own, except
+    /// the Waveform, which is both, and the
     /// Keyframing ones, which are picked for a control in the Keyframe
     /// Designer (Keyframe Designer… in an effect's ⋯ menu).
-    static var kinds: [EffectKind] { EffectKind.all.filter { !$0.drawsShape && !$0.isKeyframing } }
+    static var kinds: [EffectKind] { EffectKind.all.filter { (!$0.drawsShape || $0 == .waveform) && !$0.isKeyframing } }
 
     /// Adds to the selected clip; a note saying why not when none is
     /// selected or it can't take the effect.

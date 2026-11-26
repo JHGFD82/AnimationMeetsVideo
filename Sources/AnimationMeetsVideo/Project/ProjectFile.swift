@@ -494,6 +494,9 @@ struct ProjectFile: Codable {
         var squircle: Bool?
         /// Paths only; absent while open.
         var closed: Bool?
+        /// Fill and Stroke only: the gradient it paints, its numbers then
+        /// the gradient's; absent while it paints one color.
+        var paint: PaintEntry?
         var value: ControlValueEntry?
         var keyframes: [KeyframeEntry<ControlValueEntry>]?
 
@@ -504,6 +507,7 @@ struct ProjectFile: Codable {
             linked = control.kind.isLinkable && control.linked != control.kind.linksByDefault ? control.linked : nil
             squircle = control.kind == .cornerRadius && control.squircle ? true : nil
             closed = control.kind.isPath && control.closed ? true : nil
+            paint = control.kind.takesGradient ? control.paint.map(PaintEntry.init) : nil
             if control.kind.isChoice {
                 value = .text(control.choice ?? control.kind.defaultChoice ?? "")
             } else if control.kind.isPath {
@@ -533,6 +537,18 @@ struct ProjectFile: Codable {
                 return control
             }
             control.number = number(default: control.number.value)
+            if kind.takesGradient {
+                // A gradient's numbers, or a color's four: whichever its
+                // paint says, else a new control's.
+                let fits: (ComponentValue) -> Bool = paint == nil
+                    ? { $0.values.count == kind.defaultValues.count }
+                    : { PaintGradient(values: $0.values) != nil }
+                if fits(control.number.value), control.number.keyframes.allSatisfy({ fits($0.value) }) {
+                    control.paint = paint?.style
+                } else {
+                    control.number = AnimatedValue(ComponentValue(values: kind.defaultValues))
+                }
+            }
             return control
         }
 
@@ -541,6 +557,39 @@ struct ProjectFile: Codable {
             let frames = (keyframes ?? []).compactMap { entry in entry.value.components.map(entry.keyframe) }
             return AnimatedValue(value?.components ?? frames.first?.value ?? fallback, keyframes: frames)
         }
+    }
+
+    /// How a color paints a gradient (`PaintStyle`), each absent at its
+    /// default: linear, holding its ends, in the timeline's values, over
+    /// the item.
+    struct PaintEntry: Codable {
+        var kind: String?
+        var repeats: String?
+        var blend: String?
+        var space: String?
+
+        init(_ style: PaintStyle) {
+            kind = style.kind == .linear ? nil : style.kind.rawValue
+            repeats = style.repeats == .hold ? nil : style.repeats.rawValue
+            blend = style.blend == .values ? nil : style.blend.rawValue
+            space = style.space == .item ? nil : style.space.rawValue
+        }
+
+        var style: PaintStyle {
+            PaintStyle(
+                kind: kind.flatMap(GradientKind.init(rawValue:)) ?? .linear,
+                repeats: repeats.flatMap(GradientRepeat.init(rawValue:)) ?? .hold,
+                blend: blend.flatMap(GradientBlend.init(rawValue:)) ?? .values,
+                space: space.flatMap(GradientSpace.init(rawValue:)) ?? .item
+            )
+        }
+
+        static let shape = JSONObjectShape(fields: [
+            .optional("kind", .choice(GradientKind.allCases.map(\.rawValue), noun: "gradient kind")),
+            .optional("repeats", .choice(GradientRepeat.allCases.map(\.rawValue), noun: "gradient repeat")),
+            .optional("blend", .choice(GradientBlend.allCases.map(\.rawValue), noun: "gradient blend")),
+            .optional("space", .choice(GradientSpace.allCases.map(\.rawValue), noun: "gradient space")),
+        ])
     }
 
     /// The picture an effect takes: an asset or a timeline of the project,
@@ -595,6 +644,8 @@ struct ProjectFile: Codable {
         var writtenPrint: String?
         /// Expression only: what its last run read; absent when nothing.
         var reads: [ReadEntry]?
+        /// Strobe Keys only: its pattern; absent when empty.
+        var pattern: String?
 
         init(_ setup: KeyframingSetup) {
             switch setup.target {
@@ -619,6 +670,7 @@ struct ProjectFile: Codable {
             readPrint = setup.readPrint.map { String($0, radix: 16) }
             writtenPrint = setup.writtenPrint.map { String($0, radix: 16) }
             reads = setup.reads.isEmpty ? nil : setup.reads.map(ReadEntry.init)
+            pattern = setup.pattern.isEmpty ? nil : setup.pattern
         }
 
         var setup: KeyframingSetup {
@@ -637,6 +689,7 @@ struct ProjectFile: Codable {
             setup.readPrint = readPrint.flatMap { UInt64($0, radix: 16) }
             setup.writtenPrint = writtenPrint.flatMap { UInt64($0, radix: 16) }
             setup.reads = (reads ?? []).compactMap(\.read)
+            setup.pattern = pattern ?? ""
             return setup
         }
     }
@@ -874,6 +927,10 @@ struct ProjectFile: Codable {
         var text: TextEntry?
         /// For an Expression, its Python code.
         var expression: String?
+        /// For a Waveform, the layer or clip it listens to; neither for the
+        /// whole mix.
+        var listensToLayer: UUID?
+        var listensToClip: UUID?
         /// Absent unless some are unresolved.
         var pasteChanges: [PasteChangeRecord]?
         /// Presets only: what the effect's input and Against were called
@@ -886,7 +943,8 @@ struct ProjectFile: Codable {
         var saved: JSONValue?
 
         private enum CodingKeys: String, CodingKey {
-            case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, expression, pasteChanges, inputName, againstName, controls
+            case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, expression, listensToLayer, listensToClip
+            case pasteChanges, inputName, againstName, controls
         }
 
         init(_ effect: Effect) {
@@ -911,6 +969,13 @@ struct ProjectFile: Codable {
             keyframing = effect.keyframing.map(KeyframingEntry.init)
             text = effect.kind == .text ? effect.text.map(TextEntry.init) : nil
             expression = effect.kind == .expression ? effect.expression ?? "" : nil
+            if effect.kind == .waveform {
+                switch effect.listensTo {
+                case .layer(let id)?: listensToLayer = id
+                case .clip(let id)?: listensToClip = id
+                case .mix?, nil: break
+                }
+            }
             pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
             // A control its package stopped listing while the app ran is
             // left out, as the package no longer reads it (see
@@ -940,6 +1005,8 @@ struct ProjectFile: Codable {
             keyframing = try container.decodeIfPresent(KeyframingEntry.self, forKey: .keyframing)
             text = try container.decodeIfPresent(TextEntry.self, forKey: .text)
             expression = try container.decodeIfPresent(String.self, forKey: .expression)
+            listensToLayer = try container.decodeIfPresent(UUID.self, forKey: .listensToLayer)
+            listensToClip = try container.decodeIfPresent(UUID.self, forKey: .listensToClip)
             pasteChanges = try container.decodeIfPresent([PasteChangeRecord].self, forKey: .pasteChanges)
             inputName = try container.decodeIfPresent(String.self, forKey: .inputName)
             againstName = try container.decodeIfPresent(String.self, forKey: .againstName)
@@ -968,6 +1035,8 @@ struct ProjectFile: Codable {
             try container.encodeIfPresent(keyframing, forKey: .keyframing)
             try container.encodeIfPresent(text, forKey: .text)
             try container.encodeIfPresent(expression, forKey: .expression)
+            try container.encodeIfPresent(listensToLayer, forKey: .listensToLayer)
+            try container.encodeIfPresent(listensToClip, forKey: .listensToClip)
             try container.encodeIfPresent(pasteChanges, forKey: .pasteChanges)
             try container.encodeIfPresent(inputName, forKey: .inputName)
             try container.encodeIfPresent(againstName, forKey: .againstName)
@@ -1002,6 +1071,7 @@ struct ProjectFile: Codable {
             if kind.isKeyframing { effect.keyframing = keyframing?.setup ?? KeyframingSetup() }
             if kind == .text { effect.text = text?.content ?? TextContent() }
             if kind == .expression { effect.expression = expression ?? "" }
+            if kind == .waveform { effect.listensTo = listensToLayer.map { .layer($0) } ?? listensToClip.map { .clip($0) } ?? .mix }
             effect.pasteChanges = (pasteChanges ?? []).compactMap(\.change)
             if let saved, case .array(let entries)? = saved["controls"] {
                 // A saved control that didn't read as one of the package's,
@@ -1271,9 +1341,14 @@ extension ProjectFile {
                 .optional("easeIn", ease), .optional("easeOut", ease), .optional("generatedBy", .uuid), .optional("hold", .bool),
             ]))
         }
-        /// A Keyframing effect's setup; only an Expression's has `reads`.
+        /// A Keyframing effect's setup; only an Expression's has `reads`,
+        /// and only Strobe Keys' a `pattern`.
         static func keyframingShape(for kind: EffectKind) -> JSONObjectShape {
-            kind == .expression ? object(keyframingFields + [.optional("reads", .array(ReadEntry.shape))]) : keyframing
+            switch kind {
+            case .expression: object(keyframingFields + [.optional("reads", .array(ReadEntry.shape))])
+            case .strobeKeys: object(keyframingFields + [.optional("pattern", .string)])
+            default: keyframing
+            }
         }
 
         static let keyframing = object(keyframingFields)
@@ -1301,6 +1376,8 @@ extension ProjectFile {
             case _ where kind.isCurve: .numbers(count: nil)
             // A path's vertices, six numbers each.
             case _ where kind.isPath: .array(.numbers(count: FreePath.numbersPerVertex))
+            // A color's four numbers, or a gradient's points and stops.
+            case _ where kind.takesGradient: .numbers(count: nil)
             default: count > 1 ? .numbers(count: count) : .number
             }
             var fields: [O.Field] = [
@@ -1314,6 +1391,7 @@ extension ProjectFile {
             if kind.isLinkable { fields.append(.optional("linked", .bool)) }
             if kind == .cornerRadius { fields.append(.optional("squircle", .bool)) }
             if kind.isPath { fields.append(.optional("closed", .bool)) }
+            if kind.takesGradient { fields.append(.optional("paint", .object(PaintEntry.shape))) }
             return object(fields, oneOf: kind.isChoice ? [] : [["value", "keyframes"]])
         }
 
@@ -1331,6 +1409,7 @@ extension ProjectFile {
             }
             if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframingShape(for: kind)))) }
             if kind == .expression { fields.append(.optional("expression", .string)) }
+            if kind == .waveform { fields += [.optional("listensToLayer", .uuid), .optional("listensToClip", .uuid)] }
             if kind == .text {
                 fields.append(.optional("text", .object(object([
                     .required("string", .string), .required("font", .string), .optional("runs", .array(TextRunEntry.shape)),

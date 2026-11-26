@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -17,6 +18,9 @@ final class EditorClipboard {
     /// The clips copied together last (`ClipGroupBundle`), unless something
     /// was copied after them.
     private(set) var group: ClipGroupBundle?
+    /// The keyframes copied last from the effects panel's lanes, unless
+    /// something was copied after them (docs/parameter-rows.md).
+    private(set) var keyframes: CopiedKeyframes?
 
     var hasEffects: Bool { effects != nil }
 
@@ -28,12 +32,27 @@ final class EditorClipboard {
         self.effects = effects
         clip = nil
         group = nil
+        keyframes = nil
+    }
+
+    /// Keyframes, also put on the pasteboard as text, which pastes into a
+    /// text editor.
+    func copy(keyframes: CopiedKeyframes) {
+        self.keyframes = keyframes
+        effects = nil
+        clip = nil
+        group = nil
+        if let json = keyframes.json {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(json, forType: .string)
+        }
     }
 
     func copy(clip: ClipBundle, effects: EffectBundle?) {
         self.clip = clip
         self.effects = effects
         group = nil
+        keyframes = nil
     }
 
     /// Several clips at once. They have no one stack of effects to paste.
@@ -41,6 +60,7 @@ final class EditorClipboard {
         self.group = group
         clip = nil
         effects = nil
+        keyframes = nil
     }
 
     /// Whether something that pastes as clips is on the clipboard.

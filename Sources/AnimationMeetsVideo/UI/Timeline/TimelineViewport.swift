@@ -17,15 +17,25 @@ struct TimelineViewport: Equatable {
     /// The closest zoom: one frame `maximumFrameWidth` points wide.
     let maxPixelsPerSecond: CGFloat
     let pixelsPerSecond: CGFloat
-    /// How far the tracks are scrolled, always within `0...maxScrollX`.
+    /// Empty room before 0:00 the tracks can be scrolled into, left by the
+    /// names column narrowing while they were scrolled to the start (see
+    /// `keepingPlace(asLeftEdgeMovesBy:)`).
+    let leadIn: CGFloat
+    /// How far the tracks are scrolled, always within `minScrollX...maxScrollX`:
+    /// negative only into the lead-in.
     let scrollX: CGFloat
 
     static let maximumFrameWidth: CGFloat = 80
 
     /// - Parameters:
     ///   - requestedPixelsPerSecond: The chosen zoom, or nil to fit the span.
-    ///   - requestedScrollX: The chosen scroll offset; clamped to the content.
-    init(durationSeconds: Double, frameRate: Double, width: CGFloat, requestedPixelsPerSecond: CGFloat?, requestedScrollX: CGFloat) {
+    ///   - requestedScrollX: The chosen scroll offset; clamped to the
+    ///     content and the lead-in.
+    ///   - leadIn: Room before 0:00 the scroll may go into.
+    init(
+        durationSeconds: Double, frameRate: Double, width: CGFloat, requestedPixelsPerSecond: CGFloat?, requestedScrollX: CGFloat,
+        leadIn: CGFloat = 0
+    ) {
         let duration = max(0, durationSeconds)
         contentSeconds = duration + max(1, duration * 0.05)
         self.width = max(1, width)
@@ -33,12 +43,15 @@ struct TimelineViewport: Equatable {
         maxPixelsPerSecond = max(fitPixelsPerSecond, CGFloat(max(frameRate, 1)) * Self.maximumFrameWidth)
         pixelsPerSecond = (requestedPixelsPerSecond ?? fitPixelsPerSecond).clamped(between: fitPixelsPerSecond, and: maxPixelsPerSecond)
         let maxScroll = max(0, CGFloat(contentSeconds) * pixelsPerSecond - self.width)
-        scrollX = requestedScrollX.clamped(between: 0, and: maxScroll)
+        self.leadIn = max(0, leadIn)
+        scrollX = requestedScrollX.clamped(between: -self.leadIn, and: maxScroll)
     }
 
     var contentWidth: CGFloat { CGFloat(contentSeconds) * pixelsPerSecond }
 
     var maxScrollX: CGFloat { max(0, contentWidth - width) }
+
+    var minScrollX: CGFloat { -leadIn }
 
     var isFitted: Bool { pixelsPerSecond <= fitPixelsPerSecond * 1.0001 }
 
@@ -72,10 +85,17 @@ struct TimelineViewport: Equatable {
     /// needs a closer one to fit, and a scale that is the new fit is nil,
     /// so widening and narrowing again brings a fitted timeline back to
     /// the fit.
-    func keepingPlace(asLeftEdgeMovesBy shift: CGFloat) -> (pixelsPerSecond: CGFloat?, scrollX: CGFloat) {
+    ///
+    /// Narrowing with the tracks scrolled less than `-shift` from the start
+    /// would need a scroll before 0:00: that much is `leadIn`, empty room
+    /// before the start, so nothing moves. The scale is then kept even if
+    /// it is the fit, since a fitted timeline doesn't scroll.
+    func keepingPlace(asLeftEdgeMovesBy shift: CGFloat) -> (pixelsPerSecond: CGFloat?, scrollX: CGFloat, leadIn: CGFloat) {
         let fit = max(1, width - shift) / CGFloat(contentSeconds)
         let scale = pixelsPerSecond.clamped(between: fit, and: max(fit, maxPixelsPerSecond))
-        return (scale <= fit * 1.0001 ? nil : scale, max(0, scrollX + shift))
+        let scroll = scrollX + shift
+        guard scroll >= 0 else { return (scale, scroll, -scroll) }
+        return (scale <= fit * 1.0001 ? nil : scale, scroll, 0)
     }
 
     /// The scale and scroll offset that fit `start...end` into the width

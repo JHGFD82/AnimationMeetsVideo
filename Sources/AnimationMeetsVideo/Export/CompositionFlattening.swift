@@ -62,7 +62,15 @@ extension CompositionExporter {
                 // stops between them.
                 try Task.checkCancellation()
                 func stack(of clip: TimelineClip, edges: EdgeTransitions? = nil) -> ClipStack {
-                    ClipStack(clip: clip, center: center, shift: offset, edges: edges, colorSpace: timeline.colorSpace, frameDuration: timeline.frameDuration)
+                    var stack = ClipStack(
+                        clip: clip, center: center, shift: offset, edges: edges, colorSpace: timeline.colorSpace, frameDuration: timeline.frameDuration
+                    )
+                    // A Waveform hears its timeline's sound, read ahead.
+                    if clip.effects.contains(where: { $0.kind == .waveform }) {
+                        stack.sounds = project.waveformSounds(for: clip, in: timeline)
+                        WaveformAudio.shared.prefetch(stack.sounds.values.flatMap(\.urls))
+                    }
+                    return stack
                 }
                 // The clip's volume counts in its source time, which a
                 // retimed clip plays through at its speed (at the speed it

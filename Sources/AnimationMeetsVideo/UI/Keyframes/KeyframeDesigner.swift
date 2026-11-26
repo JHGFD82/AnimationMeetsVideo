@@ -243,6 +243,13 @@ private struct KeyframeDesignerSidebar: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityLabel(note.dims ? "Warning: \(note.text)" : note.text)
                 }
+                if let flashing = hud.project.strobeFlashingNote(for: driver, in: clip, of: timeline) {
+                    Label(flashing.text, systemImage: Design.Symbol.warning)
+                        .font(Design.Typeface.micro)
+                        .foregroundStyle(Design.statusWarning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("Warning: \(flashing.text)")
+                }
                 if hud.project.keyframingFreshness(of: driver, in: clip, of: timeline) == .outOfDateWithEdits {
                     KeyframingEditsRow(
                         onRegenerate: { edit { $0.regenerateKeyframes(ofEffect: driver.id, onClip: key.clipID, in: key.timelineID) } },
@@ -262,20 +269,14 @@ private struct KeyframeDesignerSidebar: View {
                         setupRows(driver, setup)
                     }
                 }
-                if !driver.controls.isEmpty {
+                if driver.kind == .strobeKeys {
+                    strobeSettings(driver, setup)
+                } else if !driver.controls.isEmpty {
                     VStack(alignment: .leading, spacing: Design.Space.step) {
                         header("Settings")
                         Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
                             ForEach(driver.controls) { control in
-                                GridRow {
-                                    Text(control.kind.name)
-                                        .foregroundStyle(control.enabled ? Design.textSecondary : Design.textTertiary)
-                                        .gridColumnAlignment(.trailing)
-                                        .accessibilityHidden(true)
-                                    KeyframingSettingField(control: control, at: sourceTime) { change in
-                                        editEffect(driver.id) { $0.changeControl(control.kind, change) }
-                                    }
-                                }
+                                settingRow(driver, control)
                             }
                         }
                     }
@@ -285,6 +286,102 @@ private struct KeyframeDesignerSidebar: View {
         .font(Design.Typeface.label)
         .controlSize(.small)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func settingRow(_ driver: Effect, _ control: EffectControl) -> some View {
+        GridRow {
+            Text(control.kind.name)
+                .foregroundStyle(control.enabled ? Design.textSecondary : Design.textTertiary)
+                .gridColumnAlignment(.trailing)
+                .accessibilityHidden(true)
+            KeyframingSettingField(control: control, at: sourceTime) { change in
+                editEffect(driver.id) { $0.changeControl(control.kind, change) }
+            }
+        }
+    }
+
+    // MARK: Strobe Keys
+
+    /// Strobe Keys' settings under their sections, only those of its
+    /// timing and of the unit its times are in, with its pattern, the
+    /// Duty preset and Swap.
+    @ViewBuilder
+    private func strobeSettings(_ driver: Effect, _ setup: KeyframingSetup) -> some View {
+        ForEach(Array(driver.panelSections().enumerated()), id: \.offset) { _, group in
+            let shown = group.controls.filter { driver.designerShows($0.kind) }
+            let name = group.section?.name ?? "Settings"
+            if !shown.isEmpty || name == "Variation" {
+                VStack(alignment: .leading, spacing: Design.Space.step) {
+                    HStack {
+                        header(name)
+                        Spacer(minLength: 0)
+                        if name == "Envelope" {
+                            Button("Duty") { editEffect(driver.id) { $0.applyStrobeDuty() } }
+                                .help("No attack, decay or release: on for half of each interval, off for the rest")
+                        }
+                    }
+                    Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
+                        if name == "Variation" {
+                            GridRow {
+                                Text("Pattern")
+                                    .foregroundStyle(Design.textSecondary)
+                                    .gridColumnAlignment(.trailing)
+                                    .accessibilityHidden(true)
+                                StrobePatternField(pattern: setup.pattern) { pattern in editSetup { $0.pattern = pattern } }
+                            }
+                        }
+                        ForEach(shown) { control in
+                            if control.kind == .strobeLevels {
+                                GridRow {
+                                    Text(control.kind.name)
+                                        .foregroundStyle(control.enabled ? Design.textSecondary : Design.textTertiary)
+                                        .gridColumnAlignment(.trailing)
+                                        .accessibilityHidden(true)
+                                    HStack(spacing: 6) {
+                                        KeyframingSettingField(control: control, at: sourceTime) { change in
+                                            editEffect(driver.id) { $0.changeControl(control.kind, change) }
+                                        }
+                                        Button { editEffect(driver.id) { $0.swapStrobeLevels() } } label: {
+                                            Image(systemName: "arrow.left.arrow.right")
+                                        }
+                                        .buttonStyle(.icon)
+                                        .help("Swap Min and Max, so the control dips on each pulse instead of rising")
+                                        .accessibilityLabel("Swap Min and Max")
+                                    }
+                                }
+                                GridRow {
+                                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                                    Text(Self.levelsMeaning(setup.combine))
+                                        .font(Design.Typeface.micro)
+                                        .foregroundStyle(Design.textTertiary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            } else {
+                                settingRow(driver, control)
+                            }
+                            if control.kind == .strobeRate, driver.strobeFallsBetweenFrames(frame: timeline.frameDuration.seconds) {
+                                GridRow {
+                                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                                    Text("At this rate pulses fall between frames, so some are seen for a frame longer than others.")
+                                        .font(Design.Typeface.micro)
+                                        .foregroundStyle(Design.textTertiary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What Min and Max mean, as Combine says.
+    static func levelsMeaning(_ combine: KeyframingCombine) -> String {
+        switch combine {
+        case .replace: "The control's values at rest and at each pulse's peak."
+        case .add: "Amounts added to the control at rest and at each pulse's peak."
+        case .multiply: "Factors the control is scaled by at rest and at each pulse's peak: 0 is none of it, 1 all of it."
+        }
     }
 
     private func header(_ name: String) -> some View {
@@ -306,6 +403,7 @@ private struct KeyframeDesignerSidebar: View {
         case nil: "Keyframes set by hand. Pick a method to make them instead; picking None again puts them back."
         case .audioKeys?: "Follows how loud a range of frequencies is in a sound: drag the box on the spectrum."
         case .beatKeys?: "A pulse, step or ramp on each beat of a Sound or Music layer's beats."
+        case .strobeKeys?: "A repeating pulse with an attack and a release, on beats, every few frames or at a rate: a strobe, a flash, a gate."
         case .wiggler?: "Random, organic movement around the control's value."
         case .oscillator?: "A regular wave: sine, triangle, square or sawtooth."
         case .smoother?: "Smooths the control's own keyframes, and thins them."
@@ -329,9 +427,14 @@ private struct KeyframeDesignerSidebar: View {
         }
         // An expression's code says how its result meets `value`.
         if !driver.kind.reshapesTarget, driver.kind != .expression {
+            // Strobe Keys' Min and Max follow it to the new mode's defaults.
+            let strobe = driver.kind == .strobeKeys
             choiceRow(
                 "Combine", options: KeyframingCombine.allCases.map { ($0.rawValue, $0.name) }, selected: setup.combine.rawValue,
-                help: "How what it makes meets the control's own value: added to it, scaling it as a percent, or in its place"
+                help: strobe
+                    ? "How Min and Max meet the control's own value: added to it, scaling it as factors, or in its place"
+                    : "How what it makes meets the control's own value: added to it, scaling it as a percent, or in its place",
+                chooseEffect: strobe ? { choice, effect in effect.setStrobeCombine(KeyframingCombine(rawValue: choice) ?? .add) } : nil
             ) { choice, setup in setup.combine = KeyframingCombine(rawValue: choice) ?? .add }
         }
         // An expression hears and follows beats only when its code asks
@@ -343,7 +446,7 @@ private struct KeyframeDesignerSidebar: View {
                 help: "The sound it follows: the whole mix, one Sound or Music layer, or one clip, as heard"
             ) { choice, setup in setup.audioSource = AudioKeysSource(optionID: choice) }
         }
-        if driver.kind == .beatKeys || driver.kind == .expression {
+        if driver.followsBeats || driver.kind == .expression {
             choiceRow(
                 "Beats From", options: hud.project.beatLayerOptions(current: setup.beatLayer, in: timeline),
                 selected: setup.beatLayer?.uuidString ?? "none", help: "The Sound or Music layer whose beats it follows"
@@ -365,8 +468,11 @@ private struct KeyframeDesignerSidebar: View {
         }
     }
 
+    /// A pop-up row of Applies To, which changes the setup, or the whole
+    /// effect with `chooseEffect`.
     private func choiceRow(
         _ name: String, options: [(id: String, name: String)], selected: String, help: String,
+        chooseEffect: ((String, inout Effect) -> Void)? = nil,
         choose: @escaping (String, inout KeyframingSetup) -> Void
     ) -> some View {
         GridRow {
@@ -374,7 +480,13 @@ private struct KeyframeDesignerSidebar: View {
                 .foregroundStyle(Design.textSecondary)
                 .gridColumnAlignment(.trailing)
                 .accessibilityHidden(true)
-            Picker(name, selection: Binding(get: { selected }, set: { choice in editSetup { choose(choice, &$0) } })) {
+            Picker(name, selection: Binding(get: { selected }, set: { choice in
+                if let chooseEffect, let driver {
+                    editEffect(driver.id) { chooseEffect(choice, &$0) }
+                } else {
+                    editSetup { choose(choice, &$0) }
+                }
+            })) {
                 ForEach(options, id: \.id) { option in
                     Text(option.name).tag(option.id)
                 }
@@ -493,6 +605,37 @@ private struct KeyframeMethodChip: View {
 }
 
 // MARK: - Settings
+
+/// Strobe Keys' pattern, typed: `x` on, `X` accented, `.` off. Set on
+/// Return or when the field is left, so typing it is one undo step.
+private struct StrobePatternField: View {
+    let pattern: String
+    let onCommit: (String) -> Void
+
+    @State private var draft = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField("Pattern", text: $draft, prompt: Text("Every pulse"))
+            .labelsHidden()
+            .font(Design.Typeface.numericSmall)
+            .textFieldStyle(.roundedBorder)
+            .frame(maxWidth: 170, alignment: .leading)
+            .focused($isFocused)
+            .onAppear { draft = pattern }
+            .onChange(of: pattern) { _, new in if !isFocused { draft = new } }
+            .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+            .onSubmit(commit)
+            .help("A bar of steps, one a pulse: x on, X accented, . off. Empty is every pulse.")
+            .accessibilityLabel("Pattern")
+            .accessibilityHint("A bar of steps, one a pulse: x on, capital X accented, period off. Empty is every pulse.")
+    }
+
+    private func commit() {
+        guard draft != pattern else { return }
+        onCommit(draft)
+    }
+}
 
 /// One setting of a Keyframing effect as a field (or a pop-up for a
 /// choice), set at `time`: a keyframed one gets a keyframe there.

@@ -40,6 +40,10 @@ enum Preferences {
     /// over a graph editor's plot. On unless turned off, as on the
     /// timeline.
     static let graphEditorSkimming = "graphEditorSkimming"
+    /// A `GraphTimeBasis` raw value: whether a retimed clip's graphs lay
+    /// time out as the timeline plays it (the default) or as the clip
+    /// stores it.
+    static let keyframeGraphTimeBasis = "keyframeGraphTimeBasis"
 
     // MARK: Library
 
@@ -78,6 +82,18 @@ enum Preferences {
     /// as the pointer moves over it, without moving the playhead. On
     /// unless turned off, as in the browser.
     static let timelineSkimming = "timelineSkimming"
+    /// Whether keyframing a control puts it in its clip's rows in the
+    /// timeline (see docs/parameter-rows.md). On unless turned off.
+    static let addsKeyframedParameters = "addsKeyframedParameters"
+    /// Whether the timeline hides every parameter row without forgetting
+    /// them, for a compact timeline. Off unless turned on.
+    static let hidesParameterRows = "hidesParameterRows"
+
+    /// Whether keyframing a control puts it in the timeline's rows, as the
+    /// defaults have it now.
+    static var addsKeyframedParametersNow: Bool {
+        UserDefaults.standard.object(forKey: addsKeyframedParameters) as? Bool ?? true
+    }
     /// Whether a clip's frame under the pointer shows in the viewer as the
     /// pointer moves over its filmstrip in the browser.
     static let browserSkimming = "browserSkimming"

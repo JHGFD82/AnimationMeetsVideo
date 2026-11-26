@@ -1,0 +1,205 @@
+# Waveform effect
+
+Status: **built**, not yet tried in the running app; what is left is
+under [Not yet](#not-yet). It was talked through in ideas.md first.
+
+An effect that draws a sound's waveform over the picture, moving with
+the sound as it plays: along a **straight line** or around a **circle**
+(radial), as many points as asked for, drawn as **connected lines**,
+**dots** or **bars**, as the wave itself or its spectrum, from a set
+of **preset styles** or set by hand.
+
+### Where it sits
+
+- **An effect in the Effects Library**, so it goes in any visual clip's
+  stack and draws over the picture handed down to it, as the shapes do
+  in a shape clip ([effects.md](effects.md#shapes)). Effects below it
+  shape the picture under it; effects after it (a Glow, a Blur, a
+  Transform) act on the waveform too. It is the one shape kind the
+  library lists (`EffectsListPanel.kinds`) and any stack takes
+  (`EditingProject.stack(of:takes:)`).
+- **And a generator**: the browser's Generators tab has a Waveform item
+  that makes a clip of its own with the effect and nothing under it,
+  for a waveform on its own layer over the footage, fitted to the frame
+  (`Effect.shapeValues`: a line across the middle two thirds, white,
+  3 pixels wide, a sixth of the frame high).
+- **In the inspector** its settings show as a shape's do, only those of
+  its shape, mode and drawing (`Effect.waveformShows`), with a Listen
+  To row and Fill & Stroke after them.
+- **In Swift, not a package.** It needs the sound and vector drawing,
+  neither of which a package's kernel has, so it joins
+  [What stays in Swift](effect-packages.md#what-stays-in-swift) beside
+  the shapes and Stroke, drawing with Core Graphics as they do.
+
+### What it listens to
+
+**Listen To**, as Audio Keys has it: the whole mix (the default), a
+Sound or Music layer, or one clip with sound, each as heard, with its
+volume and EQ ([Audio Keys](keyframing-effects.md#audio-keys-in-detail)).
+What it draws at each frame is the sound around that frame's time on
+the timeline, so it lines up with what is heard wherever the clip
+drawing it is. It is saved as the effect's `listensToLayer` or
+`listensToClip`, neither for the mix.
+
+What it hears is worked out when the timeline is built
+(`EditingProject.waveformSounds`, kept on the clip's `ClipStack`): each
+clip with sound from a file, where it plays and its volume and its
+layer's. Unlike Audio Keys it doesn't hear the EQ yet, nor a nested
+timeline's sound; and since a volume is a value, not part of what the
+timeline is built from, a volume edit shows once the timeline is built
+again (by any change of structure).
+
+### Settings
+
+- **Mode**:
+  - **Wave**: the sound's samples over a window of time, the wave
+    itself.
+  - **Spectrum**: how loud each frequency is at the frame's time, low to
+    high along the shape, spaced by octave: a 4096-point FFT (a Hann
+    window, about a tenth of a second) of the mix around the frame's
+    time, read at each point's frequency, from −80 dB to full scale.
+    It is worked out from the samples rather than from the spectrogram
+    Audio Keys makes, so it has as many points as asked for and a
+    spectrum for each channel.
+- **Frequency range**, as Audio Keys has, so it draws only the kick or
+  only the vocal: in Spectrum, the bands shown; in Wave, the sound
+  filtered to that range first, with the same biquads as the
+  [EQ](equalizer.md)'s cuts, twice each side (24 dB an octave), run
+  from 50 ms before the window so they have settled by its start
+  (`WaveformDrawing.bandFilters`). Filtering reads every sample of the
+  window, so a long, narrowed window costs more than a whole one.
+- **Shape**:
+  - **Line**: from a start point to an end point, both points dragged
+    in the viewer ([viewer-handles.md](viewer-handles.md)), the
+    waveform rising off it on one side, the other or both (mirrored).
+  - **Radial**: around a center with a radius, both dragged in the
+    viewer, starting at an angle and going round a sweep (360° for a
+    full ring, less for an arc), the waveform outward, inward or both.
+- **Samples**: how many points across the line or round the circle (64
+  to 2048, 256 by default).
+- **Window** (Wave): how much sound the points span, in milliseconds: a
+  few for an oscilloscope's single wave, a second or more for a sound's
+  shape scrolling past. **Align** puts the frame's time at the start,
+  the middle or the end of the window.
+- **Draw** as:
+  - **Lines**: the points connected, with a width, straight or smoothed
+    between points, and a fill to the baseline if wanted.
+  - **Dots**: a dot at each point, with a size.
+  - **Bars**: a bar from the baseline to each point, with a width (a
+    share of the spacing between points, so the rest is the gap) and
+    square or round ends; mirrored, a bar reaches both ways.
+- **Stereo**:
+  - **Mixed**: one wave of both channels (the default).
+  - **Split**: left on one side of the baseline and right on the other
+    (above and below a line, outward and inward round a ring).
+  - **Two**: a wave for each channel along the same baseline, each in
+    its own color.
+  - **X–Y** (Wave): left against right as a figure, as a vectorscope
+    draws it, about the line's middle or the ring's center, its size the
+    Height; the window's samples are its points.
+
+  Spectrum's Split and Two need a spectrogram for each channel, which
+  the effect makes beside the mixed one.
+- **Height**: how far a full-scale sample reaches from the baseline,
+  and **Gain** before it, linear or in decibels so quiet sounds still
+  show.
+- **Release** over time, in Spectrum: each point falls back no faster
+  than the release lets it (the loudest of the moments before it, each
+  faded by how long ago it was), so a bar doesn't jitter from frame to
+  frame. An attack, and smoothing in Wave, are not built yet.
+- **Color**: the shapes' **Fill** (dots, bars, a fill to the
+  baseline) and **Stroke** (lines, with Stroke Width), in Fill &
+  Stroke, each one color or a gradient laid over the waveform as it is
+  drawn now ([gradients.md](gradients.md)): a linear one across a line,
+  an angular one round a ring, which is **Along**. **Color: By Level**
+  colors each point, dot or bar (each segment of a line) with the
+  color the Fill's gradient has at how far it reaches, from quiet to
+  loud; a bar shaded up its length is not built yet. With Stereo set to
+  Split or Two, the right channel is in **Right Channel**.
+
+**In the inspector**, the Waveform's group starts with **Graph**, a row
+of icons that sets several of the settings below at once
+(`WaveformGraph`, `WaveformGraphPicker`): **Wave** (Wave, Lines, Line),
+**Filled** (the same, Fill to Baseline on), **Dots**, **Bars** (Spectrum,
+Bars), **Ring** (Wave, Lines, Radial) and **Scope** (Stereo X–Y). Every
+graph but Scope takes Stereo off X–Y. The settings stay where they were
+set, to change one by one after; none of the icons is lit while they
+match none of the graphs. Mode, Shape and Draw are icon buttons rather
+than menus. The effects panel's Waveform header doesn't have the picker
+yet.
+
+Every numeric setting can be keyframed and driven by a Keyframing
+method, so a Beat Keys pulse can swell its height on the beat. Start,
+End and Center are points, measured from the middle of the frame, so
+the viewer shows a handle for each (`PointControlHandles`).
+
+### Presets
+
+Built-in **preset styles** to start from, installed into the Presets
+folder with the look recipes (`LookRecipes.waveformStyles`, version 2),
+so they are shown in the Effects Library with their previews and saved
+and shared as any effect preset is
+([Copying and presets](effects.md#copying-and-presets)):
+
+- **Oscilloscope**: a thin bright line, a short window, mirrored off.
+- **Mirrored**: lines filled to the baseline, mirrored, a long window.
+- **Mirrored Bars**: round-ended bars, mirrored, colored by level.
+- **Ring**: radial, a full sweep, outward lines with a fill.
+- **Dot Ring**: radial dots, inward and outward.
+- **Scroll**: a long window trailing the playhead, filled, as a clip's
+  waveform on the timeline looks.
+- **Spectrum Bars**: Spectrum, 64 bars along a line, colored by level.
+- **Spectrum Ring**: Spectrum, bars outward round a full ring, a
+  gradient along it.
+- **Split Stereo**: left above and right below a line, in two colors.
+- **Stereo Scope**: X–Y, a thin line, a short window.
+
+### Drawing and caching
+
+- **Sound data** (`WaveformAudio`): the app keeps a waveform per file
+  at 200 peaks a second (`Waveform`), enough for a long window but not
+  for an oscilloscope's single wave, so the effect reads the file's
+  samples themselves. It keeps them per file for the session, 16-bit
+  at 44.1 kHz in up to two channels, so a spectrum reaches 20 kHz:
+  about 32 MB for a three-minute stereo song. A point that stands for
+  many samples (a long window) is the one furthest from silence, so
+  the peaks show.
+- **Reading**: building a timeline starts reading what its Waveforms
+  hear in the background (`prefetch`). A frame drawn before a file is
+  read reads it there and then, one reader a file, so a waveform is
+  never drawn without its sound and nothing drawn or rendered needs
+  drawing again when it arrives; the first frame can take a fraction
+  of a second a minute of sound.
+- **Drawing** (`WaveformDrawing`): lines, dots and bars are areas
+  (lines stroked with round ends, smoothed with Catmull–Rom curves),
+  drawn by `ShapeRendering` as shapes are, so they stay sharp under the
+  moves after them, and a Stroke below outlines them.
+- **Every frame is new** while the sound moves: it changes on its own
+  (`Effect.changesOnItsOwn`), and its step's render key holds the time
+  and a fingerprint of what it listens to (`WaveformSound.fingerprint`),
+  so renders follow a change to the sound or its placement.
+- Under motion blur, it is drawn at each moment the stack is resolved
+  at, from the sound at that moment.
+
+## Testing
+
+- `WaveformTests`, over a full-scale 1 kHz sine handed to
+  `WaveformAudio`: it hears its timeline's mix and not a clip it
+  doesn't listen to; a full-scale wave fills its height both ways;
+  nothing is drawn without sound or past the song's end; bars by level
+  are a paint each; the spectrum peaks at the tone, and a silent
+  channel's is empty; Split draws the right channel in its own color;
+  the inspector shows the settings of how it is set; it is fitted to
+  the frame; and saving keeps what it listens to.
+- `WaveformFilterTests`: the whole range isn't filtered, and a low
+  range keeps a 60 Hz tone and drops a 4 kHz one.
+- `GeneratorTests`: it is a generator and the one shape the library
+  lists, and a footage clip takes it.
+- `UISnapshots.waveformInspector`.
+- Not yet: a test drawing it through the compositor from a sound file.
+
+## Not yet
+
+- The EQ heard, nested
+  timelines' sound, an attack and smoothing in Wave, bars shaded up
+  their length, and volume edits shown without a rebuild.

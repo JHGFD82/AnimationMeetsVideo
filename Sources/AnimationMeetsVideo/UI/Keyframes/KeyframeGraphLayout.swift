@@ -89,20 +89,45 @@ struct KeyframeGraphViewport: Equatable {
 
 /// Where a parameter's graph draws things: the parameter's time across, each
 /// component's shown value up.
+///
+/// With a `warp` (a retimed clip shown in timeline time), times are still
+/// the keys' own seconds, but they are spaced across as the timeline
+/// plays them: `x(_:)` and `seconds(atX:)` go through the warp, so what
+/// draws, hit-tests and drags in key seconds needn't know.
 struct KeyframeGraphLayout: Equatable {
-    var times: ClosedRange<Double>
+    /// The shown times, in the keys' own seconds.
+    var times: ClosedRange<Double> {
+        didSet { shownDisplay = Self.display(times, warp) }
+    }
     /// One range of shown values per component; all the same unless the
     /// viewport separates them.
     var values: [ClosedRange<Double>]
     var plot: CGRect
+    var warp: GraphTimeWarp? {
+        didSet { shownDisplay = Self.display(times, warp) }
+    }
+    /// `times` through the warp, worked out once.
+    private var shownDisplay: ClosedRange<Double>
 
     static let insets = EdgeInsets(top: 12, leading: 52, bottom: 20, trailing: 14)
 
-    init(times: ClosedRange<Double>, values: [ClosedRange<Double>], plot: CGRect) {
+    init(times: ClosedRange<Double>, values: [ClosedRange<Double>], plot: CGRect, warp: GraphTimeWarp? = nil) {
         self.times = times
         self.values = values
         self.plot = plot
+        self.warp = warp
+        shownDisplay = Self.display(times, warp)
     }
+
+    private static func display(_ times: ClosedRange<Double>, _ warp: GraphTimeWarp?) -> ClosedRange<Double> {
+        guard let warp else { return times }
+        let a = warp.display(times.lowerBound), b = warp.display(times.upperBound)
+        return min(a, b)...max(a, b, min(a, b) + 1e-9)
+    }
+
+    /// Whether a line in the keys' time is bent on screen, so a linear
+    /// blend must be sampled rather than drawn straight.
+    var bendsLines: Bool { warp.map { !$0.isLinear } ?? false }
 
     /// Lays `value` (shown with `offset` added) out in `size` as `viewport`
     /// says, time going no further than `span`, the parameter's own: a
@@ -114,19 +139,23 @@ struct KeyframeGraphLayout: Equatable {
     /// of `Self.fitValues`, so a graph can keep the fits between redraws.
     init(_ value: AnimatedValue<ComponentValue>, offset: [Double], size: CGSize, viewport: KeyframeGraphViewport,
          span: ClosedRange<Double>, frame: Double, times shownTimes: ClosedRange<Double>? = nil,
-         fitValues: ((_ components: [Int]) -> ClosedRange<Double>)? = nil) {
+         fitValues: ((_ components: [Int]) -> ClosedRange<Double>)? = nil, warp: GraphTimeWarp? = nil) {
         let insets = Self.insets
         plot = CGRect(
             x: insets.leading, y: insets.top,
             width: max(1, size.width - insets.leading - insets.trailing),
             height: max(1, size.height - insets.top - insets.bottom)
         )
+        let times: ClosedRange<Double>
         if let shownTimes {
             times = shownTimes
         } else {
             let padded = Self.padded(span)
             times = viewport.shownTimes(fit: Self.fitTimes(value, span: padded, frame: frame), span: padded)
         }
+        self.times = times
+        self.warp = warp
+        shownDisplay = Self.display(times, warp)
         let count = value.value.values.count
         let shown = (0..<count).filter { !viewport.hidden.contains($0) }
         let fitValues = fitValues ?? { Self.fitValues(value, offset: offset, components: $0) }
@@ -257,12 +286,16 @@ struct KeyframeGraphLayout: Equatable {
         return ticks
     }
 
+    /// Where a key's `seconds` is across.
     func x(_ seconds: Double) -> CGFloat {
-        plot.minX + plot.width * CGFloat((seconds - times.lowerBound) / (times.upperBound - times.lowerBound))
+        let shown = warp?.display(seconds) ?? seconds
+        return plot.minX + plot.width * CGFloat((shown - shownDisplay.lowerBound) / (shownDisplay.upperBound - shownDisplay.lowerBound))
     }
 
+    /// The key's seconds at `x` across.
     func seconds(atX x: CGFloat) -> Double {
-        times.lowerBound + Double((x - plot.minX) / plot.width) * (times.upperBound - times.lowerBound)
+        let shown = shownDisplay.lowerBound + Double((x - plot.minX) / plot.width) * (shownDisplay.upperBound - shownDisplay.lowerBound)
+        return warp?.key(shown) ?? shown
     }
 
     private func range(_ component: Int) -> ClosedRange<Double> {

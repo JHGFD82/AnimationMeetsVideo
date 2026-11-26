@@ -184,6 +184,12 @@ extension ProjectBridge {
                 }
                 var edited = method
                 for (name, value) in settings.sorted(by: { $0.key < $1.key }) {
+                    // Strobe Keys' pattern is its setup's, not a control.
+                    if name == "pattern", kind == .strobeKeys {
+                        guard let pattern = value.string else { throw ScriptCallError.type("A pattern is text, such as \"x.X.\"") }
+                        edited.keyframing?.pattern = pattern
+                        continue
+                    }
                     guard let c = edited.controls.firstIndex(where: { $0.kind.rawValue == name || $0.kind.name == name }) else {
                         let names = edited.controls.map(\.kind.rawValue).joined(separator: ", ")
                         throw ScriptCallError.lookup("\(kind.name) has no setting \u{201C}\(name)\u{201D}: it has \(names)")
@@ -228,7 +234,7 @@ extension ProjectBridge {
     private func effectKind(_ name: String?) throws -> EffectKind {
         guard let name else { throw ScriptCallError.type("An effect's kind is a name, such as \"gaussianBlur\"") }
         if let kind = EffectKind(rawValue: name), kind != .missing { return kind }
-        let all = EffectKind.all + [.audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot]
+        let all = EffectKind.all + [.audioKeys, .beatKeys, .strobeKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot]
         if let kind = all.first(where: { $0.name == name }) { return kind }
         throw ScriptCallError.lookup("There is no effect called \u{201C}\(name)\u{201D}")
     }

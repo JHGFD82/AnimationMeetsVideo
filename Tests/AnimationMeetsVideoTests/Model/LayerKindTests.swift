@@ -159,7 +159,7 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
     }
 }
 
-@Suite struct WaveformTests {
+@Suite struct ClipWaveformTests {
     @Test func theEnvelopeKeepsEachWindowsLoudestSampleScaledToTheLoudest() {
         // 400 samples a second: two samples per window.
         let samples: [Float] = [0.1, -0.4, 0.2, 0.0, -0.8, 0.3]

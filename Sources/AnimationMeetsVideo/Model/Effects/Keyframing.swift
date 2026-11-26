@@ -179,6 +179,9 @@ struct KeyframingSetup: Equatable, Sendable {
     var beatLayer: UUID?
     /// Audio Keys: what it listens to.
     var audioSource: AudioKeysSource?
+    /// Strobe Keys: a bar of steps, `x` on, `X` accented, `.` off
+    /// (`StrobeStep`); empty for every pulse.
+    var pattern = ""
     /// A fingerprint of what it read when it last wrote (the clip's place,
     /// trim and speed, the frame rate, the beats), so a change to any of
     /// them shows it is out of date. Nil until it has written.
@@ -267,6 +270,13 @@ extension KeyframingPrint {
 
 // MARK: - Targets
 
+extension EffectControl {
+    /// Whether a Keyframing method can drive it: a number or a color, not
+    /// a choice, a curve, a path or a gradient, whose numbers are points
+    /// rather than values to move.
+    var isDrivable: Bool { !kind.isChoice && !kind.isCurve && !kind.isPath && paint == nil }
+}
+
 extension TimelineClip {
     /// The numbers of a target, as components.
     func number(of target: KeyframingTarget) -> AnimatedValue<ComponentValue>? {
@@ -311,7 +321,7 @@ extension EditingProject {
     func keyframingTargets(in clip: TimelineClip) -> [KeyframingTarget] {
         func numeric(_ effects: ArraySlice<Effect>) -> [KeyframingTarget] {
             effects.filter { !$0.kind.isKeyframing }.flatMap { effect in
-                effect.controls.filter { !$0.kind.isChoice && !$0.kind.isCurve && !$0.kind.isPath }.map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
+                effect.controls.filter(\.isDrivable).map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
             }
         }
         var targets = numeric(clip.effects[...])
@@ -333,7 +343,7 @@ extension EditingProject {
             func holds(_ effects: ArraySlice<Effect>) -> Bool {
                 effects.contains { effect in
                     effect.id == effectID && !effect.kind.isKeyframing
-                        && effect.controls.contains { $0.id == controlID && !$0.kind.isChoice && !$0.kind.isCurve && !$0.kind.isPath }
+                        && effect.controls.contains { $0.id == controlID && $0.isDrivable }
                 }
             }
             return holds(clip.effects[...]) || (playsAudio(clip) && holds(clip.audioEffects[...]))
@@ -385,7 +395,7 @@ extension EditingProject {
                 }
             }
         }
-        if effect.kind == .beatKeys {
+        if effect.followsBeats {
             guard let layerID = setup.beatLayer else {
                 return EffectNote(text: "Choose a Sound or Music layer whose beats it follows.", dims: true)
             }
@@ -452,7 +462,7 @@ extension EditingProject {
         if effect.kind == .audioKeys, let source = effect.keyframing?.audioSource {
             addHeard(source, in: timeline, to: &fingerprint)
         }
-        if effect.kind == .beatKeys, let layer = effect.keyframing?.beatLayer.flatMap({ timeline.layer(id: $0) }) {
+        if effect.followsBeats, let layer = effect.keyframing?.beatLayer.flatMap({ timeline.layer(id: $0) }) {
             for beat in beatMarkers(in: layer, tracks: tracks ?? DetectedBeats.shared.tracks) {
                 fingerprint.add(beat.time)
                 fingerprint.add(UInt64(beat.position ?? 0))
@@ -756,12 +766,15 @@ extension EditingProject {
         // key it; a Time Step that holds every component one at each side
         // of each jump; anything else is every frame, thinned to the
         // tolerance.
+        // Strobe Keys replacing every component doesn't show the target's
+        // curve, so it keeps its corners over an animated one too.
+        let hidesBase = effect.kind == .strobeKeys && setup.combine == .replace && components.count == width
         var keyframes: [Keyframe<ComponentValue>]
-        if !base.isAnimated, let events = signal.events() {
+        if !base.isAnimated || hidesBase, let events = signal.events() {
             keyframes = events.map {
                 Keyframe(
                     time: sampling.sources[$0.index], value: value(at: $0.index),
-                    easeIn: $0.easeIn, easeOut: $0.easeOut, generatedBy: effect.id
+                    easeIn: $0.easeIn, easeOut: $0.easeOut, generatedBy: effect.id, hold: $0.hold
                 )
             }
         } else {
@@ -1047,6 +1060,8 @@ private struct KeyframeSignal {
     private let beatShape: BeatShape
     private let decays: [Double]
     private let reshaping: Reshaping?
+    /// Strobe Keys' corners, on the range's frames.
+    private var strobeNodes: [StrobeKeys.Node] = []
 
     init(
         effect: Effect, sampling: KeyframeSampling, base: AnimatedValue<ComponentValue>, baseSamples: [Double], width: Int,
@@ -1063,6 +1078,7 @@ private struct KeyframeSignal {
         beatShape = effect.choice(.beatShape, as: BeatShape.self) ?? .pulse
         var made: [Double] = [], wiggle: Wiggle?, positions: [Double] = []
         var pulses: [KeyframeGenerators.Pulse] = [], decays: [Double] = [], reshaping: Reshaping?
+        var strobeNodes: [StrobeKeys.Node] = []
         switch effect.kind {
         case .wiggler:
             let together = effect.choice(.wiggleDimensions, as: WiggleDimensions.self) == .together
@@ -1090,6 +1106,19 @@ private struct KeyframeSignal {
             decays = sampling.elapsed.indices.map { decay.at($0, default: 250) / 1000 }
             pulses = Self.chosenPulses(beats, of: effect, sampling: sampling, number: number)
             made = KeyframeGenerators.beatSignals(at: sampling.elapsed, pulses: pulses, shape: beatShape, decays: decays)
+        case .strobeKeys:
+            let strobe = StrobeKeys.pulses(of: effect, sampling: sampling, beats: beats)
+            strobeNodes = StrobeKeys.nodes(strobe.pulses, envelopes: strobe.envelopes, frame: sampling.frameSeconds)
+            // From Min to Max: values with Replace, amounts with Add, and
+            // factors with Multiply, which scales by a percent more.
+            let levels = PairSetting(.strobeLevels, of: effect, sampling: sampling)
+            let multiplies = effect.keyframing?.combine == .multiply
+            let nodes = strobeNodes, frame = sampling.frameSeconds
+            made = sampling.elapsed.indices.map { k in
+                let (low, high) = levels.at(k)
+                let value = low + (high - low) * StrobeKeys.level(at: sampling.elapsed[k] / frame, of: nodes)
+                return multiplies ? (value - 1) * 100 : value
+            }
         case .audioKeys:
             made = heard.map { Self.listen($0, effect: effect, sampling: sampling, number: number) } ?? []
         case .smoother:
@@ -1110,6 +1139,7 @@ private struct KeyframeSignal {
         }
         (self.made, self.wiggle, self.positions, self.pulses, self.decays, self.reshaping)
             = (made, wiggle, positions, pulses, decays, reshaping)
+        self.strobeNodes = strobeNodes
     }
 
     /// Audio Keys' steps: the range's level, between the box's bottom and
@@ -1193,19 +1223,23 @@ private struct KeyframeSignal {
         var index: Int
         var easeIn: KeyframeEase?
         var easeOut: KeyframeEase?
+        /// Held until the next, then jumping.
+        var hold = false
     }
 
     /// Where an animator would key this signal, for the kinds with a
     /// natural rate: an Oscillator's peaks and troughs (eased, for a sine),
     /// or its jumps; Beat Keys' beats, the frame before each and where its
-    /// decay ends. Always the first and last sample. Nil for the others.
+    /// decay ends; Strobe Keys' corners, a stage of no length held to the
+    /// frame before it. Always the first and last sample. Nil for the
+    /// others.
     func events() -> [Event]? {
         let count = sampling.sources.count
         guard count > 1 else { return nil }
         var events = [Event?](repeating: nil, count: count)
-        func add(_ index: Int, in easeIn: KeyframeEase? = nil, out easeOut: KeyframeEase? = nil) {
+        func add(_ index: Int, in easeIn: KeyframeEase? = nil, out easeOut: KeyframeEase? = nil, hold: Bool = false) {
             guard index >= 0, index < count else { return }
-            events[index] = Event(index: index, easeIn: easeIn, easeOut: easeOut)
+            events[index] = Event(index: index, easeIn: easeIn, easeOut: easeOut, hold: hold)
         }
         switch kind {
         case .oscillator:
@@ -1252,10 +1286,26 @@ private struct KeyframeSignal {
                     if settled < next - 1 { add(settled, in: .easy) }
                 }
             }
+        case .strobeKeys:
+            // Each corner on its frame, the stage before it as its ease in
+            // and the stage after as its ease out. A corner before the range
+            // hands its hold to the first sample.
+            var arriving: KeyframeEase?
+            for node in strobeNodes {
+                var eases: (leaving: KeyframeEase?, arriving: KeyframeEase?) = (nil, nil)
+                if case .curve(let curve) = node.leaving { eases = StrobeKeys.eases(curve) }
+                let holds = node.leaving == .hold
+                if node.frame < 0 {
+                    if holds { add(0, hold: true) } else { events[0] = nil }
+                } else {
+                    add(node.frame, in: arriving, out: eases.leaving, hold: holds)
+                }
+                arriving = eases.arriving
+            }
         default:
             return nil
         }
-        add(0, out: events[0]?.easeOut)
+        add(0, out: events[0]?.easeOut, hold: events[0]?.hold ?? false)
         add(count - 1, in: events[count - 1]?.easeIn)
         return events.compactMap { $0 }
     }
@@ -1352,5 +1402,151 @@ private struct KeyframeSignal {
             }
         }
         return samples
+    }
+}
+
+// MARK: - Strobe Keys
+
+extension Effect {
+    /// Whether it follows a layer's beats: Beat Keys, and Strobe Keys timed
+    /// to beats.
+    var followsBeats: Bool {
+        kind == .beatKeys || (kind == .strobeKeys && choice(.strobeTiming, as: StrobeTiming.self) == .beats)
+    }
+}
+
+extension StrobeKeys {
+    /// The pulses a Strobe Keys effect makes over `sampling`, varied, and
+    /// each one's envelope as its settings are where it starts. `beats`
+    /// are the layer's beat markers, in the timeline's time.
+    static func pulses(
+        of effect: Effect, sampling: KeyframeSampling, beats: [BeatMarker]
+    ) -> (pulses: [Pulse], envelopes: [Envelope]) {
+        func number(_ kind: ControlKind) -> NumberSetting { NumberSetting(effect.control(kind), sampling: sampling) }
+        func sample(_ time: Double) -> Int {
+            min(max(sampling.elapsed.lowerBound(of: time) { $0 }, 0), max(sampling.elapsed.count - 1, 0))
+        }
+        let frame = sampling.frameSeconds, duration = sampling.duration
+        let timing = effect.choice(.strobeTiming, as: StrobeTiming.self) ?? .perSecond
+        var made: [Pulse]
+        var accentsDownbeats = false
+        switch timing {
+        case .beats:
+            let downbeatsOnly = effect.choice(.beatSelection, as: BeatSelection.self) == .downbeats
+            let chosen = downbeatsOnly ? beats.filter(\.isDownbeat) : beats
+            let times = chosen.map { CMTimeSubtract($0.time, sampling.start).seconds }
+            let first = times.firstIndex { $0 >= -1e-9 } ?? times.count
+            made = beatPulses(
+                times, downbeats: chosen.map(\.isDownbeat), first: first,
+                every: Int(number(.strobeEvery).at(0, default: 1)),
+                parts: (effect.choice(.beatDivision, as: BeatDivision.self) ?? .whole).parts,
+                shift: number(.beatShift).at(0, default: 0), duration: duration
+            )
+            accentsDownbeats = !downbeatsOnly
+        case .frames:
+            made = framePulses(
+                every: Int(number(.strobeFrames).at(0, default: 12)), shift: number(.frameShift).at(0, default: 0),
+                frame: frame, duration: duration
+            )
+        case .perSecond:
+            let rate = number(.strobeRate)
+            var cycles = 0.0
+            let integrated = sampling.elapsed.indices.map { k -> Double in
+                if k > 0 { cycles += rate.at(k - 1, default: 2) * (sampling.elapsed[k] - sampling.elapsed[k - 1]) }
+                return cycles
+            }
+            made = ratePulses(
+                cycles: integrated, elapsed: sampling.elapsed, lastRate: rate.at(sampling.elapsed.count - 1, default: 2),
+                shift: number(.frameShift).at(0, default: 0) * frame, duration: duration
+            )
+        }
+        let swing = number(.swing), skip = number(.skipChance), accent = number(.accent)
+        let variation = Variation(
+            swing: { swing.at(sample($0.time), default: 0) / 100 },
+            skipChance: { skip.at(sample($0.time), default: 0) / 100 },
+            seed: UInt64(max(number(.seed).at(0, default: 1), 0)),
+            pattern: StrobeStep.steps(of: effect.keyframing?.pattern ?? ""),
+            accent: { accent.at(sample($0.time), default: 50) / 100 },
+            accentsDownbeats: accentsDownbeats,
+            fade: number(.fade).at(0, default: 0)
+        )
+        let pulses = varied(made, by: variation, duration: duration)
+        let byShare = (effect.choice(.strobeTimes, as: StrobeTimes.self) ?? .share) == .share
+        let attack = number(byShare ? .attackShare : .attackFrames), decay = number(byShare ? .decayShare : .decayFrames)
+        let held = number(byShare ? .sustainForShare : .sustainForFrames), release = number(byShare ? .releaseShare : .releaseFrames)
+        let sustain = number(.sustainLevel)
+        let scale = byShare ? 0.01 : 1
+        let envelopes = pulses.map { pulse in
+            let k = sample(pulse.time)
+            return Envelope(
+                times: byShare ? .share : .frames,
+                attack: attack.at(k, default: 0) * scale, decay: decay.at(k, default: 0) * scale,
+                sustainFor: held.at(k, default: byShare ? 25 : 2) * scale, release: release.at(k, default: byShare ? 25 : 4) * scale,
+                sustain: sustain.at(k, default: 100) / 100,
+                attackCurve: effect.choice(.attackCurve, as: StrobeCurve.self) ?? .linear,
+                decayCurve: effect.choice(.decayCurve, as: StrobeCurve.self) ?? .exponential,
+                releaseCurve: effect.choice(.releaseCurve, as: StrobeCurve.self) ?? .exponential,
+                overlap: effect.choice(.strobeOverlap, as: StrobeOverlap.self) ?? .cut
+            )
+        }
+        return (pulses, envelopes)
+    }
+}
+
+extension EditingProject {
+    /// What the Keyframe Designer warns of for a Strobe Keys effect: that
+    /// it flashes more than three times a second over a control that
+    /// changes brightness (see docs/psychedelic-effects.md, "Safety:
+    /// flashing"). Nil for any other effect, or one that doesn't.
+    func strobeFlashingNote(for effect: Effect, in clip: TimelineClip, of timeline: Timeline) -> EffectNote? {
+        guard effect.kind == .strobeKeys, effect.enabled, let setup = effect.keyframing, let target = setup.target,
+              Self.changesBrightness(target, in: clip)
+        else { return nil }
+        // Min and Max apart, or nothing flashes.
+        if let levels = effect.control(.strobeLevels), !levels.isAnimated {
+            let values = levels.number.value.values
+            if values.count == 2, values[0] == values[1] { return nil }
+        }
+        let range = Self.writtenRange(setup, of: clip)
+        guard range.duration > .zero else { return nil }
+        let sampling = KeyframeSampling(clip: clip, range: range, frame: timeline.frameDuration)
+        let beats = effect.followsBeats
+            ? setup.beatLayer.flatMap { timeline.layer(id: $0) }.map { beatMarkers(in: $0, tracks: DetectedBeats.shared.tracks) } ?? []
+            : []
+        let pulses = StrobeKeys.pulses(of: effect, sampling: sampling, beats: beats).pulses
+            .filter { $0.time >= 0 && $0.time <= sampling.duration }
+        guard StrobeKeys.flashesTooFast(pulses) else { return nil }
+        return EffectNote(
+            text: "This flashes more than three times a second, which can trigger seizures in people with photosensitive epilepsy.",
+            dims: false
+        )
+    }
+
+    /// Whether a target changes how bright the picture is: an opacity, a
+    /// blend's amount, a color, and the controls of the Color, Light,
+    /// Color Correction and Color looks.
+    static func changesBrightness(_ target: KeyframingTarget, in clip: TimelineClip) -> Bool {
+        guard case .control(let effectID, let controlID) = target, let effect = clip.effect(id: effectID),
+              let control = effect.controls.first(id: controlID)
+        else { return false }
+        if control.kind.isColor { return true }
+        switch effect.kind {
+        case .transform: return control.kind == .opacity
+        case .blending: return control.kind == .amount
+        case .color: return true
+        default: return [.light, .correction, .recolor].contains(effect.kind.category)
+        }
+    }
+
+    /// Whether Strobe Keys scales `target` by default (Multiply), rather
+    /// than adding to it: the volume, and percentages whose default is
+    /// 100%, such as an opacity or a scale.
+    static func strobeScales(_ target: KeyframingTarget, in clip: TimelineClip) -> Bool {
+        switch target {
+        case .volume: return true
+        case .control(let effectID, let controlID):
+            guard let kind = clip.effect(id: effectID)?.controls.first(id: controlID)?.kind else { return false }
+            return kind.unit == "%" && !kind.defaultValues.isEmpty && kind.defaultValues.allSatisfy { $0 == 100 }
+        }
     }
 }

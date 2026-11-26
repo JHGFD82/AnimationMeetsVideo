@@ -19,10 +19,11 @@ import Testing
         return (project, placed.layerID, placed.clipID)
     }
 
-    @Test @MainActor func theGeneratorsAreTextThenTheShapesAndNoneIsInTheEffectsLibrary() {
-        #expect(EffectKind.generators == [.text, .rectangle, .ellipse, .polygon, .star, .path])
+    @Test @MainActor func theGeneratorsAreTextThenTheShapesAndOnlyTheWaveformIsInTheEffectsLibrary() {
+        #expect(EffectKind.generators == [.text, .rectangle, .ellipse, .polygon, .star, .path, .waveform])
         let library = EffectsListPanel.kinds
-        #expect(library.allSatisfy { !$0.drawsShape })
+        // A Waveform is a generator and an effect alike.
+        #expect(library.filter(\.drawsShape) == [.waveform])
         // What works on text and shapes in their clip's stack stays.
         #expect(library.contains(.stroke))
         #expect(library.contains(.textAnimator))
@@ -37,16 +38,18 @@ import Testing
         #expect(added2 == nil)
         let added3 = project.addEffect(.color, toClip: clipID, in: t)
         #expect(added3 != nil)
+        let added4 = project.addEffect(.waveform, toClip: clipID, in: t)
+        #expect(added4 != nil)
 
         let shapeMade = project.addShapeLayer(.rectangle, to: t)
 
         let shape = try #require(shapeMade)
         // Text joins a shape clip below the shape, to follow its path, and
         // a Stroke strokes them.
-        let added4 = project.addEffect(.text, toClip: shape.clipID, in: t)
-        #expect(added4 != nil)
-        let added5 = project.addEffect(.stroke, toClip: shape.clipID, in: t)
+        let added5 = project.addEffect(.text, toClip: shape.clipID, in: t)
         #expect(added5 != nil)
+        let added6 = project.addEffect(.stroke, toClip: shape.clipID, in: t)
+        #expect(added6 != nil)
         let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
         #expect(clip.effects.map(\.kind) == [.rectangle, .text, .stroke])
     }

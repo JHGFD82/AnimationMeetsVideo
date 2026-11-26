@@ -1,5 +1,6 @@
 import CoreMedia
 import Foundation
+import Observation
 
 /// Where each timeline shown in a window was left (`ViewState`), for
 /// opening it there again: its playhead and the clip selected, kept by the
@@ -22,10 +23,15 @@ final class TimelineViewMemory {
     private var written = ViewState()
     /// The package it is saved in; nil for one that is never saved.
     private(set) var packageURL: URL?
+    /// Which parameters each clip has in the timeline's rows, which the
+    /// timeline and the effects panel both change (see
+    /// docs/parameter-rows.md).
+    let parameterRows = ParameterRowsStore()
 
     init(_ state: ViewState = ViewState()) {
         self.state = state
         written = state
+        parameterRows.take(state)
     }
 
     // MARK: Keeping
@@ -56,6 +62,7 @@ final class TimelineViewMemory {
     /// Everything kept, with the open timeline as it is now.
     func snapshot() -> ViewState {
         for capture in captures.values { capture() }
+        for (id, rows) in parameterRows.byTimeline { state.timelines[id, default: ViewState.Timeline()].parameterRows = rows }
         return state
     }
 
@@ -96,6 +103,7 @@ final class TimelineViewMemory {
     func load(from packageURL: URL) {
         state = ViewStateFile.read(from: packageURL)
         written = state
+        parameterRows.take(state)
         self.packageURL = packageURL
     }
 
@@ -116,6 +124,11 @@ final class TimelineViewMemory {
         guard let packageURL else { return }
         var state = snapshot()
         state.timelines = state.timelines.filter { project.timeline(id: $0.key) != nil }
+        // Rows of clips and layers that are gone are let go.
+        for timeline in project.timelines {
+            guard let rows = state.timelines[timeline.id]?.parameterRows else { continue }
+            state.timelines[timeline.id]?.parameterRows = rows.kept(in: timeline)
+        }
         if let open = state.openTimelineID, project.timeline(id: open) == nil { state.openTimelineID = nil }
         state.browser = state.browser.kept(in: project)
         self.state = state
@@ -134,5 +147,27 @@ extension EditingProject {
     /// The clip `selection` picks, if the project still has it there.
     func timelineClip(of selection: TimelineSelection) -> TimelineClip? {
         timeline(id: selection.timelineID)?.layer(id: selection.layerID)?.clips.first { $0.id == selection.timelineClipID }
+    }
+}
+
+/// Which parameters each clip has in the timeline's rows, by timeline, for
+/// the views that show and change them (see docs/parameter-rows.md). Part
+/// of the window's view state (`TimelineViewMemory`), so changing it is no
+/// edit of the project.
+@MainActor @Observable
+final class ParameterRowsStore {
+    private(set) var byTimeline: [UUID: TimelineParameterRows] = [:]
+
+    func rows(of timelineID: UUID) -> TimelineParameterRows {
+        byTimeline[timelineID] ?? TimelineParameterRows()
+    }
+
+    func change(_ timelineID: UUID, _ change: (inout TimelineParameterRows) -> Void) {
+        change(&byTimeline[timelineID, default: TimelineParameterRows()])
+    }
+
+    /// Takes up the rows `state` keeps, as a project opens.
+    func take(_ state: ViewState) {
+        byTimeline = state.timelines.compactMapValues { $0.parameterRows.isEmpty ? nil : $0.parameterRows }
     }
 }

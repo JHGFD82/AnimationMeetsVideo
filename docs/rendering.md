@@ -159,6 +159,43 @@ emptied timeline or a slow frame never shows black in between.
   says there are no clips over its last picture, so emptying and filling a
   timeline again (an undo) shows no black.
 
+### Rough, then exact
+
+Moving the playhead, skimming and the tape scrubber seek the paused
+player through one queue (`PlaybackModel.show`, `drainSeeks`): one seek
+in flight, the newest move next. H.264 and HEVC are long-GOP, so an
+exact seek decodes from the keyframe before the target, often a second
+or more back, and a fast scrub paid for a whole group of pictures at
+every step. So, as Final Cut and Premiere scrub:
+
+- **Fast moves seek roughly.** `ScrubPacing` looks back over the moves
+  of the last 100 ms. Faster than twice normal speed (the distance they
+  covered, back and forth, over the time they took), a seek may land as
+  far off either way as the moves go in a tenth of a second, at most two
+  seconds, which lets the player land on a nearby keyframe. Slower moves
+  (an arrow key held, a slow drag hunting for a frame) and a move on its
+  own after a rest (a click in the ruler, a step) stay exact.
+- **It lands exactly once they rest.** 100 ms after the last rough move,
+  the player is seeked exactly where it stopped; only then does the
+  frame settle (drawn again at full size under Auto, and prerolled 250 ms
+  later), as after an exact seek.
+- **The playhead is exact throughout.** It goes where it was moved; the
+  player's ticks are ignored until it lands exactly, as during a skim,
+  so a rough seek's time never moves it, and its frame isn't kept as the
+  playhead's picture (`shownFrame`).
+- **Play starts exactly.** Space, J or L straight after a fast drag, or
+  from a skim, seeks exactly first, so play never starts from near the
+  frame; the tape scrubber comes to rest on its frame exactly too.
+  Showing another timeline or emptying the player forgets the moves.
+- Tested on its own (`ScrubPacingTests`) and with a player
+  (`PlaybackSkimTests`: a fast drag lands exactly, play after one starts
+  exactly).
+
+The other steps planned for laptops (a scrub cache, decoding at the
+viewer's size, thumbnails while catching up) are in
+[ideas.md](ideas.md#smoother-scrubbing-on-laptops), measured on a laptop
+one at a time.
+
 ## Render cache (implemented)
 
 - **Segments, not clips.** Every build of the timeline splits it where any

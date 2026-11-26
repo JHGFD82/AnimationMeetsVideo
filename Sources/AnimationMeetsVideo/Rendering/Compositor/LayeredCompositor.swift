@@ -934,16 +934,27 @@ struct Drawing {
                     pathOutline = ShapeRendering.Edge(area: shape.path, transform: frameToOutput)
                 }
                 for paint in shape.paints {
-                    shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, transform: frameToOutput))
+                    shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, gradient: paint.gradient, transform: frameToOutput))
                 }
                 edges.append(ShapeRendering.Edge(area: shape.edge, transform: frameToOutput))
+            case .waveform(let wave):
+                // Drawn as a shape is, over the picture as the steps above
+                // left it; its marks are edges for a Stroke below.
+                settleOpacity()
+                let paints = WaveformDrawing.paints(wave, sound: clip.stack.sounds[wave.effectID], frame: CGRect(origin: .zero, size: frameSize))
+                for paint in paints {
+                    shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, gradient: paint.gradient, transform: frameToOutput))
+                    edges.append(ShapeRendering.Edge(area: paint.area, transform: frameToOutput))
+                }
             case .outlineStroke(let style):
                 // Around everything the shapes above drew, strokes and all,
                 // where those shapes now are.
                 settleOpacity()
                 guard let outline = ShapeRendering.union(of: edges, current: frameToOutput) else { continue }
                 let area = style.area(around: outline)
-                shapes.append(ShapeRendering.Paint(area: area, color: style.color, transform: frameToOutput))
+                // A gradient lies over what it outlines, or the frame.
+                let gradient = style.gradient?.placed(item: outline.boundingBoxOfPath, frame: CGRect(origin: .zero, size: frameSize))
+                shapes.append(ShapeRendering.Paint(area: area, color: style.color, gradient: gradient, transform: frameToOutput))
                 edges.append(ShapeRendering.Edge(area: area, transform: frameToOutput))
             case .mark(let id):
                 settleOpacity()

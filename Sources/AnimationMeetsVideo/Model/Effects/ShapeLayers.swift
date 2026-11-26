@@ -36,6 +36,16 @@ extension Effect {
         case (.polygon, .radius), (.star, .radius): return [side / 2]
         case (.polygon, .innerRadius), (.star, .innerRadius): return [(side / 4).rounded()]
         case (.text, .fontSize): return [max(1, Double(frame.height / 9).rounded())]
+        // A Waveform across the middle two thirds, white lines a sixth of
+        // the frame high, a ring a quarter of it out.
+        case (.waveform, .waveStart): return [-Double(frame.width / 3).rounded(), 0]
+        case (.waveform, .waveEnd): return [Double(frame.width / 3).rounded(), 0]
+        case (.waveform, .waveRadius): return [Double(frame.height / 4).rounded()]
+        case (.waveform, .waveHeight): return [Double(frame.height / 6).rounded()]
+        case (.waveform, .stroke): return [1, 1, 1, 1]
+        case (.waveform, .strokeWidth): return [3]
+        // A Stroke effect wide enough to see as it is added.
+        case (.stroke, .strokeWidth): return [4]
         default: return nil
         }
     }
@@ -45,10 +55,12 @@ extension EditingProject {
     /// Whether `kind` can go into `clip`'s stack. Text and the shapes are
     /// generators, not effects: they only go into a graphic clip, the clip
     /// a generator makes, where another one drawn below can follow it (text
-    /// on the path of the shape above). Everything else goes by
-    /// `addEffect`'s own rules.
+    /// on the path of the shape above). A Waveform goes into any stack.
+    /// Everything else goes by `addEffect`'s own rules.
     func stack(of clip: TimelineClip, takes kind: EffectKind) -> Bool {
-        !kind.drawsShape || clip.source == .graphic
+        // A Waveform is a generator and an effect alike: it draws over
+        // whatever picture it is handed.
+        !kind.drawsShape || clip.source == .graphic || kind == .waveform
     }
 
     /// A graphic clip from `start` lasting `duration` (at least a frame),
