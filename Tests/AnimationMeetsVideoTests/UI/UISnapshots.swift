@@ -1493,6 +1493,45 @@ struct UISnapshots {
         )
     }
 
+    /// A selected rectangle's linear fill gradient in the viewer, three
+    /// stops: its line with a round handle at each end, and each stop
+    /// drawn a little below the line on a guide, clear of the ends.
+    @Test func viewerGradientHandles() throws {
+        let key = Preferences.viewerHandles
+        let remembered = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(true, forKey: key)
+        defer { UserDefaults.standard.set(remembered, forKey: key) }
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let shapeID = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip.effects.first?.id)
+        project.editEffect(shapeID, ofClip: shape.clipID, in: timelineID) { effect in
+            effect.changeControl(.fill) { fill in
+                fill.number = AnimatedValue(ComponentValue(values: [1, 0.5, 0.1, 1]))
+                fill.setPaint(.linear)
+                fill.addGradientStop(at: 0.4, time: .zero)
+            }
+        }
+        let frameSize = try #require(project.timeline(id: timelineID)).frameSize
+        let selection = TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID)
+        let effects = EffectsPanelState()
+        effects.select(effect: shapeID)
+        let view = ZStack {
+            Design.Surface.well.color
+            ViewerCanvas(
+                framing: ViewerFraming(), frameSize: frameSize, playback: PlaybackModel(),
+                handles: ViewerHandlesSource(
+                    project: .constant(project), timelineID: timelineID, selection: selection,
+                    effectsState: effects, playhead: PlayheadState(), state: ViewerCanvasState()
+                )
+            )
+        }
+        .environment(ProjectState(project))
+        .preferredColorScheme(.dark)
+        try SnapshotSupport.render(view, "viewer-gradient-handles", size: CGSize(width: 800, height: 500))
+    }
+
     /// The box over the pointer while something on the timeline is
     /// dragged: moved later, earlier, and back where it started; a
     /// transition lengthened; a slip.

@@ -12,7 +12,8 @@ import Foundation
 /// The points are shares of the item's bounds or the frame, as the
 /// gradient lies, so a drag of a handle by some pixels moves it by that
 /// share of them; a stop moves along the line to where the pointer is
-/// nearest it.
+/// nearest it. Stops are drawn a little below the line, a guide back to
+/// their place on it, so the ends they would sit on can still be taken.
 struct GradientHandles: ViewerHandleSet {
     let effectID: UUID
 
@@ -163,8 +164,22 @@ struct GradientHandles: ViewerHandleSet {
         }
     }
 
+    /// How far below the line, in view points, the stops are drawn.
+    static let stopOffset = 14.0
+
+    /// Where stop handles are drawn from their place on the line, in the
+    /// frame's pixels: `stopOffset` points to the right of the line as it
+    /// runs from start to end, which is below a line drawn left to right.
+    private func stopShift(_ placed: Placed, _ context: HandleContext) -> CGVector {
+        let s = placed.start.applying(placed.matrix), e = placed.end.applying(placed.matrix)
+        let length = Double(hypot(e.x - s.x, e.y - s.y))
+        guard length > 0 else { return .zero }
+        let reach = context.pixels(Self.stopOffset)
+        return CGVector(dx: -Double(e.y - s.y) / length * reach, dy: Double(e.x - s.x) / length * reach)
+    }
+
     private func parts(_ placed: Placed) -> [Part] {
-        // The stops first, drawn over the ends they may sit on.
+        // The stops first, drawn over what they may come near.
         var parts = placed.gradient.stops.indices.map { Part.stop($0) }
         if placed.style.kind == .radial { parts.append(.focal) }
         return parts + [.end, .start]
@@ -196,8 +211,13 @@ struct GradientHandles: ViewerHandleSet {
             case .stop: .vertex
             }
             let name = name(of: part, placed), value = value(of: part, placed)
+            var at = place(of: part, placed).applying(placed.matrix)
+            if case .stop = part {
+                let shift = stopShift(placed, context)
+                at = CGPoint(x: at.x + shift.dx, y: at.y + shift.dy)
+            }
             return ViewerHandle(
-                id: part.id, place: place(of: part, placed).applying(placed.matrix), glyph: glyph, cursor: .move,
+                id: part.id, place: at, glyph: glyph, cursor: .move,
                 reach: TransformHandles.handleReach, name: name, value: value, hoverText: "\(name) \(value)"
             )
         }
@@ -205,7 +225,14 @@ struct GradientHandles: ViewerHandleSet {
 
     func outlines(_ context: HandleContext) -> [ViewerOutline] {
         guard !context.isLocked, let placed = locate(context) else { return [] }
-        return [ViewerOutline(points: [placed.start, placed.end].map { $0.applying(placed.matrix) }, isClosed: false, style: .guide)]
+        let line = ViewerOutline(points: [placed.start, placed.end].map { $0.applying(placed.matrix) }, isClosed: false, style: .guide)
+        // From each stop's place on the line down to its handle.
+        let shift = stopShift(placed, context)
+        let ticks = placed.gradient.stops.indices.map { index in
+            let on = placed.stop(index).applying(placed.matrix)
+            return ViewerOutline(points: [on, CGPoint(x: on.x + shift.dx, y: on.y + shift.dy)], isClosed: false, style: .guide)
+        }
+        return [line] + ticks
     }
 
     func area(at point: CGPoint, _ context: HandleContext) -> HandleID? { nil }
@@ -222,7 +249,8 @@ struct GradientHandles: ViewerHandleSet {
         if drag.shift {
             if abs(delta.dx) >= abs(delta.dy) { delta.dy = 0 } else { delta.dx = 0 }
         }
-        if drag.option || drag.fine {
+        // In the loupe the pointer is slowed already.
+        if drag.option {
             delta.dx *= 0.1
             delta.dy *= 0.1
         }

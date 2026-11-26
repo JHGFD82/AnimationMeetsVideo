@@ -295,7 +295,10 @@ struct ViewerHandlesOverlay: View {
             }
         }
         let litPivot = levered || (drag == nil && hovered.map { id in list.contains { $0.id == id && $0.isPivot } } == true)
-        for handle in list {
+        // Last drawn is on top: the list is in the order a press asks
+        // (`HandleHitTest`), so it is drawn from its end, and the handle
+        // on top of two that meet is the one a press takes.
+        for handle in list.reversed() {
             // While dragging, only the crosshair stays, for a scale or a
             // turn; the loupe shows them all, for what is near.
             // A point being dragged stays, as it is all there is to see.
