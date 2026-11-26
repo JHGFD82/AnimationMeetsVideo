@@ -328,10 +328,13 @@ writes ProRes for its render cache. But:
   ([README.md](README.md#shared-principles)), and
   [media-replacement.md](media-replacement.md) chose replacing files
   over proxies because of disk space.
-- **Disk.** ProRes 422 is about 147 Mb/s at 1080p30 (66 GB an hour) and
-  about 590 Mb/s at 4K30 (265 GB an hour), roughly ten times the H.264
-  or HEVC it comes from; 10-bit and HDR footage needs 422 HQ, larger
-  again.
+- **Disk is acceptable.** ProRes 422 is about 147 Mb/s at 1080p30
+  (66 GB an hour) and about 590 Mb/s at 4K30 (265 GB an hour), roughly
+  ten times the H.264 or HEVC it comes from; 10-bit and HDR footage
+  needs 422 HQ, larger again. But projects average about three minutes,
+  and only the clips used on a timeline are copied, not the browser's,
+  so a typical project's copies are 13 GB or so of 4K; an hour-long one
+  at about 300 GB is reasonable too.
 - **The laptop pays first.** Every clip added starts an encode. Macs
   with a ProRes engine (M1 Pro and Max, and later chips) do it faster
   than real time; others encode in software, slowly and on battery.
@@ -369,23 +372,35 @@ In order, each measured on a laptop before the next:
    and filmstrips are already on disk; while a seek is behind, a plain
    clip can show the nearest one until its frame arrives.
 
-### If that isn't enough: scrub copies
+### If that isn't enough: ProRes copies of the clips used
 
-A narrower form of the ProRes idea, if the steps above still leave
-laptops behind:
+The ProRes idea itself, as the fallback if the steps above still leave
+laptops behind. Disk being acceptable, the copies are full size rather
+than small proxies, so they serve playing as well as scrubbing:
 
-- **Small and all-intra**: ProRes 422 Proxy at half size, about a
-  tenth of the disk of full-size ProRes 422 (about 5 GB an hour of
-  1080p).
+- **Full size and all-intra**: ProRes 422, or 422 HQ for 10-bit and
+  HDR footage, at the footage's own size and frame times, so any frame
+  decodes on its own and a stack of layers decodes cheaply too.
 - **Only what is used**: the clip's range on the timeline plus a few
-  seconds of handles, made in the background after it is added, and
-  never while playing, on battery or in Low Power Mode.
-- **Only for scrubbing and skimming in the viewer.** Playing and export
-  read the original, so nothing about the output changes.
-- **Disposable**: in `Cache/`, capped and evicted like renders, and
-  thrown away when the file is replaced.
-- **A setting**, in Project Settings with an app-wide default, off
-  unless turned on.
+  seconds of handles, made in the background after it is added (on the
+  ProRes engine where the Mac has one), and never while playing, on
+  battery or in Low Power Mode. Trimming a clip longer copies the new
+  part; until a copy is done, the original plays.
+- **Only for the viewer.** Scrubbing, skimming and playing read the
+  copy; export always reads the original, so nothing about the output
+  changes, and untouched stretches still pass through as they are.
+- **Exact timing**: each frame keeps the original's own time, variable
+  frame rate included, checked against the original's frame times
+  before the copy is used.
+- **Disposable**: in `Cache/`, kept while a timeline uses the clip and
+  thrown away when no timeline does or the file is replaced. Project
+  Settings shows how much they take, with a button to clear them.
+- **A setting**, in Project Settings with an app-wide default for new
+  projects, off unless turned on.
 
-This still needs the shared principle about proxies amended, to say
-that disposable, reduced copies used only while scrubbing are allowed.
+This needs the shared principle about proxies amended
+([README.md](README.md#shared-principles)): footage is still never
+re-encoded to be editable or exported, but disposable ProRes copies of
+the clips used may be made to draw the viewer. The disk-space reason in
+[media-replacement.md](media-replacement.md) was about proxies of
+long-form footage, which this doesn't make.
