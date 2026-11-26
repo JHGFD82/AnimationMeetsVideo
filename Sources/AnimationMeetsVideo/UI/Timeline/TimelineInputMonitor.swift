@@ -64,9 +64,6 @@ struct TimelineInputMonitor: NSViewRepresentable {
         /// window, so the pointer leaving after either is never heard, and
         /// a skim left on took the place of the playhead for Space.
         private var leaveObservers: [NSObjectProtocol] = []
-        /// Has the window send mouse-moved events while the pointer is over
-        /// this view, and says when it leaves.
-        private var trackingArea: NSTrackingArea?
         /// The axis of the pinch in progress, fixed once its fingers are seen.
         private var pinchAxis: PinchAxis?
 
@@ -74,6 +71,14 @@ struct TimelineInputMonitor: NSViewRepresentable {
             super.init(frame: frameRect)
             // Gesture events then carry the fingers on the trackpad.
             allowedTouchTypes = [.indirect]
+            // Has the window send mouse-moved events while the pointer is
+            // over this view, and says when it leaves. Added once: with
+            // `.inVisibleRect` AppKit keeps its rect to the visible one, so
+            // it needs no `updateTrackingAreas`. Added only from there, the
+            // timeline's monitor was left with none: AppKit never called it.
+            addTrackingArea(NSTrackingArea(
+                rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self
+            ))
         }
 
         @available(*, unavailable)
@@ -100,16 +105,6 @@ struct TimelineInputMonitor: NSViewRepresentable {
                 let handled = MainActor.assumeIsolated { self?.handle(event) ?? false }
                 return handled ? nil : event
             }
-        }
-
-        override func updateTrackingAreas() {
-            super.updateTrackingAreas()
-            if let trackingArea { removeTrackingArea(trackingArea) }
-            let area = NSTrackingArea(
-                rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self
-            )
-            addTrackingArea(area)
-            trackingArea = area
         }
 
         override func mouseExited(with event: NSEvent) {

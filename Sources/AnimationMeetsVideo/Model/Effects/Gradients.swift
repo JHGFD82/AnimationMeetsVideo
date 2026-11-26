@@ -238,11 +238,15 @@ struct PaintGradient: Equatable, Sendable {
 
     /// How far from one stop's color to the next's at `progress` of the way
     /// between them, leaning toward the side the midpoint is moved to: at
-    /// the midpoint it is half way.
+    /// the midpoint it is half way. A midpoint past the middle is the
+    /// mirror of one before it, so a reversed gradient (`reversed`) draws
+    /// the same colors the other way: a curve of one power for both
+    /// leaned more steeply one way than the other.
     static func leaned(_ progress: Double, midpoint: Double) -> Double {
         let u = progress.clamped(between: 0, and: 1)
         let m = midpoint.clamped(between: 0.01, and: 0.99)
         guard abs(m - 0.5) > 1e-9 else { return u }
+        guard m < 0.5 else { return 1 - leaned(1 - u, midpoint: 1 - m) }
         return pow(u, log(0.5) / log(m))
     }
 

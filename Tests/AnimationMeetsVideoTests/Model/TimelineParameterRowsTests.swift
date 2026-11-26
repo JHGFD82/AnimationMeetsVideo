@@ -44,8 +44,13 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
 
         var layer: TimelineLayer { project.clipAndLayer(first, in: timelineID)!.layer }
         func clip(_ id: UUID) -> TimelineClip { project.clipAndLayer(id, in: timelineID)!.clip }
-        func key(_ effect: EffectKind, _ ordinal: Int = 0, _ control: ControlKind) -> ParameterRowKey {
+        func key(_ effect: EffectKind, _ ordinal: Int, _ control: ControlKind) -> ParameterRowKey {
             ParameterRowKey(effectKind: effect, ordinal: ordinal, control: control)
+        }
+
+        /// The key of `control` on the clip's first effect of its kind.
+        func key(_ effect: EffectKind, _ control: ControlKind) -> ParameterRowKey {
+            key(effect, 0, control)
         }
 
         /// Keyframes `control` of the clip's first effect of `kind`.

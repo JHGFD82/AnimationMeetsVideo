@@ -102,7 +102,8 @@ enum GradientRendering {
             // Round once, from the edge point's direction; it always
             // starts again where it began.
             guard let cg = cgGradient(one, from: 0, to: 1, repeats: .hold, space: space) else { return }
-            context.drawConicGradient(cg, center: start, angle: atan2(dy, dx))
+            // The SDK gives this no method on CGContext, only the C call.
+            CGContextDrawConicGradient(context, cg, start, atan2(dy, dx))
         }
     }
 

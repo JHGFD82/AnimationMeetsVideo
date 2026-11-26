@@ -46,10 +46,10 @@ import Testing
         let shape = try #require(shapeMade)
         // Text joins a shape clip below the shape, to follow its path, and
         // a Stroke strokes them.
-        let added4 = project.addEffect(.text, toClip: shape.clipID, in: t)
-        #expect(added4 != nil)
-        let added5 = project.addEffect(.stroke, toClip: shape.clipID, in: t)
+        let added5 = project.addEffect(.text, toClip: shape.clipID, in: t)
         #expect(added5 != nil)
+        let added6 = project.addEffect(.stroke, toClip: shape.clipID, in: t)
+        #expect(added6 != nil)
         let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
         #expect(clip.effects.map(\.kind) == [.rectangle, .text, .stroke])
     }
