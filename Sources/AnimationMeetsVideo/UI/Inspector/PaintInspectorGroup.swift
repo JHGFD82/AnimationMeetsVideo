@@ -22,9 +22,8 @@ struct PaintInspectorGroup: View {
     var body: some View {
         let stroke = effect.control(.stroke)
         InspectorGroup(title) {
-            // Shapes paint gradients; text, not yet.
             InspectorControls(
-                effect: effect, kinds: [.fill, .stroke], playhead: playhead, offersGradients: effect.kind != .text,
+                effect: effect, kinds: [.fill, .stroke], playhead: playhead, offersGradients: true,
                 onEdit: onEdit, onSeek: onSeek
             )
             // The stroke's shape matters only while there is one.

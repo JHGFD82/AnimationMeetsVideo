@@ -23,8 +23,11 @@ struct ShapeInspectorGroup: View {
             ? effect.kind.controlKinds
             : effect.kind.controlKinds.filter { !EffectKind.paintControls.contains($0) }
         InspectorGroup(effect.displayName) {
+            // A Stroke effect's color can be a gradient, laid over what it
+            // outlines (docs/gradients.md).
             InspectorControls(
-                effect: effect, kinds: kinds, playhead: playhead, keyframing: effect.kind == .textAnimator, onEdit: onEdit, onSeek: onSeek
+                effect: effect, kinds: kinds, playhead: playhead, keyframing: effect.kind == .textAnimator,
+                offersGradients: effect.kind == .stroke, onEdit: onEdit, onSeek: onSeek
             )
             if !effect.enabled {
                 Text("Turned off in the effects panel, so it draws nothing.")

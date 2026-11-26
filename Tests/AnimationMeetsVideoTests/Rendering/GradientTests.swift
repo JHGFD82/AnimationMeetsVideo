@@ -211,3 +211,30 @@ private let red = [1.0, 0, 0, 1], green = [0.0, 1, 0, 1], black = [0.0, 0, 0, 1]
         #expect(read.effects[0].control(.fill)?.paint == PaintStyle(kind: .radial, repeats: .reflect, blend: .perceptual, space: .frame))
     }
 }
+
+/// Text painted with a block's gradient (see docs/gradients.md, "Where it
+/// lies").
+@Suite struct TextGradientTests {
+    @Test func theBlocksGradientPaintsTheLettersInItsColorOnly() throws {
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "ab")
+        effect.changeControl(.stroke) { $0.enabled = false }
+        effect.changeControl(.fill) { fill in
+            fill.number = AnimatedValue(ComponentValue(values: [1, 0, 0, 1]))
+            fill.setPaint(.linear)
+        }
+        let whole = try #require(ShapeStep(effect, at: .zero, center: CGPoint(x: 64, y: 36)))
+        #expect(whole.paints.count == 1)
+        let painted = try #require(whole.paints.first?.gradient)
+        // Laid over the whole block.
+        #expect(painted.bounds == whole.paints[0].area.boundingBoxOfPath)
+        // A run with a color of its own keeps it.
+        effect.text?.changeStyle(in: NSRange(location: 1, length: 1)) { style in
+            style.fill = AnimatedValue(ComponentValue(values: [0, 0, 1, 1]))
+        }
+        let styled = try #require(ShapeStep(effect, at: .zero, center: CGPoint(x: 64, y: 36)))
+        #expect(styled.paints.count == 2)
+        #expect(styled.paints.filter { $0.gradient != nil }.count == 1)
+        #expect(styled.paints.contains { $0.gradient == nil && $0.color == [0, 0, 1, 1] })
+    }
+}

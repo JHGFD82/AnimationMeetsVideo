@@ -1,8 +1,8 @@
 # Gradients
 
-Status: **partly built** (step 1 of [Building it](#building-it): shapes'
-Fill and Stroke, not yet tried in the running app). Steps 2 to 6 are
-planned.
+Status: **partly built** (steps 1 to 3 of [Building it](#building-it):
+shapes', text's and the Stroke effect's Fill and Stroke, not yet tried in
+the running app). The rest is planned.
 
 
 One gradient builder for everything that has a fill or a stroke, so any
@@ -21,13 +21,14 @@ a **paint**: a solid color, as now, or a gradient.
   the gradient's stops under it (`GradientEditor`). The effects panel's
   row says what it is ("Linear gradient, 3 stops"), with no graph,
   since its numbers are points and stops.
-- **Text** (not yet): the block's fill and stroke, and each styled
-  run's own, which paint their letters. Until then text has no paint
-  menu, and a gradient on a text block's Fill or Stroke draws in its
-  first stop's color.
-- **The Stroke effect** (drawn, not yet offered): its stroke, which goes
-  around everything above it, draws a gradient laid over what it
-  outlines, but the inspector doesn't offer one yet.
+- **Text** (the block built, runs not yet): the block's Fill and Stroke,
+  in the same group. The letters painted in the block's own colors take
+  its gradient; a styled run's own color stays one color, and so do
+  letters a Text Animator recolors, mixed from the gradient's first
+  stop. A run's own gradient is not built yet.
+- **The Stroke effect** (built): its stroke, which goes around
+  everything above it, in its own group, the gradient laid over what it
+  outlines.
 - **The Waveform effect** (not yet): its Along and By level colors (see
   ideas.md, "Waveform effect") are this builder.
 - **Effect packages** (not yet): a new `gradient` control type, handed to the
@@ -80,8 +81,9 @@ a **paint**: a solid color, as now, or a gradient.
   shows its line (start and end, or center, radius and focal point)
   over the picture, with its stops on it to drag, as Illustrator's
   gradient annotator does.
-- **Text** (not yet): over the whole block (the default) or over
-  **each letter**, each painted with the whole gradient.
+- **Text**: over the whole block (built), each group of letters faded
+  as it is; over **each letter**, each painted with the whole gradient,
+  is not built yet.
 
 ### On strokes
 
@@ -185,6 +187,8 @@ with a paint, or a gradient's without) load as a new control's.
 - `GradientDrawingTests`: a linear gradient across a rectangle, a
   radial one out from its middle, repeat against reflect past the end,
   and saving the gradient and its style.
+- `TextGradientTests`: a block's gradient over the whole block, and a
+  run's own color left as it is.
 - `UISnapshots.shapeInspectorGradients`: the inspector's paint menus and
   gradient editors.
 
@@ -193,10 +197,10 @@ with a paint, or a gradient's without) load as a new control's.
 1. **Shapes' Fill and Stroke** (done): the model, drawing and saving
    above, the paint menu and the gradient editor in Fill & Stroke, the
    effects panel's summary, and the keys and VoiceOver of the stop bar.
-2. **Text** (not yet): its block's and runs' fill and stroke, and Each
-   Letter.
-3. **The Stroke effect in the inspector** (not yet; it draws one
-   already), and Dither.
+2. **Text** (the block done): the block's Fill and Stroke over the
+   whole block. Runs' own gradients and Each Letter are not built yet.
+3. **The Stroke effect in the inspector** (done). Dither is not built
+   yet.
 4. **Viewer handles** (not yet) for a selected item's gradient.
 5. **Packages' `gradient` control** (not yet), with Gradient Map moved
    to it, and the Waveform effect's colors.

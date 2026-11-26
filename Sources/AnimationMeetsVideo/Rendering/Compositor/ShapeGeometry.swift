@@ -25,7 +25,8 @@ struct ShapeStep: Equatable, Sendable {
     /// isn't filled with one color.
     var fill: [Double]?
     /// The gradient it is filled with instead, if any (see
-    /// docs/gradients.md). Text is filled with its first stop's color.
+    /// docs/gradients.md). Text keeps `fill` too, its first stop's color,
+    /// for the letters an animator recolors.
     var fillGradient: GradientFill?
     /// Nil when it isn't stroked.
     var stroke: ShapeStroke?
@@ -91,16 +92,17 @@ struct ShapeStep: Equatable, Sendable {
             return nil
         }
         if let control = effect.control(.fill), control.enabled {
-            if effect.kind != .text, let gradient = control.gradient(at: time), let style = control.paint {
+            if let gradient = control.gradient(at: time), let style = control.paint {
                 fillGradient = GradientFill(gradient: gradient, style: style)
+                // Text's letters are gathered by color: the block's own
+                // ones are painted with the gradient.
+                if effect.kind == .text, let first = gradient.stops.first?.color { fill = first }
             } else {
                 let rgba = control.solidColor(at: time).map { $0.clamped(between: 0, and: 1) }
                 fill = rgba.count == 4 && rgba[3] > 0 ? rgba : nil
             }
         }
         stroke = ShapeStroke(effect, at: time)
-        // Text strokes each run in a color of its own.
-        if effect.kind == .text { stroke?.gradient = nil }
     }
 
     /// The outline as a path in the frame's pixels.
@@ -149,8 +151,16 @@ struct ShapeStep: Equatable, Sendable {
             func faded(_ color: [Double], _ opacity: Double) -> [Double] {
                 color.count == 4 ? [color[0], color[1], color[2], color[3] * opacity] : color
             }
+            // A block's gradient lies over the whole block, faded with each
+            // group of its letters.
+            let block = pieces.reduce(CGRect.null) { $0.union($1.path.boundingBoxOfPath) }
+            func painted(_ gradient: GradientFill?, _ isBlocks: Bool, _ opacity: Double) -> GradientPaint? {
+                guard isBlocks, var gradient else { return nil }
+                for s in gradient.gradient.stops.indices { gradient.gradient.stops[s].color[3] *= opacity }
+                return gradient.placed(item: block, frame: frame)
+            }
             var result: [(area: CGPath, color: [Double], gradient: GradientPaint?)] = pieces.compactMap { piece in
-                piece.fill.map { (piece.path as CGPath, faded($0, piece.opacity), nil) }
+                piece.fill.map { (piece.path as CGPath, faded($0, piece.opacity), painted(fillGradient, piece.fillIsBlocks, piece.opacity)) }
             }
             // Stroked as the block strokes, at the run's width where it has
             // one.
@@ -160,7 +170,10 @@ struct ShapeStep: Equatable, Sendable {
                     var style = geometry
                     style.width = piece.strokeWidth ?? geometry.width
                     guard style.width > 0 else { return nil }
-                    return (style.area(around: piece.path), faded(color, piece.opacity), nil)
+                    return (
+                        style.area(around: piece.path), faded(color, piece.opacity),
+                        painted(stroke?.gradient, piece.strokeIsBlocks, piece.opacity)
+                    )
                 }
             }
             return result

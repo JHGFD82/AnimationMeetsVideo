@@ -12,8 +12,8 @@ struct InspectorControls: View {
     /// an effect that exists to animate (a Text Animator). Everything else
     /// is keyframed in the effects panel.
     var keyframing = false
-    /// Whether a Fill or Stroke can paint a gradient here: a shape's can,
-    /// text's not yet (see docs/gradients.md).
+    /// Whether a Fill or Stroke can paint a gradient here: a shape's,
+    /// text's and a Stroke effect's can (see docs/gradients.md).
     var offersGradients = false
     let onEdit: ((inout Effect) -> Void) -> Void
     let onSeek: (CMTime) -> Void

@@ -151,6 +151,10 @@ struct TextOutline: Equatable, Sendable {
         /// The run's own stroke width; nil where the block's is used.
         var strokeWidth: Double?
         var opacity = 1.0
+        /// Whether its fill and stroke are the block's own, which a block's
+        /// gradient paints, rather than its run's or an animator's.
+        var fillIsBlocks = false
+        var strokeIsBlocks = false
     }
 
     /// A Text Animator below the Text effect, at one moment (see
@@ -360,7 +364,8 @@ struct TextOutline: Equatable, Sendable {
             // block's fill or stroke is on.
             return Piece(
                 path: path, fill: colors[look] ?? style.fill ?? fill, stroke: strokes[look] ?? style.stroke ?? stroke,
-                strokeWidth: style.strokeWidth, opacity: Double(look.opacity) / 1000
+                strokeWidth: style.strokeWidth, opacity: Double(look.opacity) / 1000,
+                fillIsBlocks: colors[look] == nil && style.fill == nil, strokeIsBlocks: strokes[look] == nil && style.stroke == nil
             )
         }
     }
