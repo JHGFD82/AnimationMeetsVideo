@@ -14,40 +14,6 @@ Paths are under `Sources/AnimationMeetsVideo/` unless they start with
 
 ---
 
-## 2. Gradients don't show in the built app
-
-**What's settled.** The code path is wired and works when built and
-tested on a Mac:
-
-- `swift test --filter Gradient` passes (`GradientDrawingTests`,
-  `GradientPaintTests`, `PaintGradientTests`, `TextGradientTests`).
-- `GradientDrawingTests` already draws gradient rectangles through
-  `CompositionExporter` and `LayeredCompositor` (the export's
-  composition), and now also as the viewer draws one: built for
-  preview, on a frame twice the size, drawn at half of it, the gradient
-  set with the inspector's `setPaint`
-  (`aLinearGradientShowsInTheViewersSmallerPreview`).
-- The gradient is in both `ShapeStep.keyText` (the render cache's key)
-  and `CompositionKey` (`EffectControl.paint` is part of its synthesized
-  equality), so an edit rebuilds the player and misses old renders.
-- The inspector draws the paint menu, the stop bar and the editor
-  (`UISnapshots.shapeInspectorGradients`).
-
-**The likely cause.** None of the gradient work (6d5811ec, d60187b9),
-nor the Waveform, parameter rows or Strobe Keys, had reached `main`, and
-the branch it was on didn't compile until 3577b60e. An app built from
-`main`, or from anything older that built, had no gradients to show.
-
-**Left to do.** Build the app from `main` once this lands
-(`scripts/build-app.sh`), paint a rectangle's Fill with a Linear
-gradient in the inspector, and check the viewer and an export. If it
-still doesn't show, follow it from the edit: a breakpoint in
-`LayeredCompositor`'s `case .shape` to see whether
-`shape.paints[0].gradient` is set, then back through `PaintKindMenu`'s
-`setPaint` and `project.editEffect` if it isn't.
-
----
-
 ## 6. Waveform: graph-type toggle and the missing features
 
 **What's there.** Mode (Wave / Spectrum), Draw (Lines / Dots / Bars), Shape

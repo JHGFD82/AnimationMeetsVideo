@@ -60,7 +60,7 @@ struct InspectorControlRow: View {
     /// The playhead in the clip's source time, snapped to a frame.
     let playhead: PlayheadTime
     var keyframing = false
-    /// Whether a color here can paint a gradient instead (`PaintKindMenu`,
+    /// Whether a color here can paint a gradient instead (its Type row,
     /// `GradientEditor`).
     var offersGradient = false
     var layout = Layout.row
@@ -141,7 +141,11 @@ struct InspectorControlRow: View {
                     .disabled(!control.enabled)
                 }
             }
-            // A gradient's stops, under its row.
+            // Color or a gradient, on a line of its own; a gradient's
+            // stops under it.
+            if offersGradient, layout == .row {
+                paintTypeRow
+            }
             if offersGradient, control.paint != nil {
                 GradientEditor(control: control, time: time, isReadOnly: isReadOnly, onEdit: onEdit)
                     .padding(.leading, layout == .cell ? 0 : Self.nameWidth + 4)
@@ -173,6 +177,26 @@ struct InspectorControlRow: View {
         .help(name)
     }
 
+    /// Fill Type or Stroke Type: Color, or a Linear, Radial or Angular
+    /// gradient, which takes the color's place.
+    private var paintTypeRow: some View {
+        HStack(spacing: 4) {
+            if keyframing { Color.clear.frame(width: 18, height: 1) }
+            Text(kind.paintTypeName)
+                .foregroundStyle(Design.textSecondary)
+                .lineLimit(1)
+                .frame(width: Self.nameWidth, alignment: .leading)
+            PanelSegmentedPicker(
+                name: kind.paintTypeName,
+                segments: PaintType.options.map { PanelSegment(value: $0.id, glyph: .text($0.name), name: $0.name) },
+                selection: control.paintType,
+                fills: true
+            ) { picked in onEdit { $0.setPaintType(picked) } }
+            .disabled(!control.enabled || isReadOnly)
+            .help("Paint the \(lowercaseName) with one color, or a gradient in its place")
+        }
+    }
+
     @ViewBuilder
     private var animatedAccessory: some View {
         if isReadOnly { AnimatedInEffectsBadge(name: lowercaseName) }
@@ -193,10 +217,6 @@ struct InspectorControlRow: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .help(control.enabled ? "Turn off to leave the \(lowercaseName) out" : "Turn on to draw the \(lowercaseName)")
-            if offersGradient {
-                PaintKindMenu(control: control, onEdit: onEdit)
-                    .disabled(!control.enabled || isReadOnly)
-            }
             if let style = control.paint, offersGradient {
                 // Its stops are under the row.
                 Text("\(style.kind.name), \(control.gradient(at: playhead.shown(animated: control.isAnimated))?.stops.count ?? 0) stops")
