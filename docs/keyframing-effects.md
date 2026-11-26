@@ -403,6 +403,24 @@ its first.
   and speed fields for each side of a single keyframe, usable with the
   keyboard and VoiceOver; sides can be added or removed independently.
 
+**Retimed clips.** A clip's keyframes are kept in its source's time, but
+methods sample on the timeline's frames, so on a retimed clip evenly
+spaced pulses would look uneven drawn in source time. The graph (here
+and in the graph editors, which share `KeyframeGraphView`) therefore
+lays time out as the timeline plays it by default: **Timeline Time**.
+**Clip Time** draws the keyframes as the clip stores them, their real
+spacing in the media. The picker is in the graph's toolbar, only for a
+retimed clip played forwards (`ParameterTimeAxis.offersTimeBasis`; a
+reversed clip keeps Clip Time, since on the timeline its keyframes would
+run right to left), and the choice is kept (`keyframeGraphTimeBasis`).
+The keyframes stay in source seconds throughout: `KeyframeGraphLayout`
+puts them across through a `GraphTimeWarp`, so dragging, hit-testing,
+handles and the time row are unchanged, and a linear blend is sampled
+rather than drawn straight while the speed is animated, which bends it.
+Zooming and scrolling still step in the keys' seconds, so with an
+animated speed the point under the pointer can drift a little as time
+zooms.
+
 Dragging a setting, handle-reach slider or Audio Keys box shares the
 editor's held edits and gesture history: intermediate values preview
 without autosaving, and the whole drag is one undo step even after a pause.

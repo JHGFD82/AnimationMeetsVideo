@@ -40,6 +40,10 @@ enum Preferences {
     /// over a graph editor's plot. On unless turned off, as on the
     /// timeline.
     static let graphEditorSkimming = "graphEditorSkimming"
+    /// A `GraphTimeBasis` raw value: whether a retimed clip's graphs lay
+    /// time out as the timeline plays it (the default) or as the clip
+    /// stores it.
+    static let keyframeGraphTimeBasis = "keyframeGraphTimeBasis"
 
     // MARK: Library
 

@@ -127,52 +127,6 @@ runs when started by hand, so the gradient tests may never have run on a Mac.
 
 ---
 
-## 4. Keyframe Designer unaffected by retiming, with a toggle
-
-**Cause.** Keyframing methods sample on *timeline* frames
-(`KeyframeSampling`, `Model/Effects/Keyframing.swift:842`) but store keys in
-*source* time. The graph's x axis is source seconds
-(`KeyframeGraphLayout.x(_:)` / `seconds(atX:)`), so on a retimed clip,
-evenly spaced pulses spread out unevenly. `GraphTimeRow` already maps the
-timeline's ticks into source x, which is why its ticks look warped.
-
-**Plan**
-
-1. Add a time basis to `ParameterTimeAxis` (`Model/KeyframeEase.swift:257`):
-   `enum GraphTime { case timeline, source }` and `var basis: GraphTime`.
-   Add `displaySeconds(key:)` and `keySeconds(display:)`: through
-   `clip.timelineTime(forSourceTime:)` / `sourceTime(atTimelineTime:)` for
-   `.timeline`, identity for `.source` or with no clip. Also give `span` in
-   display seconds.
-2. `KeyframeGraphLayout`: keep a `ParameterTimeAxis`, or just the two
-   closures, and send `x(_:)` / `seconds(atX:)` through it. Callers keep
-   passing key seconds, so the hit-testing, drag and snap code in
-   `KeyframeGraphView` stays as it is.
-   - **Curves**: if segments are drawn as Béziers from the handles, a
-     non-linear time warp bends them wrong. Sample each segment, every few
-     points, through `value(at:)`, and draw a polyline when the clip is
-     retimed. Keep the Bézier path when it isn't, since then the warp is linear.
-   - Ease handles: draw them at their warped positions. Leave dragging them
-     in key time, and convert the drag delta through the axis.
-   - Viewport, fit and zoom (`fitTimes`, `padded`, `timeZooms`) work in
-     display seconds.
-3. `GraphTimeRow`: in `.timeline` its ticks become linear. Drop the
-   `keyTime(atTimeline:)` mapping from `x(_:)` while in timeline basis.
-4. Toggle: a two-way control in the Keyframe Designer's header (and the
-   graph HUD, which shares `KeyframeGraphView`): **Timeline Time** (the
-   default, unaffected by retiming) and **Clip Time** ("as stored", the
-   real spacing in the media). Only show it when `clip.isRetimed`. Keep it
-   in `Preferences` (`keyframeGraphTimeBasis`) so it sticks, or in
-   `KeyframeGraphHUDs` per panel. Give it a VoiceOver label and value per
-   `docs/accessibility.md`.
-5. Docs and tests: add the toggle to `docs/keyframing-effects.md`
-   ("The Keyframe Designer"). In a new `ParameterTimeAxisTests`, check that a
-   2× clip's keys at source 0, 2 and 4 s show at 0, 1 and 2 s in timeline
-   basis and round-trip. Add a `UISnapshots` case for a retimed clip with a
-   Strobe Keys target in both bases.
-
----
-
 ## 6. Waveform: graph-type toggle and the missing features
 
 **What's there.** Mode (Wave / Spectrum), Draw (Lines / Dots / Bars), Shape

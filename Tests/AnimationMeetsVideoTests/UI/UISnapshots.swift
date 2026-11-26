@@ -2219,6 +2219,48 @@ struct UISnapshots {
         )
     }
 
+    /// A graph on a clip whose speed ramps from 100% to 300%, its Opacity
+    /// pulsing every half second of the timeline, as Strobe Keys would make
+    /// it: in Timeline Time (the toolbar's picker) the pulses are even; in
+    /// Clip Time they spread apart as the clip speeds up.
+    @Test func retimedKeyframeGraph() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID, duration: CMTime(value: 8, timescale: 1))
+        let shape = try #require(added)
+        let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+        let transformID = try #require(transform)
+        var controlID = UUID()
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            clip.time.speed = AnimatedValue(100, keyframes: [
+                Keyframe(time: .zero, value: 100), Keyframe(time: CMTime(value: 8, timescale: 1), value: 300),
+            ])
+            let e = clip.effects.index(of: transformID)!
+            let opacity = clip.effects[e].controls.first { $0.kind == .opacity }!
+            controlID = opacity.id
+            let pulses = (0...8).map { index in
+                Keyframe(
+                    time: clip.sourceTime(atTimelineTime: CMTime(seconds: Double(index) * 0.5, preferredTimescale: 600)),
+                    value: ComponentValue(values: [index.isMultiple(of: 2) ? 100 : 0]), hold: true
+                )
+            }
+            clip.effects[e].controls[clip.effects[e].controlIndex(controlID)!].number = AnimatedValue(ComponentValue(values: [100]), keyframes: pulses)
+        }
+        let hud = KeyframeGraphHUDs()
+        hud.update(project: project)
+        let key = ParameterKey(timelineID: timelineID, parameter: .control(.opacity, clipID: shape.clipID, effectID: transformID, controlID: controlID))
+        let defaults = UserDefaults.standard
+        let before = defaults.string(forKey: Preferences.keyframeGraphTimeBasis)
+        defer { defaults.set(before, forKey: Preferences.keyframeGraphTimeBasis) }
+        for basis in GraphTimeBasis.allCases {
+            defaults.set(basis.rawValue, forKey: Preferences.keyframeGraphTimeBasis)
+            try SnapshotSupport.render(
+                KeyframeGraphView(hud: hud, key: key, input: GraphInput()),
+                "keyframe-graph-retimed-\(basis.rawValue)", size: CGSize(width: 620, height: 320)
+            )
+        }
+    }
+
     /// Two shapes' Position graphs linked into one panel, the second shape
     /// starting 2 s after the first: one row of presets on top for the
     /// first, each graph's row with its name and Unlink, and one time slider
