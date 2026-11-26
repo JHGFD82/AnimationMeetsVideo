@@ -409,8 +409,9 @@ long-form footage, which this doesn't make.
 
 An effect that draws a sound's waveform over the picture, moving with
 the sound as it plays: along a **straight line** or around a **circle**
-(radial), as many points as asked for, drawn as **connected lines** or
-**dots**, from a set of **preset styles** or set by hand.
+(radial), as many points as asked for, drawn as **connected lines**,
+**dots** or **bars**, as the wave itself or its spectrum, from a set
+of **preset styles** or set by hand.
 
 ### Where it sits
 
@@ -438,6 +439,18 @@ drawing it is.
 
 ### Settings
 
+- **Mode**:
+  - **Wave**: the sound's samples over a window of time, the wave
+    itself.
+  - **Spectrum**: how loud each frequency is at the frame's time, low to
+    high along the shape, from the spectrogram Audio Keys already makes
+    (48 bands from 20 Hz to 20 kHz, 50 times a second), spaced by
+    octave and blended between bands when there are more points than
+    bands.
+- **Frequency range**, as Audio Keys has, so it draws only the kick or
+  only the vocal: in Spectrum, the bands shown; in Wave, the sound
+  filtered to that range first, with the same biquads as the
+  [EQ](equalizer.md).
 - **Shape**:
   - **Line**: from a start point to an end point, both points dragged
     in the viewer ([viewer-handles.md](viewer-handles.md)), the
@@ -447,21 +460,44 @@ drawing it is.
     full ring, less for an arc), the waveform outward, inward or both.
 - **Samples**: how many points across the line or round the circle (64
   to 2048, 256 by default).
-- **Window**: how much sound the points span, in milliseconds: a few
-  for an oscilloscope's single wave, a second or more for a sound's
+- **Window** (Wave): how much sound the points span, in milliseconds: a
+  few for an oscilloscope's single wave, a second or more for a sound's
   shape scrolling past. **Align** puts the frame's time at the start,
   the middle or the end of the window.
 - **Draw** as:
   - **Lines**: the points connected, with a width, straight or smoothed
     between points, and a fill to the baseline if wanted.
   - **Dots**: a dot at each point, with a size.
+  - **Bars**: a bar from the baseline to each point, with a width (a
+    share of the spacing between points, so the rest is the gap) and
+    square or round ends; mirrored, a bar reaches both ways.
+- **Stereo**:
+  - **Mixed**: one wave of both channels (the default).
+  - **Split**: left on one side of the baseline and right on the other
+    (above and below a line, outward and inward round a ring).
+  - **Two**: a wave for each channel along the same baseline, each in
+    its own color.
+  - **X–Y** (Wave): left against right as a figure, as a vectorscope
+    draws it, about the line's middle or the ring's center, its size the
+    Height; the window's samples are its points.
+
+  Spectrum's Split and Two need a spectrogram for each channel, which
+  the effect makes beside the mixed one.
 - **Height**: how far a full-scale sample reaches from the baseline,
   and **Gain** before it, linear or in decibels so quiet sounds still
   show.
 - **Smoothing** over time: an attack and release per point, so a
   dot doesn't jitter from frame to frame.
-- **Fill and stroke** colors with opacity, picked with a color well as
-  for shapes.
+- **Color**:
+  - **Solid**: fill and stroke colors with opacity, picked with a color
+    well as for shapes.
+  - **Along**: a gradient along the line or round the ring.
+  - **By level**: a gradient from quiet to loud, each point, dot or bar
+    colored by how far it reaches, or a bar shaded up its length.
+
+  Gradients have two or more stops; they share the gradient editor
+  planned for shapes ([graphic-layers.md](graphic-layers.md)) once it
+  is built. With Stereo set to Two, the right channel has its own.
 
 Every numeric setting can be keyframed and driven by a Keyframing
 method, so a Beat Keys pulse can swell its height on the beat.
@@ -474,37 +510,30 @@ with their previews and saved and shared as any effect preset is
 
 - **Oscilloscope**: a thin bright line, a short window, mirrored off.
 - **Mirrored**: lines filled to the baseline, mirrored, a long window.
+- **Mirrored Bars**: round-ended bars, mirrored, colored by level.
 - **Ring**: radial, a full sweep, outward lines with a fill.
 - **Dot Ring**: radial dots, inward and outward.
 - **Scroll**: a long window trailing the playhead, filled, as a clip's
   waveform on the timeline looks.
+- **Spectrum Bars**: Spectrum, 64 bars along a line, colored by level.
+- **Spectrum Ring**: Spectrum, bars outward round a full ring, a
+  gradient along it.
+- **Split Stereo**: left above and right below a line, in two colors.
+- **Stereo Scope**: X–Y, a thin line, a short window.
 
 ### Drawing and caching
 
 - **Sound data**: the app keeps a waveform per file at 200 peaks a
   second (`Waveform`), enough for a long window but not for an
   oscilloscope's single wave, so the effect reads the file's samples
-  themselves near each frame's time, as the mix is read for scrubbing,
-  and keeps a reduced copy (mono or stereo, a few kilohertz) per file
-  for the session, as `WaveformCache` and `SpectrogramStore` do.
+  themselves near each frame's time, as the mix is read for scrubbing.
+  It keeps them per file for the session, as `WaveformCache` and
+  `SpectrogramStore` do, at the file's own rate so a frequency range
+  can reach 20 kHz: 16-bit stereo at 48 kHz is about 35 MB for a
+  three-minute song.
 - **Every frame is new** while the sound moves: it is marked as
   changing every frame, and its render key holds a fingerprint of what
   it listens to, as Audio Keys' does, so renders follow a change to the
   sound, its volume or its EQ.
 - Under motion blur, it is drawn at each moment between frames from the
   sound at that moment.
-
-### Worth deciding
-
-- **A spectrum mode**: bars for frequency bands (from the spectrogram
-  Audio Keys already makes, 48 bands from 20 Hz to 20 kHz) rather than
-  the sound's wave, the other look people mean by an audio visualizer.
-- **Bars** as a third way to draw, beside lines and dots, with a width,
-  a gap and round ends.
-- **Stereo**: mixed to one wave, left and right as two (one above the
-  line and one below, or two lines), or an X–Y figure of left against
-  right.
-- **Color by amplitude or position**: a gradient along the line or
-  round the ring, or from quiet to loud.
-- **A frequency range**, as Audio Keys has, so the waveform draws only
-  the kick or only the vocal.
