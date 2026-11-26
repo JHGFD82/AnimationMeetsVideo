@@ -34,10 +34,13 @@ import Testing
         // Across the middle of the rectangle, left to right.
         #expect(byName["Gradient Start"] == CGPoint(x: 860, y: 540))
         #expect(byName["Gradient End"] == CGPoint(x: 1060, y: 540))
-        #expect(byName["Gradient Stop 1"] == CGPoint(x: 860, y: 540))
-        #expect(byName["Gradient Stop 2"] == CGPoint(x: 1060, y: 540))
+        // The stops a little below the line, clear of the ends.
+        let below = CGFloat(GradientHandles.stopOffset)
+        #expect(byName["Gradient Stop 1"] == CGPoint(x: 860, y: 540 + below))
+        #expect(byName["Gradient Stop 2"] == CGPoint(x: 1060, y: 540 + below))
         #expect(handles.first { $0.name == "Gradient Focal Point" } == nil)
-        #expect(GradientHandles(effectID: effect.id).outlines(context(clip, effect)).count == 1)
+        // The line, and a guide from each stop back to it.
+        #expect(GradientHandles(effectID: effect.id).outlines(context(clip, effect)).count == 3)
         // None without a gradient.
         #expect(!GradientHandles.applies(to: Effect(kind: .rectangle)))
     }

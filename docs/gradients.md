@@ -89,10 +89,15 @@ a **paint**: a solid color, as now, or a gradient.
   effect, over the bounds of the outline it strokes, worked out from
   the stack as the compositor does, `GradientHandles.strokedOutline`), a round handle at
   its start and end (or center and edge), a diamond at a radial one's
-  focal point (kept inside the edge), and each stop on the line, as
-  Illustrator's gradient annotator does. A drag moves an end or the
-  focal point by its share of the bounds (Shift to an axis, Option a
-  tenth), and a stop along the line to where the pointer is nearest; the
+  focal point (kept inside the edge), and each stop just below the
+  line (14 points on screen, on a short guide back to its place on it),
+  as Illustrator's gradient annotator does: a stop at an end would
+  otherwise cover the end and take its press. Where a gradient handle
+  meets the shape's own (its ends sit on a rectangle's edge handles by
+  default), the gradient's is drawn on top and takes the press, as the
+  viewer draws every set's handles in the order a press asks them. A drag moves an end or the
+  focal point by its share of the bounds, with the pointer (Shift to an
+  axis, Option a tenth; the loupe slows the pointer itself), and a stop along the line to where the pointer is nearest; the
   arrows move a point a pixel and a stop a percent, ten with Shift, and
   VoiceOver's Reset puts an end back. A keyframed gradient gets a
   keyframe at the playhead, as the inspector would give it.

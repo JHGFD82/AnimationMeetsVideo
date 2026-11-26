@@ -184,4 +184,41 @@ struct ViewerCanvasInteractionTests {
             #expect(rig.clip?.effects.first { $0.kind == .transform }?.control(.scale)?.values(at: .zero) == [101, 101])
         }
     }
+
+    /// A selected rectangle's linear fill gradient, its stops at its ends:
+    /// the End, not the stop drawn below it, takes the press, and dragging
+    /// it 50 points moves it 50 points' worth of pixels, as that many
+    /// presses of the arrow would.
+    @Test func aGradientEndFollowsThePointer() async throws {
+        try await withHandles(true) {
+            let rig = try Rig()
+            let shapeID = try #require(rig.clip?.effects.first?.id)
+            var project = rig.state.value
+            project.editEffect(shapeID, ofClip: rig.clipID, in: rig.timelineID) { $0.changeControl(.fill) { $0.setPaint(.linear) } }
+            rig.state.value = project
+            rig.effects.select(effect: shapeID)
+            let harness = EventHarness(rig.view, size: Self.well)
+            try await harness.settle(200)
+            let clip = try #require(rig.clip)
+            let context = HandleContext(
+                clip: clip, sourceTime: .zero, frameSize: rig.frameSize, pictureRect: CGRect(origin: .zero, size: rig.frameSize),
+                selectedEffectID: shapeID
+            )
+            let handles = GradientHandles(effectID: shapeID).handles(context)
+            let end = try #require(handles.first { $0.name == "Gradient End" }?.place)
+            let before = try #require(clip.effects.first?.control(.fill)?.gradient(at: .zero)?.end)
+            let mapping = ViewerMapping(frameSize: rig.frameSize, wellSize: Self.well)
+            let from = mapping.toView(end)
+            // Up and in, clear of the box's edge.
+            let to = CGPoint(x: from.x - 50, y: from.y - 30)
+            try await harness.press(at: from, dragTo: to)
+            harness.mouse(.leftMouseUp, at: to)
+            try await harness.settle(200)
+            let after = try #require(rig.clip?.effects.first?.control(.fill)?.gradient(at: .zero)?.end)
+            let bounds = CGSize(width: 960, height: 540)
+            let moved = CGSize(width: (after.x - before.x) * bounds.width, height: (after.y - before.y) * bounds.height)
+            #expect(abs(moved.width + 50 * rig.pixelsPerPoint) <= 2)
+            #expect(abs(moved.height + 30 * rig.pixelsPerPoint) <= 2)
+        }
+    }
 }
