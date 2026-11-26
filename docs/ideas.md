@@ -120,24 +120,30 @@ effects, the volume rows among them.
 
 ### Which rows a layer shows
 
-A layer's rows are the parameters **of the clips selected on it**, one
-**shared row** a parameter: every selected clip's Glow Intensity is one
+A layer's rows are the parameters **of the clips selected on it**, or,
+when none of its clips is selected, **of every clip on it**, as After
+Effects always shows a layer's rows. So nothing comes and goes as the
+playhead moves or a selection is let go, and selecting clips narrows a
+layer to theirs; a layer with no clip selected shows all of its own,
+whatever is selected on other layers. Either way there is one
+**shared row** a parameter: each clip's Glow Intensity is one
 row, whose lane draws each clip's keyframes under its block, and a clip
 without that control leaves its stretch of the lane empty. Controls are
 matched by effect kind and control, and a clip with two effects of one
-kind by their order among them ("Glow", "Glow 2"). Selecting other
-clips changes the rows; what each clip has put in the timeline stays
-with the clip, and a row shows while any selected clip has put it in.
+kind by their order among them ("Glow", "Glow 2"). What each clip has
+put in the timeline stays with the clip, and a row shows while any of
+the clips it is for has put it in.
 
-With several clips on a row:
+The clips a row **acts on** are the selected clips of its layer or,
+with none selected, the clip under the playhead:
 
-- **The value** is the selected clips' value at the playhead, or
-  "Mixed" when they differ. Typing or dragging it sets it on every
-  selected clip, at the playhead for each that is keyframed (so a
+- **The value** is their value at the playhead, or "Mixed" when they
+  differ, or empty with no clip under the playhead. Typing or dragging
+  it sets it on each of them, at the playhead for each that is keyframed (so a
   keyframe is added there) and outright for the rest, as one undo step.
-- **The stopwatch and keyframe buttons** act on every selected clip the
+- **The stopwatch and keyframe buttons** act on each of them the
   playhead is over; previous and next go to the nearest keyframe of any
-  of them.
+  clip on the row.
 
 A parameter gets into the timeline in three ways:
 
@@ -203,7 +209,7 @@ a row out leaves its keyframes as they are.
 ### Animated and changed
 
 As After Effects' U and UU, **U** in the timeline shows only the
-selected clips' controls that have **keyframes**, and **U pressed twice**
+controls of the layers' clips (as above) that have **keyframes**, and **U pressed twice**
 quickly only those **changed from their defaults**, keyframed or not,
 picked into the timeline or not. Each is a filter over the rows, not a
 change to what is picked: pressing U again, or Escape in the label
@@ -250,8 +256,8 @@ timeline both offer it, as for clips and effects in
   one picked row (a single control's keyframes onto any control of the
   same number of components, or a single component's onto one of a
   Position's). Pasted keyframes replace any at the same frames.
-- They paste onto every selected clip the playhead is over, so a pulse
-  made on one clip can be stamped onto several.
+- They paste onto the clips the row acts on that the playhead is over,
+  so a pulse made on one clip can be stamped onto several.
 - **Option-drag** copies picked keyframes within their rows, as it does
   for one keyframe today.
 - Copied keyframes go on the pasteboard as JSON too, so they paste into
@@ -285,8 +291,3 @@ Following [accessibility.md](accessibility.md):
   ← → and Escape pick and move keyframes, as in the panel.
 - In graph mode the curves have the graph editors' elements and
   actions, and the Graph button is labeled and says whether it is on.
-
-### Worth deciding
-
-- **With no clip selected**, should a layer show nothing, the rows of
-  the clip under the playhead, or every clip's rows?
