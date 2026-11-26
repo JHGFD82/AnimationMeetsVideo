@@ -8,17 +8,25 @@ struct ProjectSettingsView: View {
         var name: String
         var copiesMediaOnImport: Bool
         var jointAudioCrossfade: AudioCrossfade
+        var makesViewerCopies: Bool
     }
 
     let project: EditingProject
+    /// The package, whose viewer copies the sheet says the size of and
+    /// can delete; nil for a project not saved yet.
+    var packageURL: URL?
     let onApply: (Settings) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var copiesMediaOnImport = true
     @State private var jointAudioCrossfade = AudioCrossfade.sCurve
+    @State private var makesViewerCopies = false
+    /// What the viewer copies take on disk, read as the sheet opens.
+    @State private var copiesBytes: Int64 = 0
 
     private static let importNote = "The import dialog starts with this choice and can still change it for one import. Off, imported files stay where they are and the project refers to them in place."
+    private static let viewerCopiesNote = "On, the H.264 and HEVC footage the timelines use is copied to ProRes in the background (the stretches used, plus a few seconds each side), so the viewer scrubs and plays it smoothly. The copies are a cache in the project: never while playing, on battery or in Low Power Mode, thrown away when footage stops being used or is replaced, and never read by export, which always reads the original files."
     private static let crossfadeNote = "How the sound of two clips crossfades under a transition joining them, while it is attached to their pictures. A transition can choose its own; detached sound takes the Audio transitions."
 
     var body: some View {
@@ -43,6 +51,28 @@ struct ProjectSettingsView: View {
                 SheetNote(Self.importNote)
             }
 
+            SheetSection("Viewer") {
+                SheetRow("Viewer copies", alignment: .center) {
+                    Toggle("Make ProRes copies for smooth scrubbing", isOn: $makesViewerCopies)
+                        .accessibilityHint(Self.viewerCopiesNote)
+                }
+                SheetNote(Self.viewerCopiesNote)
+                if let packageURL {
+                    SheetRow("On disk", alignment: .center) {
+                        HStack(spacing: Design.Space.step) {
+                            Text(copiesBytes == 0 ? "None" : ByteCountFormatter.string(fromByteCount: copiesBytes, countStyle: .file))
+                                .foregroundStyle(Design.textSecondary)
+                            Button("Delete Copies") {
+                                NotificationCenter.default.post(name: ViewerCopies.deleteRequested, object: packageURL)
+                                copiesBytes = ViewerCopies.bytes(in: packageURL)
+                            }
+                            .disabled(copiesBytes == 0)
+                            .help("Deletes every viewer copy of this project; with copies on, they are made again in the background")
+                        }
+                    }
+                }
+            }
+
             SheetSection("Transitions") {
                 SheetRow("Sound at cuts", alignment: .center) {
                     Picker("Sound at cuts", selection: $jointAudioCrossfade) {
@@ -65,7 +95,8 @@ struct ProjectSettingsView: View {
                 onApply(Settings(
                     name: trimmed.isEmpty ? project.name : trimmed,
                     copiesMediaOnImport: copiesMediaOnImport,
-                    jointAudioCrossfade: jointAudioCrossfade
+                    jointAudioCrossfade: jointAudioCrossfade,
+                    makesViewerCopies: makesViewerCopies
                 ))
                 dismiss()
             }
@@ -76,6 +107,8 @@ struct ProjectSettingsView: View {
             name = project.name
             copiesMediaOnImport = project.copiesMediaOnImport
             jointAudioCrossfade = project.jointAudioCrossfade
+            makesViewerCopies = project.makesViewerCopies
+            if let packageURL { copiesBytes = ViewerCopies.bytes(in: packageURL) }
         }
     }
 }
@@ -84,13 +117,15 @@ struct ProjectSettingsView: View {
 /// so the scene that presents it doesn't depend on the project.
 struct ProjectSettingsSheet: View {
     @Binding var project: EditingProject
+    var packageURL: URL?
 
     var body: some View {
-        ProjectSettingsView(project: project) { settings in
+        ProjectSettingsView(project: project, packageURL: packageURL) { settings in
             var changed = project
             changed.name = settings.name
             changed.copiesMediaOnImport = settings.copiesMediaOnImport
             changed.jointAudioCrossfade = settings.jointAudioCrossfade
+            changed.makesViewerCopies = settings.makesViewerCopies
             if changed != project { project = changed }
         }
     }

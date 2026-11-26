@@ -52,6 +52,20 @@ enum FrameThumbnails {
         return nil
     }
 
+    /// The kept picture of the file nearest `time` at any size, the
+    /// largest kept first. Nil when none of the file is kept.
+    static func nearestCached(url: URL, time: CMTime) -> NSImage? {
+        let prefix = url.path + "|"
+        let doubledHeights = madeTimes.keys.compactMap { key -> Int? in
+            guard key.hasPrefix(prefix) else { return nil }
+            return Int(key.dropFirst(prefix.count))
+        }
+        for doubled in doubledHeights.sorted(by: >) {
+            if let image = nearestCached(url: url, time: time, height: CGFloat(doubled) / 2) { return image }
+        }
+        return nil
+    }
+
     private static func fileKey(url: URL, height: CGFloat) -> String {
         "\(url.path)|\(Int((height * 2).rounded(.up)))"
     }

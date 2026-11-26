@@ -32,7 +32,7 @@ private struct ProjectDialogs: ViewModifier {
                 )) {
                     // Read in the sheet's own view, so the window doesn't
                     // read the project.
-                    ProjectSettingsSheet(project: Bindable(session.projectState).value)
+                    ProjectSettingsSheet(project: Bindable(session.projectState).value, packageURL: session.projectURL)
                 }
             )
             .onChange(of: activeState, initial: true) { _, state in

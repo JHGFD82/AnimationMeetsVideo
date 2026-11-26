@@ -68,6 +68,7 @@ private struct SettingsPane<Content: View>: View {
 private struct ViewerSettings: View {
     @AppStorage(Preferences.previewQuality) private var quality = PreviewQuality.auto
     @AppStorage(Preferences.motionBlurInPreview) private var motionBlur = true
+    @AppStorage(Preferences.viewerCopiesInNewProjects) private var viewerCopies = false
 
     var body: some View {
         SettingsPane {
@@ -86,6 +87,10 @@ private struct ViewerSettings: View {
                     Toggle("Draw in the viewer", isOn: $motionBlur)
                 }
                 SheetNote("Off, the viewer draws frames without motion blur, which is quicker. Export and background renders always draw it.")
+                SheetRow("Viewer copies", alignment: .center) {
+                    Toggle("Make in new projects", isOn: $viewerCopies)
+                }
+                SheetNote("On, a new project makes ProRes copies of the H.264 and HEVC footage its timelines use, in the background, so the viewer scrubs and plays them smoothly. Each project can change this in Project Settings. Export always reads the original files.")
             }
         }
     }

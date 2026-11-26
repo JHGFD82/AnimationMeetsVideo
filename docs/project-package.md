@@ -52,6 +52,7 @@ MyProject.amv/
   Cache/              disposable, excluded from backup
     Renders/            rendered timeline segments (see rendering.md)
     References/         reference movies of Matroska files (see matroska.md)
+    ViewerCopies/       ProRes copies of footage for the viewer (see rendering.md)
   Backups/            autosaves
   .lock               single-writer lock (an flock held while the project is open;
                       skipped on volumes that don't support flock)
@@ -302,7 +303,9 @@ Requirements for the file:
   also has `lead`, the part played before the cut, when it isn't zero. A curve that doesn't run from
   (0, 0) to (1, 1) in increasing time loads as linear. The project's
   `copiesMediaOnImport` is written only as `false`, once imports are set to
-  be referenced in place instead of copied into `Media/`, and its
+  be referenced in place instead of copied into `Media/`, its
+  `makesViewerCopies` only as `true`, once the viewer draws from ProRes
+  copies ([rendering.md](rendering.md#prores-viewer-copies)), and its
   `canvasMargin` only when it isn't 0.5. A transition's `audioCrossfade`
   (`"sCurve"`, `"equalPower"` or `"linear"`) is written only when it
   chooses its own, and the project's `jointAudioCrossfade` only when it
@@ -359,7 +362,7 @@ lengths now, and a damaged one is left out.
 | Folder | May the app delete it? |
 | --- | --- |
 | `Reference/` | No, only through an explicit "forget original" action, applied at the next save. It may be the only record of a replaced file, so Save As copies each asset's folder into the new package. |
-| `Cache/` | Yes. `Renders/` has a size cap and evicts oldest-first; its entries are keyed by a hash of the exact content they render, so any upstream edit invalidates them. `References/` holds one movie per Matroska file, named by a hash of the file's path, size and date; opening the project deletes those no asset uses, and remakes any missing. |
+| `Cache/` | Yes. `Renders/` has a size cap and evicts oldest-first; its entries are keyed by a hash of the exact content they render, so any upstream edit invalidates them. `References/` holds one movie per Matroska file, named by a hash of the file's path, size and date; opening the project deletes those no asset uses, and remakes any missing. `ViewerCopies/` holds the ProRes copies the viewer draws from with viewer copies on, listed in its `index.json`; those no clip uses, or of a file replaced since, are deleted. |
 | `Backups/` | Yes, by count: each autosave deletes all but the newest 20. |
 | `Scripts/` | No: it is the person's work, like `project.json`. The app writes to it only for New Script… (through `PackageCoordinator`), and Save As and backups copy it whole. |
 

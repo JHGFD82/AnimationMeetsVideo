@@ -145,6 +145,7 @@ extension ProjectStore {
             rootTimelineID: rootID,
             defaultSensitivity: file.defaultSensitivity ?? EditingProject.balancedSensitivity,
             copiesMediaOnImport: file.copiesMediaOnImport ?? true,
+            makesViewerCopies: file.makesViewerCopies ?? false,
             canvasMargin: file.canvasMargin ?? EditingProject.defaultCanvasMargin,
             jointAudioCrossfade: file.jointAudioCrossfade.flatMap(AudioCrossfade.init(rawValue:)) ?? .sCurve
         )

@@ -2,7 +2,10 @@
 
 Status: **implemented**: viewer quality, the render cache, export
 reusing renders, clips' pictures kept between frames and drawn ahead of
-the playhead.
+the playhead, and for scrubbing on laptops rough-then-exact seeks, the
+scrub cache, thumbnails while catching up and ProRes viewer copies
+(decoding at the viewer's size isn't possible with the player; see
+below). The scrubbing steps haven't been measured on a laptop yet.
 
 Transitions, effect stacks and adjustment layers make some stretches of
 a timeline too expensive to draw live at full size. The approach has two
@@ -191,10 +194,106 @@ every step. So, as Final Cut and Premiere scrub:
   (`PlaybackSkimTests`: a fast drag lands exactly, play after one starts
   exactly).
 
-The other steps planned for laptops (a scrub cache, decoding at the
-viewer's size, thumbnails while catching up) are in
-[ideas.md](ideas.md#smoother-scrubbing-on-laptops), measured on a laptop
-one at a time.
+### Scrub cache
+
+Long-GOP footage seeks slowly but reads quickly in order. So once the
+paused player rests (when it is prerolled, after `prerollRest`), the
+frames around the playhead are read in order into memory
+(`ScrubCache`): from 3 s before it to 6 s after, through the item's own
+video composition (`AVAssetReaderVideoCompositionOutput`, drawn by the
+same compositor, renders included), at most 640 pixels across, in the
+viewer's pixel format. It keeps at most 384 MB, about seven seconds of
+16:9 at 60 fps, letting go of the frames furthest from where it rested
+first, and waits while the Mac is hot or in Low Power Mode.
+
+- **Fast moves show kept frames.** A move fast enough to seek roughly
+  (`ScrubPacing`) that lands on a kept frame shows it at once and seeks
+  nothing; the player stays where it was, and its frames don't replace
+  the kept one. 100 ms after the moves rest it lands exactly, as after
+  rough seeks, and its full-size frame replaces the smaller one. Slow
+  moves (an arrow key, a slow drag) seek exactly as before, so stepping
+  never shows a smaller frame first.
+- **What lets go.** A move stops the reading and keeps what was read; it
+  reads again around where the playhead next rests. Playing stops it. A
+  new item, a value edit or an emptied player lets go of every frame,
+  since what they show changed.
+- Tested with a player (`ScrubCacheTests`): it reads the frames around
+  the playhead, a fast drag over them shows them and lands exactly, and
+  an edit lets go of them.
+
+### Thumbnails while catching up
+
+A fast move that misses the scrub cache while a seek is still under way
+(the player is behind) shows a stand-in at once (`ScrubStandIn`): where
+the frame is one file drawn plainly over the whole frame (no step, no
+transition, not a still, fitted to the frame, in an SDR timeline), the
+picture of that file nearest the moment that the timeline's filmstrips
+keep in memory (`FrameThumbnails.nearestCached`, the largest kept size
+first). The player's frame replaces it as soon as one arrives, so it
+only ever shows while catching up; anything drawn otherwise, or a file
+with no picture kept, shows the last frame as before. Tested in
+`ScrubStandInTests`.
+
+### Decoding at the viewer's size (not possible here)
+
+Drawing at Half or Quarter makes compositing cheaper but not decoding:
+the player decodes each source at its own size for the compositor. The
+only say the compositor has is its `sourcePixelBufferAttributes`, which
+AVFoundation reads once per compositor and never again, and which can
+name one fixed width and height for every source, not a share of each.
+A fixed size would stretch sources of other shapes and could be scaled
+after decoding rather than in it, costing more, not less; and the
+compositor places a source by its own size. So the player can't be made
+to decode smaller, and the scrub cache decodes at full size too, reading
+in order instead. The ProRes viewer copies are what makes decoding
+cheap on a laptop.
+
+### ProRes viewer copies
+
+A project setting (Project Settings > Viewer, off unless turned on; new
+projects take the default in Settings > Viewer) has the viewer draw
+H.264 and HEVC footage from ProRes copies, which decode frame by frame
+(`ViewerCopies`, owned by `RenderScheduler`). Export never reads them.
+
+- **What is copied**: the stretch of each H.264 or HEVC file a clip in
+  any timeline uses (its trim, in the file's own times), plus 3 s either
+  side, merged where they meet, at the file's own size, ProRes 422, or
+  422 HQ for footage deeper than 8 bits or HDR, with its color tags and
+  orientation. Kept in `Cache/ViewerCopies/`, listed in its
+  `index.json` with the original's path, size and date and the stretch
+  each holds. A wider trim makes a new copy of the wider stretch, which
+  replaces the ones it holds.
+- **Exact timing**: the writer starts a copy's movie at its first frame,
+  so a frame's time in the copy is its time in the original less the
+  first frame's, which the copy records exactly. A copy is only kept
+  once every frame read back from it, plus that, is at the time it was
+  written, which was the original's; the build reads the copy shifted
+  by it (`ViewerCopyIndex.Copy.offset`). A copy that fails is deleted,
+  and its stretch isn't tried again until the project changes what it
+  uses.
+- **When**: one at a time, in the background, never while playing (play
+  stops the copy being made, to start again later), on battery, in Low
+  Power Mode or with the Mac hot. With the project open in more than one
+  window, the first window's editor makes and deletes the copies and the
+  others only read its index, so two never write one. Project Settings,
+  which has no editor of its own, reads the folder's size and asks that
+  editor to delete them (`ViewerCopies.deleteRequested`).
+- **Used**: the viewer's build (`buildComposedTimeline` with
+  `viewerCopies`, for preview only) draws a placement's picture from a
+  copy holding every stretch it plays, and from the file otherwise. A
+  copy made or let go builds the viewer again, as a render finishing
+  does, waiting for a pause. The scrub cache then reads from the copies
+  too.
+- **Disposable**: a copy no clip uses any more, or of a file whose size
+  or date changed (a replaced file), is deleted. Turned off, the copies
+  stay unused until it is turned on again or Delete Copies is pressed,
+  next to how much they take, in Project Settings.
+- Tested in `ViewerCopiesTests`: a copy is ProRes at the original's
+  frame times; the stretches wanted are those used plus handles; the
+  viewer's build draws from a copy and export doesn't, the same frames
+  whether the copy starts at the file's start or partway in; copies are
+  made, stop being used when turned off, and are deleted; and the
+  project keeps the setting.
 
 ## Render cache (implemented)
 

@@ -17,6 +17,11 @@ struct EditingProject: Identifiable, Equatable {
     /// Whether imported media is copied into the package's `Media/` folder
     /// (the default) or referenced where it is.
     var copiesMediaOnImport = true
+    /// Whether the viewer draws H.264 and HEVC footage from ProRes copies
+    /// of the stretches the timelines use, made in the background for
+    /// smooth scrubbing (`ViewerCopies`, docs/rendering.md). Off unless
+    /// turned on; export always reads the original files.
+    var makesViewerCopies = false
     /// How much of the frame, on each side, an intermediate image keeps of
     /// the picture moved off the frame, as a fraction of its width and
     /// height. See `defaultCanvasMargin`.

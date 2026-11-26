@@ -1312,6 +1312,8 @@ struct ProjectFile: Codable {
     var defaultSensitivity: Double?
     /// Absent while imports are copied into the package (the default).
     var copiesMediaOnImport: Bool?
+    /// Absent while the viewer draws from the original files (the default).
+    var makesViewerCopies: Bool?
     /// Absent while it is the default, half a frame on each side.
     var canvasMargin: Double?
     /// An `AudioCrossfade` name; absent while it is the default S-curve.
@@ -1598,7 +1600,7 @@ extension ProjectFile {
         return .object(object([
             .required("formatVersion", .integer), .required("id", .uuid), .required("name", .string),
             .required("rootTimelineID", .uuid), .optional("defaultSensitivity", .number),
-            .optional("copiesMediaOnImport", .bool), .optional("canvasMargin", .number),
+            .optional("copiesMediaOnImport", .bool), .optional("makesViewerCopies", .bool), .optional("canvasMargin", .number),
             .optional("jointAudioCrossfade", .choice(AudioCrossfade.allCases.map(\.rawValue), noun: "audio crossfade")),
             .required("assets", .array(asset)), .required("timelines", .array(timeline)),
         ]))

@@ -151,6 +151,7 @@ final class ProjectSession {
         var fresh = EditingProject.empty
         fresh.name = url.deletingPathExtension().lastPathComponent
         fresh.copiesMediaOnImport = copyOption.state == .on
+        fresh.makesViewerCopies = UserDefaults.standard.bool(forKey: Preferences.viewerCopiesInNewProjects)
         do {
             // The save panel has already asked whether to replace what's there.
             try await ProjectStore.trashPackage(at: url, checkingLock: true)

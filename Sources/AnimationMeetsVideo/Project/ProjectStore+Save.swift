@@ -229,6 +229,7 @@ extension ProjectStore {
             rootTimelineID: project.rootTimelineID,
             defaultSensitivity: project.defaultSensitivity == EditingProject.balancedSensitivity ? nil : project.defaultSensitivity,
             copiesMediaOnImport: project.copiesMediaOnImport ? nil : false,
+            makesViewerCopies: project.makesViewerCopies ? true : nil,
             canvasMargin: project.canvasMargin == EditingProject.defaultCanvasMargin ? nil : project.canvasMargin,
             jointAudioCrossfade: project.jointAudioCrossfade == .sCurve ? nil : project.jointAudioCrossfade.rawValue,
             assets: urlClips.map { clip in

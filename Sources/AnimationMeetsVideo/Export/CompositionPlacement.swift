@@ -8,6 +8,8 @@ import Foundation
 /// Track metadata for one media file, loaded once and reused across the many
 /// rebuilds an editing session triggers.
 struct MediaTrackInfo: @unchecked Sendable {
+    /// The file it was read from, as asked for.
+    var url: URL
     let asset: AVURLAsset
     let video: AVAssetTrack?
     let audio: AVAssetTrack?
@@ -66,6 +68,7 @@ actor MediaTrackCache {
         }
 
         let info = MediaTrackInfo(
+            url: url.standardizedFileURL,
             asset: asset,
             video: video,
             audio: audio,
