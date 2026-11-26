@@ -112,9 +112,7 @@ than small proxies, so they serve playing as well as scrubbing:
 - **A setting**, in Project Settings with an app-wide default for new
   projects, off unless turned on.
 
-This needs the shared principle about proxies amended
-([README.md](README.md#shared-principles)): footage is still never
-re-encoded to be editable or exported, but disposable ProRes copies of
-the clips used may be made to draw the viewer. The disk-space reason in
-[media-replacement.md](media-replacement.md) was about proxies of
-long-form footage, which this doesn't make.
+The shared principles allow this ([README.md](README.md#shared-principles)):
+viewer copies may be made as disposable caches, never read by export,
+and footage is never re-encoded to be editable or in place of the
+original.
