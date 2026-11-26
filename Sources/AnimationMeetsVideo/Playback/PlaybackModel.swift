@@ -108,6 +108,12 @@ final class PlaybackModel {
     @ObservationIgnored private var sampling: Task<Void, Never>?
     /// Draws the paused playhead's neighborhood ahead of playback.
     @ObservationIgnored private let prerenderer = PlayheadPrerenderer()
+    /// The frames around where the playhead last rested, which fast
+    /// scrubbing shows without seeking (`ScrubCache`).
+    @ObservationIgnored let scrubCache = ScrubCache()
+    /// Whether the picture is a frame of the scrub cache, the player
+    /// elsewhere until it lands exactly: its frames don't replace it.
+    @ObservationIgnored private var showsKept = false
     @ObservationIgnored private var preferencesTask: Task<Void, Never>?
     @ObservationIgnored private var deviceObservation: DeviceListObservation?
 
@@ -216,7 +222,17 @@ final class PlaybackModel {
         player.preroll(atRate: 1)
         if let item = player.currentItem, let composition = item.asset as? AVComposition, let videoComposition = item.videoComposition {
             prerenderer.start(composition: composition, videoComposition: videoComposition, around: player.currentTime())
+            fillScrubCache(composition: composition)
         }
+    }
+
+    /// Reads the frames around the paused playhead into the scrub cache,
+    /// at its smaller size, from the item's own drawing.
+    private func fillScrubCache(composition: AVComposition) {
+        guard let composed, let full = composed.videoComposition else { return }
+        let scale = ScrubCache.scale(for: full.renderSize)
+        guard let drawing = composed.videoComposition(scaledBy: scale, withoutRenders: !playedUsesRenders) else { return }
+        scrubCache.fill(composition: composition, videoComposition: drawing, pixelFormat: composed.viewerPixelFormat, around: player.currentTime())
     }
 
     /// Gives `item` the composition at the current level, and keeps
@@ -251,6 +267,8 @@ final class PlaybackModel {
             kCVPixelBufferMetalCompatibilityKey as String: true,
         ]))
         prerenderer.cancel()
+        scrubCache.reset(frameRate: frameRate)
+        showsKept = false
         // Pictures kept for a project of another structure are found by
         // values that no longer say everything about them (a replaced
         // file, a changed package); an edit of values alone keeps them.
@@ -278,6 +296,7 @@ final class PlaybackModel {
     func showValues(_ clips: [UUID: TimelineClip]) {
         liveValues.clips = clips
         prerenderer.cancel()
+        scrubCache.reset(frameRate: frameRate)
         if isPlaying {
             playWithoutRenders()
             return
@@ -319,6 +338,9 @@ final class PlaybackModel {
             fadesNextFrame = false
             return
         }
+        // A kept frame is on screen; the player shows the playhead's once
+        // it lands there.
+        if showsKept { return }
         if !isSeeking, !playerIsRough, level != .full, redrawPausedFrame() { return }
         display.show(buffer)
     }
@@ -456,6 +478,7 @@ final class PlaybackModel {
     func clearItem() {
         dropRedraw()
         prerenderer.cancel()
+        scrubCache.reset(frameRate: frameRate)
         forgetRoughSeeks()
         capture.arm(at: nil)
         if player.rate != 0 { player.pause() }
@@ -512,6 +535,8 @@ final class PlaybackModel {
         if !playing { shuttleRate = 1 }
         if playing {
             prerenderer.cancel()
+            scrubCache.cancel()
+            showsKept = false
             dropRedraw()
             capture.arm(at: nil)
             // Playing lets go of the scrub engine and its device.
@@ -664,12 +689,11 @@ final class PlaybackModel {
     /// Seeks the player to `time`, after any seek under way: roughly while
     /// the moves go fast, then exactly once they rest, unless `exact`.
     private func show(_ time: CMTime, exact: Bool = false) {
-        pendingSeek = time
+        let tolerance = exact ? 0 : pacing.tolerance(forMoveTo: time.seconds, at: CACurrentMediaTime())
         lastTarget = time
-        pendingTolerance = exact ? 0 : pacing.tolerance(forMoveTo: time.seconds, at: CACurrentMediaTime())
         landing?.cancel()
         landing = nil
-        if pendingTolerance > 0 {
+        if tolerance > 0 {
             playerIsRough = true
             landing = Task { [weak self] in
                 try? await Task.sleep(for: ScrubPacing.rest)
@@ -679,6 +703,21 @@ final class PlaybackModel {
             }
         }
         prerenderer.cancel()
+        scrubCache.cancel()
+        // Moving fast over the stretch kept around the last rest: its frame
+        // shows at once, and the player isn't seeked until it lands.
+        if tolerance > 0, let kept = scrubCache.frame(at: time) {
+            pendingSeek = nil
+            showsKept = true
+            restingPreroll?.cancel()
+            restingPreroll = nil
+            dropRedraw()
+            display.show(kept)
+            return
+        }
+        showsKept = false
+        pendingSeek = time
+        pendingTolerance = tolerance
         restingPreroll?.cancel()
         restingPreroll = nil
         player.cancelPendingPrerolls()
@@ -718,7 +757,7 @@ final class PlaybackModel {
         // Near where it was sent: it lands exactly once the moves rest,
         // and settles then. Unless the rough seeks were let go meanwhile
         // (`forgetRoughSeeks`), which takes the landing with them.
-        playerIsRough = landedRoughly && landing != nil
+        playerIsRough = (landedRoughly || showsKept) && landing != nil
         guard !playerIsRough else { return }
         // Settled: the frame is drawn at full size if it was drawn smaller.
         if !isPlaying, level != .full { redrawPausedFrame() }
@@ -745,6 +784,7 @@ final class PlaybackModel {
         landing?.cancel()
         landing = nil
         playerIsRough = false
+        showsKept = false
         pacing.reset()
     }
 

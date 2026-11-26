@@ -73,7 +73,8 @@ In order, each measured on a laptop before the next:
    playhead or the skimmer seek with a tolerance, and the player lands
    on the exact frame 100 ms after they stop. A change to the seek queue
    alone, costing no disk.
-2. **A scrub cache.** Paused, decode the footage around the playhead,
+2. **A scrub cache** (built, see
+   [rendering.md](rendering.md#scrub-cache)). Paused, decode the footage around the playhead,
    forward from each keyframe as the hardware decoder likes, at the
    viewer's size, and keep the frames in memory, as
    `PlayheadPrerenderer` does for stretches with effects. Moving back
