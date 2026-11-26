@@ -130,6 +130,25 @@ private let red = [1.0, 0, 0, 1], green = [0.0, 1, 0, 1], black = [0.0, 0, 0, 1]
 
 /// Shapes drawn with gradients, on the 128 by 72 frame of `DrawingFixture`:
 /// a 64 by 36 rectangle in the middle, from x = 32 to 96.
+/// The Fill and Stroke Type rows (docs/gradients.md, "Where it is
+/// offered").
+@Suite struct PaintTypeTests {
+    @Test func theTypeRowSwitchesBetweenAColorAndEachGradient() {
+        var fill = EffectControl(kind: .fill)
+        fill.number = AnimatedValue(ComponentValue(values: [1, 0.5, 0, 1]))
+        #expect(fill.paintType == PaintType.color)
+        for kind in GradientKind.allCases {
+            fill.setPaintType(kind.rawValue)
+            #expect(fill.paint?.kind == kind && fill.paintType == kind.rawValue)
+        }
+        fill.setPaintType(PaintType.color)
+        #expect(fill.paint == nil && fill.values(at: .zero) == [1, 0.5, 0, 1])
+        #expect(PaintType.options.map(\.name) == ["Color", "Linear", "Radial", "Angular"])
+        #expect(Effect(kind: .rectangle).offersGradients && Effect(kind: .stroke).offersGradients)
+        #expect(!Effect(kind: .color).offersGradients)
+    }
+}
+
 @Suite struct GradientDrawingTests {
     private let second = CMTime(seconds: 1, preferredTimescale: 600)
 

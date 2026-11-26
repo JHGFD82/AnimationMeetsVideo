@@ -456,6 +456,7 @@ extension StrobeTimes: ControlChoice {}
 extension StrobeCurve: ControlChoice {}
 extension StrobeOverlap: ControlChoice {}
 extension WaveformMode: ControlChoice {}
+extension WaveformScale: ControlChoice {}
 extension WaveformShape: ControlChoice {}
 extension WaveformSide: ControlChoice {}
 extension WaveformDraw: ControlChoice {}

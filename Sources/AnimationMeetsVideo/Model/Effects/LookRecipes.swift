@@ -8,7 +8,7 @@ import Foundation
 /// name by ID within the stack, which a paste keeps.
 enum LookRecipes {
     /// Bumped when the recipes change, so an update installs the new ones.
-    static let version = 2
+    static let version = 3
 
     static var all: [(name: String, bundle: EffectBundle)] {
         [
@@ -122,6 +122,35 @@ enum LookRecipes {
             )),
             ("Split Stereo", wave([.waveWindow: [500], .stroke: amber, .rightColor: ice], [.waveStereo: WaveformStereo.split.rawValue])),
             ("Stereo Scope", wave([.waveWindow: [20], .waveSamples: [1024], .stroke: mint, .strokeWidth: [1]], [.waveStereo: WaveformStereo.xy.rawValue])),
+            ("Mountain", wave(
+                [.waveWindow: [3000], .waveSamples: [256], .waveTimeSmoothing: [80], .fill: [1, 1, 1, 0.85]],
+                [.waveDraw: WaveformDraw.area.rawValue, .waveAlign: WaveformAlign.end.rawValue, .waveSide: WaveformSide.both.rawValue]
+            )),
+            ("Peak Bars", wave(
+                [.waveSamples: [48], .waveAttack: [20], .waveRelease: [250], .wavePeakHold: [700], .barWidth: [70]],
+                [.waveMode: WaveformMode.spectrum.rawValue, .waveDraw: WaveformDraw.bars.rawValue,
+                 .waveColoring: WaveformColoring.byLevel.rawValue],
+                fill: [mint, amber, rose]
+            )),
+            ("Stereo Meters", wave(
+                [.waveAttack: [10], .waveRelease: [300], .wavePeakHold: [1000], .barWidth: [35], .waveFloor: [-48]],
+                [.waveMode: WaveformMode.level.rawValue, .waveStereo: WaveformStereo.two.rawValue],
+                fill: [mint, mint, amber, rose]
+            )),
+            ("Spectrogram", wave(
+                [.waveWindow: [4000], .waveSamples: [96], .waveFloor: [-72]],
+                [.waveMode: WaveformMode.spectrogram.rawValue],
+                fill: [[0.05, 0.05, 0.2, 0], [0.2, 0.3, 0.9, 1], amber, white]
+            )),
+            ("Sun Rays", wave(
+                [.waveSamples: [96], .waveRelease: [200], .stroke: amber, .strokeWidth: [3]],
+                [.waveMode: WaveformMode.spectrum.rawValue, .waveShape: WaveformShape.radial.rawValue, .waveDraw: WaveformDraw.rays.rawValue]
+            )),
+            ("Particle Burst", wave(
+                [.waveSamples: [96], .waveAttack: [15], .waveRelease: [350], .dotSize: [6], .fill: ice],
+                [.waveMode: WaveformMode.spectrum.rawValue, .waveShape: WaveformShape.radial.rawValue,
+                 .waveDraw: WaveformDraw.particles.rawValue, .waveSide: WaveformSide.both.rawValue]
+            )),
         ]
     }
 

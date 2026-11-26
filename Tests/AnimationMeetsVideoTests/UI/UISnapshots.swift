@@ -1281,8 +1281,9 @@ struct UISnapshots {
 
     /// The effects panel for a shape clip: the rectangle pinned at the top
     /// as the clip's own content, with rounded corners, an orange fill and
-    /// a stroke, so the color wells show; its Shape and Fill & Stroke
-    /// headers, and no Edge, Join or Cap, which are the inspector's.
+    /// a stroke, so the color wells show, each with its Type row (Color)
+    /// under it; its Shape and Fill & Stroke headers, and no Edge, Join or
+    /// Cap, which are the inspector's.
     @Test func shapeEffectsPanel() throws {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID

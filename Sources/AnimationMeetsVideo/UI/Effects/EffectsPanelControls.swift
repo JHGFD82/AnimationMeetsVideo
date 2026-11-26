@@ -157,7 +157,34 @@ extension EffectsPanel {
                 )
             )
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(EffectStackLayout.space)) }, action: placed)
+            if control.kind.takesGradient, effect.offersGradients {
+                paintTypeRow(control, of: effect, c, effectDimmed: effectDimmed, select: select)
+            }
         }
+    }
+
+    /// Fill Type or Stroke Type, under its color: Color, or a Linear,
+    /// Radial or Angular gradient in the color's place. Its stops are set
+    /// in the inspector (docs/gradients.md).
+    private func paintTypeRow(
+        _ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool, select: @escaping () -> Void
+    ) -> some View {
+        labelled(
+            ChoiceRow(
+                name: control.kind.paintTypeName,
+                indent: EffectsPanelMetrics.controlIndent - 12,
+                options: PaintType.options.map { ($0.id, $0.name) },
+                selected: control.paintType,
+                isSelected: false,
+                showsMenu: false,
+                isDimmed: effectDimmed || !control.enabled,
+                onReset: control.paint == nil ? nil : { editControl(control.id, of: effect, in: c.clip) { $0.setPaintType(PaintType.color) } },
+                onSelect: select,
+                onChoose: { type in editControl(control.id, of: effect, in: c.clip) { $0.setPaintType(type) } },
+                menu: { EmptyView() }
+            ),
+            lane: emptyLane(c)
+        )
     }
 
     /// What a Fill or Stroke painting a gradient says of it in its row:

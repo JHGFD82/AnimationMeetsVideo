@@ -350,9 +350,39 @@ extension ControlKind {
     /// Whether a color of this kind can hold a gradient: a shape's Fill and
     /// Stroke, and the Stroke effect's.
     var takesGradient: Bool { self == .fill || self == .stroke }
+
+    /// The name of the row that picks how a color of this kind paints:
+    /// "Fill Type".
+    var paintTypeName: String { "\(name) Type" }
+}
+
+/// How a Fill or Stroke paints, as its Type row offers it: one color, or
+/// a gradient of a kind, which takes the color's place (`setPaint`).
+enum PaintType {
+    /// The choice that paints one color.
+    static let color = "solid"
+
+    /// Color, then each kind of gradient, as choice IDs and names.
+    static var options: [(id: String, name: String, systemImage: String)] {
+        [(color, "Color", "square.fill")] + GradientKind.allCases.map { ($0.rawValue, $0.name, $0.systemImage) }
+    }
+}
+
+extension Effect {
+    /// Whether its Fill and Stroke can paint gradients: a drawn shape's
+    /// (text, the Waveform) and the Stroke effect's.
+    var offersGradients: Bool { kind.drawsShape || kind == .stroke }
 }
 
 extension EffectControl {
+    /// Its Type row's choice: `PaintType.color`, or its gradient's kind.
+    var paintType: String { paint?.kind.rawValue ?? PaintType.color }
+
+    /// Sets its Type row's choice.
+    mutating func setPaintType(_ type: String) {
+        setPaint(GradientKind(rawValue: type))
+    }
+
     /// The gradient it paints at `time`, if it holds one.
     func gradient(at time: CMTime) -> PaintGradient? {
         guard paint != nil else { return nil }

@@ -16,6 +16,12 @@ enum WaveformMode: String, CaseIterable, Identifiable, Sendable {
     case wave
     /// How loud each frequency is at the frame's time, low to high.
     case spectrum
+    /// How loud the sound is, as a meter: a bar for the mix, or one a
+    /// channel.
+    case level
+    /// The spectrum over the window before the frame's time, as a scrolling
+    /// heat map: time along the shape, frequency up from it.
+    case spectrogram
 
     var id: Self { self }
 
@@ -23,6 +29,43 @@ enum WaveformMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .wave: "Wave"
         case .spectrum: "Spectrum"
+        case .level: "Level"
+        case .spectrogram: "Spectrogram"
+        }
+    }
+
+    /// Whether it measures loudness in decibels, down to the Floor.
+    var isMeasured: Bool { self != .wave }
+
+    /// Whether its points are frequencies, spaced by the Scale.
+    var hasFrequencies: Bool { self == .spectrum || self == .spectrogram }
+}
+
+/// How a Waveform spaces frequencies.
+enum WaveformScale: String, CaseIterable, Identifiable, Sendable {
+    /// By octave, as the ear hears them.
+    case log
+    /// By hertz, so the highs take most of the room.
+    case linear
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .log: "Log"
+        case .linear: "Linear"
+        }
+    }
+
+    /// `count` frequencies from `low` to `high` hertz.
+    func frequencies(_ count: Int, from low: Double, to high: Double) -> [Double] {
+        guard count > 1 else { return [low] }
+        return (0..<count).map { i in
+            let t = Double(i) / Double(count - 1)
+            switch self {
+            case .log: return low * pow(high / low, t)
+            case .linear: return low + (high - low) * t
+            }
         }
     }
 }
@@ -73,14 +116,24 @@ enum WaveformGraph: String, CaseIterable, Identifiable, Sendable {
     case wave
     /// The wave as a line filled down to its baseline.
     case filled
+    /// The wave's envelope filled, with no line: a mountain.
+    case area
     /// The wave as dots.
     case dots
     /// The spectrum as bars.
     case bars
     /// The wave round a circle.
     case ring
+    /// The spectrum as rays out of a ring.
+    case rays
+    /// The spectrum as dots flying out of a ring.
+    case particles
     /// Left against right, as an oscilloscope draws stereo.
     case scope
+    /// How loud it is, as a meter.
+    case meter
+    /// The spectrum over time, as a scrolling heat map.
+    case spectrogram
 
     var id: Self { self }
 
@@ -88,38 +141,35 @@ enum WaveformGraph: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .wave: "Wave"
         case .filled: "Filled"
+        case .area: "Area"
         case .dots: "Dots"
         case .bars: "Bars"
         case .ring: "Ring"
+        case .rays: "Rays"
+        case .particles: "Particles"
         case .scope: "Scope"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .wave: "waveform.path"
-        case .filled: "chart.line.uptrend.xyaxis"
-        case .dots: "circle.dotted"
-        case .bars: "chart.bar.fill"
-        case .ring: "circle.circle"
-        case .scope: "scribble"
+        case .meter: "Meter"
+        case .spectrogram: "Spectrogram"
         }
     }
 
     /// The choices it sets.
     private var settings: [(ControlKind, String)] {
         let fills = (ControlKind.waveFillsToBaseline, (self == .filled ? OnOff.on : .off).rawValue)
+        func set(_ mode: WaveformMode, _ draw: WaveformDraw?, _ shape: WaveformShape?) -> [(ControlKind, String)] {
+            [(.waveMode, mode.rawValue)] + (draw.map { [(.waveDraw, $0.rawValue)] } ?? []) + (shape.map { [(.waveShape, $0.rawValue)] } ?? [])
+        }
         switch self {
-        case .wave, .filled:
-            return [(.waveMode, WaveformMode.wave.rawValue), (.waveDraw, WaveformDraw.lines.rawValue), (.waveShape, WaveformShape.line.rawValue), fills]
-        case .dots:
-            return [(.waveMode, WaveformMode.wave.rawValue), (.waveDraw, WaveformDraw.dots.rawValue), (.waveShape, WaveformShape.line.rawValue)]
-        case .bars:
-            return [(.waveMode, WaveformMode.spectrum.rawValue), (.waveDraw, WaveformDraw.bars.rawValue), (.waveShape, WaveformShape.line.rawValue)]
-        case .ring:
-            return [(.waveMode, WaveformMode.wave.rawValue), (.waveDraw, WaveformDraw.lines.rawValue), (.waveShape, WaveformShape.radial.rawValue), fills]
-        case .scope:
-            return [(.waveMode, WaveformMode.wave.rawValue), (.waveDraw, WaveformDraw.lines.rawValue), (.waveStereo, WaveformStereo.xy.rawValue)]
+        case .wave, .filled: return set(.wave, .lines, .line) + [fills]
+        case .area: return set(.wave, .area, .line)
+        case .dots: return set(.wave, .dots, .line)
+        case .bars: return set(.spectrum, .bars, .line)
+        case .ring: return set(.wave, .lines, .radial) + [fills]
+        case .rays: return set(.spectrum, .rays, .radial)
+        case .particles: return set(.spectrum, .particles, .radial)
+        case .scope: return set(.wave, .lines, nil) + [(.waveStereo, WaveformStereo.xy.rawValue)]
+        case .meter: return set(.level, nil, .line)
+        case .spectrogram: return set(.spectrogram, nil, .line)
         }
     }
 
@@ -144,20 +194,38 @@ enum WaveformGraph: String, CaseIterable, Identifiable, Sendable {
         if self != .scope, effect.choice(.waveStereo, as: WaveformStereo.self) == .xy {
             effect.changeControl(.waveStereo) { $0.choice = WaveformStereo.mixed.rawValue }
         }
+        // A heat map of a few hundredths of a second shows nothing moving.
+        if self == .spectrogram, let window = effect.control(.waveWindow)?.values(at: .zero).first, window < 500 {
+            effect.changeControl(.waveWindow) { $0.number = AnimatedValue(ComponentValue(values: [3000])) }
+        }
     }
 }
 
 /// How a Waveform's points are drawn.
 enum WaveformDraw: String, CaseIterable, Identifiable, Sendable {
-    case lines, dots, bars
+    /// The points joined by a line.
+    case lines
+    /// The space between the points and the baseline filled, with no line:
+    /// a mountain.
+    case area
+    case dots
+    case bars
+    /// A thin line from the baseline to each point, in the Stroke.
+    case rays
+    /// Dots along the way from the baseline to each point, growing and
+    /// fading in toward it.
+    case particles
 
     var id: Self { self }
 
     var name: String {
         switch self {
         case .lines: "Lines"
+        case .area: "Area"
         case .dots: "Dots"
         case .bars: "Bars"
+        case .rays: "Rays"
+        case .particles: "Particles"
         }
     }
 }
@@ -247,6 +315,9 @@ struct WaveformSetup: Equatable, Sendable {
     /// The frequencies shown in Spectrum, in hertz.
     var lowFrequency = 20.0
     var highFrequency = 20_000.0
+    var scale = WaveformScale.log
+    /// The quietest level shown, in decibels, in the measured modes.
+    var floor = -80.0
     var shape = WaveformShape.line
     /// The line's ends, or the ring's center, in the frame's pixels.
     var start = CGPoint.zero
@@ -258,7 +329,11 @@ struct WaveformSetup: Equatable, Sendable {
     var sweep = 360.0
     var side = WaveformSide.one
     var samples = 256
-    /// Seconds of sound the points span, in Wave.
+    /// Pixels between points along the shape, which then decides how many
+    /// there are; 0 leaves it to `samples`.
+    var spacing = 0.0
+    /// Seconds of sound the points span, in Wave; the history shown, in
+    /// Spectrogram.
     var window = 0.05
     var align = WaveformAlign.middle
     var draw = WaveformDraw.lines
@@ -273,8 +348,16 @@ struct WaveformSetup: Equatable, Sendable {
     var height = 100.0
     /// Decibels before it.
     var gain = 0.0
-    /// Seconds over which a point falls back, in Spectrum.
+    /// Seconds over which a point falls back, in Spectrum and Level.
     var release = 0.0
+    /// Seconds over which a point rises, in Spectrum and Level.
+    var attack = 0.0
+    /// Seconds a peak's marker stays before it falls, in Spectrum and
+    /// Level; 0 draws none.
+    var peakHold = 0.0
+    /// Seconds over which Wave's points are averaged with the moments
+    /// before, so the line settles rather than jumps.
+    var timeSmoothing = 0.0
     var coloring = WaveformColoring.paint
     var fill: [Double]?
     var fillGradient: GradientFill?
@@ -299,6 +382,8 @@ struct WaveformSetup: Equatable, Sendable {
             effect.choice(kind, as: Option.self) ?? fallback
         }
         mode = choice(.waveMode, .wave)
+        scale = choice(.waveScale, .log)
+        floor = min(single(.waveFloor), -1)
         let frequencies = values(.waveFrequencies)
         if frequencies.count == 2 { (lowFrequency, highFrequency) = (min(frequencies[0], frequencies[1]), max(frequencies[0], frequencies[1])) }
         shape = choice(.waveShape, .line)
@@ -310,6 +395,7 @@ struct WaveformSetup: Equatable, Sendable {
         sweep = single(.waveSweep).clamped(between: -360, and: 360)
         side = choice(.waveSide, .one)
         samples = Int(single(.waveSamples)).clamped(between: 2, and: 4096)
+        spacing = max(single(.waveSpacing), 0)
         window = max(single(.waveWindow), 0.1) / 1000
         align = choice(.waveAlign, .middle)
         draw = choice(.waveDraw, .lines)
@@ -322,6 +408,9 @@ struct WaveformSetup: Equatable, Sendable {
         height = single(.waveHeight)
         gain = single(.waveGain)
         release = max(single(.waveRelease), 0) / 1000
+        attack = max(single(.waveAttack), 0) / 1000
+        peakHold = max(single(.wavePeakHold), 0) / 1000
+        timeSmoothing = max(single(.waveTimeSmoothing), 0) / 1000
         coloring = choice(.waveColoring, .paint)
         if let fillControl = control(.fill) {
             if let gradient = fillControl.gradient(at: time), let style = fillControl.paint {
@@ -348,6 +437,7 @@ struct WaveformSetup: Equatable, Sendable {
         text += " \(n(radius)) \(n(angle)) \(n(sweep)) \(side.rawValue) \(samples) \(n(window)) \(align.rawValue) \(draw.rawValue)"
         text += " \(smooth) \(fillsToBaseline) \(n(dotSize)) \(n(barWidth)) \(barEnds.rawValue) \(stereo.rawValue)"
         text += " \(n(height)) \(n(gain)) \(n(release)) \(coloring.rawValue) \(lineWidth)"
+        text += " \(scale.rawValue) \(n(floor)) \(n(spacing)) \(n(attack)) \(n(peakHold)) \(n(timeSmoothing))"
         text += " f" + (fillGradient?.keyText ?? (fill ?? []).map(n).joined(separator: ","))
         text += " s" + (strokeGradient?.keyText ?? (stroke ?? []).map(n).joined(separator: ","))
         text += " r" + rightColor.map(n).joined(separator: ",")
@@ -369,24 +459,56 @@ struct WaveformStep: Equatable, Sendable {
 }
 
 /// What a Waveform hears, made when the timeline is built: each clip with
-/// sound from a file in what it listens to, with where it plays and how
-/// loud, so drawing needs nothing from the project.
+/// sound from a file in what it listens to, nested timelines' included,
+/// with where it plays, how loud and through which EQs, so drawing needs
+/// nothing from the project.
 struct WaveformSound: @unchecked Sendable {
-    struct Source {
-        var url: URL
+    /// A clip the sound plays through, and the layer it is on.
+    struct Placed {
         var clip: TimelineClip
-        var asset: MediaClip
         /// The volume of the Sound or Music layer it is on, if it is on one.
         var layerVolume: AnimatedValue<Double>?
+        /// The EQs on the clip, in its source time, that are on.
+        var clipEqualizers: [Effect] = []
+        /// The EQs on its layer, in its timeline's time, that are on.
+        var layerEqualizers: [Effect] = []
+    }
+
+    struct Source {
+        var url: URL
+        var asset: MediaClip
+        /// The clips it plays through, outermost first: a nested timeline's
+        /// clip in the timeline the Waveform is in, and so on in, the last
+        /// the clip of the file itself. Each maps its timeline's time into
+        /// the next one in, and adds its volume and EQ.
+        var chain: [Placed]
+
+        /// The clip of the file.
+        var clip: TimelineClip { chain[chain.count - 1].clip }
+
+        var hasEqualizers: Bool { chain.contains { !$0.clipEqualizers.isEmpty || !$0.layerEqualizers.isEmpty } }
+
+        init(url: URL, asset: MediaClip, chain: [Placed]) {
+            self.url = url
+            self.asset = asset
+            self.chain = chain
+        }
+
+        /// A clip in the Waveform's own timeline, through no EQ.
+        init(url: URL, clip: TimelineClip, asset: MediaClip, layerVolume: AnimatedValue<Double>?) {
+            self.init(url: url, asset: asset, chain: [Placed(clip: clip, layerVolume: layerVolume)])
+        }
     }
 
     var sources: [Source]
     /// What it hears, for a render's key: the files and every clip's
-    /// placement and volume.
+    /// placement, volume and EQ.
     var fingerprint: UInt64
 
     /// The files it reads.
     var urls: [URL] { Array(Set(sources.map(\.url))) }
+
+    var hasEqualizers: Bool { sources.contains(where: \.hasEqualizers) }
 }
 
 extension EditingProject {
@@ -395,21 +517,58 @@ extension EditingProject {
     func waveformSounds(for clip: TimelineClip, in timeline: Timeline) -> [UUID: WaveformSound] {
         var sounds: [UUID: WaveformSound] = [:]
         for effect in clip.effects where effect.kind == .waveform {
-            let heard = heardClips(effect.listensTo ?? .mix, in: timeline)
+            let sources = waveformSources(effect.listensTo ?? .mix, in: timeline, outer: [])
             var prints = KeyframingPrint()
-            let sources = heard.map { heard in
-                prints.add(heard.url.path)
-                for time in [heard.clip.startOffset, heard.clip.trimStart, heard.clip.trimEnd] { prints.add(time) }
-                prints.add(heard.clip.time.speed)
-                prints.add(heard.clip.volume)
-                if heard.layer.kind.isAudio { prints.add(heard.layer.volume) }
-                return WaveformSound.Source(
-                    url: heard.url, clip: heard.clip, asset: heard.asset, layerVolume: heard.layer.kind.isAudio ? heard.layer.volume : nil
-                )
+            for source in sources {
+                prints.add(source.url.path)
+                for placed in source.chain {
+                    let heard = placed.clip
+                    prints.add(heard.id)
+                    for time in [heard.startOffset, heard.trimStart, heard.trimEnd] { prints.add(time) }
+                    prints.add(heard.time.speed)
+                    prints.add(heard.volume)
+                    if let layer = placed.layerVolume { prints.add(layer) }
+                    for equalizer in placed.clipEqualizers + placed.layerEqualizers {
+                        for control in equalizer.controls where control.enabled {
+                            prints.add(control.kind.rawValue)
+                            prints.add(control.choice)
+                            prints.add(control.number) { $0.values }
+                        }
+                    }
+                }
             }
             sounds[effect.id] = WaveformSound(sources: sources, fingerprint: prints.value)
         }
         return sounds
+    }
+
+    /// The files `listening` hears in `timeline`, each through `outer`
+    /// and the clips on the way to it: a nested timeline's clips heard as
+    /// its whole mix, up to eight timelines deep.
+    private func waveformSources(_ listening: AudioKeysSource, in timeline: Timeline, outer: [WaveformSound.Placed]) -> [WaveformSound.Source] {
+        guard outer.count < 8 else { return [] }
+        func equalizers(_ effects: [Effect]) -> [Effect] { effects.filter { $0.kind == .equalizer && $0.enabled } }
+        return timeline.layers.flatMap { layer -> [WaveformSound.Source] in
+            if case .layer(let id) = listening, layer.id != id { return [] }
+            return layer.clips.flatMap { clip -> [WaveformSound.Source] in
+                if case .clip(let id) = listening, clip.id != id { return [] }
+                guard playsAudio(clip) else { return [] }
+                let placed = WaveformSound.Placed(
+                    clip: clip, layerVolume: layer.kind.isAudio ? layer.volume : nil,
+                    clipEqualizers: equalizers(clip.audioEffects), layerEqualizers: equalizers(layer.audioEffects)
+                )
+                switch clip.source {
+                case .media(let assetID):
+                    guard let asset = mediaClip(id: assetID), let url = asset.url else { return [] }
+                    return [WaveformSound.Source(url: url, asset: asset, chain: outer + [placed])]
+                case .timeline(let id):
+                    guard let nested = self.timeline(id: id) else { return [] }
+                    return waveformSources(.mix, in: nested, outer: outer + [placed])
+                case .adjustment, .graphic:
+                    return []
+                }
+            }
+        }
     }
 }
 
@@ -422,16 +581,30 @@ extension Effect {
         guard kind == .waveform else { return true }
         let shape = choice(.waveShape, as: WaveformShape.self) ?? .line
         let mode = choice(.waveMode, as: WaveformMode.self) ?? .wave
-        let draw = choice(.waveDraw, as: WaveformDraw.self) ?? .lines
+        // Level is drawn as meters, Spectrogram as a heat map, whatever
+        // Draw says.
+        let draw: WaveformDraw? = switch mode {
+        case .wave, .spectrum: choice(.waveDraw, as: WaveformDraw.self) ?? .lines
+        case .level: .bars
+        case .spectrogram: nil
+        }
         switch control {
         case .waveStart, .waveEnd: return shape == .line
         case .waveCenter, .waveRadius, .waveAngle, .waveSweep: return shape == .radial
-        case .waveWindow, .waveAlign: return mode == .wave
-        case .waveFrequencies, .waveRelease: return mode == .spectrum
-        case .waveSmooth, .waveFillsToBaseline: return draw == .lines
-        case .dotSize: return draw == .dots
+        case .waveWindow: return mode == .wave || mode == .spectrogram
+        case .waveAlign, .waveTimeSmoothing: return mode == .wave
+        case .waveFrequencies, .waveScale: return mode.hasFrequencies
+        case .waveFloor: return mode.isMeasured
+        case .waveRelease, .waveAttack, .wavePeakHold: return mode == .spectrum || mode == .level
+        case .waveSamples: return mode != .level
+        case .waveSpacing: return mode == .wave || mode == .spectrum
+        case .waveDraw: return mode == .wave || mode == .spectrum
+        case .waveColoring: return mode != .spectrogram
+        case .waveSmooth: return draw == .lines || draw == .area
+        case .waveFillsToBaseline: return draw == .lines
+        case .dotSize: return draw == .dots || draw == .particles
         case .barWidth, .barEnds: return draw == .bars
-        case .rightColor: return [.split, .two].contains(choice(.waveStereo, as: WaveformStereo.self) ?? .mixed)
+        case .rightColor: return mode != .spectrogram && [.split, .two].contains(choice(.waveStereo, as: WaveformStereo.self) ?? .mixed)
         default: return true
         }
     }

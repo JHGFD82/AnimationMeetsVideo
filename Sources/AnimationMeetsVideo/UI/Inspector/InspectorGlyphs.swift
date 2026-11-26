@@ -60,6 +60,8 @@ enum InspectorGlyphs {
             [
                 PanelSegment(value: WaveformMode.wave.rawValue, glyph: .symbol("waveform.path"), name: "Wave"),
                 PanelSegment(value: WaveformMode.spectrum.rawValue, glyph: .symbol("chart.bar.xaxis"), name: "Spectrum"),
+                PanelSegment(value: WaveformMode.level.rawValue, glyph: .symbol("gauge.with.needle"), name: "Level"),
+                PanelSegment(value: WaveformMode.spectrogram.rawValue, glyph: .symbol("square.grid.4x3.fill"), name: "Spectrogram"),
             ]
         case .waveShape:
             [
@@ -69,8 +71,11 @@ enum InspectorGlyphs {
         case .waveDraw:
             [
                 PanelSegment(value: WaveformDraw.lines.rawValue, glyph: .symbol("point.topleft.down.to.point.bottomright.curvepath"), name: "Lines"),
+                PanelSegment(value: WaveformDraw.area.rawValue, glyph: .symbol("mountain.2.fill"), name: "Area"),
                 PanelSegment(value: WaveformDraw.dots.rawValue, glyph: .symbol("circle.dotted"), name: "Dots"),
                 PanelSegment(value: WaveformDraw.bars.rawValue, glyph: .symbol("chart.bar.fill"), name: "Bars"),
+                PanelSegment(value: WaveformDraw.rays.rawValue, glyph: .symbol("sun.max"), name: "Rays"),
+                PanelSegment(value: WaveformDraw.particles.rawValue, glyph: .symbol("sparkles"), name: "Particles"),
             ]
         default: nil
         }

@@ -16,11 +16,17 @@ Everywhere a fill or stroke is a color today, the color is replaced by
 a **paint**: a solid color, as now, or a gradient.
 
 - **Shapes and free paths** (built): Fill and Stroke in Fill & Stroke
-  (`PaintInspectorGroup`), each with a paint menu beside its checkbox
-  (`PaintKindMenu`: Color, or a Linear, Radial or Angular Gradient) and
-  the gradient's stops under it (`GradientEditor`). The effects panel's
-  row says what it is ("Linear gradient, 3 stops"), with no graph,
-  since its numbers are points and stops.
+  (`PaintInspectorGroup`), each followed by a line of its own, **Fill
+  Type** or **Stroke Type** (`PaintType`): Color, Linear, Radial or
+  Angular, as words in a row of buttons. A gradient takes the color's
+  place, and its stops go under that line (`GradientEditor`). The
+  effects panel has the same Type row, a pop-up, under each Fill and
+  Stroke of a shape, text, Waveform or Stroke effect
+  (`Effect.offersGradients`), and the color's row then says what it is
+  ("Linear gradient, 3 stops"), with no graph, since its numbers are
+  points and stops; the stops are set in the inspector. (The choice was
+  first an icon menu beside the checkbox, which read as a swatch and
+  went unfound.)
 - **Text** (the block built, runs not yet): the block's Fill and Stroke,
   in the same group. The letters painted in the block's own colors take
   its gradient; a styled run's own color stays one color, and so do
@@ -159,8 +165,8 @@ accessibility element with each stop a child, adjustable for its
 location, with actions to add a stop after it, remove it, and pick the
 next or previous. Tab moves between stops, ← → move the picked one a
 percent (ten with Shift), and Delete takes it out (Return opening its
-color is not built yet). The paint menu says whether the color is one
-color or a gradient and of which kind, and the viewer's gradient
+color is not built yet). Each Type button is named (Color, Linear,
+Radial, Angular) and the row is named for its color ("Fill Type"), and the viewer's gradient
 handles have the actions the other handles have (`keyTargets`).
 
 ## Model and saving
@@ -201,13 +207,13 @@ with a paint, or a gradient's without) load as a new control's.
 - `GradientHandlesTests`: a linear gradient's ends and stops on its
   line, an end dragged by its share of the bounds, a stop dragged along
   the line, and a radial one's focal point kept inside its edge.
-- `UISnapshots.shapeInspectorGradients`: the inspector's paint menus and
+- `UISnapshots.shapeInspectorGradients`: the inspector's Fill and Stroke Type rows and
   gradient editors.
 
 ## Building it
 
 1. **Shapes' Fill and Stroke** (done): the model, drawing and saving
-   above, the paint menu and the gradient editor in Fill & Stroke, the
+   above, the Type rows and the gradient editor in Fill & Stroke, the
    effects panel's summary, and the keys and VoiceOver of the stop bar.
 2. **Text** (the block done): the block's Fill and Stroke over the
    whole block. Runs' own gradients and Each Letter are not built yet.

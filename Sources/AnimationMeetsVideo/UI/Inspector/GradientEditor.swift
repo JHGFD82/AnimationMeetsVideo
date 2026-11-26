@@ -393,35 +393,3 @@ struct GradientEditor: View {
         return text
     }
 }
-
-/// How a Fill or Stroke paints, as a menu beside its checkbox: one color,
-/// or a linear, radial or angular gradient.
-struct PaintKindMenu: View {
-    let control: EffectControl
-    let onEdit: ((inout EffectControl) -> Void) -> Void
-
-    var body: some View {
-        let selection = control.paint?.kind.rawValue ?? "solid"
-        Menu {
-            Picker("\(control.kind.name) paint", selection: Binding(
-                get: { selection },
-                set: { picked in onEdit { $0.setPaint(GradientKind(rawValue: picked)) } }
-            )) {
-                Label("Color", systemImage: "square.fill").tag("solid")
-                ForEach(GradientKind.allCases) { kind in
-                    Label("\(kind.name) Gradient", systemImage: kind.systemImage).tag(kind.rawValue)
-                }
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
-        } label: {
-            Image(systemName: control.paint?.kind.systemImage ?? "square.fill")
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Paint the \(control.kind.name.lowercased()) with one color or a gradient")
-        .accessibilityLabel("\(control.kind.name) paint")
-        .accessibilityValue(control.paint.map { "\($0.kind.name) gradient" } ?? "Color")
-    }
-}
