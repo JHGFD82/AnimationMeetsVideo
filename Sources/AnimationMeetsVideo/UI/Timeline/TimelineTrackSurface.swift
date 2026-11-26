@@ -184,6 +184,16 @@ extension TimelineView {
         .background(lassoMonitor(viewport: viewport))
         .overlay { lassoOverlay }
         .onChange(of: geometry.size.width - labelColumnWidth, initial: true) { _, width in viewportModel.trackAreaWidth = width }
+        // The names column widens while a volume row shows. Scrolled by as
+        // much, the tracks stay where they were in the window, and so does
+        // the playhead under the pointer, rather than all of it being
+        // pushed right with the column's edge.
+        .onChange(of: labelColumnWidth) { before, after in
+            let old = self.viewport(width: geometry.size.width - before)
+            let kept = old.keepingPlace(asLeftEdgeMovesBy: after - before)
+            viewportModel.zoomedPixelsPerSecond = kept.pixelsPerSecond
+            viewportModel.scrollX = kept.pixelsPerSecond == nil ? 0 : kept.scrollX
+        }
         // Here rather than in `TimelineView`'s body, which would follow
         // the zoom to read it.
         .onChange(of: snapKey, initial: true) { _, key in
