@@ -45,6 +45,23 @@ private struct RenderSandbox {
         return (project, top, bottom)
     }
 
+    /// The dark movie with a Matte taking `input`; the light movie is in
+    /// the browser, and a timeline "Card" holds it, for inputs to name.
+    func mattedProject() throws -> (project: EditingProject, clipID: UUID, matteID: UUID, light: UUID, dark: UUID, card: UUID) {
+        var project = try singleClipProject()
+        let t = project.rootTimelineID
+        let clip = try #require(project.timeline(id: t)?.layers.first?.clips.first)
+        guard case .media(let dark) = clip.source else { throw CancellationError() }
+        let light = media(self.light)
+        project.clips.append(light)
+        let card = project.addTimeline(name: "Card", frameSize: CGSize(width: 128, height: 72), frameRate: 24, colorSpace: .rec709)
+        _ = project.addPieces([MediaPiece(assetID: light.id, start: .zero, end: CMTime(value: 72, timescale: 24))], intoTimeline: card, at: .zero)
+        var matte = Effect(kind: .matte)
+        matte.input = EffectInput(source: .asset(light.id))
+        project.editClip(clip.id, in: t) { $0.effects = [matte] }
+        return (project, clip.id, matte.id, light.id, dark, card)
+    }
+
     func singleClipProject() throws -> EditingProject {
         var project = EditingProject.empty
         project.timelines[0].frameSize = CGSize(width: 128, height: 72)
@@ -119,6 +136,43 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
 
         project.setOpacity(60, ofClip: top.clipID, in: t)
         #expect(try await key(project) != original)
+    }
+
+    /// A render shows the picture an effect takes as well as the clip's,
+    /// so a stretch's key follows the input: which file, which of its
+    /// times, and what a nested timeline taken whole has in it. Without
+    /// that, a changed input played, and exported as ProRes 422, the old
+    /// render.
+    @Test func theKeyFollowsWhatAnEffectsInputShows() async throws {
+        let sandbox = try await RenderSandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, matteID, _, dark, card) = try sandbox.mattedProject()
+        let t = project.rootTimelineID
+        func key() async throws -> String? {
+            try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t).segments.first(where: \.needsRender)?.key
+        }
+        func input(_ change: (inout EffectInput) -> Void) {
+            project.editEffect(matteID, ofClip: clipID, in: t) { effect in
+                guard var input = effect.input else { return }
+                change(&input)
+                effect.input = input
+            }
+        }
+        let light = try #require(try await key())
+
+        input { $0.offset = CMTime(value: 1, timescale: 1) }
+        let later = try #require(try await key())
+        #expect(later != light)
+
+        input { $0.offset = .zero; $0.source = .asset(dark) }
+        let other = try await key()
+        #expect(other != light && other != later)
+
+        input { $0.source = .timeline(card) }
+        let nested = try #require(try await key())
+        let cardClip = try #require(project.timeline(id: card)?.layers.first?.clips.first)
+        project.setOpacity(40, ofClip: cardClip.id, in: card)
+        #expect(try await key() != nested)
     }
 
     /// Frames between keyframes that hold one value are keyed from the

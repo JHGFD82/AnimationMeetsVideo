@@ -73,6 +73,22 @@ struct TrackCopy: Equatable, Sendable {
     /// How much later in time its footage plays than the clip's own, so a
     /// moment of it is how the clip was that long before.
     var delay = CMTime.zero
+    /// For an effect's input, the file and which of its times play when,
+    /// which the render key reads (a copy of the clip's own footage is
+    /// keyed by the clip).
+    var source: InputSource?
+}
+
+/// The footage an effect's input shows: a file, and the stretches of it
+/// played at root times.
+struct InputSource: Equatable, Sendable {
+    struct Piece: Equatable, Sendable {
+        var file: CMTimeRange
+        var at: CMTime
+    }
+
+    var url: URL
+    var pieces: [Piece]
 }
 
 /// A picture read from a composition track, or a still, which has none.

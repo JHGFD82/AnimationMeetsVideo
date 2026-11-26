@@ -249,6 +249,30 @@ extension CompositionExporter {
             case .media, .graphic:
                 break
             }
+            // The pictures its effects take, which the steps above name
+            // only by effect: the footage of a file and the times of it
+            // this stretch plays, or a nested timeline described as any
+            // is. Without them a changed input reused the old render.
+            for (effectID, input) in clip.inputs.sorted(by: { $0.key.uuidString < $1.key.uuidString }) {
+                switch input {
+                case .track(let track, let base):
+                    text += "i \(effectID.uuidString) \(matrix(base))"
+                    if let source = track.source {
+                        let stamp = FileStamp(url: source.url)
+                        text += " \(source.url.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0))"
+                        for piece in source.pieces {
+                            let played = CMTimeRange(start: piece.at, duration: piece.file.duration)
+                            guard played.intersection(range).duration > .zero else { continue }
+                            text += " \(number(piece.file.start.seconds))@\(number(piece.at.seconds))+\(number(piece.file.duration.seconds))"
+                        }
+                    }
+                    text += "\n"
+                case .group(let group):
+                    text += "i \(effectID.uuidString) G \(number(group.frameSize.width))x\(number(group.frameSize.height)) \(matrix(group.toOuter))\n(\n"
+                    group.children.forEach(describe)
+                    text += ")\n"
+                }
+            }
         }
         /// One frame's resolved stack and transition, as the key reads them.
         func frameText(_ resolved: ResolvedClip, of clip: DrawClip) -> String {

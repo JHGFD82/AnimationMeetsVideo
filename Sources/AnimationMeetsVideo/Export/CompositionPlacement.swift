@@ -238,7 +238,8 @@ final class BuildNode {
             switch input {
             case .track(let placement, let base):
                 guard let range = placement.drawRange else { return nil }
-                return InputDraw.track(TrackCopy(trackID: placement.trackID, range: range, strength: 1), base: base)
+                let source = InputSource(url: placement.info.url, pieces: placement.pieces.map { .init(file: $0.file, at: $0.at) })
+                return InputDraw.track(TrackCopy(trackID: placement.trackID, range: range, strength: 1, source: source), base: base)
             case .group(let frameSize, let toOuter, let children):
                 let drawn = children.compactMap { $0.frozen() }
                 guard !drawn.isEmpty else { return nil }
