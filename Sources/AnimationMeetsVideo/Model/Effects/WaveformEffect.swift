@@ -552,7 +552,7 @@ extension EditingProject {
             if case .layer(let id) = listening, layer.id != id { return [] }
             return layer.clips.flatMap { clip -> [WaveformSound.Source] in
                 if case .clip(let id) = listening, clip.id != id { return [] }
-                guard playsAudio(clip) else { return [] }
+                guard soundIsHeard(clip) else { return [] }
                 let placed = WaveformSound.Placed(
                     clip: clip, layerVolume: layer.kind.isAudio ? layer.volume : nil,
                     clipEqualizers: equalizers(clip.audioEffects), layerEqualizers: equalizers(layer.audioEffects)

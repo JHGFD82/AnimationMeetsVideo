@@ -26,6 +26,16 @@ extension EditingProject {
         }
     }
 
+    /// Whether the clip's sound is heard in the mix, as the composition
+    /// places it (`CompositionFlattening`): it makes sound, is turned on,
+    /// isn't muted, and isn't retimed to silence (Sound Mute, or played
+    /// backwards). What listens to the mix from inside it, the Waveform
+    /// and Audio Keys, hears only these.
+    func soundIsHeard(_ clip: TimelineClip) -> Bool {
+        playsAudio(clip) && clip.enabled && !clip.soundMuted
+            && !(clip.isRetimed && (clip.time.sound == .mute || clip.isReversed))
+    }
+
     /// True for a video clip still carrying its own sound, which the
     /// timeline can show expanded and detach.
     func hasLinkedAudio(_ clip: TimelineClip) -> Bool {
