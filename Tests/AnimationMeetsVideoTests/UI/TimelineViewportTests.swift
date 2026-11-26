@@ -32,6 +32,32 @@ import Testing
         #expect(abs(after.x(atSeconds: seconds) - anchorX) < 0.001)
     }
 
+    /// The tracks at width 450 once the 150-point names column takes 150
+    /// more.
+    private func narrowed(to zoom: (pixelsPerSecond: CGFloat?, scrollX: CGFloat)) -> TimelineViewport {
+        TimelineViewport(durationSeconds: 60, frameRate: 24, width: 450, requestedPixelsPerSecond: zoom.pixelsPerSecond, requestedScrollX: zoom.scrollX)
+    }
+
+    @Test func aWideningNamesColumnLeavesEveryMomentInPlace() {
+        // In the window, a moment is at the column's width plus its x.
+        let zoomed = viewport(pixelsPerSecond: 50, scrollX: 400)
+        let seconds = zoomed.seconds(atX: 230)
+        let after = narrowed(to: zoomed.keepingPlace(asLeftEdgeMovesBy: 150))
+        let moved = 300 + after.x(atSeconds: seconds) - (150 + 230)
+        #expect(abs(moved) < 0.001)
+    }
+
+    @Test func aFittedTimelineComesBackToTheFitWhenTheColumnNarrowsAgain() {
+        let fitted = viewport()
+        let seconds = fitted.seconds(atX: 300)
+        let widened = narrowed(to: fitted.keepingPlace(asLeftEdgeMovesBy: 150))
+        let moved = 300 + widened.x(atSeconds: seconds) - (150 + 300)
+        #expect(abs(moved) < 0.001)
+        let back = widened.keepingPlace(asLeftEdgeMovesBy: -150)
+        #expect(back.pixelsPerSecond == nil)
+        #expect(back.scrollX == 0)
+    }
+
     @Test func zoomingOutToTheFitReturnsNil() {
         let start = viewport(pixelsPerSecond: 50, scrollX: 400)
         #expect(start.zoomed(to: 0.1, keeping: 10, atX: 0).pixelsPerSecond == nil)

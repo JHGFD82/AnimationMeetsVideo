@@ -65,6 +65,19 @@ struct TimelineViewport: Equatable {
         return (scale <= fitPixelsPerSecond * 1.0001 ? nil : scale, scroll)
     }
 
+    /// The scale and scroll offset that leave every moment where it is in
+    /// the window when the tracks' left edge moves right by `shift` points
+    /// (the names column widening, or narrowing for a negative one), the
+    /// tracks losing that much width. The scale stays unless the new width
+    /// needs a closer one to fit, and a scale that is the new fit is nil,
+    /// so widening and narrowing again brings a fitted timeline back to
+    /// the fit.
+    func keepingPlace(asLeftEdgeMovesBy shift: CGFloat) -> (pixelsPerSecond: CGFloat?, scrollX: CGFloat) {
+        let fit = max(1, width - shift) / CGFloat(contentSeconds)
+        let scale = pixelsPerSecond.clamped(between: fit, and: max(fit, maxPixelsPerSecond))
+        return (scale <= fit * 1.0001 ? nil : scale, max(0, scrollX + shift))
+    }
+
     /// The scale and scroll offset that fit `start...end` into the width
     /// but for `margin` (a share of the width) either side, centered. A
     /// span too short for the closest zoom is centered at that zoom; one
