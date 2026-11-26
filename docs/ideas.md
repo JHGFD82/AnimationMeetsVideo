@@ -404,3 +404,107 @@ re-encoded to be editable or exported, but disposable ProRes copies of
 the clips used may be made to draw the viewer. The disk-space reason in
 [media-replacement.md](media-replacement.md) was about proxies of
 long-form footage, which this doesn't make.
+
+## Waveform effect
+
+An effect that draws a sound's waveform over the picture, moving with
+the sound as it plays: along a **straight line** or around a **circle**
+(radial), as many points as asked for, drawn as **connected lines** or
+**dots**, from a set of **preset styles** or set by hand.
+
+### Where it sits
+
+- **An effect in the Effects Library**, so it goes in any visual clip's
+  stack and draws over the picture handed down to it, as the shapes do
+  in a shape clip ([effects.md](effects.md#shapes)). Effects below it
+  shape the picture under it; effects after it (a Glow, a Blur, a
+  Transform) act on the waveform too.
+- **And a generator**: the browser's Generators tab gets a Waveform
+  item that makes a clip of its own with the effect and nothing under
+  it, for a waveform on its own layer over the footage.
+- **In Swift, not a package.** It needs the sound and vector drawing,
+  neither of which a package's kernel has, so it joins
+  [What stays in Swift](effect-packages.md#what-stays-in-swift) beside
+  the shapes and Stroke, drawing with Core Graphics as they do.
+
+### What it listens to
+
+**Listen To**, as Audio Keys has it: the whole mix (the default), a
+Sound or Music layer, or one clip with sound, each as heard, with its
+volume and EQ ([Audio Keys](keyframing-effects.md#audio-keys-in-detail)).
+What it draws at each frame is the sound around that frame's time on
+the timeline, so it lines up with what is heard wherever the clip
+drawing it is.
+
+### Settings
+
+- **Shape**:
+  - **Line**: from a start point to an end point, both points dragged
+    in the viewer ([viewer-handles.md](viewer-handles.md)), the
+    waveform rising off it on one side, the other or both (mirrored).
+  - **Radial**: around a center with a radius, both dragged in the
+    viewer, starting at an angle and going round a sweep (360° for a
+    full ring, less for an arc), the waveform outward, inward or both.
+- **Samples**: how many points across the line or round the circle (64
+  to 2048, 256 by default).
+- **Window**: how much sound the points span, in milliseconds: a few
+  for an oscilloscope's single wave, a second or more for a sound's
+  shape scrolling past. **Align** puts the frame's time at the start,
+  the middle or the end of the window.
+- **Draw** as:
+  - **Lines**: the points connected, with a width, straight or smoothed
+    between points, and a fill to the baseline if wanted.
+  - **Dots**: a dot at each point, with a size.
+- **Height**: how far a full-scale sample reaches from the baseline,
+  and **Gain** before it, linear or in decibels so quiet sounds still
+  show.
+- **Smoothing** over time: an attack and release per point, so a
+  dot doesn't jitter from frame to frame.
+- **Fill and stroke** colors with opacity, picked with a color well as
+  for shapes.
+
+Every numeric setting can be keyframed and driven by a Keyframing
+method, so a Beat Keys pulse can swell its height on the beat.
+
+### Presets
+
+Built-in **preset styles** to start from, shown in the Effects Library
+with their previews and saved and shared as any effect preset is
+([Copying and presets](effects.md#copying-and-presets)):
+
+- **Oscilloscope**: a thin bright line, a short window, mirrored off.
+- **Mirrored**: lines filled to the baseline, mirrored, a long window.
+- **Ring**: radial, a full sweep, outward lines with a fill.
+- **Dot Ring**: radial dots, inward and outward.
+- **Scroll**: a long window trailing the playhead, filled, as a clip's
+  waveform on the timeline looks.
+
+### Drawing and caching
+
+- **Sound data**: the app keeps a waveform per file at 200 peaks a
+  second (`Waveform`), enough for a long window but not for an
+  oscilloscope's single wave, so the effect reads the file's samples
+  themselves near each frame's time, as the mix is read for scrubbing,
+  and keeps a reduced copy (mono or stereo, a few kilohertz) per file
+  for the session, as `WaveformCache` and `SpectrogramStore` do.
+- **Every frame is new** while the sound moves: it is marked as
+  changing every frame, and its render key holds a fingerprint of what
+  it listens to, as Audio Keys' does, so renders follow a change to the
+  sound, its volume or its EQ.
+- Under motion blur, it is drawn at each moment between frames from the
+  sound at that moment.
+
+### Worth deciding
+
+- **A spectrum mode**: bars for frequency bands (from the spectrogram
+  Audio Keys already makes, 48 bands from 20 Hz to 20 kHz) rather than
+  the sound's wave, the other look people mean by an audio visualizer.
+- **Bars** as a third way to draw, beside lines and dots, with a width,
+  a gap and round ends.
+- **Stereo**: mixed to one wave, left and right as two (one above the
+  line and one below, or two lines), or an X–Y figure of left against
+  right.
+- **Color by amplitude or position**: a gradient along the line or
+  round the ring, or from quiet to loud.
+- **A frequency range**, as Audio Keys has, so the waveform draws only
+  the kick or only the vocal.
