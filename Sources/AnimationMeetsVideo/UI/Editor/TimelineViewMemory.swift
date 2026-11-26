@@ -125,8 +125,9 @@ final class TimelineViewMemory {
         var state = snapshot()
         state.timelines = state.timelines.filter { project.timeline(id: $0.key) != nil }
         // Rows of clips and layers that are gone are let go.
-        for timeline in project.timelines where state.timelines[timeline.id] != nil {
-            state.timelines[timeline.id]?.parameterRows = state.timelines[timeline.id]?.parameterRows.kept(in: timeline) ?? TimelineParameterRows()
+        for timeline in project.timelines {
+            guard let rows = state.timelines[timeline.id]?.parameterRows else { continue }
+            state.timelines[timeline.id]?.parameterRows = rows.kept(in: timeline)
         }
         if let open = state.openTimelineID, project.timeline(id: open) == nil { state.openTimelineID = nil }
         state.browser = state.browser.kept(in: project)
