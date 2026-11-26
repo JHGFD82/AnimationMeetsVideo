@@ -173,50 +173,6 @@ timeline's ticks into source x, which is why its ticks look warped.
 
 ---
 
-## 5. Timeline doesn't jump when parameter rows appear or disappear
-
-**Cause.** `labelColumnWidth` (`UI/Timeline/TimelineAreas.swift:149`) jumps
-150 → 300 when a selected clip's parameter rows show (they depend on the
-selection), and back again. That moves the track area's left edge by 150 pt.
-In fitted zoom it also changes `fitPixelsPerSecond`, so the scale shifts too.
-
-**Plan**
-
-1. Keep the scale: in `TimelineTrackSurface`'s
-   `.onChange(of: geometry.size.width - labelColumnWidth)`
-   (`TimelineTrackSurface.swift:186`), if the change came from the label
-   column and the timeline is fitted, set `zoomedPixelsPerSecond` to the
-   current scale first. That stops the scale moving.
-2. Keep the time under each point: on a column change of Δ (new − old),
-   set `scrollX += Δ`. The time at the old left edge then stays at the same
-   screen x.
-3. A lead-in for the narrowing case. When the column shrinks and
-   `scrollX - Δ` would go below 0, the space before 0:00 stays empty:
-   - Add `var leadIn: CGFloat = 0` to `TimelineViewportModel`. Make
-     `TimelineViewport` accept `requestedScrollX` down to `-leadIn` (today it
-     clamps to `0...maxScroll`). `x(atSeconds:)` and `seconds(atX:)` already
-     handle a negative `scrollX`.
-   - Set `leadIn = max(leadIn, -(scrollX - Δ))` when the column narrows.
-   - Shrink it only when the timeline is scrolled: in the scroll, scrollbar, pan and zoom
-     setters (`TimelineZoom.swift` 72–120 and `TimelineScrollbar`), after
-     applying, `leadIn = max(0, -scrollX)`. Scrolling right past 0 sets it
-     to 0 and collapses the space. Fit (`reset()`), `show(_:)` and
-     zoom-to-fit clear it.
-   - Draw nothing before 0: check the ruler, sections lane, loop bar and
-     clip lanes start drawing at x(0) rather than assuming 0 is the left
-     edge. Clamp hit-tests below 0 to 0 (scrub, lasso start, drops).
-   - The scrollbar thumb: treat the range as `-leadIn...maxScrollX`.
-4. Alternative, if this is too much: keep the column at 300 whenever the
-   timeline has any parameter rows at all, not just shown ones. That's a
-   one-line change in `labelColumnWidth` and the timeline never moves. But
-   it doesn't give the empty space before 0:00 that was asked for.
-5. Tests: `TimelineViewport` accepts a negative scroll within the lead-in
-   and clamps past it. A unit test on the model: narrowing from scrollX 0
-   gives leadIn 150 and scrollX −150, and scrolling +200 then leaves
-   leadIn 0.
-
----
-
 ## 6. Waveform: graph-type toggle and the missing features
 
 **What's there.** Mode (Wave / Spectrum), Draw (Lines / Dots / Bars), Shape
@@ -269,5 +225,5 @@ the ones that don't apply. None of it has been tried in the running app.
 
 ## Suggested order
 
-Do 5, then 1, 4, 2 (which needs the Mac to diagnose), and 6 (whose list
+Do 1, then 4, 2 (which needs the Mac to diagnose), and 6 (whose list
 needs confirming).

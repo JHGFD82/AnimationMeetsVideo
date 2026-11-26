@@ -179,6 +179,19 @@ song does not.
   fitted view would rescale with it (enormously, for a crawling clip). A
   time edit instead pins the zoom the view had; **Fit to Window** fits it
   again.
+- **The names column widening or narrowing** (from 150 to 300 points
+  while a layer's volume or parameter rows show, and back) leaves every
+  moment where it was in the window: the tracks scroll by as much as the
+  column moves, and a fitted timeline keeps its scale as a zoom while the
+  column is wide, so narrowing brings back the fit
+  (`TimelineViewport.keepingPlace(asLeftEdgeMovesBy:)`). Widening with
+  the tracks at the start puts the first moments under the column.
+  Narrowing with the tracks scrolled less than the column narrows would
+  need a scroll before 0:00, so the difference is left as empty room
+  before the start (`leadIn`): nothing moves, and nothing is drawn there.
+  It shrinks as the tracks are scrolled right and is gone once they pass
+  the start; fitting, switching timelines and zooming out to the fit
+  clear it. The scrollbar counts it as part of the span while it lasts.
 - Zoom and scroll are view state: they reset when switching timelines and
   are not saved.
 

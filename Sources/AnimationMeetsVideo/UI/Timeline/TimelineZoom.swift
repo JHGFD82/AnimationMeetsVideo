@@ -71,7 +71,7 @@ extension TimelineView {
 
     func apply(_ zoom: (pixelsPerSecond: CGFloat?, scrollX: CGFloat)) {
         viewportModel.zoomedPixelsPerSecond = zoom.pixelsPerSecond
-        viewportModel.scrollX = zoom.pixelsPerSecond == nil ? 0 : zoom.scrollX
+        viewportModel.scroll(to: zoom.pixelsPerSecond == nil ? 0 : zoom.scrollX)
     }
 
     /// Scrolls the tracks sideways by `deltaX` points, as a trackpad or a
@@ -81,7 +81,7 @@ extension TimelineView {
         var band = viewportModel.scrollBand
         band.scroll(by: deltaX, phase: phase) { delta in
             let before = viewport(width: width).scrollX
-            viewportModel.scrollX = before + delta
+            viewportModel.scroll(to: before + delta)
             return viewport(width: width).scrollX - before
         }
         viewportModel.scrollBand = band
@@ -91,14 +91,14 @@ extension TimelineView {
     /// when playback runs off the right of the view.
     func page(to time: CMTime) {
         let viewport = currentViewport
-        viewportModel.scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width * 0.05
+        viewportModel.scroll(to: CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width * 0.05)
     }
 
     /// Lets drags at the edges of the tracks scroll them (`TimelineAutoScroll`).
     func configureAutoScroll() {
         autoScroll.scrollBy = { distance in
             let before = currentViewport.scrollX
-            viewportModel.scrollX = before + distance
+            viewportModel.scroll(to: before + distance)
             return currentViewport.scrollX - before
         }
         // The tracks start where the names column ends.
@@ -117,7 +117,7 @@ extension TimelineView {
         let viewport = currentViewport
         let x = viewport.x(atSeconds: time.seconds)
         guard x < 0 || x > viewport.width else { return }
-        viewportModel.scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width / 2
+        viewportModel.scroll(to: CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width / 2)
     }
 
     /// Retiming a clip can change the timeline's length enormously (a
@@ -169,7 +169,7 @@ extension TimelineView {
 
     func fitToWindow() {
         viewportModel.zoomedPixelsPerSecond = nil
-        viewportModel.scrollX = 0
+        viewportModel.scroll(to: 0)
     }
 
     var zoomFractionBinding: Binding<Double> {

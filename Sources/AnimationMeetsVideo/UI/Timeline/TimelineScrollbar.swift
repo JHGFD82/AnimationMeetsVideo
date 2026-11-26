@@ -14,9 +14,11 @@ struct TimelineScrollbar: View {
 
     var body: some View {
         let trackWidth = viewport.width
-        let thumbWidth = max(28, trackWidth * min(1, viewport.width / max(viewport.contentWidth, 1)))
+        // The lead-in before 0:00 counts as content while there is one.
+        let span = viewport.maxScrollX - viewport.minScrollX
+        let thumbWidth = max(28, trackWidth * min(1, viewport.width / max(viewport.contentWidth + viewport.leadIn, 1)))
         let travel = max(1, trackWidth - thumbWidth)
-        let thumbX = viewport.maxScrollX > 0 ? viewport.scrollX / viewport.maxScrollX * travel : 0
+        let thumbX = span > 0 ? (viewport.scrollX - viewport.minScrollX) / span * travel : 0
 
         ZStack(alignment: .leading) {
             Color.clear
@@ -36,13 +38,13 @@ struct TimelineScrollbar: View {
                         .onChanged { value in
                             let start = dragStartScrollX ?? viewport.scrollX
                             if dragStartScrollX == nil { dragStartScrollX = start }
-                            onScroll(start + value.translation.width * viewport.maxScrollX / travel)
+                            onScroll(start + value.translation.width * span / travel)
                         }
                         .onEnded { _ in dragStartScrollX = nil }
                 )
         }
         .frame(width: trackWidth, height: Self.height)
-        .opacity(viewport.maxScrollX > 0 ? 1 : 0)
-        .allowsHitTesting(viewport.maxScrollX > 0)
+        .opacity(span > 0 ? 1 : 0)
+        .allowsHitTesting(span > 0)
     }
 }

@@ -9,7 +9,13 @@ import SwiftUI
 @MainActor
 @Observable
 final class TimelineViewportModel {
+    /// Set through `scroll(to:)`, which lets the lead-in go as the
+    /// tracks scroll past it.
     var scrollX: CGFloat = 0
+    /// Empty room before 0:00 (`TimelineViewport.leadIn`), left by the
+    /// names column narrowing; it shrinks as the tracks are scrolled
+    /// right and is gone once they pass the start.
+    var leadIn: CGFloat = 0
     /// The chosen zoom, or nil while the whole timeline is fitted to the
     /// window. Kept in points per second, not relative to the fit, so
     /// moving a clip past the end doesn't rescale everything.
@@ -34,8 +40,16 @@ final class TimelineViewportModel {
             frameRate: frameRate,
             width: width,
             requestedPixelsPerSecond: zoomedPixelsPerSecond,
-            requestedScrollX: scrollX
+            requestedScrollX: scrollX,
+            leadIn: leadIn
         )
+    }
+
+    /// Scrolls the tracks to `x`, the lead-in shrinking to what is still
+    /// shown of it: none once `x` is past the start.
+    func scroll(to x: CGFloat) {
+        scrollX = x
+        leadIn = max(0, min(leadIn, -x))
     }
 
     /// Counts the timelines shown, so scrolling the areas back for one
@@ -50,6 +64,7 @@ final class TimelineViewportModel {
     func reset() {
         zoomedPixelsPerSecond = nil
         scrollX = 0
+        leadIn = 0
         snapIndicator = nil
     }
 
