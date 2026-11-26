@@ -105,3 +105,107 @@ eases the whole strobe in and out.
   Light and Color controls), it warns above three flashes a second, as
   Stylize's Strobe does, and its defaults stay below
   ([Safety](psychedelic-effects.md#safety-flashing)).
+
+## Parameters in the timeline
+
+Effect parameters edited in rows under their layer in the timeline, as
+After Effects shows a layer's properties, but holding only the
+parameters picked for it rather than all of them. The timeline had rows
+like these for the four layer-transform properties until effects
+replaced the transform
+([layer-transforms.md](layer-transforms.md#in-the-timeline)); today
+only the volume rows are left (Shift-L, [audio.md](audio.md)). This
+brings rows back for any numeric control of a clip's effects and sound
+effects, the volume rows among them.
+
+### Which rows a layer shows
+
+A layer's rows are the parameters **of the clips selected on it**. With
+one clip selected, they are its parameters that have been put in the
+timeline; with several, those of each, and a parameter's lane draws the
+keyframes of each clip under its block. Selecting other clips changes
+the rows; what each clip has put in the timeline stays with the clip.
+
+A parameter gets into the timeline in three ways:
+
+- **Show All in Timeline**, a new item in an effect's ⋯ menu in the
+  effects panel, with a key (**U** is free, and is After Effects' key
+  for showing animated properties), puts every numeric control of that
+  effect in the timeline.
+  Pressed again over an effect whose controls are all shown, it
+  takes them out.
+- **Show in Timeline** in a single control's ⋯ menu puts in just that
+  one.
+- **Adding a keyframe** to a control puts it in, from anywhere: the
+  panel's stopwatch or lane, the viewer's handles, a graph editor, a
+  Keyframing method writing its first keyframes. This is the default
+  behavior, which can be turned off (see [Settings](#settings)).
+
+**Remove from Timeline**, in a row's menu and in the control's ⋯ menu
+(which shows it in place of Show in Timeline), takes a row out. Taking
+a row out leaves its keyframes as they are.
+
+### The rows
+
+- **Disclosure triangles**: the layer header's arrow shows or hides all
+  its rows (today it does so for the volume row). Under it, each effect
+  is a row of its own with an arrow, its controls indented under it, as
+  in the effects panel, so a long stack folds to one row an effect.
+  Option-click opens or closes every arrow beneath, as in the Finder.
+- **Each control row** has, as the volume row does and the effects
+  panel's rows do: the stopwatch, the name, the value at the playhead
+  (drag it, or click to type, arithmetic and all), and the previous,
+  add and next keyframe buttons. Its ⋯ menu adds Keyframe Designer…,
+  Show in Graph Editor, Reveal in Effects Panel and Remove from
+  Timeline.
+- **The label column** widens to fit the rows while any are shown, as
+  it did for the transform rows.
+- **The lane** to its right, under the clips, shows the keyframes as
+  diamonds with the same interactions as the panel's lanes: click to go
+  to it, drag to retime (Option to copy), right-click for eases and
+  Delete. Picks run across the timeline's lanes and the panel's as one
+  (`LaneKeyframePicks`), so a lasso can take keyframes on several rows
+  and clips at once.
+- **Driven controls**: a control a Keyframing method drives shows its
+  method's badge and its keyframes in the method's color, and refuses
+  hand edits as everywhere else
+  ([Editing by hand](keyframing-effects.md#editing-by-hand)).
+- **Keyframes are in the clip's source time**, so a lane follows the
+  clip's moves, trims and speed, as the panel's does.
+
+### Settings
+
+- **Add parameters to the timeline when keyframed**: on or off, in
+  Project Settings for this project, and in Settings ▸ Timeline as the
+  app-wide default that new projects start with. Turning it off leaves
+  the rows already shown.
+- **Hide parameter rows**: a View option (and in Settings ▸ Timeline)
+  that hides every parameter row without forgetting them, for a compact
+  timeline; turning it back on shows the same rows.
+- Which rows each clip has, and which arrows are open, is kept in the
+  project's `view-state.json`
+  ([project-package.md](project-package.md#view-state)), not in the
+  project file: it is how the timeline is looked at, not what plays, so
+  showing or hiding a row is not an undo step and doesn't mark the
+  project edited.
+
+### Worth deciding
+
+- **With no clip selected**, should a layer show nothing, the rows of
+  the clip under the playhead, or every clip's rows?
+- **Several clips with different effects**: rows matched by effect and
+  control (every selected clip's Glow Intensity on one row), or a group
+  of rows for each clip.
+- **Show Animated** and **Show Changed**: keys that show only the
+  controls with keyframes, or only those changed from their defaults
+  (After Effects' U and UU), on top of what was picked.
+- **A graph in the row**: a button that opens the row's lane into a
+  value graph in place, as After Effects' graph editor does in its
+  timeline.
+- **Copying keyframes** between rows and clips from the timeline.
+- **Non-numeric keyframes** (text runs, font axes, paths) as rows too,
+  since the panel already has lanes for them.
+- **Accessibility**
+  ([accessibility.md](accessibility.md)): rows and diamonds need
+  the same VoiceOver elements and actions as the panel's lanes, and
+  opening, closing and picking rows needs keys as well as the arrows.
