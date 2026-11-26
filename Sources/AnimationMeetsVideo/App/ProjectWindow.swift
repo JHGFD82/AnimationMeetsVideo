@@ -47,7 +47,7 @@ struct ProjectWindow: View {
             .environment(\.scriptWindow, session.scriptWindow)
             .projectDialogs(session: session, window: nil)
             .newEffectPackagePrompt(isHost: NewEffectPackagePrompt.shared.hostWindow == windowID)
-            .onExternalProjectChange { session.checkForExternalProjectChange() }
+            .onExternalProjectChange { await session.checkForExternalProjectChange() }
             .frame(minWidth: 1_100, minHeight: 700)
             .sheet(isPresented: Binding(get: { opened && session.isEmpty }, set: { _ in })) {
                 ProjectStartView(
