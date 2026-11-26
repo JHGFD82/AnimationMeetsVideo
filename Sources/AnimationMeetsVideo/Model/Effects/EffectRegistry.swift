@@ -450,6 +450,11 @@ extension OnOff: ControlChoice {}
 extension EqualizerSlope: ControlChoice {}
 extension BeatSelection: ControlChoice {}
 extension BeatShape: ControlChoice {}
+extension StrobeTiming: ControlChoice {}
+extension BeatDivision: ControlChoice {}
+extension StrobeTimes: ControlChoice {}
+extension StrobeCurve: ControlChoice {}
+extension StrobeOverlap: ControlChoice {}
 extension WiggleType: ControlChoice {}
 extension WiggleDimensions: ControlChoice {}
 extension OscillatorWave: ControlChoice {}

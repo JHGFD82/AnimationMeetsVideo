@@ -37,6 +37,8 @@ extension EffectKind {
     /// keyframes onto a control below it, and draws nothing.
     static let audioKeys = EffectKind(builtIn: "audioKeys")
     static let beatKeys = EffectKind(builtIn: "beatKeys")
+    /// A repeating pulse with an envelope: a strobe, a flash, a gate.
+    static let strobeKeys = EffectKind(builtIn: "strobeKeys")
     static let wiggler = EffectKind(builtIn: "wiggler")
     static let oscillator = EffectKind(builtIn: "oscillator")
     static let smoother = EffectKind(builtIn: "smoother")
@@ -239,6 +241,32 @@ extension ControlKind {
     static let beatShape = ControlKind(builtIn: "beatShape")
     static let peak = ControlKind(builtIn: "peak")
     static let decay = ControlKind(builtIn: "decay")
+    // Strobe Keys; Beats, Accent, Seed, Fade and Tolerance are the other
+    // methods'.
+    static let strobeTiming = ControlKind(builtIn: "strobeTiming")
+    static let strobeEvery = ControlKind(builtIn: "strobeEvery")
+    static let beatDivision = ControlKind(builtIn: "beatDivision")
+    static let strobeFrames = ControlKind(builtIn: "strobeFrames")
+    static let strobeRate = ControlKind(builtIn: "strobeRate")
+    static let beatShift = ControlKind(builtIn: "beatShift")
+    static let frameShift = ControlKind(builtIn: "frameShift")
+    static let strobeTimes = ControlKind(builtIn: "strobeTimes")
+    static let attackShare = ControlKind(builtIn: "attackShare")
+    static let decayShare = ControlKind(builtIn: "decayShare")
+    static let sustainForShare = ControlKind(builtIn: "sustainForShare")
+    static let releaseShare = ControlKind(builtIn: "releaseShare")
+    static let attackFrames = ControlKind(builtIn: "attackFrames")
+    static let decayFrames = ControlKind(builtIn: "decayFrames")
+    static let sustainForFrames = ControlKind(builtIn: "sustainForFrames")
+    static let releaseFrames = ControlKind(builtIn: "releaseFrames")
+    static let sustainLevel = ControlKind(builtIn: "sustainLevel")
+    static let attackCurve = ControlKind(builtIn: "attackCurve")
+    static let decayCurve = ControlKind(builtIn: "decayCurve")
+    static let releaseCurve = ControlKind(builtIn: "releaseCurve")
+    static let strobeOverlap = ControlKind(builtIn: "strobeOverlap")
+    static let strobeLevels = ControlKind(builtIn: "strobeLevels")
+    static let swing = ControlKind(builtIn: "swing")
+    static let skipChance = ControlKind(builtIn: "skipChance")
     // Wiggler
     static let wiggleFrequency = ControlKind(builtIn: "wiggleFrequency")
     static let magnitude = ControlKind(builtIn: "magnitude")
@@ -299,7 +327,7 @@ enum BuiltInEffects {
         "flowSmear", "slitScan", "feedback",
         "rectangle", "ellipse", "polygon", "star", "path", "text", "textAnimator", "stroke",
         "equalizer", "compressor", "limiter", "voiceIsolation",
-        "audioKeys", "beatKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot", "expression",
+        "audioKeys", "beatKeys", "strobeKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot", "expression",
     ]
 
     /// The effects written in Swift, in the library's order.
@@ -390,6 +418,23 @@ enum BuiltInEffects {
             sections: [
                 ControlSection("Beats", [.beatSelection, .everyBeats, .beatOffset, .accent]),
                 ControlSection("Keyframes", [.beatShape, .peak, .decay, .tolerance]),
+            ]
+        ),
+        EffectDefinition(
+            .strobeKeys, "Strobe Keys", .keyframing, "light.beacon.max",
+            sections: [
+                ControlSection("Timing", [
+                    .strobeTiming, .beatSelection, .strobeEvery, .beatDivision, .strobeFrames, .strobeRate,
+                    .beatShift, .frameShift, .accent,
+                ]),
+                ControlSection("Envelope", [
+                    .strobeTimes, .attackShare, .attackFrames, .attackCurve, .decayShare, .decayFrames, .decayCurve,
+                    .sustainLevel, .sustainForShare, .sustainForFrames, .releaseShare, .releaseFrames, .releaseCurve,
+                    .strobeOverlap,
+                ]),
+                ControlSection("Levels", [.strobeLevels]),
+                ControlSection("Variation", [.swing, .skipChance, .seed, .fade]),
+                ControlSection("Keyframes", [.tolerance]),
             ]
         ),
         EffectDefinition(
@@ -591,6 +636,34 @@ enum BuiltInEffects {
         ControlDefinition(.beatShape, "Shape", .beatKeys, choice: BeatShape.pulse),
         ControlDefinition(.peak, "Peak", .beatKeys, defaults: [10]),
         ControlDefinition(.decay, "Decay", .beatKeys, defaults: [250], unit: " ms", range: 0...10_000),
+        // Strobe Keys. Its defaults stay under three flashes a second (see
+        // docs/psychedelic-effects.md, "Safety: flashing").
+        ControlDefinition(.strobeTiming, "Timing", .strobeKeys, choice: StrobeTiming.perSecond),
+        ControlDefinition(.strobeEvery, "Every", .strobeKeys, defaults: [1], unit: " beats", range: 1...64, isWhole: true),
+        ControlDefinition(.beatDivision, "Division", .strobeKeys, choice: BeatDivision.whole),
+        ControlDefinition(.strobeFrames, "Every", .strobeKeys, defaults: [12], unit: " frames", range: 1...600, isWhole: true),
+        ControlDefinition(.strobeRate, "Rate", .strobeKeys, defaults: [2], unit: "/s", dragStep: 0.1, range: 0.01...60),
+        ControlDefinition(.beatShift, "Offset", .strobeKeys, defaults: [0], unit: " beats", dragStep: 0.25, range: -64...64),
+        ControlDefinition(.frameShift, "Offset", .strobeKeys, defaults: [0], unit: " frames", range: -600...600, isWhole: true),
+        ControlDefinition(.strobeTimes, "Times", .strobeKeys, choice: StrobeTimes.share),
+        ControlDefinition(.attackShare, "Attack", .strobeKeys, defaults: [0], unit: "%", range: 0...100),
+        ControlDefinition(.decayShare, "Decay", .strobeKeys, defaults: [0], unit: "%", range: 0...100),
+        ControlDefinition(.sustainForShare, "Sustain For", .strobeKeys, defaults: [25], unit: "%", range: 0...100),
+        ControlDefinition(.releaseShare, "Release", .strobeKeys, defaults: [25], unit: "%", range: 0...100),
+        ControlDefinition(.attackFrames, "Attack", .strobeKeys, defaults: [0], unit: " frames", range: 0...600, isWhole: true),
+        ControlDefinition(.decayFrames, "Decay", .strobeKeys, defaults: [0], unit: " frames", range: 0...600, isWhole: true),
+        ControlDefinition(
+            .sustainForFrames, "Sustain For", .strobeKeys, defaults: [2], unit: " frames", range: 0...600, isWhole: true
+        ),
+        ControlDefinition(.releaseFrames, "Release", .strobeKeys, defaults: [4], unit: " frames", range: 0...600, isWhole: true),
+        ControlDefinition(.sustainLevel, "Sustain", .strobeKeys, defaults: [100], unit: "%", range: 0...100),
+        ControlDefinition(.attackCurve, "Attack Curve", .strobeKeys, choice: StrobeCurve.linear),
+        ControlDefinition(.decayCurve, "Decay Curve", .strobeKeys, choice: StrobeCurve.exponential),
+        ControlDefinition(.releaseCurve, "Release Curve", .strobeKeys, choice: StrobeCurve.exponential),
+        ControlDefinition(.strobeOverlap, "Overlap", .strobeKeys, choice: StrobeOverlap.cut),
+        ControlDefinition(.strobeLevels, "Levels", .strobeKeys, defaults: [0, 10], componentNames: ["Min", "Max"]),
+        ControlDefinition(.swing, "Swing", .strobeKeys, defaults: [0], unit: "%", range: 0...90),
+        ControlDefinition(.skipChance, "Skip Chance", .strobeKeys, defaults: [0], unit: "%", range: 0...100),
         // Wiggler
         ControlDefinition(.wiggleFrequency, "Frequency", .wiggler, defaults: [2], unit: "/s", dragStep: 0.1, range: 0...60),
         ControlDefinition(.magnitude, "Magnitude", .wiggler, defaults: [10]),

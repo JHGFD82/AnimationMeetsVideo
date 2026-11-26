@@ -595,6 +595,8 @@ struct ProjectFile: Codable {
         var writtenPrint: String?
         /// Expression only: what its last run read; absent when nothing.
         var reads: [ReadEntry]?
+        /// Strobe Keys only: its pattern; absent when empty.
+        var pattern: String?
 
         init(_ setup: KeyframingSetup) {
             switch setup.target {
@@ -619,6 +621,7 @@ struct ProjectFile: Codable {
             readPrint = setup.readPrint.map { String($0, radix: 16) }
             writtenPrint = setup.writtenPrint.map { String($0, radix: 16) }
             reads = setup.reads.isEmpty ? nil : setup.reads.map(ReadEntry.init)
+            pattern = setup.pattern.isEmpty ? nil : setup.pattern
         }
 
         var setup: KeyframingSetup {
@@ -637,6 +640,7 @@ struct ProjectFile: Codable {
             setup.readPrint = readPrint.flatMap { UInt64($0, radix: 16) }
             setup.writtenPrint = writtenPrint.flatMap { UInt64($0, radix: 16) }
             setup.reads = (reads ?? []).compactMap(\.read)
+            setup.pattern = pattern ?? ""
             return setup
         }
     }
@@ -1271,9 +1275,14 @@ extension ProjectFile {
                 .optional("easeIn", ease), .optional("easeOut", ease), .optional("generatedBy", .uuid), .optional("hold", .bool),
             ]))
         }
-        /// A Keyframing effect's setup; only an Expression's has `reads`.
+        /// A Keyframing effect's setup; only an Expression's has `reads`,
+        /// and only Strobe Keys' a `pattern`.
         static func keyframingShape(for kind: EffectKind) -> JSONObjectShape {
-            kind == .expression ? object(keyframingFields + [.optional("reads", .array(ReadEntry.shape))]) : keyframing
+            switch kind {
+            case .expression: object(keyframingFields + [.optional("reads", .array(ReadEntry.shape))])
+            case .strobeKeys: object(keyframingFields + [.optional("pattern", .string)])
+            default: keyframing
+            }
         }
 
         static let keyframing = object(keyframingFields)

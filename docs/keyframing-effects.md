@@ -4,7 +4,8 @@ Status: **built** (see [Building it](#building-it) for what each step
 does and leaves out). A **Keyframing** category of effects that draw
 nothing and instead write keyframes onto other controls, from a sound
 (Audio Keys, as Trapcode Sound Keys does in After Effects), from a song's
-beats, from noise (Wiggler, as After Effects' Wiggler), from the
+beats, as a repeating pulse (Strobe Keys), from noise (Wiggler, as After
+Effects' Wiggler), from the
 control's own keyframes (Smoother, Looper) or from Python (Expression,
 see [python-scripting.md](python-scripting.md)). They are picked for a control
 in the [Keyframe Designer](#the-keyframe-designer), opened from an
@@ -133,8 +134,11 @@ keyframe the line through its neighbors passes within **Tolerance**
 linear. A three-minute song typically keeps a tenth of its frames.
 Time Step has no Tolerance: it keeps both sides of each jump, so its
 holds stay flat. Over a target that holds still, the kinds with a
-natural rate (Beat Keys, Oscillator) instead write one keyframe per
-event with eases, as an animator would.
+natural rate (Beat Keys, Oscillator, Strobe Keys) instead write one
+keyframe per event with eases, as an animator would; Strobe Keys does so
+over an animated target too when it replaces every component, since the
+target's curve doesn't show (see
+[Strobe Keys in detail](#strobe-keys-in-detail)).
 
 Keyframes are in the clip's source time; a retimed clip's frames are
 mapped through its speed curve (`ClipTime`) so a pulse lands on the beat
@@ -146,6 +150,7 @@ as heard, not as stored.
 | --- | --- | --- |
 | **Audio Keys** | Follows how loud a range of frequencies is in a sound: kicks, hi-hats, a vocal. | Source, frequency range, amplitude range, attack and release, output range, see below |
 | **Beat Keys** | A pulse on each beat of a beat map: up at the beat, back over a decay. | Beat map (from a Sound or Music layer), every N beats (1), offset, downbeats only, accent on the one (+50%), shape: pulse, step, ramp or alternate; peak; decay |
+| **Strobe Keys** | A repeating pulse with a full envelope, from Min to Max and back: a strobe on an opacity, a flash on a Glow, a gate on a volume. | Timing: beats (divided down to 1/8 or triplets), every N frames or per second; offset; an attack, decay, sustain and release, as a share of the interval or in frames, each linear, eased or exponential; overlap; Min and Max; swing, skip chance, a pattern, seed and fade. See below |
 | **Wiggler** | Random, organic movement around the current value. | Frequency (wiggles per second, 2), magnitude, type: smooth (Perlin) or jagged, octaves (1), dimensions: independent or together, seed |
 | **Oscillator** | A regular wave. | Wave: sine, triangle, square or sawtooth; frequency (Hz, 1); amplitude; phase; fade, in seconds, at each end of the range |
 | **Smoother** | Smooths the target's existing keyframes, and thins them. | Strength (frames of averaging), tolerance |
@@ -217,6 +222,140 @@ song, so the expensive part is done once per audio file and kept:
   operations per frame: a three-minute song at 30 fps is 5,400 values,
   done in well under a millisecond with vDSP. So the box and every
   slider regenerate the keyframes as fast as they're dragged.
+
+## Strobe Keys in detail
+
+Strobe Keys writes a repeating pulse onto the control. It is a method of
+its own rather than more shapes for Beat Keys, which already pulses on
+each beat with a peak and a decay: the envelope, timings and variation
+below would crowd Beat Keys' settings. Its name keeps it apart from
+Stylize's Strobe effect ([effects-stylize.md](effects-stylize.md)),
+which flashes the picture itself rather than driving a control. The
+Keyframe Designer lists its settings under Timing, Envelope, Levels,
+Variation and Keyframes, showing only those of the timing picked and of
+the unit its times are in (`Effect.designerShows`).
+
+### Timing
+
+Where each pulse starts (**Timing**), one of:
+
+- **Beats**: on the beat markers of a beat map, from a Sound or Music
+  layer (Beats From under Applies To, as Beat Keys has). **Every** N
+  beats (1), each span split by **Division** (Whole, 1/2, 1/3, 1/4, 1/6
+  or 1/8), each pulse placed between the beats on either side, so it
+  follows a tempo ramp, and past the last beat at its spacing. Counting
+  starts at the first beat at or after the range's start, as Beat Keys
+  counts. **Beats**: every beat or **Downbeats Only**, and an
+  **Accent** on downbeats (+50% of the pulse's height) when every beat
+  is chosen, as Beat Keys has them. A layer with no beats yet gets
+  Beat Keys' note.
+- **Every N Frames** of the clip's timeline (12). The label says
+  "frames" in full, since *between frames* already means moments inside
+  one frame under motion blur
+  ([python-scripting.md](python-scripting.md#between-frames)).
+- **Per Second**: a rate in pulses a second (2), integrated when it is
+  keyframed, as Oscillator's frequency is. A rate that isn't a whole
+  number of frames puts pulses between frames, so how long each is seen
+  for varies from pulse to pulse; the designer says so under the field.
+
+**Offset** shifts every pulse later, or earlier when negative: in beats
+(a fraction too: 0.5 is the off-beat) when timed to beats, in frames
+otherwise.
+
+A new Strobe Keys follows the first Sound or Music layer with beats, as
+Beat Keys does, and is timed to its beats where there are some; with
+none, it starts at two pulses a second, under the flashing limit below.
+
+### Envelope
+
+Each pulse is a full ADSR envelope from Min to Max and back:
+
+- **Attack**: from Min up to Max.
+- **Decay**: from Max down to the Sustain level.
+- **Sustain**: a level, as a share of the way from Min to Max (100%).
+- **Sustain For**: how long it stays at that level.
+- **Release**: from there back down to Min.
+- The rest of the interval stays at Min.
+
+**Times** are a **Share of Interval** (the default: Attack and Decay 0%,
+Sustain For and Release 25%), so pulses stretch with the tempo, or in
+**Frames**, exact but fixed (0, 0, 2 and 4). Each unit keeps its own
+values, so switching back and forth loses neither. A share is the
+default for every timing, since with frames or a rate the interval
+doesn't change. Decay at 0 and Sustain at 100% make it a plain attack,
+hold and release. The **Duty** button over the envelope sets Attack,
+Decay and Release to 0 and Sustain For to 50% of the interval: on for
+half of each, off for the rest.
+
+**Curves**: Attack, Decay and Release are each **Linear**, **Eased** or
+**Exponential** (fast at first, then settling). Exponential is the
+default for Decay and Release, since that is how a flash of light dies
+away; Attack is linear.
+
+**Overlap**, for an envelope longer than the interval: **Cut**, where
+each pulse is cut short at the next, which starts from Min (the
+default), or **Retrigger**, where the next starts from wherever the last
+had reached.
+
+### Min and Max
+
+**Levels** are the values the pulse moves between, with a **Swap**
+button that exchanges them, at every keyframe, so the control dips on
+each pulse instead of rising (an opacity that blinks off rather than
+on). What they mean follows **Combine**, and the designer says so under
+them: values with Replace, amounts added with Add, and factors with
+Multiply (0 none of the control's value, 1 all of it), unlike the other
+methods' percent more. Multiply is the default over the volume and a
+percentage whose default is 100%, such as an opacity or a scale, where a
+strobe should scale what's there (Min 0, Max 1); Add elsewhere (Min 0,
+Max 10). Changing Combine while Min and Max are still the old mode's
+defaults moves them to the new one's. Each pulse's accent raises its Max
+above the others', by the Accent's share of the way from Min.
+
+### Variation
+
+So it doesn't feel mechanical:
+
+- **Swing**: every other pulse late, by a share of the interval (0%, up
+  to 90%).
+- **Skip Chance**: the share of pulses left out (0%).
+- **Pattern**: a row of steps typed in a field, `x` on, `X` accented
+  and `.` (or `-`) off, spaces and anything else ignored; empty means
+  every pulse. Each step is a pulse, and the pattern starts again at
+  each downbeat when timed to beats, so `x.x.xx..` over eighths is a
+  bar; otherwise it repeats from the range's start. It is set on Return
+  or when the field is left, as one undo step, and kept in the setup
+  (`KeyframingSetup.pattern`) rather than as a control.
+- **Seed** for the skip chance, so the same seed gives the same
+  keyframes.
+
+**Fade**, in seconds, at each end of the Range, as Oscillator has, eases
+the whole strobe in and out: each pulse's height is faded at its start.
+
+Accent shows in the designer when timed to beats or when the pattern
+has an accented step.
+
+### Keyframes and safety
+
+- It writes keyframes at each pulse's **corners**, each on its nearest
+  frame with the level it should have there (the peak at full height,
+  not wherever the curve was on that frame), and the curves as eases
+  (an exponential stage leaves fast and arrives slowly), rather than
+  sampling every frame and reducing. A stage of no length (an Attack or
+  Release of 0) is a hard step, written as a **hold** keyframe on the
+  frame before it, so it doesn't ramp between frames. Over an animated
+  target with Add or Multiply, or on one component of several, it
+  samples the same curve every frame and reduces it by **Tolerance**,
+  like the rest.
+- **Flashing**: over a target that changes brightness (an opacity, a
+  Blending's amount, a color, the controls of Color and of the Light,
+  Color Correction and Color looks), the designer warns when more than
+  three pulses start within any second
+  (`EditingProject.strobeFlashingNote`), as the looks that flash do,
+  and its defaults stay below
+  ([Safety](psychedelic-effects.md#safety-flashing)).
+- From Python, `drive("strobeKeys", …)` takes the pattern as a setting
+  beside the controls (`pattern="x.X."`).
 
 ## The Keyframe Designer
 
@@ -301,8 +440,9 @@ component, combine mode, range, the base curve for Add and Multiply, the
 layer or sound it reads, and two fingerprints: of what it read (the
 clip's placement, speed and range, plus, for Audio Keys, the heard files'
 spectrograms and their clips' volume and EQ, or, for Beat Keys, the
-layer's beats) and of the target as it left it (see step 3 of
-[Building it](#building-it)). The generated keyframes are saved on the
+layer's beats, as for Strobe Keys timed to beats) and of the target as
+it left it (see step 3 of [Building it](#building-it)). Strobe Keys adds
+its pattern (`"pattern"`, absent when empty). The generated keyframes are saved on the
 target as usual, with `"generatedBy"` holding the effect's ID. A
 project opened by an app that ignores Keyframing effects still plays
 the same. An Expression adds its code (`"expression"`) and what its
@@ -329,6 +469,16 @@ its fingerprint (see [python-scripting.md](python-scripting.md#model-and-saving)
   undo. Baked, the control is edited by hand, and a method picked then
   starts from the baked keyframes.
 - A clip at 50% speed gets its beat pulses on the beats as heard.
+- Strobe Keys (`StrobeKeysMathTests`, `StrobeKeysTests`): pulses every N
+  frames, on divided beats along a tempo ramp, with a beat offset, and at
+  a keyframed rate; a duty cycle's holds on the frame before each jump;
+  Cut against Retrigger; the decay to the sustain level; the pattern,
+  the seed's skips and swing; the flashing count; and, in a project,
+  Multiply over an opacity, the blinking opacity, Swap, Combine moving
+  the default levels, timing to beats where there are some, the warning,
+  which settings the designer shows, and the pattern making the
+  keyframes again. `ProjectStoreTests` round-trips it with its pattern,
+  and `UISnapshots.keyframeDesignerStrobeKeys` shows the designer.
 
 ## Not yet
 
@@ -493,3 +643,8 @@ In order, each step usable on its own:
    was opened again, because the hidden effect and its base were still
    there. Regenerate and Keep Edits (step 3) stay for keyframes changed
    along with the clip, and for projects saved with hand edits.
+8. **Strobe Keys** (done), as described in
+   [Strobe Keys in detail](#strobe-keys-in-detail): the timings, the
+   envelope and its corners (`StrobeKeys`), Min and Max with Swap, the
+   variation and pattern, the flashing warning, and the designer's
+   sections for it.

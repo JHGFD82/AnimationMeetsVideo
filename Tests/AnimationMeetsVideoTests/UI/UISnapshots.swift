@@ -2153,6 +2153,40 @@ struct UISnapshots {
                                    "keyframe-ease-controls", size: CGSize(width: 300, height: 310))
     }
 
+    /// The Keyframe Designer with Strobe Keys driving a shape's Opacity five
+    /// times a second: the flashing warning under the methods, its settings
+    /// under Timing, Envelope (with Duty), Levels (with Swap and what Min
+    /// and Max mean under Multiply), Variation (with its pattern) and
+    /// Keyframes, the note that the rate falls between frames, and the
+    /// blinking opacity on the graph.
+    @Test func keyframeDesignerStrobeKeys() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+        let transformID = try #require(transform)
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip)
+        let opacity = try #require(clip.effect(id: transformID)?.control(.opacity))
+        let target = KeyframingTarget.control(effectID: transformID, controlID: opacity.id)
+        let made = project.setKeyframing(.strobeKeys, driving: target, onClip: shape.clipID, in: timelineID)
+        let strobeID = try #require(made)
+        project.editEffect(strobeID, ofClip: shape.clipID, in: timelineID) { effect in
+            effect.changeControl(.strobeRate) { $0.setComponent(0, to: 5, at: .zero) }
+            effect.keyframing?.pattern = "x.xX"
+        }
+        let hud = KeyframeGraphHUDs()
+        hud.update(project: project)
+        hud.playhead = CMTime(value: 1, timescale: 1)
+        try SnapshotSupport.render(
+            KeyframeDesigner(
+                hud: hud, key: KeyframeDesignerKey(timelineID: timelineID, clipID: shape.clipID),
+                focus: KeyframeDesignerFocus(target: target), input: GraphInput()
+            ),
+            "keyframe-designer-strobe-keys", size: CGSize(width: 900, height: 1100)
+        )
+    }
+
     /// The Keyframe Designer with Audio Keys driving a shape's Scale from a
     /// song, the playhead in its low burst: the spectrum and its box, with
     /// the level across it, over Scale's graph, and Listen To with the
