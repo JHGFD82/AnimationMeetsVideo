@@ -161,3 +161,83 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(ViewStateFile.read(from: url) == state)
     }
 }
+
+/// Copying keyframes from one clip's controls and pasting them at the
+/// playhead onto another's (see docs/parameter-rows.md, "Copying
+/// keyframes").
+@Suite struct KeyframeCopyingTests {
+    private func project() -> (EditingProject, UUID, [UUID]) {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let media = MediaClip(
+            name: "A.mov", kind: .video, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "H.264"
+        )
+        var clips: [UUID] = []
+        for start in [0.0, 6] {
+            let id = project.importClip(media, intoTimeline: timelineID)!.clipID
+            project.editClip(id, in: timelineID) { $0.trimStart = .zero; $0.trimEnd = seconds(4); $0.startOffset = seconds(start) }
+            _ = project.addEffect(.transform, toClip: id, in: timelineID)
+            clips.append(id)
+        }
+        // Rotation on the first clip: 0 at 1 s, 90 at 2 s, eased in.
+        let transform = project.clipAndLayer(clips[0], in: timelineID)!.clip.effects.first { $0.kind == .transform }!
+        project.editEffect(transform.id, ofClip: clips[0], in: timelineID) { effect in
+            effect.changeControl(.rotation) { control in
+                control.number = AnimatedValue(ComponentValue(values: [0]), keyframes: [
+                    Keyframe(time: seconds(1), value: ComponentValue(values: [0])),
+                    Keyframe(time: seconds(2), value: ComponentValue(values: [90]), easeIn: .easy),
+                ])
+            }
+        }
+        return (project, timelineID, clips)
+    }
+
+    private func rotation(_ project: EditingProject, _ clipID: UUID, in timelineID: UUID) -> EffectControl {
+        project.clipAndLayer(clipID, in: timelineID)!.clip.effects.first { $0.kind == .transform }!.control(.rotation)!
+    }
+
+    @Test func keyframesPasteAtThePlayheadOntoTheSameControlKeepingTheirSpacingAndEases() throws {
+        var (project, timelineID, clips) = project()
+        let source = project.clipAndLayer(clips[0], in: timelineID)!.clip
+        let transform = source.effects.first { $0.kind == .transform }!
+        let picked = [transform.id: [transform.control(.rotation)!.id: [seconds(1), seconds(2)]]]
+        let copied = try #require(project.copiedKeyframes(picked, ofClip: clips[0], in: timelineID))
+        #expect(copied.count == 2)
+        #expect(copied.lanes[0].keyframes.map(\.offset) == [0, 1])
+        // At 7 s of the timeline: 1 s into the second clip.
+        #expect(project.pasteKeyframes(copied, onClip: clips[1], in: timelineID, at: seconds(7)) == 2)
+        let pasted = rotation(project, clips[1], in: timelineID).number.keyframes
+        #expect(pasted.map(\.time.seconds) == [1, 2])
+        #expect(pasted.map(\.value.values) == [[0], [90]])
+        #expect(pasted[1].easeIn == .easy)
+        // Again over them: replaced, not doubled.
+        project.pasteKeyframes(copied, onClip: clips[1], in: timelineID, at: seconds(7))
+        #expect(rotation(project, clips[1], in: timelineID).number.keyframes.count == 2)
+    }
+
+    @Test func oneControlsKeyframesPasteOntoAnotherWithAsManyNumbers() throws {
+        var (project, timelineID, clips) = project()
+        let source = project.clipAndLayer(clips[0], in: timelineID)!.clip
+        let transform = source.effects.first { $0.kind == .transform }!
+        let copied = try #require(project.copiedKeyframes(
+            [transform.id: [transform.control(.rotation)!.id: [seconds(1), seconds(2)]]], ofClip: clips[0], in: timelineID
+        ))
+        let target = project.clipAndLayer(clips[1], in: timelineID)!.clip.effects.first { $0.kind == .transform }!
+        // Opacity has one number, as Rotation does; Position two.
+        let opacity = target.control(.opacity)!, position = target.control(.position)!
+        #expect(project.pasteKeyframes(copied, onClip: clips[1], in: timelineID, at: seconds(6), onto: (target.id, opacity.id)) == 2)
+        #expect(project.pasteKeyframes(copied, onClip: clips[1], in: timelineID, at: seconds(6), onto: (target.id, position.id)) == 0)
+    }
+
+    @Test func copiedKeyframesGoThroughTheirText() throws {
+        let (project, timelineID, clips) = project()
+        let transform = project.clipAndLayer(clips[0], in: timelineID)!.clip.effects.first { $0.kind == .transform }!
+        let copied = try #require(project.copiedKeyframes(
+            [transform.id: [transform.control(.rotation)!.id: [seconds(2)]]], ofClip: clips[0], in: timelineID
+        ))
+        let text = try #require(copied.json)
+        #expect(CopiedKeyframes(json: text) == copied)
+        #expect(CopiedKeyframes(json: "not keyframes") == nil)
+    }
+}

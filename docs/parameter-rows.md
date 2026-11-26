@@ -1,6 +1,6 @@
 # Parameters in the timeline
 
-Status: **partly built** (steps 1 and 2 of [Building it](#building-it),
+Status: **partly built** (steps 1 to 3 of [Building it](#building-it),
 not yet tried in the running app). The rest is planned. It was talked through in
 ideas.md first.
 
@@ -167,7 +167,7 @@ and rows. Pressing it again brings the clips back.
   hand edits, as in the lanes.
 - Graph mode is kept with the timeline in `view-state.json`.
 
-### Copying keyframes (not yet)
+### Copying keyframes
 
 With keyframes picked in the lanes or the graph, **⌘C** copies them
 rather than the clips, and **⌘X** cuts them (the effects panel and the
@@ -187,6 +187,18 @@ timeline both offer it, as for clips and effects in
 - Copied keyframes go on the pasteboard as JSON too, so they paste into
   the effects panel's lanes and into a text editor alike.
 - A paste onto a driven control is refused, as any hand edit is.
+
+Built in the effects panel (`CopiedKeyframes`, `EditorClipboard.keyframes`):
+⌘C and ⌘X (and the Edit menu) copy or cut the keyframes picked in its
+lanes, with their times apart in the timeline's time, their values,
+eases and holds, and ⌘V pastes them at the playhead onto the selected
+clip: onto the same controls, matched as the rows match them, or with
+one control's keyframes copied and a control selected, onto that one
+when it has as many numbers. Pasted keyframes replace any at the same
+times; a paste that finds no control says so. They go on the pasteboard
+as JSON too. Not built yet: copying and pasting in the timeline's own
+lanes (which have no picks yet), pasting onto several clips, Option-drag
+of several picked keyframes, and pasting JSON from elsewhere back in.
 
 ### Other kinds of lanes (not yet)
 
@@ -231,6 +243,10 @@ volume row's. The rest below is not built yet:
   layers that are gone are let go; `view-state.json` keeps them; and U
   shows the animated parameters and UU the changed ones, whatever is
   picked.
+- `KeyframeCopyingTests`: keyframes paste at the playhead onto the same
+  control keeping their spacing and eases, and replace those at the same
+  times; one control's paste onto another with as many numbers, not one
+  with more; and they go through their text.
 - `UISnapshots.parameterRows`: the rows in the names column and their
   lanes.
 
@@ -242,7 +258,8 @@ volume row's. The rest below is not built yet:
    the view state.
 2. **U and UU** (done), but for the View menu's items and the effects
    panel's U.
-3. **Copying keyframes** (not yet), with picks across lanes.
+3. **Copying keyframes** (done in the effects panel); in the timeline's
+   lanes, with picks across them, not yet.
 4. **Graph mode** (not yet).
 5. **Other kinds of lanes** (not yet): text runs, axes, speed, and the
    volume rows as ordinary rows; the row menu's other items, the

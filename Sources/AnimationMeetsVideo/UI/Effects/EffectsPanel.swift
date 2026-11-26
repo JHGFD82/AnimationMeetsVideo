@@ -665,13 +665,17 @@ struct EffectsPanel: View {
         let keyframes = state.keyframes
         var delete: (() -> Void)? = (state.selectedControlID == nil ? effect : selected).map { effect in { deleteSelection(effect, in: clip) } }
         if !keyframes.isEmpty { delete = { _ = keyframes.deletePicked() } }
+        // Keyframes picked are what Cut and Copy take, and keyframes copied
+        // what Paste puts down.
+        let copiesKeyframes = !keyframes.isEmpty
+        let pastesKeyframes = clipboard.keyframes != nil
         return EditMenuActions(
-            cut: onEffect { effects in
+            cut: copiesKeyframes ? { if copyPickedKeyframes(of: clip) { keyframes.deletePicked() } } : onEffect { effects in
                 copy(effects, from: clip)
                 for effect in effects { self.delete(effect, from: clip) }
             },
-            copy: onEffect { copy($0, from: clip) },
-            paste: canPaste ? { paste(in: clip, below: effect) } : nil,
+            copy: copiesKeyframes ? { _ = copyPickedKeyframes(of: clip) } : onEffect { copy($0, from: clip) },
+            paste: pastesKeyframes ? { _ = pasteCopiedKeyframes(on: clip) } : canPaste ? { paste(in: clip, below: effect) } : nil,
             duplicate: onEffect { effects in for effect in effects { duplicate(effect, in: clip) } },
             delete: delete,
             state: [clip.id, effect?.id, state.selectedControlID, canPaste, state.pickedRows, keyframes.picked] as [AnyHashable?]
@@ -693,6 +697,13 @@ struct EffectsPanel: View {
             paste(in: clip, below: state.selectedEffectID.flatMap { clip.effect(id: $0) })
             return true
         }
+        // Keyframes picked in the lanes are copied or cut with ⌘C and ⌘X,
+        // and copied keyframes pasted at the playhead with ⌘V.
+        if flags == .command, key == "c" || key == "x", let clip = selectedClip, copyPickedKeyframes(of: clip) {
+            if key == "x" { state.keyframes.deletePicked() }
+            return true
+        }
+        if flags == .command, key == "v", let clip = selectedClip, pasteCopiedKeyframes(on: clip) { return true }
         // Keyframes picked in the lanes take Delete, ← and → (ten frames
         // with Shift), and Escape lets go of them; ⌘A picks every one.
         if [51, 117].contains(event.keyCode), flags.isEmpty, state.keyframes.deletePicked() { return true }
