@@ -218,9 +218,32 @@ first, and waits while the Mac is hot or in Low Power Mode.
   the playhead, a fast drag over them shows them and lands exactly, and
   an edit lets go of them.
 
-The other steps planned for laptops (decoding at the viewer's size,
-thumbnails while catching up, ProRes copies) are in
-[ideas.md](ideas.md#smoother-scrubbing-on-laptops).
+### Thumbnails while catching up
+
+A fast move that misses the scrub cache while a seek is still under way
+(the player is behind) shows a stand-in at once (`ScrubStandIn`): where
+the frame is one file drawn plainly over the whole frame (no step, no
+transition, not a still, fitted to the frame, in an SDR timeline), the
+picture of that file nearest the moment that the timeline's filmstrips
+keep in memory (`FrameThumbnails.nearestCached`, the largest kept size
+first). The player's frame replaces it as soon as one arrives, so it
+only ever shows while catching up; anything drawn otherwise, or a file
+with no picture kept, shows the last frame as before. Tested in
+`ScrubStandInTests`.
+
+### Decoding at the viewer's size (not possible here)
+
+Drawing at Half or Quarter makes compositing cheaper but not decoding:
+the player decodes each source at its own size for the compositor. The
+only say the compositor has is its `sourcePixelBufferAttributes`, which
+AVFoundation reads once per compositor and never again, and which can
+name one fixed width and height for every source, not a share of each.
+A fixed size would stretch sources of other shapes and could be scaled
+after decoding rather than in it, costing more, not less; and the
+compositor places a source by its own size. So the player can't be made
+to decode smaller, and the scrub cache decodes at full size too, reading
+in order instead. The ProRes viewer copies are what makes decoding
+cheap on a laptop.
 
 ## Render cache (implemented)
 

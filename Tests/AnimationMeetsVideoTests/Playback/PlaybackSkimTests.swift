@@ -96,7 +96,10 @@ import Testing
         }
         #expect(playback.prerolls == before)
 
-        try await Task.sleep(for: PlaybackModel.prerollRest * 2)
+        // Once it rests, one preroll: waited for rather than slept, so a
+        // busy machine running the other suites doesn't fail it.
+        try await waitUntil("the player to be prerolled", every: .milliseconds(10)) { playback.prerolls > before }
+        try await Task.sleep(for: PlaybackModel.prerollRest)
         #expect(playback.prerolls == before + 1)
         try await waitForPlayer(playback, at: 1.5)
     }

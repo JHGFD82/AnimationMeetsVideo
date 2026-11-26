@@ -62,3 +62,32 @@ import Testing
         #expect(playback.scrubCache.count == 0)
     }
 }
+
+/// The stand-in while a fast scrub's seek is behind (docs/rendering.md,
+/// "Thumbnails while catching up"): a plain clip's nearest filmstrip
+/// picture, and nothing for a clip drawn any other way.
+@MainActor
+@Suite(.serialized) struct ScrubStandInTests {
+    @Test func aPlainClipStandsInWithItsNearestKeptPicture() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let clip = try await fixture.addClip(luma: 120, frames: 48)
+        let composed = try await fixture.build(forPreview: true)
+        let drawing = try #require(composed.videoComposition)
+        let time = CMTime(value: 30, timescale: 24)
+        let place = try #require(ScrubStandIn.plainFile(at: time, of: drawing))
+        #expect(abs(place.fileTime.seconds - time.seconds) < 0.001)
+        // Nothing kept of the file yet: no stand-in.
+        FrameThumbnails.invalidate()
+        #expect(ScrubStandIn.picture(at: time, of: drawing) == nil)
+        // A filmstrip made a picture a second in; it stands in at 1.25 s.
+        _ = await FrameThumbnails.image(url: place.url, time: CMTime(value: 1, timescale: 1), height: 45)
+        let standIn = try #require(ScrubStandIn.picture(at: time, of: drawing))
+        #expect(CVPixelBufferGetPixelFormatType(standIn) == kCVPixelFormatType_32BGRA)
+
+        // Scaled down, it no longer fills the frame plainly.
+        fixture.setTransform([(.scale, [50, 50])], ofClip: clip.clipID)
+        let scaled = try await fixture.build(forPreview: true)
+        #expect(ScrubStandIn.plainFile(at: time, of: try #require(scaled.videoComposition)) == nil)
+    }
+}

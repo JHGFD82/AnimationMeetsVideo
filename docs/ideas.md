@@ -81,9 +81,11 @@ In order, each measured on a laptop before the next:
    and forth over that stretch then draws from memory. A quarter-size
    1080p frame is about half a megabyte, so ten seconds of 30 fps is
    150 MB.
-3. **Decoding at the viewer's size**, where VideoToolbox can scale in
+3. **Decoding at the viewer's size** (not possible with the player; see
+   [rendering.md](rendering.md#decoding-at-the-viewers-size-not-possible-here)), where VideoToolbox can scale in
    the decoder, so a Quarter viewer stops paying for a full 4K decode.
-4. **Thumbnails while catching up.** The asset's reference thumbnails
+4. **Thumbnails while catching up** (built, see
+   [rendering.md](rendering.md#thumbnails-while-catching-up)). The asset's reference thumbnails
    and filmstrips are already on disk; while a seek is behind, a plain
    clip can show the nearest one until its frame arrives.
 

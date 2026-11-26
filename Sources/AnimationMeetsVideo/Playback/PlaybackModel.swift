@@ -716,6 +716,13 @@ final class PlaybackModel {
             return
         }
         showsKept = false
+        // Moving fast with a seek still under way, the viewer is behind:
+        // a plain clip's nearest filmstrip picture stands in until the
+        // player's frame arrives.
+        if tolerance > 0, isSeeking, let drawing = player.currentItem?.videoComposition,
+           let standIn = ScrubStandIn.picture(at: time, of: drawing) {
+            display.show(standIn)
+        }
         pendingSeek = time
         pendingTolerance = tolerance
         restingPreroll?.cancel()
