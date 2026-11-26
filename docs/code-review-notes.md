@@ -212,14 +212,23 @@ are phase 9's first suspects.
    `WaveformAudio`, whose synchronous asset loads are deprecated (see
    the warnings above).
 
-5. **Event tests that failed once under load. (Phase 11, tests,
-   severity 5; open; seen in one baseline run.)** In the second full
-   run with `UI_EVENTS` (before the fixes):
-   `ClipBlockInteractionTests.aClickSelectsWithTheArrowAndCutsWithTheBlade`
-   (`calls.selects == 1` at 99 and 107) and
+5. **Tests that fail when the Mac is busy. (Phases 6 and 11, tests,
+   severity 5; open; at the baseline.)**
    `ScrubCacheTests.aFastDragOverKeptFramesShowsThemAndLandsExactly`
-   (`currentTime < 1.6` at 49). Neither failed in the other runs, nor
-   alone.
+   (`currentTime < 1.6` at 49) paces its seeks with 10 ms
+   `Task.sleep`s on the main actor and expects the scrub cache to take
+   them for a fast drag; a busy main actor or Mac stretches the sleeps
+   and the player seeks. It passed in the three runs above and five
+   times alone, then failed in four of four full runs later in the day,
+   with the load average near 6 from other work on the Mac. Two of
+   those runs were on the baseline's sources, so the fixes aren't the
+   cause; one of them also failed
+   `ViewerFramingRedrawTests.thePictureFollowsAScrollAtOnce` (66). In
+   one full run with `UI_EVENTS`,
+   `ClipBlockInteractionTests.aClickSelectsWithTheArrowAndCutsWithTheBlade`
+   (`calls.selects == 1` at 99 and 107) failed once too. The scrub
+   cache's pace wants a clock the test controls (`ManualClock`), as the
+   plan's testability item asks.
 
 6. **The binaries record SDK 15.0. (Phases 1 and 12, packaging,
    severity unknown; open.)** `otool -l` shows `LC_BUILD_VERSION` with
