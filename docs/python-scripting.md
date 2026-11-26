@@ -4,7 +4,9 @@ Status: **built**, but for NumPy (step 12 of [Building it](#building-it)),
 which step 10's measurement doesn't call for. Steps 1 to 8 have been
 built and tried on a Mac; steps 9 to 11 (Between Frames, re-running only
 the changed samples, following a held drag), the accessibility review
-(13) and these docs (14) were written since and haven't been built yet.
+(13) and these docs (14) were written since. They build and their tests
+pass, with a real interpreter too (the code review's baseline), but
+haven't been tried by hand.
 No Python release is pinned in the repository: `scripts/fetch-python.sh
 --pin`, run on the Mac that builds the app, writes the pin to
 `scripts/python-pin`, which git ignores.

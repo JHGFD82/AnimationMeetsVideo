@@ -1,10 +1,10 @@
 # Bar colors and Clear Layer
 
-Status: **built, not yet run**. Everything below is built
-(`Model/BarColor.swift`, `UI/Design/BarColors.swift`,
+Status: **built and tested, not yet tried on screen**. Everything below
+is built (`Model/BarColor.swift`, `UI/Design/BarColors.swift`,
 `UI/Components/BarColorMenu.swift`, `UI/Components/BarColorPanel.swift`,
-`UI/Timeline/TimelineColors.swift`), but it was written where there is
-no Xcode: it hasn't been compiled, its tests haven't run, and the
+`UI/Timeline/TimelineColors.swift`). It was written where there is no
+Xcode; the code review's baseline built it and its tests pass, but the
 swatch grid in a context menu hasn't been looked at on screen (see "Not
 tried"). Where the build differs from the plan, this document says so.
 Choices the request didn't settle are listed under
