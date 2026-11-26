@@ -449,9 +449,9 @@ enum CompositionExporter {
 
         // The save panel confirmed replacing a file already there, and the
         // Export window refuses a place another export under way or queued
-        // saves to (`ExportDestinations`); AVAssetExportSession refuses to
-        // write over a file, so what is there goes.
-        try? FileManager.default.removeItem(at: url)
+        // saves to (`ExportDestinations`). What is there stays until the
+        // export has finished beside it (`ExportFile`).
+        let partial = ExportFile.partial(for: url)
 
         let states = exportSession.states(updateInterval: 0.2)
         let progressTask = Task {
@@ -464,9 +464,10 @@ enum CompositionExporter {
         defer { progressTask.cancel() }
 
         do {
-            try await exportSession.export(to: url, as: .mov)
+            try await exportSession.export(to: partial, as: .mov)
+            try ExportFile.finish(partial, at: url)
         } catch {
-            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: partial)
             if error is CancellationError || Task.isCancelled {
                 throw CancellationError()
             }
