@@ -291,3 +291,101 @@ Following [accessibility.md](accessibility.md):
   ← → and Escape pick and move keyframes, as in the panel.
 - In graph mode the curves have the graph editors' elements and
   actions, and the Graph button is labeled and says whether it is on.
+
+## Smoother scrubbing on laptops
+
+Scrubbing and skimming H.264 and HEVC footage on the timeline is too
+heavy for a laptop. The first idea was to turn each clip into ProRes
+when it is added to the timeline; this entry checks that against how
+the app works and proposes doing without the copies first.
+
+### Why scrubbing is heavy now
+
+- **Every scrub is an exact seek.** Moving the playhead or skimming
+  seeks the player to the exact frame (`PlaybackModel`, tolerances of
+  zero), one seek at a time with the newest move next. H.264 and HEVC
+  are long-GOP: a frame can only be decoded from the keyframe before it,
+  often a second or more back, so each step of a scrub decodes up to a
+  whole GOP to show one frame. Playing forward is cheap, since the
+  hardware decoder goes frame by frame; jumping around is what costs.
+- **Sources are decoded at full size.** Half and Quarter make
+  compositing cheaper, not decoding
+  ([rendering.md](rendering.md#viewer-quality-implemented)), so a 4K
+  clip costs a 4K decode per seek, and each layer of a stack adds its
+  own.
+- **Drawing ahead skips plain clips.** `PlayheadPrerenderer` keeps the
+  pictures of the two seconds after the playhead, but only of stretches
+  worth keeping (effects, stacks), not plain footage.
+
+### ProRes copies, checked
+
+It would work technically: clips point at assets, not files, so
+decoding could read another file behind an asset, and the app already
+writes ProRes for its render cache. But:
+
+- **It reverses a stated rule.** The shared principles say the app
+  never makes proxies, optimized copies or transcodes of footage
+  ([README.md](README.md#shared-principles)), and
+  [media-replacement.md](media-replacement.md) chose replacing files
+  over proxies because of disk space.
+- **Disk.** ProRes 422 is about 147 Mb/s at 1080p30 (66 GB an hour) and
+  about 590 Mb/s at 4K30 (265 GB an hour), roughly ten times the H.264
+  or HEVC it comes from; 10-bit and HDR footage needs 422 HQ, larger
+  again.
+- **The laptop pays first.** Every clip added starts an encode. Macs
+  with a ProRes engine (M1 Pro and Max, and later chips) do it faster
+  than real time; others encode in software, slowly and on battery.
+- **Timing has to match exactly.** Phone footage is often variable
+  frame rate; a copy must keep every frame's own time or cuts, beats
+  and keyframes drift against the original.
+- **Export still reads the originals**, both for quality (ProRes 422 is
+  not lossless) and because untouched stretches pass through as they
+  are, so there would be two decode paths to keep alike. Replacing a
+  file must throw its copy away.
+- **It doesn't make effects faster.** An effect's cost is compositing,
+  which is the same over ProRes. Heavy stretches are already rendered to
+  ProRes in the background ([Render cache](rendering.md#render-cache-implemented)),
+  and clips' pictures are kept between frames.
+
+### Without copies
+
+In order, each measured on a laptop before the next:
+
+1. **Rough, then exact.** While the playhead or the skimmer moves fast,
+   seek to the nearest keyframe (or with a tolerance) and show that;
+   once it rests (about 100 ms, as playback already waits 250 ms before
+   prerolling) land on the exact frame. Final Cut and Premiere scrub
+   this way. It is a change to the seek queue alone, and costs no disk.
+2. **A scrub cache.** Paused, decode the footage around the playhead,
+   forward from each keyframe as the hardware decoder likes, at the
+   viewer's size, and keep the frames in memory, as
+   `PlayheadPrerenderer` does for stretches with effects. Moving back
+   and forth over that stretch then draws from memory. A quarter-size
+   1080p frame is about half a megabyte, so ten seconds of 30 fps is
+   150 MB.
+3. **Decoding at the viewer's size**, where VideoToolbox can scale in
+   the decoder, so a Quarter viewer stops paying for a full 4K decode.
+4. **Thumbnails while catching up.** The asset's reference thumbnails
+   and filmstrips are already on disk; while a seek is behind, a plain
+   clip can show the nearest one until its frame arrives.
+
+### If that isn't enough: scrub copies
+
+A narrower form of the ProRes idea, if the steps above still leave
+laptops behind:
+
+- **Small and all-intra**: ProRes 422 Proxy at half size, about a
+  tenth of the disk of full-size ProRes 422 (about 5 GB an hour of
+  1080p).
+- **Only what is used**: the clip's range on the timeline plus a few
+  seconds of handles, made in the background after it is added, and
+  never while playing, on battery or in Low Power Mode.
+- **Only for scrubbing and skimming in the viewer.** Playing and export
+  read the original, so nothing about the output changes.
+- **Disposable**: in `Cache/`, capped and evicted like renders, and
+  thrown away when the file is replaced.
+- **A setting**, in Project Settings with an app-wide default, off
+  unless turned on.
+
+This still needs the shared principle about proxies amended, to say
+that disposable, reduced copies used only while scrubbing are allowed.
