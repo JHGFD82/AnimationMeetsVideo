@@ -44,10 +44,21 @@ drawing it is. It is saved as the effect's `listensToLayer` or
 What it hears is worked out when the timeline is built
 (`EditingProject.waveformSounds`, kept on the clip's `ClipStack`): each
 clip with sound from a file, where it plays and its volume and its
-layer's. Unlike Audio Keys it doesn't hear the EQ yet, nor a nested
-timeline's sound; and since a volume is a value, not part of what the
-timeline is built from, a volume edit shows once the timeline is built
-again (by any change of structure).
+layer's, and the EQs on the clip and its layer. A **nested timeline**
+it hears is heard as its whole mix: each file inside it keeps the chain
+of clips it plays through (`WaveformSound.Source.chain`), each mapping
+its timeline's time into the next one in and adding its volume and EQ,
+up to eight deep. The **EQ** is heard where the Waveform reads the
+sound sample by sample (a spectrum, a level, the Spectrogram, and Wave
+whenever the sound has an EQ), each source run through its EQs' filters
+as they are set at the middle of the run, from 50 ms before it so they
+have settled (`WaveformAudio.equalized`). A volume or EQ is a value,
+not part of what the timeline is built from, so on its own an edit to
+one doesn't build the player again; with a Waveform anywhere in the
+project, `CompositionKey` keeps volumes and EQ settings, so such an
+edit builds it again and the waveform follows at once. Dragging a
+volume then rebuilds as it goes, which costs more than without a
+Waveform.
 
 ### Settings
 
@@ -242,12 +253,12 @@ and shared as any effect preset is
   for a full-scale tone and splits by channel; Peak Hold adds a mark;
   the Spectrogram shades cells and is empty in silence; attack,
   release and hold shape the level; Scale and Floor shape the spectrum;
-  Spacing sets the count; bars by level are shaded; and every graph has
-  a preview. `WaveformGraphTests` checks the Graph presets.
+  Spacing sets the count; bars by level are shaded; every graph has a
+  preview; it hears the song's EQ and a nested timeline's sound; and a
+  volume edit builds the timeline again. `WaveformGraphTests` checks the Graph presets.
 - `UISnapshots.waveformInspector`.
 - Not yet: a test drawing it through the compositor from a sound file.
 
 ## Not yet
 
-- The EQ heard, nested timelines' sound, and volume edits shown
-  without a rebuild.
+- A volume or EQ drag shown without building the timeline again.

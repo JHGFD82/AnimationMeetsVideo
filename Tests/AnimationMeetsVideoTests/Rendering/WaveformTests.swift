@@ -339,3 +339,46 @@ extension WaveformTests {
         }
     }
 }
+
+// What it hears: through the EQ, inside nested timelines, and with
+// volume edits building the timeline again.
+extension WaveformTests {
+    private func level(_ f: Fixture) throws -> Double {
+        let sound = try #require(f.sound)
+        return WaveformAudio.shared.level(sound, at: 1, channel: nil, floor: -80)
+    }
+
+    @Test func itHearsTheSongsEQ() throws {
+        var f = try Fixture(frame: frame)
+        f.toneInBothChannels()
+        let plain = try level(f)
+        // The EQ's output 20 dB down: a quarter of the 80 dB range.
+        var eq = Effect(kind: .equalizer)
+        eq.changeControl(.eqOutput) { $0.enabled = true; $0.number = AnimatedValue(ComponentValue(values: [-20])) }
+        let songClip = try #require(f.timeline.layers.flatMap(\.clips).first { $0.source == .media(f.songID) })
+        f.project.editClip(songClip.id, in: f.project.rootTimelineID) { $0.audioEffects = [eq] }
+        #expect(f.sound?.hasEqualizers == true)
+        let quieter = try level(f)
+        #expect(abs((plain - quieter) - 0.25) < 0.02)
+    }
+
+    @Test func itHearsANestedTimelinesSound() throws {
+        var f = try Fixture(frame: frame)
+        f.toneInBothChannels()
+        let plain = try level(f)
+        let songClip = try #require(f.timeline.layers.flatMap(\.clips).first { $0.source == .media(f.songID) })
+        let nested = f.project.nestClips([songClip.id], in: f.project.rootTimelineID, named: "Song")
+        #expect(nested != nil)
+        let source = try #require(f.sound?.sources.first)
+        #expect(source.chain.count == 2)
+        #expect(abs(try level(f) - plain) < 0.01)
+    }
+
+    @Test func aVolumeEditBuildsTheTimelineAgainWithAWaveform() throws {
+        var f = try Fixture(frame: frame)
+        let before = CompositionKey(project: f.project)
+        let songClip = try #require(f.timeline.layers.flatMap(\.clips).first { $0.source == .media(f.songID) })
+        f.project.editClip(songClip.id, in: f.project.rootTimelineID) { $0.volume = AnimatedValue(-6.0) }
+        #expect(CompositionKey(project: f.project) != before)
+    }
+}

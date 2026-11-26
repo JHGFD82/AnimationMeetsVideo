@@ -459,24 +459,56 @@ struct WaveformStep: Equatable, Sendable {
 }
 
 /// What a Waveform hears, made when the timeline is built: each clip with
-/// sound from a file in what it listens to, with where it plays and how
-/// loud, so drawing needs nothing from the project.
+/// sound from a file in what it listens to, nested timelines' included,
+/// with where it plays, how loud and through which EQs, so drawing needs
+/// nothing from the project.
 struct WaveformSound: @unchecked Sendable {
-    struct Source {
-        var url: URL
+    /// A clip the sound plays through, and the layer it is on.
+    struct Placed {
         var clip: TimelineClip
-        var asset: MediaClip
         /// The volume of the Sound or Music layer it is on, if it is on one.
         var layerVolume: AnimatedValue<Double>?
+        /// The EQs on the clip, in its source time, that are on.
+        var clipEqualizers: [Effect] = []
+        /// The EQs on its layer, in its timeline's time, that are on.
+        var layerEqualizers: [Effect] = []
+    }
+
+    struct Source {
+        var url: URL
+        var asset: MediaClip
+        /// The clips it plays through, outermost first: a nested timeline's
+        /// clip in the timeline the Waveform is in, and so on in, the last
+        /// the clip of the file itself. Each maps its timeline's time into
+        /// the next one in, and adds its volume and EQ.
+        var chain: [Placed]
+
+        /// The clip of the file.
+        var clip: TimelineClip { chain[chain.count - 1].clip }
+
+        var hasEqualizers: Bool { chain.contains { !$0.clipEqualizers.isEmpty || !$0.layerEqualizers.isEmpty } }
+
+        init(url: URL, asset: MediaClip, chain: [Placed]) {
+            self.url = url
+            self.asset = asset
+            self.chain = chain
+        }
+
+        /// A clip in the Waveform's own timeline, through no EQ.
+        init(url: URL, clip: TimelineClip, asset: MediaClip, layerVolume: AnimatedValue<Double>?) {
+            self.init(url: url, asset: asset, chain: [Placed(clip: clip, layerVolume: layerVolume)])
+        }
     }
 
     var sources: [Source]
     /// What it hears, for a render's key: the files and every clip's
-    /// placement and volume.
+    /// placement, volume and EQ.
     var fingerprint: UInt64
 
     /// The files it reads.
     var urls: [URL] { Array(Set(sources.map(\.url))) }
+
+    var hasEqualizers: Bool { sources.contains(where: \.hasEqualizers) }
 }
 
 extension EditingProject {
@@ -485,21 +517,58 @@ extension EditingProject {
     func waveformSounds(for clip: TimelineClip, in timeline: Timeline) -> [UUID: WaveformSound] {
         var sounds: [UUID: WaveformSound] = [:]
         for effect in clip.effects where effect.kind == .waveform {
-            let heard = heardClips(effect.listensTo ?? .mix, in: timeline)
+            let sources = waveformSources(effect.listensTo ?? .mix, in: timeline, outer: [])
             var prints = KeyframingPrint()
-            let sources = heard.map { heard in
-                prints.add(heard.url.path)
-                for time in [heard.clip.startOffset, heard.clip.trimStart, heard.clip.trimEnd] { prints.add(time) }
-                prints.add(heard.clip.time.speed)
-                prints.add(heard.clip.volume)
-                if heard.layer.kind.isAudio { prints.add(heard.layer.volume) }
-                return WaveformSound.Source(
-                    url: heard.url, clip: heard.clip, asset: heard.asset, layerVolume: heard.layer.kind.isAudio ? heard.layer.volume : nil
-                )
+            for source in sources {
+                prints.add(source.url.path)
+                for placed in source.chain {
+                    let heard = placed.clip
+                    prints.add(heard.id)
+                    for time in [heard.startOffset, heard.trimStart, heard.trimEnd] { prints.add(time) }
+                    prints.add(heard.time.speed)
+                    prints.add(heard.volume)
+                    if let layer = placed.layerVolume { prints.add(layer) }
+                    for equalizer in placed.clipEqualizers + placed.layerEqualizers {
+                        for control in equalizer.controls where control.enabled {
+                            prints.add(control.kind.rawValue)
+                            prints.add(control.choice)
+                            prints.add(control.number) { $0.values }
+                        }
+                    }
+                }
             }
             sounds[effect.id] = WaveformSound(sources: sources, fingerprint: prints.value)
         }
         return sounds
+    }
+
+    /// The files `listening` hears in `timeline`, each through `outer`
+    /// and the clips on the way to it: a nested timeline's clips heard as
+    /// its whole mix, up to eight timelines deep.
+    private func waveformSources(_ listening: AudioKeysSource, in timeline: Timeline, outer: [WaveformSound.Placed]) -> [WaveformSound.Source] {
+        guard outer.count < 8 else { return [] }
+        func equalizers(_ effects: [Effect]) -> [Effect] { effects.filter { $0.kind == .equalizer && $0.enabled } }
+        return timeline.layers.flatMap { layer -> [WaveformSound.Source] in
+            if case .layer(let id) = listening, layer.id != id { return [] }
+            return layer.clips.flatMap { clip -> [WaveformSound.Source] in
+                if case .clip(let id) = listening, clip.id != id { return [] }
+                guard playsAudio(clip) else { return [] }
+                let placed = WaveformSound.Placed(
+                    clip: clip, layerVolume: layer.kind.isAudio ? layer.volume : nil,
+                    clipEqualizers: equalizers(clip.audioEffects), layerEqualizers: equalizers(layer.audioEffects)
+                )
+                switch clip.source {
+                case .media(let assetID):
+                    guard let asset = mediaClip(id: assetID), let url = asset.url else { return [] }
+                    return [WaveformSound.Source(url: url, asset: asset, chain: outer + [placed])]
+                case .timeline(let id):
+                    guard let nested = self.timeline(id: id) else { return [] }
+                    return waveformSources(.mix, in: nested, outer: outer + [placed])
+                case .adjustment, .graphic:
+                    return []
+                }
+            }
+        }
     }
 }
 

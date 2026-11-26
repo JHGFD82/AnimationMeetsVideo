@@ -25,7 +25,20 @@ struct CompositionKey: Equatable {
 
     init(project: EditingProject) {
         jointAudioCrossfade = project.jointAudioCrossfade
+        // A Waveform draws the sound as its timeline was built: with one
+        // in the project, a volume or EQ edit builds it again, so the
+        // waveform follows (docs/waveform-effect.md, "What it listens to").
+        let hearsSound = project.timelines.contains { timeline in
+            timeline.layers.contains { layer in layer.clips.contains { clip in clip.effects.contains { $0.kind == .waveform } } }
+        }
         timelines = project.timelines.map { timeline in
+            guard !hearsSound else {
+                var copy = timeline
+                copy.name = ""
+                for index in copy.layers.indices { copy.layers[index].customName = nil }
+                for index in copy.sections.indices { copy.sections[index].name = "" }
+                return copy
+            }
             var copy = timeline
             copy.name = ""
             for index in copy.layers.indices {

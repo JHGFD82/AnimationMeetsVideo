@@ -200,7 +200,9 @@ enum WaveformDrawing {
         let n = setup.samples
         let first = time - setup.window * setup.align.before
         let spacing = setup.window / Double(n - 1)
-        guard let filters = bandFilters(setup) else {
+        // Heard through an EQ, or filtered to a range, the window is read
+        // sample by sample.
+        guard let filters = bandFilters(setup) ?? (sound.hasEqualizers ? [] : nil) else {
             let times = (0..<n).map { first + spacing * Double($0) }
             return audio.mix(sound, at: times, channel: channel, span: spacing)
         }

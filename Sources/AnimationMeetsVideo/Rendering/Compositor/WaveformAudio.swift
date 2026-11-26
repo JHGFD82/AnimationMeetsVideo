@@ -118,28 +118,31 @@ final class WaveformAudio: @unchecked Sendable {
 
     /// What `sound` plays at each of `times` (seconds of the timeline its
     /// clips are in), in channel `channel` (0 left, 1 right, nil both
-    /// mixed), each clip at its volume and its layer's. When a point stands
-    /// for more samples than `span` seconds, it is the one of them furthest
-    /// from silence, so a long window keeps its peaks.
+    /// mixed), each clip at its volume and its layer's, through every
+    /// clip it plays in. When a point stands for more samples than `span`
+    /// seconds, it is the one of them furthest from silence, so a long
+    /// window keeps its peaks.
+    ///
+    /// Where `times` run sample by sample (a spectrum, a level, a filtered
+    /// Wave), a clip under an EQ is heard through it (`equalized`);
+    /// sparser points can't run a filter, so they hear it without.
     func mix(_ sound: WaveformSound, at times: [Double], channel: Int?, span: Double = 0) -> [Double] {
         var mixed = [Double](repeating: 0, count: times.count)
         let reach = max(Int(span * Samples.rate), 1)
+        let runs = reach == 1 && times.count > 1 && abs((times[1] - times[0]) * Samples.rate - 1) < 1e-6
         for source in sound.sources {
             guard let samples = samples(for: source.url) else { continue }
-            let clip = source.clip
-            let start = clip.startOffset.seconds, end = clip.endOffset.seconds
-            for (k, time) in times.enumerated() where time >= start && time < end {
-                let timelineTime = CMTime(seconds: time, preferredTimescale: 96_000)
-                let sourceTime = clip.sourceTime(atTimelineTime: timelineTime)
-                var decibels = clip.volume.value(at: sourceTime)
-                if let layer = source.layerVolume { decibels += layer.value(at: timelineTime) }
-                guard decibels > AudioLevel.silence else { continue }
-                let gain = pow(10, decibels / 20)
-                let index = Int((source.asset.fileTime(forSourceTime: sourceTime).seconds * Samples.rate).rounded())
-                func value(at i: Int) -> Double {
-                    guard let channel else { return (samples.value(0, at: i) + samples.value(1, at: i)) / 2 }
-                    return samples.value(channel, at: i)
-                }
+            func value(at i: Int) -> Double {
+                guard let channel else { return (samples.value(0, at: i) + samples.value(1, at: i)) / 2 }
+                return samples.value(channel, at: i)
+            }
+            if runs, source.hasEqualizers {
+                let heard = equalized(source, from: times[0], count: times.count, value: value)
+                for k in mixed.indices { mixed[k] += heard[k] }
+                continue
+            }
+            for (k, time) in times.enumerated() {
+                guard let (index, gain) = Self.locate(source, at: time) else { continue }
                 if reach > 1 {
                     var peak = 0.0
                     for i in index..<(index + reach) {
@@ -153,6 +156,56 @@ final class WaveformAudio: @unchecked Sendable {
             }
         }
         return mixed
+    }
+
+    /// Where `source` plays at `time` (seconds of the Waveform's timeline):
+    /// the sample of its file, and how loud, every clip and layer on the
+    /// way in at its volume. Nil while it doesn't play, or is silent.
+    static func locate(_ source: WaveformSound.Source, at time: Double) -> (index: Int, gain: Double)? {
+        var now = CMTime(seconds: time, preferredTimescale: 96_000)
+        var decibels = 0.0
+        for placed in source.chain {
+            let clip = placed.clip
+            guard now >= clip.startOffset, now < clip.endOffset else { return nil }
+            if let layer = placed.layerVolume { decibels += layer.value(at: now) }
+            let inner = clip.sourceTime(atTimelineTime: now)
+            decibels += clip.volume.value(at: inner)
+            now = inner
+        }
+        guard decibels > AudioLevel.silence else { return nil }
+        return (Int((source.asset.fileTime(forSourceTime: now).seconds * Samples.rate).rounded()), pow(10, decibels / 20))
+    }
+
+    /// How long before a run of samples an EQ starts, so it has settled.
+    static let equalizerLeadIn = 0.05
+
+    /// `count` samples of `source` from `first` seconds, one a sample,
+    /// through the EQs of every clip and layer on the way in, as set in
+    /// the middle of the run (a keyframed EQ is read once a run).
+    private func equalized(_ source: WaveformSound.Source, from first: Double, count: Int, value: (Int) -> Double) -> [Double] {
+        let lead = Int(Self.equalizerLeadIn * Samples.rate)
+        let start = first - Double(lead) / Samples.rate
+        var signal = (0..<(count + lead)).map { i -> Double in
+            guard let (index, gain) = Self.locate(source, at: start + Double(i) / Samples.rate) else { return 0 }
+            return value(index) * gain
+        }
+        // Each EQ as set at the run's middle, in the time it is keyed in.
+        var time = CMTime(seconds: first + Double(count / 2) / Samples.rate, preferredTimescale: 96_000)
+        var settings: [Equalizer.Settings] = []
+        for placed in source.chain {
+            settings += placed.layerEqualizers.map { Equalizer.settings(of: $0, at: time) }
+            time = placed.clip.sourceTime(atTimelineTime: time)
+            settings += placed.clipEqualizers.map { Equalizer.settings(of: $0, at: time) }
+        }
+        var output = 0.0
+        for setting in settings {
+            output += setting.output
+            var sections: [Biquad] = []
+            for band in setting.bands { Equalizer.appendSections(for: band, sampleRate: Samples.rate, to: &sections) }
+            for section in sections { signal = WaveformDrawing.run(signal, through: section) }
+        }
+        let gain = pow(10, output / 20)
+        return signal[lead...].map { $0 * gain }
     }
 
     // MARK: The spectrum
