@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import CoreMedia
 import Foundation
@@ -380,5 +381,41 @@ extension WaveformTests {
         let songClip = try #require(f.timeline.layers.flatMap(\.clips).first { $0.source == .media(f.songID) })
         f.project.editClip(songClip.id, in: f.project.rootTimelineID) { $0.volume = AnimatedValue(-6.0) }
         #expect(CompositionKey(project: f.project) != before)
+    }
+}
+
+/// A Waveform drawn through the compositor from a sound file on disk, as
+/// the app draws one: a WAV of a full-scale 1 kHz tone on a Music layer,
+/// and a Waveform clip over it on the 128 by 72 frame.
+@Suite struct WaveformCompositorTests {
+    @Test func aWaveformDrawsItsSoundFileThroughTheCompositor() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let url = fixture.directory.appending(path: "tone.wav")
+        let rate = 44_100.0
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: rate, channels: 2))
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let frames = AVAudioFrameCount(rate * 2)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        for channel in 0..<2 {
+            let samples = try #require(buffer.floatChannelData?[channel])
+            for i in 0..<Int(frames) { samples[i] = Float(sin(2 * .pi * 1000 * Double(i) / rate)) }
+        }
+        try file.write(from: buffer)
+        var song = MediaClip(
+            name: "tone.wav", kind: .audio, url: url, duration: CMTime(seconds: 2, preferredTimescale: 600), frameRate: 0,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        fixture.project.clips.append(song)
+        fixture.project.putOnMusicLayer([song.id])
+        let added = fixture.project.addShapeLayer(.waveform, to: fixture.timelineID, duration: CMTime(seconds: 2, preferredTimescale: 600))
+        #expect(added != nil)
+        let composed = try await fixture.build()
+        let second = CMTime(seconds: 1, preferredTimescale: 600)
+        // A dense, full-height wave across the middle; dark above it.
+        #expect(try await grayLevel(of: composed, at: second, x: 0.5, y: 0.5) > 150)
+        #expect(try await grayLevel(of: composed, at: second, x: 0.5, y: 0.05) < 10)
     }
 }

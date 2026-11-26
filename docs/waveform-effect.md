@@ -189,7 +189,7 @@ the viewer shows a handle for each (`PointControlHandles`).
 ### Presets
 
 Built-in **preset styles** to start from, installed into the Presets
-folder with the look recipes (`LookRecipes.waveformStyles`, version 2),
+folder with the look recipes (`LookRecipes.waveformStyles`, version 3),
 so they are shown in the Effects Library with their previews and saved
 and shared as any effect preset is
 ([Copying and presets](effects.md#copying-and-presets)):
@@ -206,6 +206,16 @@ and shared as any effect preset is
   gradient along it.
 - **Split Stereo**: left above and right below a line, in two colors.
 - **Stereo Scope**: X–Y, a thin line, a short window.
+- **Mountain**: a mirrored Area scrolling past, settled by Time
+  Smoothing.
+- **Peak Bars**: spectrum bars shaded by level, with attack, release
+  and peak marks.
+- **Stereo Meters**: Level, a meter a channel, shaded green to red, peak
+  marks held a second, the Floor at −48 dB.
+- **Spectrogram**: four seconds of the spectrum as a heat map, dark blue
+  to white.
+- **Sun Rays**: Spectrum as amber rays out of a ring.
+- **Particle Burst**: Spectrum as dots flying both ways off a ring.
 
 ### Drawing and caching
 
@@ -257,7 +267,8 @@ and shared as any effect preset is
   preview; it hears the song's EQ and a nested timeline's sound; and a
   volume edit builds the timeline again. `WaveformGraphTests` checks the Graph presets.
 - `UISnapshots.waveformInspector`.
-- Not yet: a test drawing it through the compositor from a sound file.
+- `WaveformCompositorTests`: a Waveform drawn through the compositor
+  from a WAV file on a Music layer, as the app draws one.
 
 ## Not yet
 
