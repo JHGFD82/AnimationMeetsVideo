@@ -10,28 +10,39 @@ import SwiftUI
 /// it (`GradientEditor`, docs/gradients.md). Set
 /// outright, as `InspectorControlRow` explains; keyframed in the effects
 /// panel.
+///
+/// A Stroke effect's group is the same without the Fill (`showsFill`
+/// off), so the two offer the same stroke.
 struct PaintInspectorGroup: View {
     let effect: Effect
     /// "Fill & Stroke", or with the effect's name when the clip draws more
     /// than one shape.
     let title: String
+    var showsFill = true
     let playhead: PlayheadTime
     let onEdit: ((inout Effect) -> Void) -> Void
     let onSeek: (CMTime) -> Void
 
     var body: some View {
         let stroke = effect.control(.stroke)
-        InspectorGroup(title, rowsOf: effect.id, controls: EffectKind.paintControls.compactMap { effect.control($0)?.id }) {
+        let colors: [ControlKind] = showsFill ? [.fill, .stroke] : [.stroke]
+        InspectorGroup(title, rowsOf: effect.id, controls: (colors + EffectKind.strokeShapeControls).compactMap { effect.control($0)?.id }) {
             InspectorControls(
-                effect: effect, kinds: [.fill, .stroke], playhead: playhead, offersGradients: true,
+                effect: effect, kinds: colors, playhead: playhead, offersGradients: true,
                 onEdit: onEdit, onSeek: onSeek
             )
             // The stroke's shape matters only while there is one.
             if stroke?.enabled ?? false {
                 InspectorControls(
-                    effect: effect, kinds: [.strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash],
+                    effect: effect, kinds: EffectKind.strokeShapeControls,
                     playhead: playhead, onEdit: onEdit, onSeek: onSeek
                 )
+            }
+            // A shape's own group says so already.
+            if !showsFill, !effect.enabled {
+                Text("Turned off in the effects panel, so it draws nothing.")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
             }
         }
     }

@@ -196,9 +196,20 @@ anything with an outline can be stroked, however often:
   Core Graphics' path operations, so an inside stroke keeps the shape's
   size, an outside one never covers it, and their corners follow the
   outline's own.
+- **Offset** moves the outline out by that many pixels before it is
+  stroked, or in for a negative number, as a mask's Expand grows a path
+  (the outline united with, or cut by, a band twice the offset wide,
+  joined as the stroke joins). Edge then goes by the moved outline. Only
+  a closed outline moves: an open path has no inside to move from, so
+  its stroke ignores Offset. Text's strokes take it too.
 - **Join** (Miter, Round, Bevel), **Cap** (Flat, Round, Square, for the
   ends of dashes) and **Dash** (dash and gap lengths in pixels; solid while
   the dash is 0, and a gap of 0 is as long as the dash).
+- **The same controls everywhere.** A shape's stroke and the Stroke
+  effect list the same ones (`EffectKind.strokeShapeControls`), and the
+  inspector shows them the same way: the color, then Width, Edge, Offset,
+  Join, Cap and Dash only while the color is on. A new Stroke effect
+  starts 4 pixels wide, so it shows as soon as its color is turned on.
 - **The Stroke effect** strokes the outline of everything the shapes above
   it in the stack drew, their strokes included, where they are by then.
   So a rectangle with a fill and a stroke, followed by a Stroke, has a
@@ -223,7 +234,8 @@ Still to come:
   rest planned; see [gradients.md](gradients.md).
 - **Path operations.** Union, intersection, subtraction and exclusion of
   shapes (Core Graphics' `CGPath` boolean operations, macOS 13 and later),
-  offset paths, and **trim paths** (start, end and offset in percent, for
+  offset paths as shapes of their own (a stroke's Offset is built), and
+  **trim paths** (start, end and offset in percent, for
   drawing a line on).
 
 ## Text

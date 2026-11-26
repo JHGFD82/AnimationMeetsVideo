@@ -79,7 +79,9 @@ a **paint**: a solid color, as now, or a gradient.
 - **Handles in the viewer** (built,
   [viewer-handles.md](viewer-handles.md), `GradientHandles`): the
   effect selected in the effects panel, when its Fill (else its Stroke)
-  paints a gradient, shows its line over the picture, a round handle at
+  paints a gradient, shows its line over the picture (for a Stroke
+  effect, over the bounds of the outline it strokes, worked out from
+  the stack as the compositor does, `GradientHandles.strokedOutline`), a round handle at
   its start and end (or center and edge), a diamond at a radial one's
   focal point (kept inside the edge), and each stop on the line, as
   Illustrator's gradient annotator does. A drag moves an end or the

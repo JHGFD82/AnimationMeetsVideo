@@ -42,6 +42,20 @@ import Testing
         #expect(!GradientHandles.applies(to: Effect(kind: .rectangle)))
     }
 
+    /// A Stroke effect's gradient lies over the outline it strokes, as the
+    /// compositor lays it, not over the frame.
+    @Test func aStrokeEffectsGradientLiesOverWhatItOutlines() {
+        let (rectangle, _) = shape(.linear)
+        var stroke = Effect(kind: .stroke)
+        stroke.changeControl(.stroke) { $0.enabled = true; $0.setPaint(.linear) }
+        var clip = rectangle
+        clip.effects.append(stroke)
+        let handles = GradientHandles(effectID: stroke.id).handles(context(clip, stroke))
+        let byName = Dictionary(uniqueKeysWithValues: handles.map { ($0.name, $0.place) })
+        #expect(byName["Gradient Start"] == CGPoint(x: 860, y: 540))
+        #expect(byName["Gradient End"] == CGPoint(x: 1060, y: 540))
+    }
+
     @Test func draggingAnEndMovesItsShareOfTheBounds() throws {
         let (clip, effect) = shape(.linear)
         var drag = HandleDrag(handle: .named("gradient.end"), start: CGPoint(x: 1060, y: 540))

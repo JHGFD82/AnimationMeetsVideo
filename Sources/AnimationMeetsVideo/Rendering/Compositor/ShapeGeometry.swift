@@ -315,6 +315,10 @@ struct ShapeStroke: Equatable, Sendable {
     /// dash is 0. A gap of 0 is as long as the dash.
     var dash: Double
     var gap: Double
+    /// Pixels the outline is moved out by before it is stroked (in for a
+    /// negative one), as a mask's Expand grows it. Closed outlines only:
+    /// an open path has no inside to move from.
+    var offset: Double = 0
 
     /// How an effect's controls stroke at source time `time` whether or not
     /// its Stroke is on: its width (0 while Stroke Width is off), Edge,
@@ -333,6 +337,7 @@ struct ShapeStroke: Equatable, Sendable {
         cap = StrokeCap(rawValue: choice(.strokeCap)) ?? .butt
         dash = max(0, dashes.first ?? 0)
         gap = max(0, dashes.count > 1 ? dashes[1] : 0)
+        offset = values(.strokeOffset)?.first ?? 0
     }
 
     /// The stroke an effect's controls give at source time `time`: its
@@ -362,12 +367,15 @@ struct ShapeStroke: Equatable, Sendable {
         cap = StrokeCap(rawValue: choice(.strokeCap)) ?? .butt
         dash = max(0, dashes.first ?? 0)
         gap = max(0, dashes.count > 1 ? dashes[1] : 0)
+        offset = effect.control(.strokeOffset).flatMap { $0.enabled ? $0.values(at: time).first : nil } ?? 0
     }
 
-    /// The area the stroke covers along `outline`, to be filled. Inside and
-    /// outside strokes are a centered stroke twice as wide, cut to that side
-    /// of the outline, so their corners are the outline's own.
-    func area(around outline: CGPath) -> CGPath {
+    /// The area the stroke covers along `outline`, to be filled, the
+    /// outline first moved by `offset`. Inside and outside strokes are a
+    /// centered stroke twice as wide, cut to that side of the (moved)
+    /// outline, so their corners are the outline's own.
+    func area(around original: CGPath) -> CGPath {
+        let outline = shifted(original)
         var line = outline
         if dash > 0 {
             line = outline.copy(dashingWithPhase: 0, lengths: [dash, gap > 0 ? gap : dash])
@@ -384,9 +392,29 @@ struct ShapeStroke: Equatable, Sendable {
         }
     }
 
+    /// `outline` grown by `offset` (shrunk for a negative one), its
+    /// corners as the stroke joins them; as it is when open.
+    private func shifted(_ outline: CGPath) -> CGPath {
+        guard offset != 0, outline.hasClosedSubpath else { return outline }
+        let band = outline.copy(strokingWithWidth: abs(offset) * 2, lineCap: .round, lineJoin: join.cgJoin, miterLimit: 10)
+        return offset > 0 ? outline.union(band) : outline.subtracting(band)
+    }
+
     /// What it draws, in words, for a render's key.
     var keyText: String {
         func n(_ value: Double) -> String { String(format: "%.5f", value) }
-        return (gradient?.keyText ?? color.map(n).joined(separator: ",")) + "@\(n(width)) \(edge.rawValue) \(join.rawValue) \(cap.rawValue) \(n(dash))/\(n(gap))"
+        return (gradient?.keyText ?? color.map(n).joined(separator: ","))
+            + "@\(n(width)) \(edge.rawValue) \(join.rawValue) \(cap.rawValue) \(n(dash))/\(n(gap)) +\(n(offset))"
+    }
+}
+
+extension CGPath {
+    /// Whether any of its subpaths is closed: an outline with an inside.
+    var hasClosedSubpath: Bool {
+        var closed = false
+        applyWithBlock { element in
+            if element.pointee.type == .closeSubpath { closed = true }
+        }
+        return closed
     }
 }

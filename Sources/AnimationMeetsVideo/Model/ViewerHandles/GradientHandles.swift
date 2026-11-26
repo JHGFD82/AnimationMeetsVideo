@@ -79,11 +79,50 @@ struct GradientHandles: ViewerHandleSet {
         else { return nil }
         let center = CGPoint(x: context.frameSize.width / 2, y: context.frameSize.height / 2)
         let frame = CGRect(origin: .zero, size: context.frameSize)
-        let item = ShapeStep(found.effect, at: context.sourceTime, center: center)?.path.boundingBoxOfPath ?? frame
+        // A Stroke effect's gradient lies over what it outlines, as the
+        // compositor lays it.
+        let outline = found.effect.kind == .stroke
+            ? Self.strokedOutline(of: effectID, context)
+            : ShapeStep(found.effect, at: context.sourceTime, center: center)?.path
+        let item = outline.map(\.boundingBoxOfPath).flatMap { $0.isNull || $0.isEmpty ? nil : $0 } ?? frame
         return Placed(
             effect: found.effect, control: control, gradient: gradient, style: style,
-            bounds: style.space == .frame || found.effect.kind == .stroke ? frame : item, matrix: found.matrix
+            bounds: style.space == .frame ? frame : item, matrix: found.matrix
         )
+    }
+
+    /// What the Stroke effect `effectID` outlines, in its own frame's
+    /// pixels: the edges of the shapes above it, strokes and all, where
+    /// the moves since have put them (`LayeredCompositor`'s
+    /// `.outlineStroke`). A Waveform's marks are left out, since they
+    /// need the sound. Nil when nothing above it draws.
+    static func strokedOutline(of effectID: UUID, _ context: HandleContext) -> CGPath? {
+        let effects = TransformHandles.shownEffects(context.clip, upTo: context.shownUpTo)
+        guard let index = effects.index(of: effectID) else { return nil }
+        let steps = StackFolding.steps(
+            effects: Array(effects.prefix(index)), anchorPoint: context.clip.anchorPoint, at: context.sourceTime, center: context.center
+        )
+        var edges: [(area: CGPath, transform: CGAffineTransform)] = []
+        func union() -> CGPath? {
+            edges.reduce(nil as CGPath?) { result, edge in
+                var transform = edge.transform
+                guard let area = edge.area.copy(using: &transform) else { return result }
+                return result.map { $0.union(area) } ?? area
+            }
+        }
+        for step in steps {
+            switch step {
+            case .place(let matrix, _):
+                for e in edges.indices { edges[e].transform = edges[e].transform.concatenating(matrix) }
+            case .shape(let shape):
+                edges.append((shape.edge, .identity))
+            case .outlineStroke(let style):
+                if let outline = union() { edges.append((style.area(around: outline), .identity)) }
+            default:
+                break
+            }
+        }
+        return union()
     }
 
     // MARK: Handles

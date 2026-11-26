@@ -33,8 +33,8 @@ import Testing
         let rectangle = Effect(kind: .rectangle)
         let groups = rectangle.panelSections()
         #expect(groups.compactMap(\.section?.name) == ["Shape", "Fill & Stroke"])
-        #expect(groups[1].controls.map(\.kind) == [.fill, .stroke, .strokeWidth, .dash])
-        #expect(Effect(kind: .stroke).panelSections().flatMap(\.controls).map(\.kind) == [.stroke, .strokeWidth, .dash])
+        #expect(groups[1].controls.map(\.kind) == [.fill, .stroke, .strokeWidth, .strokeOffset, .dash])
+        #expect(Effect(kind: .stroke).panelSections().flatMap(\.controls).map(\.kind) == [.stroke, .strokeWidth, .strokeOffset, .dash])
     }
 
     /// Where the panel is the only place to set a choice, it keeps it.

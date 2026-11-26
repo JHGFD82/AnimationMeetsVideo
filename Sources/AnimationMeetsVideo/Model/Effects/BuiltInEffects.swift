@@ -83,8 +83,12 @@ extension EffectKind {
     static let falseColor = EffectKind(package: "falseColor")
     static let neonEdges = EffectKind(package: "neonEdges")
 
+    /// The shape of a stroke, after its color: a shape's and the Stroke
+    /// effect's alike, so the two offer the same.
+    static let strokeShapeControls: [ControlKind] = [.strokeWidth, .strokeEdge, .strokeOffset, .strokeJoin, .strokeCap, .dash]
+
     /// How a shape is filled and stroked, after what shapes it.
-    static let paintControls: [ControlKind] = [.fill, .stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
+    static let paintControls: [ControlKind] = [.fill, .stroke] + strokeShapeControls
 
     /// A Text effect's settings, as Illustrator's Character, Paragraph and
     /// OpenType panels group them (see `TextInspectorGroup`).
@@ -148,6 +152,7 @@ extension ControlKind {
     static let stroke = ControlKind(builtIn: "stroke")
     static let strokeWidth = ControlKind(builtIn: "strokeWidth")
     static let strokeEdge = ControlKind(builtIn: "strokeEdge")
+    static let strokeOffset = ControlKind(builtIn: "strokeOffset")
     static let strokeJoin = ControlKind(builtIn: "strokeJoin")
     static let strokeCap = ControlKind(builtIn: "strokeCap")
     static let dash = ControlKind(builtIn: "dash")
@@ -438,7 +443,7 @@ enum BuiltInEffects {
         // and all, so a stroke can have a stroke of its own.
         EffectDefinition(
             .stroke, "Stroke", .shapes, "circle.dashed",
-            controls: [.stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
+            controls: [.stroke] + EffectKind.strokeShapeControls
         ),
         // Sound effects (see docs/audio.md, "Sound effects").
         EffectDefinition(.equalizer, "EQ", .sound, "slider.vertical.3", controls: Equalizer.controlKinds),
@@ -553,6 +558,7 @@ enum BuiltInEffects {
         ControlDefinition(.stroke, "Stroke", .rectangle, defaults: [0, 0, 0, 1], dragStep: 0.01, range: 0...1, isColor: true),
         ControlDefinition(.strokeWidth, "Stroke Width", .rectangle, defaults: [0], unit: " px", range: 0...10_000),
         ControlDefinition(.strokeEdge, "Edge", .rectangle, choice: StrokeEdge.center),
+        ControlDefinition(.strokeOffset, "Offset", .rectangle, defaults: [0], unit: " px", range: -10_000...10_000),
         ControlDefinition(.strokeJoin, "Join", .rectangle, choice: StrokeJoin.miter),
         ControlDefinition(.strokeCap, "Cap", .rectangle, choice: StrokeCap.butt),
         ControlDefinition(

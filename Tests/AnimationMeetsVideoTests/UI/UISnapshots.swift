@@ -886,6 +886,32 @@ struct UISnapshots {
         )
     }
 
+    /// The inspector for a rectangle followed by a Stroke effect, its color
+    /// on and moved out 12 pixels: the Stroke effect's group shows its
+    /// color, then Width, Edge, Offset, Join, Cap and Dash, as a shape's
+    /// Fill & Stroke does, without the Fill.
+    @Test func strokeEffectInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: t)
+        let shape = try #require(added)
+        _ = project.addEffect(.stroke, toClip: shape.clipID, in: t)
+        project.editClip(shape.clipID, in: t) { clip in
+            guard let index = clip.effects.firstIndex(where: { $0.kind == .stroke }) else { return }
+            clip.effects[index].changeControl(.stroke) { $0.enabled = true; $0.number = AnimatedValue(ComponentValue(values: [1, 0.8, 0.2, 1])) }
+            clip.effects[index].changeControl(.strokeOffset) { $0.setComponent(0, to: 12, at: .zero) }
+        }
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: shape.layerID, timelineClipID: shape.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "stroke-effect-inspector", size: CGSize(width: 340, height: 1100)
+        )
+    }
+
     /// The inspector for a shape filled with a linear gradient of three
     /// stops, the middle one leaning, and stroked with a radial one: each
     /// color's paint menu, and under it the preview, the stop bar with its

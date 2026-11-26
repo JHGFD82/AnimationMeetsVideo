@@ -44,6 +44,8 @@ extension Effect {
         case (.waveform, .waveHeight): return [Double(frame.height / 6).rounded()]
         case (.waveform, .stroke): return [1, 1, 1, 1]
         case (.waveform, .strokeWidth): return [3]
+        // A Stroke effect wide enough to see as it is added.
+        case (.stroke, .strokeWidth): return [4]
         default: return nil
         }
     }
