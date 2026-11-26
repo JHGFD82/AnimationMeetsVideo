@@ -115,25 +115,36 @@ like these for the four layer-transform properties until effects
 replaced the transform
 ([layer-transforms.md](layer-transforms.md#in-the-timeline)); today
 only the volume rows are left (Shift-L, [audio.md](audio.md)). This
-brings rows back for any numeric control of a clip's effects and sound
+brings rows back for any keyframed control of a clip's effects and sound
 effects, the volume rows among them.
 
 ### Which rows a layer shows
 
-A layer's rows are the parameters **of the clips selected on it**. With
-one clip selected, they are its parameters that have been put in the
-timeline; with several, those of each, and a parameter's lane draws the
-keyframes of each clip under its block. Selecting other clips changes
-the rows; what each clip has put in the timeline stays with the clip.
+A layer's rows are the parameters **of the clips selected on it**, one
+**shared row** a parameter: every selected clip's Glow Intensity is one
+row, whose lane draws each clip's keyframes under its block, and a clip
+without that control leaves its stretch of the lane empty. Controls are
+matched by effect kind and control, and a clip with two effects of one
+kind by their order among them ("Glow", "Glow 2"). Selecting other
+clips changes the rows; what each clip has put in the timeline stays
+with the clip, and a row shows while any selected clip has put it in.
+
+With several clips on a row:
+
+- **The value** is the selected clips' value at the playhead, or
+  "Mixed" when they differ. Typing or dragging it sets it on every
+  selected clip, at the playhead for each that is keyframed (so a
+  keyframe is added there) and outright for the rest, as one undo step.
+- **The stopwatch and keyframe buttons** act on every selected clip the
+  playhead is over; previous and next go to the nearest keyframe of any
+  of them.
 
 A parameter gets into the timeline in three ways:
 
 - **Show All in Timeline**, a new item in an effect's ⋯ menu in the
-  effects panel, with a key (**U** is free, and is After Effects' key
-  for showing animated properties), puts every numeric control of that
-  effect in the timeline.
-  Pressed again over an effect whose controls are all shown, it
-  takes them out.
+  effects panel, with a key (**U** in the effects panel, where it is
+  free), puts every control of that effect in the timeline. Pressed
+  again over an effect whose controls are all shown, it takes them out.
 - **Show in Timeline** in a single control's ⋯ menu puts in just that
   one.
 - **Adding a keyframe** to a control puts it in, from anywhere: the
@@ -189,23 +200,93 @@ a row out leaves its keyframes as they are.
   showing or hiding a row is not an undo step and doesn't mark the
   project edited.
 
+### Animated and changed
+
+As After Effects' U and UU, **U** in the timeline shows only the
+selected clips' controls that have **keyframes**, and **U pressed twice**
+quickly only those **changed from their defaults**, keyframed or not,
+picked into the timeline or not. Each is a filter over the rows, not a
+change to what is picked: pressing U again, or Escape in the label
+column, goes back to the picked rows. A note in the layer header says
+which filter is on. The same is in the View menu, as Show Animated
+Parameters and Show Changed Parameters.
+
+### Graph mode
+
+A **Graph** button at the top of the timeline's label column (and a
+key: **G**, free in the timeline, or ⇧F3 as in After Effects) turns
+the track area into a **graph**, as After Effects' Graph Editor does in
+its timeline: the clips, sections and lanes give way to one value graph
+across the timeline's width, and the label column stays with its layers
+and rows. Pressing it again brings the clips back.
+
+- **Which curves**: the rows picked in the label column (click a row,
+  Shift-click a range, Command-click to add or take out), or, with none
+  picked, every row shown. Each row's curve keeps its colors (X red, Y
+  green, a single value yellow), and a picked row's are drawn bold.
+- **The same graph** as the graph editors' (`KeyframeGraphView`): the
+  same keyframe marks, handles, eases, lasso, F9 keys and Fit, with
+  each curve fitted to its own value range or all to one, but in the
+  timeline's time rather than a clip's source time, so curves of
+  several clips line up with the ruler, the playhead, the loop region
+  and the beat markers above them.
+- **The ruler, playhead, zoom and scroll** are the timeline's own:
+  graph mode zooms and scrolls in time with the clips' view, and
+  leaving it keeps where it was.
+- Driven controls draw their curves in their method's color and refuse
+  hand edits, as in the lanes.
+- Graph mode is kept with the timeline in `view-state.json`.
+
+### Copying keyframes
+
+With keyframes picked in the lanes or the graph, **⌘C** copies them
+rather than the clips, and **⌘X** cuts them (the effects panel and the
+timeline both offer it, as for clips and effects in
+[Copy, paste and duplicate](timeline.md#copy-paste-and-duplicate)).
+
+- **⌘V pastes them at the playhead**, keeping their times apart and
+  their values and eases, onto the rows picked in the label column:
+  onto the same controls they came from when no row is picked, or onto
+  one picked row (a single control's keyframes onto any control of the
+  same number of components, or a single component's onto one of a
+  Position's). Pasted keyframes replace any at the same frames.
+- They paste onto every selected clip the playhead is over, so a pulse
+  made on one clip can be stamped onto several.
+- **Option-drag** copies picked keyframes within their rows, as it does
+  for one keyframe today.
+- Copied keyframes go on the pasteboard as JSON too, so they paste into
+  the effects panel's lanes and into a text editor alike.
+- A paste onto a driven control is refused, as any hand edit is.
+
+### Other kinds of lanes
+
+Every kind of lane the effects panel has can be a row: a text run's
+settings, a variable font's axes, a clip's speed, and volume and pan,
+each with its own value editor in the row, as in the panel. Speed
+shows under the clip with the same eases as in the
+[Motion Designer](motion-designer.md). Volume rows become ordinary
+rows of this kind, so Shift-L shows or hides the volume rows, as today,
+alongside what has been picked.
+
+### Accessibility
+
+Following [accessibility.md](accessibility.md):
+
+- Each layer, effect and control row is an accessibility element in an
+  outline: its name, its value (or "Mixed"), whether it is open, and
+  actions to open, close and Remove from Timeline. A control row is
+  adjustable, and its value field takes typing as in the panel.
+- Each diamond is an element with the actions the panel's lanes have
+  (Add to selection, Move a frame earlier or later), and its value says
+  which clip it is on.
+- Keys for everything the arrows and drags do: in the label column, ↑
+  and ↓ move between rows, → opens a row and ← closes it (Option for
+  all beneath), Return types a value, and Delete takes the row out. ⌘A,
+  ← → and Escape pick and move keyframes, as in the panel.
+- In graph mode the curves have the graph editors' elements and
+  actions, and the Graph button is labeled and says whether it is on.
+
 ### Worth deciding
 
 - **With no clip selected**, should a layer show nothing, the rows of
   the clip under the playhead, or every clip's rows?
-- **Several clips with different effects**: rows matched by effect and
-  control (every selected clip's Glow Intensity on one row), or a group
-  of rows for each clip.
-- **Show Animated** and **Show Changed**: keys that show only the
-  controls with keyframes, or only those changed from their defaults
-  (After Effects' U and UU), on top of what was picked.
-- **A graph in the row**: a button that opens the row's lane into a
-  value graph in place, as After Effects' graph editor does in its
-  timeline.
-- **Copying keyframes** between rows and clips from the timeline.
-- **Non-numeric keyframes** (text runs, font axes, paths) as rows too,
-  since the panel already has lanes for them.
-- **Accessibility**
-  ([accessibility.md](accessibility.md)): rows and diamonds need
-  the same VoiceOver elements and actions as the panel's lanes, and
-  opening, closing and picking rows needs keys as well as the arrows.
