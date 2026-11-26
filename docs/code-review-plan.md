@@ -1,9 +1,9 @@
 # Code review plan
 
 Status: **planned**. A plan for a full review of the app, not a record
-of one: no pass has been carried out against it yet. Findings go where
-"Recording findings" says, and this document changes only when the plan
-does.
+of one. The first pass is under way, with phase 1 done; its findings
+are in [code-review-notes.md](code-review-notes.md), as "Recording
+findings" says, and this document changes only when the plan does.
 
 The review runs in this order: establish a baseline that can be trusted,
 review the design and the correctness problems that cost the most, then
