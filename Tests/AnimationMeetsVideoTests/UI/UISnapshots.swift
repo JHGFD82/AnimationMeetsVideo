@@ -932,7 +932,8 @@ struct UISnapshots {
         let media = MediaClip(
             name: "Walk", kind: .video, url: nil, duration: CMTime(value: 10, timescale: 1), frameRate: 24, colorSpace: .rec709, codecName: "H.264"
         )
-        let placed = try #require(project.importClip(media, intoTimeline: t))
+        let imported = project.importClip(media, intoTimeline: t)
+        let placed = try #require(imported)
         _ = project.addEffect(.transform, toClip: placed.clipID, in: t)
         _ = project.addEffect(.color, toClip: placed.clipID, in: t)
         let clip = try #require(project.clipAndLayer(placed.clipID, in: t)?.clip)
