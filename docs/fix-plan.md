@@ -16,43 +16,35 @@ Paths are under `Sources/AnimationMeetsVideo/` unless they start with
 
 ## 2. Gradients don't show in the built app
 
-The cause wasn't found from the code alone. The whole path is wired:
-inspector menu → `setPaint` → `ShapeStep.fillGradient` / `ShapeStroke.gradient`
-→ `ShapeRendering.draw` → `GradientRendering.draw`, and save/load keeps
-`paint`. The docs say it was "not yet tried in the running app", and CI only
-runs when started by hand, so the gradient tests may never have run on a Mac.
+**What's settled.** The code path is wired and works when built and
+tested on a Mac:
 
-**Plan, in order**
+- `swift test --filter Gradient` passes (`GradientDrawingTests`,
+  `GradientPaintTests`, `PaintGradientTests`, `TextGradientTests`).
+- `GradientDrawingTests` already draws gradient rectangles through
+  `CompositionExporter` and `LayeredCompositor` (the export's
+  composition), and now also as the viewer draws one: built for
+  preview, on a frame twice the size, drawn at half of it, the gradient
+  set with the inspector's `setPaint`
+  (`aLinearGradientShowsInTheViewersSmallerPreview`).
+- The gradient is in both `ShapeStep.keyText` (the render cache's key)
+  and `CompositionKey` (`EffectControl.paint` is part of its synthesized
+  equality), so an edit rebuilds the player and misses old renders.
+- The inspector draws the paint menu, the stop bar and the editor
+  (`UISnapshots.shapeInspectorGradients`).
 
-1. Run `swift test --filter "Gradient"` on the Mac (`GradientDrawingTests`,
-   `GradientPaintTests`, `PaintGradientTests`, `TextGradientTests`).
-   - **Tests fail**: the bug is in `GradientRendering.draw` or
-     `ShapeRendering.draw`. Check these in order:
-     - `context.clip()` followed by drawing in the frame's pixels under
-       `paint.transform`.
-     - The float bitmap context: `premultipliedLast | floatComponents | byteOrder32Little`
-       against `CGGradient` in sRGB.
-     - The `covering:` rect.
-     - The 256-stop `CGGradient`.
-     A quick check: in `ShapeRendering.draw`, temporarily fill solid red after
-     `clip()`. If red shows, the clip is right and the gradient call is at fault.
-   - **Tests pass**: the bug is between the model and the compositor in the
-     running app. Go on to step 2.
-2. Put a breakpoint (or log) in `LayeredCompositor` `case .shape` (line ~932)
-   and check that `shape.paints[0].gradient != nil` for a gradient-filled
-   rectangle.
-   - **Nil there**: check the edit actually reached the project. Set a
-     breakpoint in `PaintKindMenu` → `onEdit { $0.setPaint(…) }`. Then check
-     `EffectControl.paint` survives `project.editEffect`, and anything that
-     rebuilds controls (`Effect.fitToPackage`, keyframing's base, the Python
-     bridge's `ProjectBridge+Changes`).
-   - **Set there but the frame doesn't change**: the player wasn't rebuilt, or
-     a cached frame is being shown. Compare the `CompositionKey` before and
-     after, and check `ShapeStep.keyText` (it has the gradient) is what the
-     frame cache keys on.
-3. Whatever the cause, add a test that draws a gradient rectangle through the
-   whole compositor (`LayeredCompositor`, not just `ShapeRendering`). Then add
-   the same for export, with `CompositionExporter` on a 2-frame timeline.
+**The likely cause.** None of the gradient work (6d5811ec, d60187b9),
+nor the Waveform, parameter rows or Strobe Keys, had reached `main`, and
+the branch it was on didn't compile until 3577b60e. An app built from
+`main`, or from anything older that built, had no gradients to show.
+
+**Left to do.** Build the app from `main` once this lands
+(`scripts/build-app.sh`), paint a rectangle's Fill with a Linear
+gradient in the inspector, and check the viewer and an export. If it
+still doesn't show, follow it from the edit: a breakpoint in
+`LayeredCompositor`'s `case .shape` to see whether
+`shape.paints[0].gradient` is set, then back through `PaintKindMenu`'s
+`setPaint` and `project.editEffect` if it isn't.
 
 ---
 

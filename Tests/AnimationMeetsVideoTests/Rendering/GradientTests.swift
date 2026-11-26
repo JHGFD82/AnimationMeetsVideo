@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreMedia
 import Foundation
 import Testing
@@ -164,6 +165,45 @@ private let red = [1.0, 0, 0, 1], green = [0.0, 1, 0, 1], black = [0.0, 0, 0, 1]
         #expect(middle > 90 && middle < 170)
         // Nothing outside the shape.
         #expect(try await level(composed, x: 10) < 10)
+    }
+
+    /// As the viewer draws it: built for preview, on a frame twice the
+    /// size, drawn at half of it, and the gradient set through the
+    /// inspector's `setPaint` rather than its numbers.
+    @Test func aLinearGradientShowsInTheViewersSmallerPreview() async throws {
+        var fixture = try DrawingFixture(frame: CGSize(width: 256, height: 144))
+        defer { fixture.cleanUp() }
+        let shape = try fixture.addShape()
+        fixture.project.editEffect(
+            try #require(fixture.project.clipAndLayer(shape.clipID, in: fixture.timelineID)?.clip.effects.first?.id),
+            ofClip: shape.clipID, in: fixture.timelineID
+        ) { effect in
+            effect.changeControl(.fill) { fill in
+                fill.number = AnimatedValue(ComponentValue(values: [1, 1, 1, 1]))
+                fill.setPaint(.linear)
+                fill.editGradient(at: .zero) { $0.stops[0].color = [0, 0, 0, 1]; $0.stops[1].color = [1, 1, 1, 1] }
+            }
+        }
+        let composed = try await fixture.build(forPreview: true)
+        let generator = AVAssetImageGenerator(asset: composed.composition)
+        generator.videoComposition = composed.videoComposition(scaledBy: 0.5)
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let image = try await generator.image(at: second).image
+        let width = image.width, height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let context = try #require(CGContext(
+            data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        func level(_ x: Double) -> Int { Int(pixels[((height / 2) * width + Int(Double(width) * x)) * 4 + 1]) }
+        #expect(width == 128)
+        // The rectangle is the middle half across: dark at its left, light
+        // at its right.
+        #expect(level(0.27) < 60)
+        #expect(level(0.73) > 190)
+        #expect(level(0.05) < 10)
     }
 
     @Test func aRadialGradientSpreadsFromTheMiddle() async throws {
