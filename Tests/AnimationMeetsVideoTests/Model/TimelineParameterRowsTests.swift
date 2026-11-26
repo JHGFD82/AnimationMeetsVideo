@@ -166,7 +166,7 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
 /// playhead onto another's (see docs/parameter-rows.md, "Copying
 /// keyframes").
 @Suite struct KeyframeCopyingTests {
-    private func project() -> (EditingProject, UUID, [UUID]) {
+    private func fixture() -> (EditingProject, UUID, [UUID]) {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID
         let media = MediaClip(
@@ -198,7 +198,7 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
     }
 
     @Test func keyframesPasteAtThePlayheadOntoTheSameControlKeepingTheirSpacingAndEases() throws {
-        var (project, timelineID, clips) = project()
+        var (project, timelineID, clips) = fixture()
         let source = project.clipAndLayer(clips[0], in: timelineID)!.clip
         let transform = source.effects.first { $0.kind == .transform }!
         let picked = [transform.id: [transform.control(.rotation)!.id: [seconds(1), seconds(2)]]]
@@ -217,7 +217,7 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
     }
 
     @Test func oneControlsKeyframesPasteOntoAnotherWithAsManyNumbers() throws {
-        var (project, timelineID, clips) = project()
+        var (project, timelineID, clips) = fixture()
         let source = project.clipAndLayer(clips[0], in: timelineID)!.clip
         let transform = source.effects.first { $0.kind == .transform }!
         let copied = try #require(project.copiedKeyframes(
@@ -231,7 +231,7 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
     }
 
     @Test func copiedKeyframesGoThroughTheirText() throws {
-        let (project, timelineID, clips) = project()
+        let (project, timelineID, clips) = fixture()
         let transform = project.clipAndLayer(clips[0], in: timelineID)!.clip.effects.first { $0.kind == .transform }!
         let copied = try #require(project.copiedKeyframes(
             [transform.id: [transform.control(.rotation)!.id: [seconds(2)]]], ofClip: clips[0], in: timelineID
