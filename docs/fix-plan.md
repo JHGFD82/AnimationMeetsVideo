@@ -1,6 +1,6 @@
 # Fix plan
 
-Status: **planned, not implemented**. Six fixes asked for after a first
+Status: **planned, not implemented**. Fixes asked for after a first
 look at the parameter rows, gradients, Strobe Keys and Waveform work,
 each with what causes it (where that is known from the code) and how to
 fix it. Written from reading the code at 1955176, without building or
@@ -124,41 +124,6 @@ runs when started by hand, so the gradient tests may never have run on a Mac.
 3. Whatever the cause, add a test that draws a gradient rectangle through the
    whole compositor (`LayeredCompositor`, not just `ShapeRendering`). Then add
    the same for export, with `CompositionExporter` on a 2-frame timeline.
-
----
-
-## 3. Shape options in the timeline, like effects
-
-**Cause.** A graphic clip's own shape (its "drawing") gets `drawingMenu`
-(`UI/Effects/EffectsPanelEffects.swift:344`) in place of `effectMenu`.
-`drawingMenu` never got `timelineRowsItem`, so a shape has no
-"Show All in Timeline". The inspector's shape groups (`ShapeInspectorGroup`,
-`PaintInspectorGroup`, `TextInspectorGroup`) have no menu at all. The model
-already handles shapes: `TimelineClip.parameterEffects` includes them.
-
-**Plan**
-
-1. `drawingMenu`: add `timelineRowsItem(effect, in: clip)` after Add Control.
-2. Check each shape control's row in the effects panel goes through
-   `controlMenu` (which already has `timelineRowItem`). If a drawing's rows
-   use another builder, add it there too.
-3. Inspector: on each `InspectorControlRow` that `isDrivable`, add a
-   `.contextMenu` with Show in Timeline / Remove from Timeline. This needs
-   `clip` and the `TimelineParameterRowsStore`
-   (`viewMemory?.parameterRows`) passed down through `InspectorControls`.
-   Move the two helpers out of `EffectsPanel` into a small shared type
-   (for example `UI/Timeline/ParameterRowMenuItems.swift`, a `View` taking
-   `store`, `timelineID`, `clip`, `effect`, `control`), so both places use it.
-   Add a group-level "Show All in Timeline" to each inspector group header.
-4. Group names: for a graphic clip, `ParameterRowGroup.name` is the
-   effect's display name ("Rectangle"), which reads fine. For Text, the run
-   and variation lanes (`.textRun`, `.textVariation`) aren't
-   `ParameterRowKey`s. Leave them out for now and say so in
-   `docs/parameter-rows.md`.
-5. Tests: in `TimelineParameterRowsTests`, check a rectangle's Size and
-   Fill keys show on its graphic clip's layer. Add a
-   `UISnapshots` case for the drawing's ⋯ menu if menus are snapshotted;
-   otherwise skip it.
 
 ---
 
@@ -304,5 +269,5 @@ the ones that don't apply. None of it has been tried in the running app.
 
 ## Suggested order
 
-Do 3 first (a small fix with a known cause), then 5, 1, 4, 2 (which needs
-the Mac to diagnose), and 6 (whose list needs confirming).
+Do 5, then 1, 4, 2 (which needs the Mac to diagnose), and 6 (whose list
+needs confirming).

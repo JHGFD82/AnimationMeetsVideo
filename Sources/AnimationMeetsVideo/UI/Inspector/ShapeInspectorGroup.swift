@@ -23,7 +23,7 @@ struct ShapeInspectorGroup: View {
         let kinds = effect.kind == .stroke
             ? effect.kind.controlKinds
             : effect.kind.controlKinds.filter { !EffectKind.paintControls.contains($0) && effect.waveformShows($0) }
-        InspectorGroup(effect.displayName) {
+        InspectorGroup(effect.displayName, rowsOf: effect.id, controls: kinds.compactMap { effect.control($0)?.id }) {
             // A Stroke effect's color can be a gradient, laid over what it
             // outlines (docs/gradients.md).
             InspectorControls(

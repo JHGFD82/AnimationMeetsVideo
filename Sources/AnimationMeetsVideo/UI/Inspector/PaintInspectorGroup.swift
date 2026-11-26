@@ -21,7 +21,7 @@ struct PaintInspectorGroup: View {
 
     var body: some View {
         let stroke = effect.control(.stroke)
-        InspectorGroup(title) {
+        InspectorGroup(title, rowsOf: effect.id, controls: EffectKind.paintControls.compactMap { effect.control($0)?.id }) {
             InspectorControls(
                 effect: effect, kinds: [.fill, .stroke], playhead: playhead, offersGradients: true,
                 onEdit: onEdit, onSeek: onSeek

@@ -60,7 +60,7 @@ struct TextInspectorGroup: View {
                     .background(Design.Surface.base.color, in: RoundedRectangle(cornerRadius: Design.Radius.control))
                     .help("The words the layer draws; Return starts a new paragraph. Select letters to style them apart.")
             }
-            InspectorGroup(title("Character")) {
+            InspectorGroup(title("Character"), rowsOf: effect.id, controls: ids([.fontSize, .leading, .kerning, .tracking, .verticalScale, .horizontalScale, .baselineShift, .characterRotation])) {
                 if selection.length > 0, selection.location < content.length {
                     selectedLetters
                 } else {
@@ -80,7 +80,7 @@ struct TextInspectorGroup: View {
                     }
                 }
             }
-            InspectorGroup(title("Paragraph")) {
+            InspectorGroup(title("Paragraph"), rowsOf: effect.id, controls: ids([.leftIndent, .rightIndent, .firstLineIndent, .wrapWidth, .spaceBefore, .spaceAfter])) {
                 cell(.textAlign)
                 grid([[.leftIndent, .rightIndent], [.firstLineIndent, .wrapWidth], [.spaceBefore, .spaceAfter]])
                 HStack(alignment: .center, spacing: Design.Space.step) {
@@ -88,7 +88,7 @@ struct TextInspectorGroup: View {
                     controls([.hyphenate])
                 }
             }
-            InspectorGroup(title("Path")) {
+            InspectorGroup(title("Path"), rowsOf: effect.id, controls: ids([.pathOffset])) {
                 HStack(spacing: Design.Space.step) {
                     controls([.textOnPath, .pathFlip])
                     cell(.pathOffset)
@@ -187,6 +187,12 @@ struct TextInspectorGroup: View {
 
     // MARK: Controls
 
+    /// The IDs of the controls of `kinds` the effect has, for a group's
+    /// Show All in Timeline.
+    private func ids(_ kinds: [ControlKind]) -> [UUID] {
+        kinds.compactMap { effect.control($0)?.id }
+    }
+
     private func controls(_ kinds: [ControlKind]) -> some View {
         InspectorControls(effect: effect, kinds: kinds, playhead: playhead, onEdit: onEdit, onSeek: onSeek)
     }
@@ -200,6 +206,7 @@ struct TextInspectorGroup: View {
                 control: control, playhead: playhead, layout: .cell,
                 onEdit: { change in onEdit { $0.changeControl(kind, change) } }, onSeek: onSeek
             )
+            .parameterRowMenu(effect: effect.id, control: control.id)
         }
     }
 

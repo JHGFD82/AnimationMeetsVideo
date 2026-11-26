@@ -26,6 +26,7 @@ struct InspectorControls: View {
                 onEdit: { change in onEdit { $0.changeControl(control.kind, change) } },
                 onSeek: onSeek
             )
+            .parameterRowMenu(effect: effect.id, control: control.id)
         }
     }
 }

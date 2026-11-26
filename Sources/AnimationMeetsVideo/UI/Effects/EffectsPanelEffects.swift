@@ -270,7 +270,7 @@ extension EffectsPanel {
                 }
             }
         }
-        timelineRowsItem(effect, in: clip)
+        ParameterRowMenuItems(timelineID: timelineID, clip: clip, effectID: effect.id)
         Divider()
         Button("Copy") { copy(effect, from: clip) }
             .keyboardShortcut("c", modifiers: .command)
@@ -354,6 +354,7 @@ extension EffectsPanel {
                 }
             }
         }
+        ParameterRowMenuItems(timelineID: timelineID, clip: clip, effectID: effect.id)
     }
 
     // MARK: Effect headers

@@ -47,10 +47,17 @@ A parameter gets into the timeline in three ways:
 - **Show All in Timeline**, a new item in an effect's ⋯ menu in the
   effects panel, puts every control of that effect in the timeline; over
   an effect whose controls are all shown it reads **Remove All from
-  Timeline** and takes them out. Its key (**U** in the effects panel) is
-  not built yet.
+  Timeline** and takes them out. A graphic clip's own shape (its
+  drawing, whose ⋯ menu is shorter than an effect's) has it too. In the
+  inspector, the same item is in the context menu of each shape group's
+  title (a shape's settings, Fill & Stroke, and a Text effect's
+  Character, Paragraph and Path), for that group's controls. Its key
+  (**U** in the effects panel) is not built yet.
 - **Show in Timeline** in a single control's ⋯ menu puts in just that
-  one.
+  one, as does a control's context menu in the inspector's shape
+  groups. Both menus build their items from `ParameterRowMenuItems`.
+  A Text effect's run and variation lanes (`.textRun`,
+  `.textVariation`) aren't controls, so they can't be rows yet.
 - **Adding a keyframe** to a control puts it in, from anywhere: the
   panel's stopwatch or lane, the viewer's handles, a graph editor, a
   Keyframing method writing its first keyframes. This is the default

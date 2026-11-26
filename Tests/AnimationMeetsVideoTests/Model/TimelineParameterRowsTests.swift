@@ -133,6 +133,28 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(Set(names(.changed)) == [ControlKind.rotation.name, ControlKind.saturation.name])
     }
 
+    /// A graphic clip's own shape (its drawing) shows in rows as an effect
+    /// does: Show All in Timeline from its ⋯ menu puts its Size and Fill
+    /// under its layer.
+    @Test func aShapeClipsDrawingShowsInRows() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let placed = try #require(added)
+        let clip = try #require(project.clipAndLayer(placed.clipID, in: timelineID)?.clip)
+        let rectangle = try #require(clip.effects.first { $0.kind == .rectangle })
+        let keys = clip.parameterKeys(ofEffect: rectangle.id)
+        let size = ParameterRowKey(effectKind: .rectangle, ordinal: 0, control: .shapeSize)
+        let fill = ParameterRowKey(effectKind: .rectangle, ordinal: 0, control: .fill)
+        #expect(keys.isSuperset(of: [size, fill]))
+        var rows = TimelineParameterRows()
+        rows.show(keys, on: [clip.id])
+        let layer = try #require(project.timeline(id: timelineID)?.layer(id: placed.layerID))
+        let names = project.parameterRows(on: layer, rows: rows, addsKeyframed: false, selected: [], filter: nil).flatMap { $0.rows.map(\.name) }
+        #expect(names.contains(ControlKind.shapeSize.name))
+        #expect(names.contains(ControlKind.fill.name))
+    }
+
     @Test func turningAddingOffKeepsTheRowsShown() {
         var f = Fixture()
         f.keyframe(.rotation, of: .transform, on: f.first)
