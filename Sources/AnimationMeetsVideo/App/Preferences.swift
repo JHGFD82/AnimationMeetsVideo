@@ -40,6 +40,9 @@ enum Preferences {
     /// over a graph editor's plot. On unless turned off, as on the
     /// timeline.
     static let graphEditorSkimming = "graphEditorSkimming"
+    /// Whether new projects make ProRes viewer copies of their footage
+    /// (`EditingProject.makesViewerCopies`). Off unless turned on.
+    static let viewerCopiesInNewProjects = "viewerCopiesInNewProjects"
     /// A `GraphTimeBasis` raw value: whether a retimed clip's graphs lay
     /// time out as the timeline plays it (the default) or as the clip
     /// stores it.

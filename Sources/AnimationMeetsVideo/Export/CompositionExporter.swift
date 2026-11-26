@@ -78,7 +78,8 @@ enum CompositionExporter {
         forPreview: Bool = false,
         meter: RenderMeter? = nil,
         options: DrawingOptions? = nil,
-        cache: RenderCache? = nil
+        cache: RenderCache? = nil,
+        viewerCopies: ViewerCopyIndex? = nil
     ) async throws -> ComposedTimeline {
         // Slivers of gap between clips (a retimed clip's end can't be found
         // closer than a few microseconds) would draw black frames.
@@ -154,14 +155,31 @@ enum CompositionExporter {
                         // Without its copy the sound plays centered.
                     }
                 }
-                if let sourceVideo = info.video, placement.includesVideo {
+                if var sourceVideo = info.video, placement.includesVideo {
+                    // For the viewer, a ProRes copy holding every stretch
+                    // played stands in for the file's picture, its times
+                    // the original's less its offset (`ViewerCopies`);
+                    // export never has one.
+                    var copyOffset = CMTime.zero
+                    if forPreview, let viewerCopies, !viewerCopies.isEmpty {
+                        let used = placement.pieces.compactMap { $0.within(info.videoRange)?.file }
+                        if let first = used.first {
+                            let span = used.dropFirst().reduce(first) { $0.union($1) }
+                            if let copy = viewerCopies.copy(of: info.url, covering: span),
+                               let copied = try? await MediaTrackCache.shared.info(for: copy.url).video {
+                                sourceVideo = copied
+                                copyOffset = copy.offset
+                            }
+                        }
+                    }
                     var playing: CMTimeRange?
                     for piece in placement.pieces {
                         guard let (file, at, length) = piece.within(info.videoRange) else { continue }
                         if videoTrack == nil {
                             videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                        try videoTrack?.insertTimeRange(file, of: sourceVideo, at: at)
+                        let read = CMTimeRange(start: CMTimeSubtract(file.start, copyOffset), duration: file.duration)
+                        try videoTrack?.insertTimeRange(read, of: sourceVideo, at: at)
                         // Retimed footage plays faster or slower than it was
                         // shot.
                         if length != file.duration {

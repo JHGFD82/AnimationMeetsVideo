@@ -107,6 +107,8 @@ final class ViewerPipeline {
         case valuesChanged(ViewerSource)
         case gestureBegan, gestureEnded
         case renderFinished, packageURLChanged, drawingOptionsChanged, offlineMediaChanged
+        /// Viewer copies were made or let go (`ViewerCopies`).
+        case viewerCopiesChanged
         case playbackStateChanged(isPlaying: Bool)
         /// Another timeline is shown, from `at`, or the viewer first appears.
         case timelineChanged(ViewerSource, at: CMTime)
@@ -245,10 +247,11 @@ final class ViewerPipeline {
     /// finishing, the package, motion blur in the viewer, play and pause,
     /// and value gestures.
     convenience init(playback: PlaybackModel, renderer: RenderScheduler?) {
-        self.init(player: playback, renderer: renderer) { [weak playback] source, cache in
-            try await CompositionExporter.buildComposedTimeline(
+        self.init(player: playback, renderer: renderer) { [weak playback, weak renderer] source, cache in
+            let copies = await MainActor.run { renderer?.viewerCopies.index }
+            return try await CompositionExporter.buildComposedTimeline(
                 for: source.project, timelineID: source.timelineID, forPreview: true, meter: playback?.meter,
-                options: playback?.drawingOptions, cache: source.playsRenders ? cache : nil
+                options: playback?.drawingOptions, cache: source.playsRenders ? cache : nil, viewerCopies: copies
             )
         }
         follow({ playback.isPlaying }) { $0.send(.playbackStateChanged(isPlaying: $1)) }
@@ -256,6 +259,7 @@ final class ViewerPipeline {
         if let renderer {
             follow({ renderer.finishedCount }) { pipeline, _ in pipeline.send(.renderFinished) }
             follow({ renderer.packageURL }) { pipeline, _ in pipeline.send(.packageURLChanged) }
+            follow({ renderer.viewerCopies.version }) { pipeline, _ in pipeline.send(.viewerCopiesChanged) }
         }
         for (name, event) in [(Notification.Name.valueGestureDidBegin, Event.gestureBegan), (.valueGestureDidEnd, .gestureEnded)] {
             notificationTasks.append(Task { [weak self] in
@@ -368,6 +372,15 @@ final class ViewerPipeline {
             renderer?.noteActivity()
             if planStale, ready == nil { schedulePlan(after: .zero) }
             advance()
+        case .viewerCopiesChanged:
+            // Copies made or let go: the footage is drawn from them, or
+            // from the files again, once built, as a render is taken up.
+            parked.removeAll()
+            if isPlaying {
+                rebuildsWhenPaused = true
+            } else {
+                rebuild(waitsForPause: true)
+            }
         case .renderFinished:
             rendersFinished += 1
             // A viewer that doesn't play renders has nothing to take up.

@@ -2507,7 +2507,8 @@ struct UISnapshots {
 
     @Test func projectSettings() throws {
         try SnapshotSupport.render(
-            ProjectSettingsView(project: .empty) { _ in }, "project-settings", size: CGSize(width: 460, height: 400)
+            ProjectSettingsView(project: .empty, packageURL: FileManager.default.temporaryDirectory) { _ in }, "project-settings",
+            size: CGSize(width: 460, height: 640)
         )
     }
 

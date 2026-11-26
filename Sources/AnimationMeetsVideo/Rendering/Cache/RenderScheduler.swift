@@ -43,10 +43,15 @@ final class RenderScheduler {
     }
     private(set) var finishedCount = 0
 
+    /// ProRes copies of the project's long-GOP footage for the viewer,
+    /// made in the same quiet as renders, in the same package.
+    let viewerCopies = ViewerCopies()
+
     /// The package whose cache is used; nil stops rendering.
     var packageURL: URL? {
         didSet {
             guard packageURL != oldValue else { return }
+            viewerCopies.packageURL = packageURL
             job?.cancel()
             segments = []
             rendered = []
@@ -97,6 +102,7 @@ final class RenderScheduler {
 
     /// Takes the plan from the viewer's latest build of `project`.
     func update(project: EditingProject, timelineID: UUID, segments: [RenderSegment]) {
+        viewerCopies.update(project: project)
         self.project = project
         self.timelineID = timelineID
         self.segments = segments
@@ -133,6 +139,7 @@ final class RenderScheduler {
 
     func setPlaying(_ playing: Bool) {
         isPlaying = playing
+        viewerCopies.setPlaying(playing)
         noteActivity()
     }
 
