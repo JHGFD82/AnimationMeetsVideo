@@ -7,9 +7,12 @@ export, and forgetting the original all work.
 
 Editors often cut with one version of a file and finish with another, for
 example a lower-quality copy for speed and the full-quality original for the
-final render. The app supports this by letting a media file be **replaced**,
-not by generating proxies. Generating and storing proxy copies of long-form
-footage costs a lot of disk space, so the app does not do it.
+final render. The app supports this by letting a media file be **replaced**.
+Replacement is the person's way to swap versions of a file; it is separate
+from the viewer copies the app may make on its own to scrub and play
+smoothly ([README.md](README.md#shared-principles)), which are disposable,
+never stand in for a file at export, and are thrown away when the file
+they were made from is replaced.
 
 ## Model
 

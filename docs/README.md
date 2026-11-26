@@ -50,12 +50,16 @@ implemented**.
 - **Media files are never modified.** Everything the app learns about a
   file (scene cuts, thumbnails, signatures) is stored as metadata next to
   the project, never in or beside the original footage.
-- **Footage is played from its own file, in its own codec.** H.264, HEVC
+- **Footage is read from its own file, in its own codec.** H.264, HEVC
   and ProRes video (QuickTime or MPEG-4 files), and sound files (WAV,
   AIFF, AAC, FLAC and the rest Core Audio reads), are decoded straight from
-  the file in the viewer, the browser, analysis and export alike. The app
-  never makes proxies, optimized copies or transcodes of footage, ProRes or
-  otherwise, and never re-encodes a file to make it editable.
+  the file in the browser, analysis and export, and in the viewer unless it
+  has a copy to draw from. The app may make **viewer copies** (proxies or
+  optimized copies, such as ProRes copies of the clips a timeline uses, to
+  scrub and play smoothly; see [ideas.md](ideas.md)), but they are
+  disposable caches: made in the background, thrown away and made again at
+  will, and never read by export, which always reads the original. The
+  app never re-encodes a file to make it editable or in place of it.
 - **Matroska is read in place.** AVFoundation can't open MKV files, so for
   each one the app makes a reference movie: a QuickTime movie of a few
   megabytes holding only the index of the MKV's frames, whose samples point
@@ -68,10 +72,10 @@ implemented**.
   caches can always be made again: rendered segments of the timeline where
   effects are too costly to draw live (`Cache/Renders/`, ProRes, of the
   timeline and not of the footage; see [rendering.md](rendering.md)),
-  Matroska reference movies (`Cache/References/`), and a stereo copy of a
+  Matroska reference movies (`Cache/References/`), a stereo copy of a
   mono sound file so it can be panned (in the user's Caches folder; see
-  [audio.md](audio.md)), the one copy of a file's media the app makes on
-  its own (copying files into `Media/` is the person's choice).
+  [audio.md](audio.md)), and viewer copies of footage once they are built.
+  Copying files into `Media/` is the person's choice.
 - **The person is responsible for the footage.** The app detects and reports
   mismatches, auto-adjusts what is safe to adjust, and only blocks on
   things that would silently break sync.
