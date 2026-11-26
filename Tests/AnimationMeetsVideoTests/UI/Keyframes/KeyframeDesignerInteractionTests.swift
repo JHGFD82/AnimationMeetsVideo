@@ -137,13 +137,29 @@ struct KeyframeDesignerInteractionTests {
         // A native button exercises the same focus guard as the Control
         // picker, without opening a menu that tracks the mouse modally.
         let button = NSButton(title: "Test control", target: nil, action: nil)
+        let cell = ClickCountingButtonCell(textCell: "Test control")
+        button.cell = cell
         harness.window.contentView?.addSubview(button)
         let focused = harness.window.makeFirstResponder(button)
         #expect(focused)
         harness.key(code: 49, characters: " ")
         #expect(plays == 0)
+        #expect(cell.clicks == 1)
         harness.window.makeFirstResponder(nil)
         harness.key(code: 49, characters: " ")
         #expect(plays == 1)
+    }
+}
+
+/// A button cell that counts the clicks Space gives it instead of
+/// flashing. A real click's flash runs a nested event loop that leaves a
+/// stop for the main run loop behind; Swift Testing's main actor runs on
+/// that loop, so the stop ended the whole test process, quietly and with
+/// a passing exit status, partway through `UI_EVENTS=1 swift test`.
+private final class ClickCountingButtonCell: NSButtonCell {
+    private(set) var clicks = 0
+
+    override func performClick(_ sender: Any?) {
+        clicks += 1
     }
 }
