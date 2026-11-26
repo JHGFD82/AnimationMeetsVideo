@@ -57,6 +57,8 @@ enum ViewerHandleSets {
             if PointControlHandles.applies(to: effect) { own.append(PointControlHandles(effectID: effect.id)) }
             // Drawn over the points, so asked first for a press.
             if DeclaredHandles.applies(to: effect) { own.append(DeclaredHandles(effectID: effect.id)) }
+            // A gradient's line over the shape's own handles.
+            if GradientHandles.applies(to: effect) { own.append(GradientHandles(effectID: effect.id)) }
             if !own.isEmpty { return own }
         }
         guard project.hasEffectStack(clip), clip.source != .adjustment, !layer.isAdjustment else { return [] }

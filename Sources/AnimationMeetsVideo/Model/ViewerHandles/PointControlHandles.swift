@@ -42,9 +42,10 @@ struct PointControlHandles: ViewerHandleSet {
         return (effects[index], matrix)
     }
 
-    /// The point controls that have handles, on.
+    /// The point controls that have handles, on: a Waveform's only those
+    /// of its shape.
     private static func points(of effect: Effect) -> [EffectControl] {
-        effect.controls.filter { $0.enabled && $0.kind.hasViewerHandle }
+        effect.controls.filter { $0.enabled && $0.kind.hasViewerHandle && effect.waveformShows($0.kind) }
     }
 
     /// The handle of the control with ID `id`.

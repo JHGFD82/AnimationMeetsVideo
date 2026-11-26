@@ -52,7 +52,8 @@ import Testing
         for kind in kinds {
             let effect = Effect(kind: kind)
             let handles = PointControlHandles(effectID: effect.id).handles(context(clip([effect]), selected: effect.id))
-            #expect(handles.count == kind.controlKinds.filter(\.hasViewerHandle).count, "\(kind.rawValue)")
+            // A Waveform's, only those of its shape.
+            #expect(handles.count == kind.controlKinds.filter { $0.hasViewerHandle && effect.waveformShows($0) }.count, "\(kind.rawValue)")
             #expect(handles.allSatisfy { $0.glyph == .round }, "\(kind.rawValue)")
         }
         let corners = Effect(kind: EffectKind(package: "fourPointMask"))

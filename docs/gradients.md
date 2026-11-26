@@ -1,9 +1,9 @@
 # Gradients
 
-Status: **partly built** (steps 1 to 3 of [Building it](#building-it):
-shapes', text's and the Stroke effect's Fill and Stroke, not yet tried in
-the running app). The rest is planned.
-
+Status: **partly built** (steps 1 to 4 of [Building it](#building-it):
+shapes', text's and the Stroke effect's Fill and Stroke and their
+handles in the viewer, not yet tried in the running app). The rest is
+planned.
 
 One gradient builder for everything that has a fill or a stroke, so any
 of them can be painted with a gradient instead of a single color. It is
@@ -76,11 +76,18 @@ a **paint**: a solid color, as now, or a gradient.
   bounds, so it moves, scales and turns with the shape or text, and a
   gradient copied to another shape fits it. **Relative to the frame**
   keeps it still while the item moves through it.
-- **Handles in the viewer** (not yet)
-  ([viewer-handles.md](viewer-handles.md)): a selected item's gradient
-  shows its line (start and end, or center, radius and focal point)
-  over the picture, with its stops on it to drag, as Illustrator's
-  gradient annotator does.
+- **Handles in the viewer** (built,
+  [viewer-handles.md](viewer-handles.md), `GradientHandles`): the
+  effect selected in the effects panel, when its Fill (else its Stroke)
+  paints a gradient, shows its line over the picture, a round handle at
+  its start and end (or center and edge), a diamond at a radial one's
+  focal point (kept inside the edge), and each stop on the line, as
+  Illustrator's gradient annotator does. A drag moves an end or the
+  focal point by its share of the bounds (Shift to an axis, Option a
+  tenth), and a stop along the line to where the pointer is nearest; the
+  arrows move a point a pixel and a stop a percent, ten with Shift, and
+  VoiceOver's Reset puts an end back. A keyframed gradient gets a
+  keyframe at the playhead, as the inspector would give it.
 - **Text**: over the whole block (built), each group of letters faded
   as it is; over **each letter**, each painted with the whole gradient,
   is not built yet.
@@ -152,7 +159,7 @@ next or previous. Tab moves between stops, ← → move the picked one a
 percent (ten with Shift), and Delete takes it out (Return opening its
 color is not built yet). The paint menu says whether the color is one
 color or a gradient and of which kind, and the viewer's gradient
-handles, when they come, have the actions the other handles have.
+handles have the actions the other handles have (`keyTargets`).
 
 ## Model and saving
 
@@ -189,6 +196,9 @@ with a paint, or a gradient's without) load as a new control's.
   and saving the gradient and its style.
 - `TextGradientTests`: a block's gradient over the whole block, and a
   run's own color left as it is.
+- `GradientHandlesTests`: a linear gradient's ends and stops on its
+  line, an end dragged by its share of the bounds, a stop dragged along
+  the line, and a radial one's focal point kept inside its edge.
 - `UISnapshots.shapeInspectorGradients`: the inspector's paint menus and
   gradient editors.
 
@@ -201,7 +211,7 @@ with a paint, or a gradient's without) load as a new control's.
    whole block. Runs' own gradients and Each Letter are not built yet.
 3. **The Stroke effect in the inspector** (done). Dither is not built
    yet.
-4. **Viewer handles** (not yet) for a selected item's gradient.
+4. **Viewer handles** (done) for a selected item's gradient.
 5. **Packages' `gradient` control** (not yet), with Gradient Map moved
    to it. The Waveform effect's colors are done, through its Fill and
    Stroke.
