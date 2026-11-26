@@ -34,9 +34,19 @@ import Testing
             let placed = try #require(made)
             clipID = placed.clipID
             waveID = try #require(project.clipAndLayer(placed.clipID, in: project.rootTimelineID)?.clip.effects.first?.id)
+            WaveformAudio.shared.store(WaveformAudio.Samples(channels: [Self.tone, [Int16](repeating: 0, count: Self.tone.count)]), for: url)
+        }
+
+        /// The full-scale 1 kHz sine, four seconds of it.
+        static let tone: [Int16] = {
             let rate = WaveformAudio.Samples.rate
-            let left = (0..<Int(rate * 4)).map { Int16((sin(2 * .pi * 1000 * Double($0) / rate) * 32_767).rounded()) }
-            WaveformAudio.shared.store(WaveformAudio.Samples(channels: [left, [Int16](repeating: 0, count: left.count)]), for: url)
+            return (0..<Int(rate * 4)).map { Int16((sin(2 * .pi * 1000 * Double($0) / rate) * 32_767).rounded()) }
+        }()
+
+        /// The tone in the right channel too, for a mix at full scale:
+        /// Mixed is both channels' average, so the left alone is half.
+        func toneInBothChannels() {
+            WaveformAudio.shared.store(WaveformAudio.Samples(channels: [Self.tone, Self.tone]), for: url)
         }
 
         var timeline: Timeline { project.timeline(id: project.rootTimelineID)! }
@@ -78,6 +88,7 @@ import Testing
 
     @Test func aFullScaleWaveFillsItsHeightBothWays() throws {
         var f = try Fixture(frame: frame)
+        f.toneInBothChannels()
         f.set(.waveWindow, [10])
         f.set(.waveSamples, [441])
         f.choose(.waveSide, WaveformSide.both.rawValue)
