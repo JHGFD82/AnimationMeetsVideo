@@ -62,9 +62,12 @@ again (by any change of structure).
     Audio Keys makes, so it has as many points as asked for and a
     spectrum for each channel.
 - **Frequency range**, as Audio Keys has, so it draws only the kick or
-  only the vocal: in Spectrum, the bands shown (built); in Wave, the
-  sound filtered to that range first, with the same biquads as the
-  [EQ](equalizer.md) (not yet).
+  only the vocal: in Spectrum, the bands shown; in Wave, the sound
+  filtered to that range first, with the same biquads as the
+  [EQ](equalizer.md)'s cuts, twice each side (24 dB an octave), run
+  from 50 ms before the window so they have settled by its start
+  (`WaveformDrawing.bandFilters`). Filtering reads every sample of the
+  window, so a long, narrowed window costs more than a whole one.
 - **Shape**:
   - **Line**: from a start point to an end point, both points dragged
     in the viewer ([viewer-handles.md](viewer-handles.md)), the
@@ -177,6 +180,8 @@ and shared as any effect preset is
   channel's is empty; Split draws the right channel in its own color;
   the inspector shows the settings of how it is set; it is fitted to
   the frame; and saving keeps what it listens to.
+- `WaveformFilterTests`: the whole range isn't filtered, and a low
+  range keeps a 60 Hz tone and drops a 4 kHz one.
 - `GeneratorTests`: it is a generator and the one shape the library
   lists, and a footage clip takes it.
 - `UISnapshots.waveformInspector`.
@@ -184,6 +189,6 @@ and shared as any effect preset is
 
 ## Not yet
 
-- Wave filtered to the frequency range, the EQ heard, nested
+- The EQ heard, nested
   timelines' sound, an attack and smoothing in Wave, bars shaded up
   their length, and volume edits shown without a rebuild.

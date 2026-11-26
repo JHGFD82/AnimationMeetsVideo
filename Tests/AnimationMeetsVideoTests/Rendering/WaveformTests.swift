@@ -159,3 +159,33 @@ import Testing
         #expect(read == f.effect)
     }
 }
+
+/// A Wave kept to its frequency range (see docs/waveform-effect.md).
+@Suite struct WaveformFilterTests {
+    private func sine(_ frequency: Double, seconds: Double = 0.2) -> [Double] {
+        let rate = WaveformAudio.Samples.rate
+        return (0..<Int(rate * seconds)).map { sin(2 * .pi * frequency * Double($0) / rate) }
+    }
+
+    @Test func theWholeRangeIsntFiltered() throws {
+        var effect = Effect(kind: .waveform)
+        effect.sizeShape(to: CGSize(width: 1280, height: 720))
+        let setup = try #require(WaveformSetup(effect, at: .zero, center: CGPoint(x: 640, y: 360)))
+        #expect(WaveformDrawing.bandFilters(setup) == nil)
+    }
+
+    @Test func aLowRangeKeepsTheBassAndDropsTheTreble() throws {
+        var effect = Effect(kind: .waveform)
+        effect.changeControl(.waveFrequencies) { $0.number = AnimatedValue(ComponentValue(values: [20, 200])) }
+        let setup = try #require(WaveformSetup(effect, at: .zero, center: .zero))
+        let filters = try #require(WaveformDrawing.bandFilters(setup))
+        func peak(_ frequency: Double) -> Double {
+            var signal = sine(frequency)
+            for filter in filters { signal = WaveformDrawing.run(signal, through: filter) }
+            // Once it has settled.
+            return signal.suffix(signal.count / 2).map(abs).max() ?? 0
+        }
+        #expect(peak(60) > 0.8)
+        #expect(peak(4000) < 0.01)
+    }
+}

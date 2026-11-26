@@ -74,8 +74,11 @@ enum WaveformDrawing {
         case .wave:
             let first = time - setup.window * setup.align.before
             let spacing = setup.window / Double(n - 1)
-            let times = (0..<n).map { first + spacing * Double($0) }
-            return audio.mix(sound, at: times, channel: channel, span: spacing)
+            guard let filters = bandFilters(setup) else {
+                let times = (0..<n).map { first + spacing * Double($0) }
+                return audio.mix(sound, at: times, channel: channel, span: spacing)
+            }
+            return filtered(sound, from: first, spacing: spacing, points: n, channel: channel, through: filters, audio: audio)
         case .spectrum:
             let low = max(setup.lowFrequency, 1), high = max(setup.highFrequency, low * 1.01)
             // Spaced by octave.
@@ -95,6 +98,60 @@ enum WaveformDrawing {
                 for i in levels.indices { levels[i] = max(levels[i], earlier[i] * fade) }
             }
             return levels
+        }
+    }
+
+    /// The filters that keep a Wave to its frequency range, as the EQ's
+    /// cuts are made (`Biquad.pass`, twice each side, 24 dB an octave);
+    /// nil while the range is the whole of what is heard.
+    static func bandFilters(_ setup: WaveformSetup) -> [Biquad]? {
+        let rate = WaveformAudio.Samples.rate
+        var filters: [Biquad] = []
+        let q = 0.5.squareRoot()
+        if setup.lowFrequency > Spectrogram.lowestFrequency * 1.05 {
+            let cut = Biquad.pass(highPass: true, frequency: setup.lowFrequency, q: q, sampleRate: rate)
+            filters += [cut, cut]
+        }
+        if setup.highFrequency < Spectrogram.highestFrequency * 0.95 {
+            let cut = Biquad.pass(highPass: false, frequency: setup.highFrequency, q: q, sampleRate: rate)
+            filters += [cut, cut]
+        }
+        return filters.isEmpty ? nil : filters
+    }
+
+    /// How long before the window the filters run, so they have settled by
+    /// its start.
+    static let filterLeadIn = 0.05
+
+    /// The Wave's points through `filters`: every sample of the window
+    /// (and the lead-in before it) mixed, filtered, and each point the
+    /// sample of its stretch furthest from silence.
+    private static func filtered(
+        _ sound: WaveformSound, from first: Double, spacing: Double, points n: Int, channel: Int?, through filters: [Biquad],
+        audio: WaveformAudio
+    ) -> [Double] {
+        let rate = WaveformAudio.Samples.rate
+        let start = first - filterLeadIn
+        let count = Int(((spacing * Double(n - 1) + filterLeadIn) * rate).rounded(.up)) + 1
+        var signal = audio.mix(sound, at: (0..<count).map { start + Double($0) / rate }, channel: channel)
+        for filter in filters { signal = run(signal, through: filter) }
+        return (0..<n).map { i in
+            let from = Int(((first + spacing * Double(i) - start) * rate).rounded())
+            let to = min(max(from + Int(spacing * rate), from + 1), signal.count)
+            guard from >= 0, from < signal.count else { return 0 }
+            var peak = 0.0
+            for k in from..<to where abs(signal[k]) > abs(peak) { peak = signal[k] }
+            return peak
+        }
+    }
+
+    /// `signal` through one biquad, from rest.
+    static func run(_ signal: [Double], through filter: Biquad) -> [Double] {
+        var x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0
+        return signal.map { x in
+            let y = filter.b0 * x + filter.b1 * x1 + filter.b2 * x2 - filter.a1 * y1 - filter.a2 * y2
+            (x2, x1, y2, y1) = (x1, x, y1, y)
+            return y
         }
     }
 
