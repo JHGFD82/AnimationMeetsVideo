@@ -236,28 +236,24 @@ final class BeatMatchSession: SecondsViewport {
     }
 
     /// The file's audio alone, at the file's own times, for the player, so
-    /// a video's picture is never decoded: the tracks it plays by default,
-    /// or the first if it has none on. Made off the main thread, since
-    /// putting tracks in a composition reads them there and then. Gives
+    /// a video's picture is never decoded: its first sound track, the one
+    /// the waveform and fills read (`BeatMatchAudio`) and the timeline and
+    /// export play (`MediaTrackCache`). Playing every enabled track, as it
+    /// once did, mixed in sound a file with several (an episode with two
+    /// languages) never plays on the timeline, so beats were confirmed
+    /// against what wasn't heard there. Made off the main thread, since
+    /// putting a track in a composition reads it there and then. Gives
     /// where the audio ends, too.
     nonisolated private static func audioOnly(url: URL) async throws -> sending (song: AVMutableComposition, end: CMTime) {
         let asset = MediaFile.asset(at: url)
-        let tracks = try await asset.loadTracks(withMediaType: .audio)
-        var played: [AVAssetTrack] = []
-        for track in tracks {
-            if try await track.load(.isEnabled) { played.append(track) }
+        guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
+            throw BeatDetector.DetectionError.noAudioTrack
         }
-        if played.isEmpty { played = Array(tracks.prefix(1)) }
-        guard !played.isEmpty else { throw BeatDetector.DetectionError.noAudioTrack }
         let composition = AVMutableComposition()
-        var end = CMTime.zero
-        for track in played {
-            let range = try await track.load(.timeRange)
-            let part = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-            try part?.insertTimeRange(range, of: track, at: range.start)
-            end = CMTimeMaximum(end, range.end)
-        }
-        return (composition, end)
+        let range = try await track.load(.timeRange)
+        let part = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+        try part?.insertTimeRange(range, of: track, at: range.start)
+        return (composition, range.end)
     }
 
     /// Puts the draft back to `map`, as an undo or redo does, and makes
