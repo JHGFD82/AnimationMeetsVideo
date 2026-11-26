@@ -168,9 +168,9 @@ final class WaveformAudio: @unchecked Sendable {
 
     /// How loud `sound` is at `bands` frequencies (hertz) around `time`
     /// (seconds of its clips' timeline), in channel `channel` (nil both),
-    /// each 0 (at `floor` or below) to 1 (full scale) and more for louder,
-    /// before any gain.
-    func spectrum(_ sound: WaveformSound, at time: Double, bands: [Double], channel: Int?) -> [Double] {
+    /// each 0 (at `floor` decibels or below) to 1 (full scale) and more for
+    /// louder, before any gain.
+    func spectrum(_ sound: WaveformSound, at time: Double, bands: [Double], channel: Int?, floor: Double = WaveformAudio.floor) -> [Double] {
         let n = Self.spectrumLength
         let times = (0..<n).map { time + (Double($0) - Double(n / 2)) / Samples.rate }
         let wave = mix(sound, at: times, channel: channel).map { Float($0) }
@@ -200,7 +200,55 @@ final class WaveformAudio: @unchecked Sendable {
             let low = Int(bin), fraction = bin - Double(low)
             let magnitude = Double(magnitudes[low]) * (1 - fraction) + Double(magnitudes[low + 1]) * fraction
             let decibels = 20 * log10(max(magnitude / fullScale, 1e-9))
-            return max((decibels - Self.floor) / -Self.floor, 0)
+            return max((decibels - floor) / -floor, 0)
         }
+    }
+
+    // MARK: The level
+
+    /// Seconds of sound a level is measured over: a VU meter's 50 ms.
+    static let levelSpan = 0.05
+
+    /// How loud `sound` is over `levelSpan` up to `time`, in channel
+    /// `channel` (nil both): its RMS level as 0 (at `floor` decibels or
+    /// below) to 1 (a full-scale sine, -3 dB RMS) and more for louder.
+    func level(_ sound: WaveformSound, at time: Double, channel: Int?, floor: Double = WaveformAudio.floor) -> Double {
+        let count = Int(Self.levelSpan * Samples.rate)
+        let wave = mix(sound, at: (0..<count).map { time - Self.levelSpan + Double($0) / Samples.rate }, channel: channel)
+        let power = wave.reduce(0) { $0 + $1 * $1 } / Double(max(count, 1))
+        // A full-scale sine's RMS is 1/√2, -3 dB: it reads full.
+        let decibels = 10 * log10(max(power * 2, 1e-12))
+        return max((decibels - floor) / -floor, 0)
+    }
+
+    // MARK: Looking back
+
+    /// The moments a Waveform looks back at, for its attack, release, peak
+    /// hold and Spectrogram, are on a grid this many seconds apart, so the
+    /// measures there are kept between frames (`measured`).
+    static let gridStep = 0.02
+
+    private struct MeasureKey: Hashable {
+        var sound: UInt64
+        var channel: Int
+        var grid: Int
+        /// The bands and floor, or the floor alone for a level.
+        var settings: Int
+    }
+
+    private var measures: [MeasureKey: [Double]] = [:]
+
+    /// `measure` at grid point `grid` (`grid * gridStep` seconds), kept
+    /// for `sound`, `channel` and `settings` (a hash of what else it
+    /// depends on) until too many are kept.
+    func measured(_ sound: WaveformSound, grid: Int, channel: Int?, settings: Int, _ measure: (Double) -> [Double]) -> [Double] {
+        let key = MeasureKey(sound: sound.fingerprint, channel: channel ?? -1, grid: grid, settings: settings)
+        if let kept = lock.withLock({ measures[key] }) { return kept }
+        let value = measure(Double(grid) * Self.gridStep)
+        lock.withLock {
+            if measures.count > 50_000 { measures.removeAll(keepingCapacity: true) }
+            measures[key] = value
+        }
+        return value
     }
 }

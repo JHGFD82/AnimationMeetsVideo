@@ -300,6 +300,12 @@ extension ControlKind {
     static let waveHeight = ControlKind(builtIn: "waveHeight")
     static let waveGain = ControlKind(builtIn: "waveGain")
     static let waveRelease = ControlKind(builtIn: "waveRelease")
+    static let waveAttack = ControlKind(builtIn: "waveAttack")
+    static let wavePeakHold = ControlKind(builtIn: "wavePeakHold")
+    static let waveTimeSmoothing = ControlKind(builtIn: "waveTimeSmoothing")
+    static let waveScale = ControlKind(builtIn: "waveScale")
+    static let waveFloor = ControlKind(builtIn: "waveFloor")
+    static let waveSpacing = ControlKind(builtIn: "waveSpacing")
     static let waveColoring = ControlKind(builtIn: "waveColoring")
     static let rightColor = ControlKind(builtIn: "rightColor")
     // Wiggler
@@ -428,10 +434,13 @@ enum BuiltInEffects {
         EffectDefinition(
             .waveform, "Waveform", .shapes, "waveform",
             sections: [
-                ControlSection("Sound", [.waveMode, .waveFrequencies, .waveWindow, .waveAlign, .waveStereo, .waveGain, .waveRelease]),
+                ControlSection("Sound", [
+                    .waveMode, .waveFrequencies, .waveScale, .waveFloor, .waveWindow, .waveAlign, .waveStereo, .waveGain,
+                    .waveAttack, .waveRelease, .wavePeakHold, .waveTimeSmoothing,
+                ]),
                 ControlSection("Shape", [
                     .waveShape, .waveStart, .waveEnd, .waveCenter, .waveRadius, .waveAngle, .waveSweep, .waveSide, .waveSamples,
-                    .waveHeight,
+                    .waveSpacing, .waveHeight,
                 ]),
                 ControlSection("Draw", [
                     .waveDraw, .waveSmooth, .waveFillsToBaseline, .dotSize, .barWidth, .barEnds, .waveColoring,
@@ -717,6 +726,12 @@ enum BuiltInEffects {
         ControlDefinition(.waveHeight, "Height", .waveform, defaults: [100], unit: " px", range: -100_000...100_000),
         ControlDefinition(.waveGain, "Gain", .waveform, defaults: [0], unit: " dB", dragStep: 0.5, range: -48...48),
         ControlDefinition(.waveRelease, "Release", .waveform, defaults: [0], unit: " ms", range: 0...5000),
+        ControlDefinition(.waveAttack, "Attack", .waveform, defaults: [0], unit: " ms", range: 0...5000),
+        ControlDefinition(.wavePeakHold, "Peak Hold", .waveform, defaults: [0], unit: " ms", range: 0...10_000),
+        ControlDefinition(.waveTimeSmoothing, "Time Smoothing", .waveform, defaults: [0], unit: " ms", range: 0...5000),
+        ControlDefinition(.waveScale, "Scale", .waveform, choice: WaveformScale.log),
+        ControlDefinition(.waveFloor, "Floor", .waveform, defaults: [-80], unit: " dB", dragStep: 0.5, range: -140 ... -12),
+        ControlDefinition(.waveSpacing, "Spacing", .waveform, defaults: [0], unit: " px", range: 0...10_000),
         ControlDefinition(.waveColoring, "Color", .waveform, choice: WaveformColoring.paint),
         ControlDefinition(.rightColor, "Right Channel", .waveform, defaults: [0.4, 0.8, 1, 1], dragStep: 0.01, range: 0...1, isColor: true),
         // Strobe Keys. Its defaults stay under three flashes a second (see

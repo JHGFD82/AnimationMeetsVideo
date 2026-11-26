@@ -61,6 +61,23 @@ again (by any change of structure).
     It is worked out from the samples rather than from the spectrogram
     Audio Keys makes, so it has as many points as asked for and a
     spectrum for each channel.
+  - **Level**: how loud the sound is, as a meter: its RMS over the last
+    50 ms, a VU meter's span, with a full-scale sine reaching the full
+    Height. One bar for the mix, or with Stereo set otherwise a bar a
+    channel side by side, the right in its own color; always drawn as
+    bars and colored by level (`WaveformAudio.level`).
+  - **Spectrogram**: the spectrum over the Window before the frame's
+    time as a scrolling heat map: a column a moment, oldest at the
+    shape's start, newest at its end, and as many bands as Samples (at
+    most 128) up from the baseline to the Height (or about it, Mirrored).
+    Each cell is shaded by how loud it is: the Fill's gradient at that
+    level, or the Fill's color that opaque. Cells of one shade (32 of
+    them) are drawn as one area. Columns are on the look-back grid below,
+    at most 200 of them, so as it plays only the newest is measured.
+- **Scale** (Spectrum, Spectrogram): frequencies spaced by octave
+  (**Log**, the default) or by hertz (**Linear**).
+- **Floor** (Spectrum, Level, Spectrogram): the quietest level shown, in
+  decibels: −80 by default, from −140 to −12.
 - **Frequency range**, as Audio Keys has, so it draws only the kick or
   only the vocal: in Spectrum, the bands shown; in Wave, the sound
   filtered to that range first, with the same biquads as the
@@ -77,6 +94,10 @@ again (by any change of structure).
     full ring, less for an arc), the waveform outward, inward or both.
 - **Samples**: how many points across the line or round the circle (64
   to 2048, 256 by default).
+- **Spacing** (Wave, Spectrum): pixels between points along the shape,
+  which then decides how many there are, so bars keep their size as the
+  line is dragged longer; 0 (the default) leaves it to Samples
+  (`WaveformDrawing.pointCount`).
 - **Window** (Wave): how much sound the points span, in milliseconds: a
   few for an oscilloscope's single wave, a second or more for a sound's
   shape scrolling past. **Align** puts the frame's time at the start,
@@ -85,9 +106,15 @@ again (by any change of structure).
   - **Lines**: the points connected, with a width, straight or smoothed
     between points, and a fill to the baseline if wanted.
   - **Dots**: a dot at each point, with a size.
+  - **Area**: the space between the points and the baseline filled,
+    with no line: a mountain (smoothed as Lines are).
   - **Bars**: a bar from the baseline to each point, with a width (a
     share of the spacing between points, so the rest is the gap) and
     square or round ends; mirrored, a bar reaches both ways.
+  - **Rays**: a thin line from the baseline to each point, in the
+    Stroke at its width, round-ended: round a ring, rays out of it.
+  - **Particles**: four dots on the way out to each point, growing and
+    coming in toward it, at the Dot Size: round a ring, a spray.
 - **Stereo**:
   - **Mixed**: one wave of both channels (the default).
   - **Split**: left on one side of the baseline and right on the other
@@ -103,10 +130,18 @@ again (by any change of structure).
 - **Height**: how far a full-scale sample reaches from the baseline,
   and **Gain** before it, linear or in decibels so quiet sounds still
   show.
-- **Release** over time, in Spectrum: each point falls back no faster
-  than the release lets it (the loudest of the moments before it, each
-  faded by how long ago it was), so a bar doesn't jitter from frame to
-  frame. An attack, and smoothing in Wave, are not built yet.
+- **Attack**, **Release** and **Peak Hold** (Spectrum, Level): each
+  point rises over the attack (an average of the moments before, newer
+  ones counting more), falls back no faster than the release lets it
+  (the loudest of the moments before, each faded by how long ago it
+  was), and with a hold, a mark across each bar (or meter) stays where
+  its peak was over that long, then falls (`WaveformDrawing.envelope`).
+  Every frame is drawn fresh, so this is worked out by looking back:
+  the measures at moments on a grid 20 ms apart before the frame's
+  time, which `WaveformAudio.measured` keeps between frames.
+- **Time Smoothing** (Wave): each point averaged with the same point of
+  the windows just before, newer ones counting more, so the line
+  settles rather than jumps from frame to frame.
 - **Color**: the shapes' **Fill** (dots, bars, a fill to the
   baseline) and **Stroke** (lines, with Stroke Width), in Fill &
   Stroke, each one color or a gradient laid over the waveform as it is
@@ -114,19 +149,26 @@ again (by any change of structure).
   an angular one round a ring, which is **Along**. **Color: By Level**
   colors each point, dot or bar (each segment of a line) with the
   color the Fill's gradient has at how far it reaches, from quiet to
-  loud; a bar shaded up its length is not built yet. With Stereo set to
-  Split or Two, the right channel is in **Right Channel**.
+  loud. A bar by level with a Fill gradient is **shaded up its length**:
+  the gradient from its base to the full Height, so its tip has its
+  level's color (reflected about the baseline when Mirrored). With
+  Stereo set to Split or Two, the right channel is in **Right Channel**.
 
-**In the inspector**, the Waveform's group starts with **Graph**, a row
-of icons that sets several of the settings below at once
-(`WaveformGraph`, `WaveformGraphPicker`): **Wave** (Wave, Lines, Line),
-**Filled** (the same, Fill to Baseline on), **Dots**, **Bars** (Spectrum,
-Bars), **Ring** (Wave, Lines, Radial) and **Scope** (Stereo X–Y). Every
-graph but Scope takes Stereo off X–Y. The settings stay where they were
-set, to change one by one after; none of the icons is lit while they
-match none of the graphs. Mode, Shape and Draw are icon buttons rather
-than menus. The effects panel's Waveform header doesn't have the picker
-yet.
+**In the inspector**, the Waveform's group starts with **Graph**, a grid
+of buttons that sets several of the settings below at once
+(`WaveformGraph`, `WaveformGraphPicker`), each a small picture of that
+graph over its name, drawn by `WaveformDrawing` from a made-up sound
+(`WaveformPreview`): **Wave** (Wave, Lines, Line), **Filled** (the same,
+Fill to Baseline on), **Area**, **Dots**, **Bars** (Spectrum, Bars),
+**Ring** (Wave, Lines, Radial), **Rays** and **Particles** (Spectrum
+round a ring), **Scope** (Stereo X–Y), **Meter** (Level) and
+**Spectrogram** (which also lengthens a Window under half a second to
+three seconds). Every graph but Scope takes Stereo off X–Y. The settings
+stay where they were set, to change one by one after; none of the
+buttons is lit while they match none of the graphs. Mode, Shape and
+Draw are icon buttons rather than menus. The effects panel has the same
+choice as a **Graph** pop-up at the top of the Waveform's rows, reading
+Custom while the settings match none.
 
 Every numeric setting can be keyframed and driven by a Keyframing
 method, so a Beat Keys pulse can swell its height on the beat. Start,
@@ -195,11 +237,17 @@ and shared as any effect preset is
   range keeps a 60 Hz tone and drops a 4 kHz one.
 - `GeneratorTests`: it is a generator and the one shape the library
   lists, and a footage clip takes it.
+- `WaveformTests` also checks the graphs and timing added since: an
+  Area is one fill; Rays and Particles draw; a meter reaches its Height
+  for a full-scale tone and splits by channel; Peak Hold adds a mark;
+  the Spectrogram shades cells and is empty in silence; attack,
+  release and hold shape the level; Scale and Floor shape the spectrum;
+  Spacing sets the count; bars by level are shaded; and every graph has
+  a preview. `WaveformGraphTests` checks the Graph presets.
 - `UISnapshots.waveformInspector`.
 - Not yet: a test drawing it through the compositor from a sound file.
 
 ## Not yet
 
-- The EQ heard, nested
-  timelines' sound, an attack and smoothing in Wave, bars shaded up
-  their length, and volume edits shown without a rebuild.
+- The EQ heard, nested timelines' sound, and volume edits shown
+  without a rebuild.

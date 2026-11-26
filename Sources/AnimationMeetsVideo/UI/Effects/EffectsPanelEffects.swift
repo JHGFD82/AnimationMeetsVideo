@@ -147,6 +147,9 @@ extension EffectsPanel {
                         )
                     }
                 }
+                if effect.kind == .waveform {
+                    waveformGraphRow(effect, c, effectDimmed: dimmed)
+                }
                 controlSections(effect, c, effectDimmed: dimmed)
                 if effect.kind.readsAgainst {
                     againstRow(effect, c, effectDimmed: dimmed)
@@ -336,6 +339,33 @@ extension EffectsPanel {
             }
             .help("Turn the shape into a path of points, to edit with the pen")
         }
+    }
+
+    /// A Waveform's kind of graph, as the inspector's Graph picks it
+    /// (`WaveformGraph`): a pop-up over its settings, reading Custom while
+    /// they match none.
+    private func waveformGraphRow(_ effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
+        let current = WaveformGraph.current(of: effect)
+        let custom = "custom"
+        let options = WaveformGraph.allCases.map { ($0.rawValue, $0.name) } + (current == nil ? [(custom, "Custom")] : [])
+        return labelled(
+            ChoiceRow(
+                name: "Graph",
+                indent: EffectsPanelMetrics.controlIndent - 12,
+                options: options,
+                selected: current?.rawValue ?? custom,
+                isSelected: false,
+                showsMenu: false,
+                isDimmed: effectDimmed,
+                onSelect: { state.select(effect: effect.id) },
+                onChoose: { picked in
+                    guard let graph = WaveformGraph(rawValue: picked) else { return }
+                    editEffect(effect.id, in: c.clip) { graph.apply(to: &$0) }
+                },
+                menu: { EmptyView() }
+            ),
+            lane: emptyLane(c)
+        )
     }
 
     /// The ⋯ menu of a graphic clip's drawing: what changes its settings,

@@ -225,3 +225,117 @@ import Testing
         #expect(WaveformGraph.current(of: effect) == nil)
     }
 }
+
+// The graphs and timing added from docs/fix-plan.md: Area, Rays and
+// Particles; Level meters and the Spectrogram; attack, release and peak
+// hold; the Floor and Scale; Spacing; and bars shaded up their length.
+extension WaveformTests {
+    @Test func anAreaIsOneFilledShapeWithNoLine() throws {
+        var f = try Fixture(frame: frame)
+        f.choose(.waveDraw, WaveformDraw.area.rawValue)
+        let drawn = try paints(f)
+        #expect(drawn.count == 1)
+        #expect(bounds(drawn).height > 20)
+    }
+
+    @Test func raysAndParticlesDrawSomething() throws {
+        var f = try Fixture(frame: frame)
+        f.choose(.waveMode, WaveformMode.spectrum.rawValue)
+        f.set(.waveSamples, [32])
+        f.choose(.waveDraw, WaveformDraw.rays.rawValue)
+        #expect(!(try paints(f)).isEmpty)
+        f.choose(.waveDraw, WaveformDraw.particles.rawValue)
+        // A paint for each of the four steps out.
+        #expect(try paints(f).count == 4)
+    }
+
+    @Test func aMeterReachesItsHeightForAFullScaleTone() throws {
+        var f = try Fixture(frame: frame)
+        f.toneInBothChannels()
+        f.choose(.waveMode, WaveformMode.level.rawValue)
+        let drawn = try paints(f)
+        #expect(drawn.count == 1)
+        // Fitted to the frame, the Height is a sixth of it: 120.
+        #expect(abs(bounds(drawn).height - 120) < 6)
+        // A meter a channel, side by side.
+        f.choose(.waveStereo, WaveformStereo.two.rawValue)
+        let two = try paints(f)
+        #expect(two.count == 2)
+        #expect(abs(two[0].area.boundingBoxOfPath.midY - two[1].area.boundingBoxOfPath.midY) < 1)
+    }
+
+    @Test func peakHoldAddsAMarkAboveEachBar() throws {
+        var f = try Fixture(frame: frame)
+        f.toneInBothChannels()
+        f.choose(.waveMode, WaveformMode.level.rawValue)
+        let plain = try paints(f).count
+        f.set(.wavePeakHold, [500])
+        #expect(try paints(f).count == plain + 1)
+    }
+
+    @Test func theSpectrogramShadesItsCellsAndIsEmptyInSilence() throws {
+        var f = try Fixture(frame: frame)
+        f.edit { WaveformGraph.spectrogram.apply(to: &$0) }
+        f.set(.waveSamples, [24])
+        let drawn = try paints(f, at: 2)
+        #expect(!drawn.isEmpty)
+        let box = bounds(drawn)
+        #expect(box.height <= 120 + 1)
+        #expect(try paints(f, at: 30).isEmpty)
+    }
+
+    @Test func attackReleaseAndPeakHoldShapeTheLevel() {
+        var setup = WaveformSetup(Effect(kind: .waveform), at: .zero, center: .zero)!
+        // Sound arriving now after silence: the attack slows its rise.
+        setup.attack = 0.5
+        let rising = WaveformDrawing.envelope(setup, now: [1], at: 1) { _ in [0] }
+        #expect(rising.values[0] < 0.2)
+        // Silence now after sound: the release holds some of it.
+        setup.attack = 0
+        setup.release = 0.5
+        let falling = WaveformDrawing.envelope(setup, now: [0], at: 1) { _ in [1] }
+        #expect(falling.values[0] > 0.8)
+        // The peak stays for the hold.
+        setup.release = 0
+        setup.peakHold = 0.3
+        let held = WaveformDrawing.envelope(setup, now: [0.2], at: 1) { grid in [grid == 45 ? 0.9 : 0.1] }
+        #expect(held.values[0] == 0.2)
+        #expect(held.peaks?[0] == 0.9)
+    }
+
+    @Test func theScaleAndFloorShapeTheSpectrum() throws {
+        #expect(WaveformScale.linear.frequencies(3, from: 20, to: 20_000) == [20, 10_010, 20_000])
+        #expect(abs(WaveformScale.log.frequencies(3, from: 20, to: 20_000)[1] - 632.456) < 0.01)
+        let f = try Fixture(frame: frame)
+        let sound = try #require(f.sound)
+        let deep = WaveformAudio.shared.spectrum(sound, at: 1, bands: [1015], channel: 0, floor: -120)[0]
+        let shallow = WaveformAudio.shared.spectrum(sound, at: 1, bands: [1015], channel: 0, floor: -40)[0]
+        #expect(deep > shallow)
+    }
+
+    @Test func spacingDecidesHowManyPoints() throws {
+        var f = try Fixture(frame: frame)
+        f.set(.waveSpacing, [10])
+        let setup = try #require(WaveformSetup(f.effect, at: .zero, center: center))
+        // The line is two thirds of 1280 across: 854 pixels.
+        #expect(abs(WaveformDrawing.pointCount(setup) - 85) <= 1)
+    }
+
+    @Test func barsByLevelAreShadedUpTheirLength() throws {
+        var f = try Fixture(frame: frame)
+        f.choose(.waveMode, WaveformMode.spectrum.rawValue)
+        f.set(.waveSamples, [8])
+        f.choose(.waveDraw, WaveformDraw.bars.rawValue)
+        f.choose(.waveColoring, WaveformColoring.byLevel.rawValue)
+        f.edit { $0.changeControl(.fill) { $0.setPaint(.linear) } }
+        let drawn = try paints(f)
+        #expect(drawn.count == 8)
+        #expect(drawn.allSatisfy { $0.gradient?.fill.style.space == .frame })
+    }
+
+    @Test func everyGraphHasAPreview() {
+        for graph in WaveformGraph.allCases {
+            #expect(!WaveformPreview.shapes(of: graph).isEmpty, "\(graph.name)")
+        }
+    }
+}
