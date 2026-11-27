@@ -40,6 +40,25 @@ func writeTone(to url: URL, segments: [(amplitude: Float, seconds: Double)], sam
         let good = AudioEnvelope(startWindow: 0, levels: [1, 2, 3]).encoded()
         #expect(throws: AudioEnvelopeError.self) { try AudioEnvelope(decoding: good.dropLast()) }
     }
+
+    /// An edited file's start far out of range is refused: Int64.min
+    /// trapped working out the offset between two envelopes.
+    @Test func rejectsAStartNoRecordingHas() throws {
+        for start in [Int64.min, Int64.max, AudioEnvelope.farthestStartWindow + 1] {
+            let edited = AudioEnvelope(startWindow: start, levels: [1, 2, 3]).encoded()
+            #expect(throws: AudioEnvelopeError.self) { try AudioEnvelope(decoding: edited) }
+        }
+        let farthest = AudioEnvelope(startWindow: -AudioEnvelope.farthestStartWindow, levels: [1])
+        #expect(try AudioEnvelope(decoding: farthest.encoded()) == farthest)
+    }
+
+    /// Cut anywhere, a file is refused, never read past its end.
+    @Test func everyCutIsRefused() {
+        let good = AudioEnvelope(startWindow: 7, levels: Array(0..<40)).encoded()
+        for length in 0..<good.count {
+            #expect(throws: AudioEnvelopeError.self) { try AudioEnvelope(decoding: good.prefix(length)) }
+        }
+    }
 }
 
 @Suite struct ReferenceCaptureTests {

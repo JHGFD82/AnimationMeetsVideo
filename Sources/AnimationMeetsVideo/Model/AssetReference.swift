@@ -94,6 +94,9 @@ struct AudioEnvelope: Equatable, Sendable {
 
     var duration: Double { Double(levels.count) / Double(Self.windowsPerSecond) }
 
+    /// The furthest from 0 a file's `startWindow` may be.
+    static let farthestStartWindow: Int64 = 1 << 40
+
     private static let magic: [UInt8] = Array("AMVE".utf8)
     private static let version: UInt32 = 1
 
@@ -135,6 +138,10 @@ struct AudioEnvelope: Equatable, Sendable {
         let rate = try read(UInt32.self)
         guard rate == UInt32(Self.windowsPerSecond) else { throw AudioEnvelopeError.unsupportedVersion(version) }
         let start = try read(Int64.self)
+        // Far beyond any recording (centuries of windows), and small enough
+        // that the offsets worked out from it can't overflow: an edited
+        // file's Int64.min trapped in the alignment.
+        guard (-Self.farthestStartWindow...Self.farthestStartWindow).contains(start) else { throw AudioEnvelopeError.truncated }
         let count = Int(try read(UInt32.self))
         guard data.count - offset == count else { throw AudioEnvelopeError.truncated }
         self.init(startWindow: start, levels: [UInt8](data[(data.startIndex + offset)...]))
