@@ -79,6 +79,7 @@ enum AudioExport {
         project: EditingProject, timelineID: UUID, loudness: LoudnessTarget, to url: URL,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> LoudnessMastering.Report? {
+        try ExportDestinations.refuseMediaFile(at: url, in: project)
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: timelineID)
         guard !composed.audioTracks.isEmpty else { throw CompositionError.exportFailed("The timeline has no sound.") }
         let curves = MixCurves(MixCurves.of(project))
@@ -144,6 +145,7 @@ enum AudioExport {
                 if used.contains(file) { file += " \(number + 1)" }
                 used.insert(file)
                 let url = folder.appending(path: file + (asWAV ? ".wav" : ".caf"))
+                try ExportDestinations.refuseMediaFile(at: url, in: project)
                 let partial = ExportFile.partial(for: url)
                 let done = Double(number), count = Double(layers.count)
                 partials.append(partial)

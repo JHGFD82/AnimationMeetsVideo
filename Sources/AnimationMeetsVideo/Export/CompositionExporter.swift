@@ -409,6 +409,7 @@ enum CompositionExporter {
         progress: @escaping @Sendable (Double) -> Void = { _ in },
         onMastered: @escaping @Sendable (LoudnessMastering.Report) -> Void = { _ in }
     ) async throws -> Int {
+        try ExportDestinations.refuseMediaFile(at: url, in: project)
         let composed = try await buildComposedTimeline(
             for: project, timelineID: timelineID, cache: preset.reusesRenders ? cache : nil
         )

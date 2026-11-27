@@ -1,11 +1,32 @@
 import Foundation
 
-/// Where exports save, kept apart. Each exporter deletes what is at its
-/// destination before writing (`CompositionExporter.export`,
-/// `AudioExport.exportMix`, each stem in `AudioExport.exportStems`), so
-/// an export to a place one under way or queued saves to would delete
-/// that one's file. A WAV Stems export's destination is its folder.
+/// Where exports save, kept apart. Each exporter replaces what is at its
+/// destination once it has finished (`ExportFile`), so an export to a
+/// place one under way or queued saves to would replace that one's file,
+/// and one saved over a media file the project uses would read it while
+/// rendering and then replace the person's footage. A WAV Stems export's
+/// destination is its folder.
 enum ExportDestinations {
+    /// The media file of `project` that `url` is, if it is one, so the
+    /// export can be refused (code-review-notes.md, F72). Compared with
+    /// links resolved and without case, since the file exists.
+    static func mediaFile(at url: URL, in project: EditingProject) -> MediaClip? {
+        let wanted = resolvedKey(url)
+        return project.clips.first { $0.url.map(resolvedKey) == wanted }
+    }
+
+    /// Throws when `url` is a media file of `project`.
+    static func refuseMediaFile(at url: URL, in project: EditingProject) throws {
+        guard let media = mediaFile(at: url, in: project) else { return }
+        throw CompositionError.exportFailed(
+            "\u{201C}\(url.lastPathComponent)\u{201D} is the file of \u{201C}\(media.name)\u{201D}, which the project uses. Export somewhere else, or under another name."
+        )
+    }
+
+    private static func resolvedKey(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path.lowercased()
+    }
+
     /// The destination in `taken` that is the same place as `url`, or nil.
     /// Paths are compared without case, as the Mac's volumes are by
     /// default. Symlinks aren't resolved: `resolvingSymlinksInPath` treats

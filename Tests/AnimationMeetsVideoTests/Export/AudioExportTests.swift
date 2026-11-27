@@ -172,6 +172,23 @@ import Testing
         #expect(left == earlier.map(\.lastPathComponent).sorted())
     }
 
+    /// An export over a media file the project plays would read it while
+    /// rendering and then replace the person's file (code-review-notes.md,
+    /// F72): it is refused, and the file is left as it was.
+    @Test func anExportOverAFileTheProjectUsesIsRefused() async throws {
+        let tone = try AudioMixSupport.tone(frequency: 440, amplitude: 0.25, seconds: 1)
+        defer { try? FileManager.default.removeItem(at: tone) }
+        let (project, _, _) = try AudioMixSupport.project(playing: tone, seconds: 1)
+        let before = try Data(contentsOf: tone)
+        await #expect(throws: CompositionError.self) {
+            try await AudioExport.exportMix(project: project, timelineID: project.rootTimelineID, loudness: .asMixed, to: tone)
+        }
+        await #expect(throws: CompositionError.self) {
+            try await CompositionExporter.export(project: project, timelineID: project.rootTimelineID, preset: .proRes422, to: tone)
+        }
+        #expect(try Data(contentsOf: tone) == before)
+    }
+
     @Test func aTimelineWithoutSoundIsRefused() async throws {
         let project = EditingProject.empty
         let url = FileManager.default.temporaryDirectory.appending(path: "amv-silent-\(UUID().uuidString).wav")
