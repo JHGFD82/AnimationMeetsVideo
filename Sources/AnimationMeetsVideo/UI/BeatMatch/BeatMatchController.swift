@@ -87,15 +87,47 @@ final class BeatMatchController {
         let assetID = session.assetID
         let map = session.map.isEmpty ? BeatMap() : session.map
         if session.isChanged {
+            // The song's beats changed elsewhere while the panel was open
+            // (a script, another window of the project, the file on disk):
+            // asked first, rather than written over, which the draft, made
+            // from the map as it was, did.
+            var changedMeanwhile = false
             onEdit { project in
-                guard let index = project.clips.firstIndex(id: assetID) else { return }
-                project.clips[index].beatMap = map
+                changedMeanwhile = !Self.write(map, over: session.original, assetID: assetID, in: &project)
+            }
+            if changedMeanwhile {
+                guard confirmReplacingChangedBeats(session.assetName) else { return }
+                onEdit { project in
+                    guard let index = project.clips.firstIndex(id: assetID) else { return }
+                    project.clips[index].beatMap = map
+                }
             }
         }
         if map.hasConfirmedBeats {
             confirmation = Confirmation(assetID: assetID, serial: (confirmation?.serial ?? 0) + 1)
         }
         tearDown()
+    }
+
+    /// Writes `map` as the song's beat map if the song still has
+    /// `original`, the map the panel opened on; returns false, changing
+    /// nothing, when it has another.
+    static func write(_ map: BeatMap, over original: BeatMap, assetID: UUID, in project: inout EditingProject) -> Bool {
+        guard let index = project.clips.firstIndex(id: assetID) else { return true }
+        guard project.clips[index].beatMap == original else { return false }
+        project.clips[index].beatMap = map
+        return true
+    }
+
+    /// Asks whether to replace beats changed elsewhere while the panel was
+    /// open; settable so tests can answer.
+    @ObservationIgnored var confirmReplacingChangedBeats: (String) -> Bool = { name in
+        let alert = NSAlert()
+        alert.messageText = "The Beats of \u{201C}\(name)\u{201D} Changed Meanwhile"
+        alert.informativeText = "While the panel was open, the song\u{2019}s beats were changed elsewhere (by a script, in another window, or in the project file). Confirming replaces those changes with the panel\u{2019}s."
+        alert.addButton(withTitle: "Keep Editing")
+        alert.addButton(withTitle: "Replace Them")
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     /// Removes a song's beat map from the project, as one undo step,
