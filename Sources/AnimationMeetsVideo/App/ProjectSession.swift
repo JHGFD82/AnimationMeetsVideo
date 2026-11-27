@@ -218,15 +218,37 @@ final class ProjectSession {
         guard isEmpty else { return isOpen(url) }
         do {
             try ProjectStore.validatePackage(at: url)
+            // Locked first, so no other window opens it meanwhile, but
+            // marked as a package only once it has loaded: a folder that
+            // only holds a project.json, another tool's, was made a package
+            // in Finder and left with a .lock before its file was refused.
+            let lockFile = url.appending(path: ProjectStore.lockFileName)
+            let hadLockFile = FileManager.default.fileExists(atPath: lockFile.path)
             let lock = try ProjectLock.acquire(at: url)
+            let saved: ProjectLoadResult
+            do {
+                saved = try await ProjectStore.load(from: url)
+            } catch {
+                lock.release()
+                if !hadLockFile { try? FileManager.default.removeItem(at: lockFile) }
+                throw error
+            }
             ProjectStore.markAsPackage(url)
-            let saved = try await ProjectStore.load(from: url)
             // Work an autosave holds that was never saved, as after quitting
             // without saving or a crash, is offered back.
             var restored: ProjectLoadResult?
             if let backup = ProjectStore.unsavedBackup(in: url) {
                 if askToRestore(backup, name: saved.project.name) {
-                    restored = try? await ProjectStore.load(from: url, projectFile: backup)
+                    // A restore that fails is said, and where the autosave
+                    // is: it opened the saved version without a word.
+                    do {
+                        restored = try await ProjectStore.load(from: url, projectFile: backup)
+                    } catch {
+                        presentAlert(
+                            "The Autosave of \u{201C}\(saved.project.name)\u{201D} Couldn\u{2019}t Be Restored",
+                            "\(ErrorAdvice.sentence(for: error))\n\nThe project opens as it was last saved. The autosave is kept, as \u{201C}\(backup.lastPathComponent)\u{201D} in the project\u{2019}s Backups folder."
+                        )
+                    }
                 } else {
                     await ProjectStore.markBackupsSeenQueued(in: url)
                 }
@@ -262,7 +284,7 @@ final class ProjectSession {
             reportMediaProblems(in: result)
             return true
         } catch {
-            Self.showAlert(title: "Couldn't Open Project", message: ErrorAdvice.sentence(for: error))
+            presentAlert("Couldn\u{2019}t Open \u{201C}\(url.deletingPathExtension().lastPathComponent)\u{201D}", ErrorAdvice.sentence(for: error))
             return false
         }
     }
