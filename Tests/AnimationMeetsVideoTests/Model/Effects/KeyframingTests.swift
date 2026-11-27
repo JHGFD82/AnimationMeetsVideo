@@ -635,6 +635,84 @@ private struct KeyframingFixture {
     }
 }
 
+/// Undo across beats that arrived after the step was taken
+/// (code-review-notes.md, F81).
+@MainActor
+@Suite(.serialized) struct KeyframingUndoTests {
+    private func closeEventGroup() {
+        let turn = Timer(timeInterval: 0, repeats: false) { _ in }
+        RunLoop.current.add(turn, forMode: .default)
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    }
+
+    /// Beats arriving are taken into the baseline, not recorded, but older
+    /// undo steps hold the keyframes made without them. Restoring one, the
+    /// editor made them again and that write was recorded as a new step,
+    /// outside the undo: the redo stack went, and undoing again only
+    /// restored the same step. Restoring makes them from what has arrived.
+    @Test func undoingPastArrivedBeatsKeepsRedoAndGoesBack() throws {
+        var f = KeyframingFixture()
+        var song = MediaClip(
+            name: "Song.wav", kind: .audio, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        f.project.clips.append(song)
+        f.project.putOnMusicLayer([song.id])
+        let layerID = try #require(f.project.timeline(id: f.timelineID)?.layers.last?.id)
+        let id = f.add(.beatKeys)
+        f.point(id, at: .rotation)
+        f.edit(id) { $0.keyframing?.beatLayer = layerID }
+        let owner = ObjectIdentifier(KeyframingUndoTests.self)
+        defer { DetectedBeats.shared.remove(owner: owner) }
+
+        var project = f.project
+        let history = ProjectHistory(project: project)
+        let undo = UndoManager()
+        history.undoManager = undo
+        history.restore = { project = $0 }
+        var clock = Date(timeIntervalSince1970: 1_000)
+        func edit(_ change: (inout EditingProject) -> Void) {
+            clock = clock.addingTimeInterval(10)
+            change(&project)
+            history.projectDidChange(project, now: clock)
+            closeEventGroup()
+        }
+        /// As the editor does after any change, an undo's included.
+        func followUp(from old: EditingProject) {
+            var refreshed = project
+            if refreshed.refreshKeyframing(after: old) {
+                project = refreshed
+                history.projectDidChange(project, now: clock)
+            }
+        }
+        func undoOnce() {
+            let old = project
+            undo.undo()
+            closeEventGroup()
+            history.projectDidChange(project, now: clock)
+            followUp(from: old)
+            closeEventGroup()
+        }
+
+        edit { $0.timelines[0].name = "X" }
+        // The beats arrive: made in the project and the baseline alike.
+        let track = try BeatTrack(timescale: 600, times: (1...30).map { Int64($0) * 300 }, beatsPerMinute: 120)
+        DetectedBeats.shared.update([song.id: track], owner: owner)
+        let made = project.refreshKeyframing()
+        #expect(made)
+        history.adopt { _ = $0.refreshKeyframing() }
+        edit { $0.timelines[0].name = "Y" }
+
+        undoOnce()
+        #expect(project.timelines[0].name == "X")
+        #expect(undo.canRedo)
+        undoOnce()
+        #expect(project.timelines[0].name != "X")
+        #expect(undo.canRedo)
+    }
+}
+
 /// Keyframing effects made again only where an edit could have changed
 /// what they read, and only when the result differs.
 @Suite struct KeyframingRefreshTests {
