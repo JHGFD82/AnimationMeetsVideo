@@ -93,7 +93,11 @@ enum MatroskaMedia {
     /// `keeping`, left by files since moved, changed or removed.
     static func removeUnused(in packageURL: URL, keeping: Set<String>) {
         let folder = folder(in: packageURL)
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
+        // Never through a link out of the package: a project arriving with
+        // its cache folder linked to Documents had Documents emptied.
+        guard ProjectStore.isInside(folder, package: packageURL),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path)
+        else { return }
         for name in names where !keeping.contains(name) && !name.hasSuffix(".partial.mov") {
             try? FileManager.default.removeItem(at: folder.appending(path: name))
         }
