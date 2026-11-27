@@ -49,7 +49,13 @@ descendants() {
 }
 
 # The watchdog: progress is a test or suite finishing.
-finished() { grep -cE '(Test|Suite) .* (passed|failed|skipped)' "$log" 2>/dev/null || echo 0; }
+# grep -c prints 0 itself when nothing matches (and fails), so no fallback
+# is printed after it; only a log not yet written gives nothing.
+finished() {
+    local count
+    count=$(grep -cE '(Test|Suite) .* (passed|failed|skipped)' "$log" 2>/dev/null)
+    echo "${count:-0}"
+}
 last_count=-1
 quiet=0
 hung=0
