@@ -234,6 +234,14 @@ final class ProjectSession {
                 throw error
             }
             ProjectStore.markAsPackage(url)
+            // Said, not only logged: without the lock, another Mac can open
+            // and save the project at the same time, the last save winning.
+            if !lock.isHeld {
+                presentAlert(
+                    "\u{201C}\(url.deletingPathExtension().lastPathComponent)\u{201D} Isn\u{2019}t Locked While Open",
+                    "It\u{2019}s on a disk that can\u{2019}t lock files, so nothing keeps it from being opened and saved on another Mac at the same time, and the last save would win. Open it on one Mac at a time."
+                )
+            }
             // Work an autosave holds that was never saved, as after quitting
             // without saving or a crash, is offered back.
             var restored: ProjectLoadResult?

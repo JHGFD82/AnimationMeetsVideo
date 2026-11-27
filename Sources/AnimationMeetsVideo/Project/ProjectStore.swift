@@ -158,6 +158,9 @@ enum ProjectStoreError: LocalizedError {
     case invalidFile(String)
     case invalidTime(String)
     case locked(String?)
+    /// A project on a volume without file locks, which can't be replaced
+    /// safely: it may be open on another Mac.
+    case cantLock(String)
 
     var errorDescription: String? {
         switch self {
@@ -181,6 +184,8 @@ enum ProjectStoreError: LocalizedError {
             } else {
                 "This project is already open in another window or app. Close it there first."
             }
+        case .cantLock(let name):
+            "\u{201C}\(name)\u{201D} is on a disk that can\u{2019}t lock files, so there\u{2019}s no telling whether it\u{2019}s open on another Mac, and it isn\u{2019}t replaced. Choose another name or place."
         case .invalidTime(let text):
             "“\(text)” isn't a valid time. Use a rational number of seconds such as 1001/24000s or 5s."
         }

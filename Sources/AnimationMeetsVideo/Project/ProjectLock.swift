@@ -14,11 +14,16 @@ import Foundation
 /// as open elsewhere.
 final class ProjectLock {
     let packageURL: URL
+    /// False on a volume without file locks: the project is open, but
+    /// nothing keeps another Mac from opening and saving it too, which
+    /// the person is told, and replacing the package is refused.
+    let isHeld: Bool
     private var descriptor: Int32
 
-    private init(packageURL: URL, descriptor: Int32) {
+    private init(packageURL: URL, descriptor: Int32, isHeld: Bool) {
         self.packageURL = packageURL
         self.descriptor = descriptor
+        self.isHeld = isHeld
     }
 
     /// Takes the lock, or throws `ProjectStoreError.locked` if another
@@ -30,6 +35,7 @@ final class ProjectLock {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
 
+        var isHeld = true
         if flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
             let code = errno
             switch code {
@@ -40,6 +46,7 @@ final class ProjectLock {
                 throw ProjectStoreError.locked(holder?.isEmpty == false ? holder : nil)
             case ENOTSUP, EOPNOTSUPP:
                 NSLog("%@", "The volume of \(packageURL.path) doesn't support file locks; opening the project without one.")
+                isHeld = false
             default:
                 close(descriptor)
                 throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
@@ -49,7 +56,7 @@ final class ProjectLock {
         let description = "\(ProcessInfo.processInfo.processName) (process \(ProcessInfo.processInfo.processIdentifier)) on \(ProcessInfo.processInfo.hostName)\n"
         ftruncate(descriptor, 0)
         _ = description.withCString { pwrite(descriptor, $0, strlen($0), 0) }
-        return ProjectLock(packageURL: packageURL, descriptor: descriptor)
+        return ProjectLock(packageURL: packageURL, descriptor: descriptor, isHeld: isHeld)
     }
 
     func release() {
