@@ -110,6 +110,12 @@ final class ExpressionRunner {
         if failure == nil, values.count != expected {
             failure = ExpressionFailure(summary: "The expression gave \(values.count) numbers, not \(expected).", time: nil)
         }
+        // Checked here too, not only by the helper, whose checks code it ran
+        // could undo: a NaN keyframe would fail every save after it
+        // (code-review-notes.md, F56).
+        if failure == nil, let bad = values.first(where: { !$0.isFinite }) {
+            failure = ExpressionFailure(summary: "The expression gave \(bad), not a number a value can have.", time: nil)
+        }
         let print = project.expressionPrint(of: request.effect, in: request.clip, of: request.timeline, base: request.base, reads: reads)
         return ExpressionResult(
             times: failure == nil ? request.times : [], values: failure == nil ? values : [], width: request.width,
