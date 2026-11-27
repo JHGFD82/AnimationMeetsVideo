@@ -339,6 +339,8 @@ final class HelperConnection: @unchecked Sendable {
 
 /// The frames the helper has written, waited for one at a time.
 final class HelperFrameReader: @unchecked Sendable {
+    /// The most frames kept waiting for a read.
+    static let mostUnread = 10_000
     private let lock = NSLock()
     private var decoder = HelperFrame.Decoder()
     private var frames: [HelperFrame] = []
@@ -350,6 +352,13 @@ final class HelperFrameReader: @unchecked Sendable {
         lock.lock()
         do {
             frames += try decoder.take(data)
+            // Frames nothing reads, as from a thread an earlier run left
+            // sending, end the stream rather than pile up without limit
+            // (code-review-notes.md, F57).
+            if frames.count > Self.mostUnread {
+                frames.removeAll()
+                throw ScriptHelperError.brokenStream("more than \(Self.mostUnread) messages no run read")
+            }
         } catch {
             ending = ending ?? error
         }

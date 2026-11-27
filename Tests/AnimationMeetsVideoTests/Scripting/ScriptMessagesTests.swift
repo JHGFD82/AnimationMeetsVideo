@@ -32,6 +32,29 @@ import Testing
         #expect(throws: ScriptHelperError.self) { try decoder.take(Data([0xFF, 0xFF, 0xFF, 0x7F])) }
     }
 
+    /// A header claiming a payload no message has is a broken stream at
+    /// once, not bytes to wait for without end (code-review-notes.md, F57).
+    @Test func aPayloadTooLargeToBeOneIsABrokenStream() throws {
+        let json = try JSONEncoder().encode(JSONValue.object(["type": "result", "bytes": .number(Double(1 << 40))]))
+        var data = Data()
+        withUnsafeBytes(of: UInt32(json.count).littleEndian) { data.append(contentsOf: $0) }
+        data.append(json)
+        var decoder = HelperFrame.Decoder()
+        #expect(throws: ScriptHelperError.self) { try decoder.take(data) }
+    }
+
+    /// Many frames in one read all come out, and frames nothing reads end
+    /// the stream once past the most kept waiting.
+    @Test func framesNoRunReadsEndTheStream() async throws {
+        let one = try HelperFrame(header: ["type": "output", "text": "x"]).encoded()
+        var decoder = HelperFrame.Decoder()
+        #expect(try decoder.take(Data(repeating: 0, count: 0) + Array(repeating: one, count: 500).reduce(Data(), +)).count == 500)
+
+        let reader = HelperFrameReader()
+        reader.take(Array(repeating: one, count: HelperFrameReader.mostUnread + 1).reduce(Data(), +))
+        await #expect(throws: ScriptHelperError.self) { _ = try await reader.next() }
+    }
+
     @Test func aRequestCarriesItsFileAndFolder() {
         let request = HelperRequest(kind: .script, code: "pass", path: URL(filePath: "/p/Scripts/stagger.py"))
         let header = request.header(id: 4)

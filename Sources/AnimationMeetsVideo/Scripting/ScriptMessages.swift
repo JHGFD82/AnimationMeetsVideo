@@ -29,32 +29,46 @@ struct HelperFrame: Equatable, Sendable {
 
     /// Past this a header is taken to be a broken stream, not a message.
     static let largestHeader = 64 * 1024 * 1024
+    /// Past this a payload is too: an expression's tables for an hour of
+    /// samples are a fraction of it. Without it a header could claim 9×10^15
+    /// bytes and have the app buffer all it was sent waiting for them
+    /// (code-review-notes.md, F57).
+    static let largestPayload = 1024 * 1024 * 1024
 
     /// Reads frames from bytes as they arrive, which can cut a frame
     /// anywhere.
     struct Decoder {
         private var buffer = Data()
+        /// How far into `buffer` the frames already given end. The bytes
+        /// before it go once per `take`, not per frame, which copied what
+        /// was left after every one.
+        private var consumed = 0
 
         /// Takes in bytes read and gives every frame they complete.
         mutating func take(_ bytes: Data) throws -> [HelperFrame] {
             buffer.append(bytes)
             var frames: [HelperFrame] = []
             while let frame = try nextFrame() { frames.append(frame) }
+            if consumed > 0 {
+                buffer.removeSubrange(buffer.startIndex..<buffer.startIndex + consumed)
+                consumed = 0
+            }
             return frames
         }
 
         private mutating func nextFrame() throws -> HelperFrame? {
-            guard buffer.count >= 4 else { return nil }
-            let start = buffer.startIndex
+            let left = buffer.count - consumed
+            guard left >= 4 else { return nil }
+            let start = buffer.startIndex + consumed
             let length = buffer[start..<start + 4].enumerated().reduce(0) { $0 | Int($1.element) << (8 * $1.offset) }
             guard length <= HelperFrame.largestHeader else { throw ScriptHelperError.brokenStream("a header of \(length) bytes") }
-            guard buffer.count >= 4 + length else { return nil }
+            guard left >= 4 + length else { return nil }
             let header = try JSONDecoder().decode(JSONValue.self, from: buffer[start + 4..<start + 4 + length])
             let size = header["bytes"]?.int ?? 0
-            guard size >= 0 else { throw ScriptHelperError.brokenStream("a payload of \(size) bytes") }
-            guard buffer.count >= 4 + length + size else { return nil }
+            guard (0...HelperFrame.largestPayload).contains(size) else { throw ScriptHelperError.brokenStream("a payload of \(size) bytes") }
+            guard left >= 4 + length + size else { return nil }
             let payload = Data(buffer[start + 4 + length..<start + 4 + length + size])
-            buffer = Data(buffer[(start + 4 + length + size)...])
+            consumed += 4 + length + size
             return HelperFrame(header: header, payload: payload)
         }
     }
