@@ -186,6 +186,9 @@ extension ProjectBridge {
         #expect(try ScriptTime.time([1, 3], in: timeline) == CMTime(value: 1, timescale: 3))
         #expect(throws: ScriptCallError.self) { try ScriptTime.time(.number(.infinity), in: timeline) }
         #expect(throws: ScriptCallError.self) { try ScriptTime.time("soon", in: timeline) }
+        // A fraction is bounded as seconds are (code-review-notes.md, F58).
+        #expect(throws: ScriptCallError.self) { try ScriptTime.time([1e300, 3], in: timeline) }
+        #expect(throws: ScriptCallError.self) { try ScriptTime.time([9_000_000_000_000_000, 1], in: timeline) }
     }
 
     @Test func theWindowsContextListsTheSelectionTopLayerFirst() async throws {
