@@ -165,6 +165,13 @@ extension ProjectStore {
             canvasMargin: file.canvasMargin ?? EditingProject.defaultCanvasMargin,
             jointAudioCrossfade: file.jointAudioCrossfade.flatMap(AudioCrossfade.init(rawValue:)) ?? .sCurve
         )
+        // A timeline holding itself is refused here rather than only when
+        // drawn (code-review-notes.md, F50).
+        if let looped = project.timelineContainingItself() {
+            throw ProjectStoreError.invalidFile(
+                "The timeline \u{201C}\(looped.name)\u{201D} contains itself, through a nested timeline or an effect\u{2019}s input."
+            )
+        }
         project.alignClipLengthsToFrames()
         var scores: [UUID: ChangeScoreTrack] = [:]
         var references: [UUID: AssetReference] = [:]

@@ -311,6 +311,31 @@ private struct Sandbox {
         }
     }
 
+    /// A timeline that holds itself, as only a hand edit makes, is refused
+    /// at load (code-review-notes.md, F50).
+    @Test func aTimelineHoldingItselfIsRefused() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        var file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        var timelines = try #require(file["timelines"] as? [[String: Any]])
+        let ownID = try #require(timelines[0]["id"] as? String)
+        var layers = try #require(timelines[0]["layers"] as? [[String: Any]])
+        var clips = try #require(layers[0]["clips"] as? [[String: Any]])
+        clips[0]["source"] = ["kind": "timeline", "id": ownID]
+        layers[0]["clips"] = clips
+        timelines[0]["layers"] = layers
+        file["timelines"] = timelines
+        try JSONSerialization.data(withJSONObject: file).write(to: sandbox.projectJSON)
+        do {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+            Issue.record("A timeline holding itself opened")
+        } catch ProjectStoreError.invalidFile(let detail) {
+            #expect(detail.contains("contains itself"), "\(detail)")
+        }
+    }
+
     /// A styled run outside its text's words trapped at the first letter
     /// typed; it is refused as it is read.
     @Test func aTextRunOutsideItsWordsIsRefused() throws {
@@ -327,11 +352,14 @@ private struct Sandbox {
         defer { sandbox.cleanUp() }
         var (project, clipID, assetID) = sandbox.makeProject()
         let timelineID = project.rootTimelineID
+        // Another timeline, as the app allows: its own would hold itself,
+        // which loading refuses.
+        let card = project.addTimeline(name: "Card", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
         var plain = Effect(kind: .matte)
         plain.input = EffectInput(source: .asset(assetID))
         var shifted = Effect(kind: .matte)
         shifted.controls[0].matteMode = .invertedAlpha
-        shifted.input = EffectInput(source: .timeline(timelineID), offset: CMTime(value: 1001, timescale: 24000), loops: true)
+        shifted.input = EffectInput(source: .timeline(card), offset: CMTime(value: 1001, timescale: 24000), loops: true)
         project.editClip(clipID, in: timelineID) { $0.effects = [plain, shifted] }
 
         try await ProjectStore.save(project, to: sandbox.packageURL)
