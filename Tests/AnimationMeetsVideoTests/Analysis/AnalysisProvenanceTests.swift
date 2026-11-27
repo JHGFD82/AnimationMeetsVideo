@@ -39,6 +39,24 @@ import Testing
         #expect(ProjectStore.readVerifiedBeats(for: id, in: package, identity: stamp).value == beats)
     }
 
+    /// A record file that can't be read for now is never written over: from
+    /// nothing, the write kept only the new record and lost the others,
+    /// the original's scores among them (code-review-notes.md, F28).
+    @Test func recordsThatCantBeReadForNowAreNotWrittenOver() throws {
+        let package = try makePackage(), id = UUID()
+        defer { try? FileManager.default.removeItem(at: package) }
+        try ProjectStore.writeChangeScores(track, for: id, in: package, source: stamp)
+        let records = folder(id, package).appending(path: ProjectStore.provenanceFileName)
+        let before = try Data(contentsOf: records)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: records.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: records.path) }
+
+        #expect(throws: (any Error).self) { try ProjectStore.writeBeats(beats, for: id, in: package, source: stamp) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: records.path)
+        #expect(try Data(contentsOf: records) == before)
+        #expect(ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: stamp).value == track)
+    }
+
     @Test func resultsWithoutARecordAreRejectedNotAssumedCurrent() throws {
         let package = try makePackage(), id = UUID()
         defer { try? FileManager.default.removeItem(at: package) }
