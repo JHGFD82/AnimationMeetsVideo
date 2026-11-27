@@ -138,4 +138,40 @@ import Testing
         #expect(analysis.suggestion?.method == .cuts)
         #expect(abs(analysis.proposedOffset.seconds - 0.5) < 0.05)
     }
+
+    // F77: sound finds an offset to 10 ms, so a file exactly one frame late
+    // at 24 fps (41.7 ms) comes back 40 ms late. Left there, every original
+    // frame time lands just before the frame it means and shows the one
+    // before; and within the old one-frame tolerance it was even taken for
+    // in sync with no offset, and replaced without asking.
+    private func heard(_ seconds: Double) -> AlignmentSuggestion {
+        AlignmentSuggestion(offset: CMTime(seconds: seconds, preferredTimescale: 100), method: .audio, confidence: 0.8)
+    }
+
+    @Test func aFileOneFrameLateByItsSoundIsProposedOneWholeFrameLate() {
+        let settled = MediaReplacer.settle(heard(0.04), currentOffset: .zero, frameRate: 24)
+        #expect(settled.verdict == .needsConfirmation(suggestion: MediaReplacer.onFrames(heard(0.04), frameRate: 24)))
+        #expect(settled.proposedOffset == CMTime(value: 1, timescale: 24))
+    }
+
+    @Test func anOffsetFromSoundLandsOnNTSCFramesExactly() {
+        let late = MediaReplacer.settle(heard(0.04), currentOffset: .zero, frameRate: 24_000.0 / 1001)
+        #expect(late.proposedOffset == CMTime(value: 1001, timescale: 24_000))
+        let early = MediaReplacer.settle(heard(-2.0), currentOffset: .zero, frameRate: 30_000.0 / 1001)
+        #expect(CMTimeCompare(early.proposedOffset, CMTime(value: -60 * 1001, timescale: 30_000)) == 0)
+    }
+
+    @Test func aSuggestionWithinHalfAFrameKeepsTheOffsetInEffect() {
+        let current = CMTime(value: 3, timescale: 24)
+        let settled = MediaReplacer.settle(heard(0.13), currentOffset: current, frameRate: 24)
+        #expect(settled.verdict == .aligned)
+        #expect(settled.proposedOffset == current)
+    }
+
+    @Test func soundAloneIsLeftAsFoundAndAsksForMoreThanAnEnvelopeStep() {
+        let settled = MediaReplacer.settle(heard(0.04), currentOffset: .zero, frameRate: 0)
+        #expect(settled.proposedOffset == CMTime(value: 4, timescale: 100))
+        #expect(settled.verdict != .aligned)
+        #expect(MediaReplacer.settle(heard(0.01), currentOffset: .zero, frameRate: 0).verdict == .aligned)
+    }
 }

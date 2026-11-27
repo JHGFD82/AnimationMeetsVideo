@@ -69,10 +69,45 @@ enum ReplacementKindError: LocalizedError {
 }
 
 enum MediaReplacer {
-    /// One video frame at the project's frame rate, or a 24th of a second.
+    /// How far a suggestion may be from the offset in effect and still be
+    /// taken for it: half a frame of the new file's pictures, so a file one
+    /// frame out always reaches the sync dialog, or for sound alone one
+    /// step of the loudness envelope, the most the comparison can tell.
     static func tolerance(frameRate: Double) -> CMTime {
-        let rate = frameRate > 0 ? frameRate : 24
-        return CMTime(seconds: 1 / rate, preferredTimescale: 6000)
+        guard frameRate > 0 else { return CMTime(value: 1, timescale: Int32(AudioEnvelope.windowsPerSecond)) }
+        let frame = Timeline.frameDuration(for: frameRate)
+        return CMTime(value: frame.value, timescale: frame.timescale * 2)
+    }
+
+    /// `suggestion` with its offset moved to the nearest whole frame of a
+    /// new file playing at `frameRate`. Sound finds an offset only to the
+    /// envelope's 10 ms, and a cut at 24 fps falls every 41.7 ms: a file one
+    /// frame late came back 40 ms late, and every original frame time then
+    /// landed just before the frame it meant, showing the one before.
+    /// Sound alone (`frameRate` 0) has no frames and is left as found.
+    static func onFrames(_ suggestion: AlignmentSuggestion?, frameRate: Double) -> AlignmentSuggestion? {
+        guard var suggestion, frameRate > 0 else { return suggestion }
+        suggestion.offset = Timeline.frameAligned(
+            suggestion.offset, toFramesOf: Timeline.frameDuration(for: frameRate), .nearest
+        )
+        return suggestion
+    }
+
+    /// Whether a replacement is in sync, and the offset to propose: the
+    /// offset in effect when it is, else the suggestion on the new file's
+    /// frames, else the offset in effect.
+    static func settle(
+        _ suggestion: AlignmentSuggestion?, currentOffset: CMTime, frameRate: Double
+    ) -> (verdict: SyncVerdict, proposedOffset: CMTime) {
+        let verdict = SyncVerdict.decide(
+            suggestion: onFrames(suggestion, frameRate: frameRate),
+            currentOffset: currentOffset,
+            tolerance: tolerance(frameRate: frameRate)
+        )
+        switch verdict {
+        case .aligned: return (verdict, currentOffset)
+        case .needsConfirmation(let found): return (verdict, found?.offset ?? currentOffset)
+        }
     }
 
     /// Reads the candidate file and compares it with what was saved about the
@@ -135,16 +170,8 @@ enum MediaReplacer {
         }
         progress(1)
 
-        let verdict = SyncVerdict.decide(
-            suggestion: suggestion,
-            currentOffset: asset.alignmentOffset,
-            tolerance: tolerance(frameRate: asset.frameRate)
-        )
-        let proposed: CMTime
-        switch verdict {
-        case .aligned: proposed = asset.alignmentOffset
-        case .needsConfirmation(let found): proposed = found?.offset ?? asset.alignmentOffset
-        }
+        suggestion = onFrames(suggestion, frameRate: replacement.frameRate)
+        let (verdict, proposed) = settle(suggestion, currentOffset: asset.alignmentOffset, frameRate: replacement.frameRate)
 
         var report = MediaComparison.compare(old: reference.metadata, new: captured.metadata)
         let missing = MediaComparison.missingRanges(used: usedRanges, offset: proposed, newDuration: replacement.duration)

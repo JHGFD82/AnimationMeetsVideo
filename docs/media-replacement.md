@@ -102,7 +102,14 @@ chosen moment (it starts at the first used range).
    the best match stands above the runner-up. When audio is missing or not
    confident, the files' scene cuts are compared instead, which means
    scoring every frame of the new file and is slower. A suggestion with
-   confidence below 0.25 is shown as weak.
+   confidence below 0.25 is shown as weak. When the new file has pictures,
+   the suggestion is moved to the nearest whole frame of its frame rate
+   (exactly, at NTSC rates too): sound alone would find a file one frame
+   late at 24 fps (41.7 ms) as 40 ms late, and every cut would then show
+   the frame before. The replacement goes ahead without the dialog only
+   when a confident suggestion is within half a frame of the offset in
+   effect, so a file one frame out always asks; for sound alone, within
+   one envelope step (10 ms).
 
    The cuts are compared with **the original's own scores**
    (`original-signature.bin`), never with the scores of whatever file the

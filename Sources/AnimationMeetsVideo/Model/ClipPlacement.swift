@@ -12,7 +12,12 @@ extension Timeline {
     /// frame counts, so a time already on a frame stays exactly on it even
     /// at NTSC rates, where frame lengths aren't whole in any decimal unit.
     func frameAligned(_ time: CMTime, _ rounding: FrameRounding) -> CMTime {
-        let frame = frameDuration
+        Self.frameAligned(time, toFramesOf: frameDuration, rounding)
+    }
+
+    /// `time` moved onto the grid of frames `frame` long that starts at
+    /// zero, in exact integer frame counts as `frameAligned(_:_:)` does.
+    static func frameAligned(_ time: CMTime, toFramesOf frame: CMTime, _ rounding: FrameRounding) -> CMTime {
         guard time.isNumeric else { return .zero }
         let method: CMTimeRoundingMethod = switch rounding {
         case .nearest: .roundHalfAwayFromZero
