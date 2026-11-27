@@ -15,9 +15,14 @@ output="${1:-build}"
 configuration="${CONFIGURATION:-release}"
 app="$output/AnimationMeetsVideo.app"
 
-swift build -c "$configuration" --product AnimationMeetsVideo
-bin="$(swift build -c "$configuration" --show-bin-path)"
+# Apple silicon only, whatever Mac builds it: the app supports no Intel Mac.
+swift build -c "$configuration" --arch arm64 --product AnimationMeetsVideo
+bin="$(swift build -c "$configuration" --arch arm64 --show-bin-path)"
 binary="$bin/AnimationMeetsVideo"
+if [ "$(lipo -archs "$binary")" != "arm64" ]; then
+    echo "error: $binary isn't built for Apple silicon alone." >&2
+    exit 1
+fi
 # The resource bundle, which holds the effect packages that ship with the
 # app and the Python helper's code; EffectPackageStore.builtInFolder and
 # PythonRuntime.hostScript look for it in Contents/Resources.

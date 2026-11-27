@@ -241,7 +241,10 @@ are phase 9's first suspects.
    get older behavior than the SDK it is written for; CI notes the
    viewer needs the macOS 26 SDK. Find where the SwiftPM build (Swift
    Build, `.build/out`) sets the linker's SDK version, then decide
-   whether it matters.
+   whether it matters. *Since the minimum became 26.0 the binaries
+   record `minos 26.0` and `sdk 26.0`: the build writes the deployment
+   target as the SDK version. Behavior chosen by "linked on or after
+   macOS 26" is now had; behavior new in 27 still wouldn't be.*
 
 7. **A build from a clean checkout has no Python. (Phase 3, packaging,
    decision; open.)** `scripts/build-app.sh` in this checkout warned
@@ -249,22 +252,27 @@ are phase 9's first suspects.
    git-ignored and wasn't there, though the main checkout has one. This
    is the reproducibility question phase 3 already asks, now seen.
 
-### Still open in phase 1
+### Decided, and still open, in phase 1
 
-These need the person who owns the project, not more running:
-
-- **Is macOS 15 supported?** The minimum is 15.0 (and `minos 15.0` in
-  the binary), but nothing here can run macOS 15 and CI runs only on
-  macOS 27. The only availability check is `#available(macOS 26.0, *)`
-  in `UI/Viewer/PlayerLayerView.swift:89` (the viewer's high dynamic
-  range). Either test on macOS 15 in phase 12 or raise
-  `.macOS(.v15)` and `LSMinimumSystemVersion` together.
-- **Which hardware?** The bundle is arm64 only. Without a Metal device
-  `MetalDevice.shared` is nil and four contexts fall back to the CPU
-  (`LayeredCompositor.swift:160`, `ClipPictureCache.swift:128`,
-  `StillImages.swift:62`, `FrameRedrawer.swift:94`); support that or
-  refuse to run.
-- **Review projects.** None assembled: they need footage and music the
+- **macOS 26 (Tahoe) and later**, decided by the project's owner.
+  `Package.swift` says `.macOS("26.0")` (the tools-6.0 manifest has no
+  `.v26`) and `LSMinimumSystemVersion` is 26.0; the one availability
+  check went. Raising the target brings eleven macOS 26 deprecation
+  warnings: nine for `AVMutableVideoComposition` (in
+  `ComposedTimeline`, `CompositionPlanning`, `PlayheadPrerenderer`),
+  which wants moving to `AVVideoComposition.Configuration`, open; and
+  `Text` joined with `+` and `wantsExtendedDynamicRangeContent`, both
+  replaced. `BrowserPanel.swift:118` now drops the result of a Finder
+  drop, as SwiftUI picks another `dropDestination` overload; dropped
+  files still import.
+- **Apple silicon only**, decided by the owner. `scripts/build-app.sh`
+  builds with `--arch arm64` whatever Mac runs it and stops unless
+  `lipo` shows arm64 alone. Every Apple silicon Mac has Metal, so the
+  CPU fallback when `MetalDevice.shared` is nil
+  (`LayeredCompositor.swift:160` and three more) is no longer a
+  supported path; it is left in place, harmless, rather than made a
+  crash for virtual machines without a GPU.
+- **Review projects.** Still none: they need footage and music the
   project holds the rights to, at a fixed path outside the repository.
   Until then `UIResponsivenessBenchmark` runs without `AMV_PROJECT`.
 

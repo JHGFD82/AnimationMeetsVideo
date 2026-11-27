@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "AnimationMeetsVideo",
     platforms: [
-        .macOS(.v15)
+        .macOS("26.0")
     ],
     products: [
         .executable(

@@ -37,11 +37,11 @@ changed; phase 1 checks each one.
 
 | Fact | Today | Where it is set |
 | --- | --- | --- |
-| Minimum macOS | 15.0 | `Package.swift` (`.macOS(.v15)`), `LSMinimumSystemVersion` in `Packaging/Info.plist` |
+| Minimum macOS | 26.0 (Tahoe), decided in the first pass | `Package.swift` (`.macOS("26.0")`), `LSMinimumSystemVersion` in `Packaging/Info.plist` |
 | Toolchain | Xcode 27.2; Swift tools 6.0, so the Swift 6 language mode and complete concurrency checking | `.github/workflows/build.yml` (`DEVELOPER_DIR`), `Package.swift` |
 | Build | One SwiftPM executable target; `scripts/build-app.sh` wraps it into `AnimationMeetsVideo.app` | `Package.swift`, `scripts/build-app.sh` |
 | Signing | Ad hoc (`codesign --sign -`); no entitlements file, no App Sandbox, no hardened runtime | `scripts/build-app.sh` |
-| Architectures | Whatever the building Mac is; Intel support undecided | `scripts/build-app.sh` |
+| Architectures | Apple silicon (arm64) only, decided in the first pass | `scripts/build-app.sh` (`--arch arm64`, checked with `lipo`) |
 | Network | None: no `URLSession` or `Network` use | `Sources/` |
 | Third-party code | No SwiftPM dependencies; a bundled CPython from python-build-standalone, pinned by release and SHA-256 in the git-ignored `scripts/python-pin` | `scripts/fetch-python.sh` |
 | Export formats | ProRes 422 (reuses background renders), ProRes 4444 (composites from the sources), WAV Mix, WAV Stems | `Export/AudioExport.swift` (`ExportFormat`) |

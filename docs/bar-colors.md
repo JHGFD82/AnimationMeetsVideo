@@ -102,7 +102,7 @@ struct BarColorMenu: View {
 ```
 
 **Not tried.** This was written without a Mac to run it on. Palette
-pickers in menus are a macOS 14 API and the package targets macOS 15,
+pickers in menus are a macOS 14 API and the package targets macOS 26,
 but whether eight stacked palette pickers draw as a tidy 8 × 8 grid of
 tinted swatches inside a *context* menu must be looked at on screen;
 menus are AppKit windows, so the snapshot tests can't show it. If it
