@@ -1,11 +1,11 @@
 # Code review notes
 
 Status: **review notes** for the first pass of
-[code-review-plan.md](code-review-plan.md). Phase 1 (scope and build
-baseline) is done, apart from the decisions and review projects listed
-under "Still open in phase 1", and so is phase 2 (architecture and
-maintainability), with its open findings listed; phases 3 to 12 haven't
-started. Each
+[code-review-plan.md](code-review-plan.md). Phases 1 (scope and build
+baseline), 2 (architecture and maintainability) and 3 (security,
+privacy and dependencies) are done, with their open findings and the
+decisions still wanted listed; phase 1 still lacks its review
+projects. Phases 4 to 12 haven't started. Each
 finding gives its phase, area, severity from the plan's
 [triage order](code-review-plan.md#triage-order), place, how to see it,
 and whether it was already failing at the baseline. Fixes are marked
@@ -464,3 +464,169 @@ findings say **verified** where the code path was read again here, and
   Motion Designer's locks are now shown in the Timeline menu's Split,
   Nudge and Delete; the keys, lanes, browser and drops still only
   refuse.
+
+## Phase 3: Security, privacy and dependencies
+
+Baseline: `c23427a8`. Three read-only reviews (the Matroska parser and
+binary reference data; project and effect packages; Python
+confinement, code approval and recording permissions) and checks of
+logging, network and dependencies made here. Each fix was checked
+against the code first; most have a test that fails without the fix
+(said where it was shown).
+
+### Fixed
+
+15. **Logged names were read as format strings. (Severity 2; fixed in
+    `e1d78893`.)** Thirteen `NSLog` calls interpolated error text,
+    package paths and package names into the format. A name with `%@`
+    logged "(null)", and a project folder named with twelve crashed a
+    probe with a bus error. Each now logs `"%@"` with the text as its
+    argument.
+
+16. **Matroska files that crash, hang or overrun the index. (Severity 2;
+    fixed in `1fd07353`.)** EBML lacing sizes running past their block
+    trapped (a crash from a few bytes); children were bounded by the
+    file, not their parent, so a track's codec data could take in the
+    rest of the file per track; fixed lacing over nothing made 256
+    frames; a million tracks with a linear lookup hung past
+    cancelling; a timestamp scale of 0 was taken; and a PCM block of
+    part of a sample, or a bit depth like 0x7FFFFFF8, pointed samples
+    past the file. Each is refused or not indexed, and a sweep cuts a
+    small laced file at every length and sets every byte to 0x00, 0x01
+    and 0xFF: it reads or refuses, never traps.
+
+17. **`audio.bin`'s start overflowed. (Severity 2; fixed in
+    `ca0cd751`.)** An edited start window of Int64.min trapped working
+    out a replacement's offset. Starts beyond 2^40 windows are damage.
+
+18. **An edited viewer-copy index could delete any folder. (Severity 1;
+    fixed in `221d4457`.)** `Cache/ViewerCopies/index.json` names the
+    copies to delete when unused; a record whose file was `../../..`
+    deleted the folder holding the project, on opening, whether copies
+    were on or off. Only plain names with times that fit are read; the
+    test lost its sibling file without the check.
+
+19. **A cache folder linked out of the package was emptied. (Severity 1;
+    fixed in `2305c751`.)** A project arriving with `Cache/References`
+    linked to Documents (zip and AirDrop keep links) had Documents
+    emptied on load, and a linked `Cache/Renders` would lose `.mov`
+    files oldest first. Both clear only a folder that resolves inside
+    the package.
+
+20. **An allowed script could import code no one allowed. (Severity 1;
+    fixed in `d64fd738`.)** A project script runs with its folder first
+    on the import path, but allowing it hashed only its text, so its
+    `import util` ran an unseen `util.py`; and the helper kept that
+    module for the next script, of any project. Allowing now covers
+    the name and hash of every other file in the folder, and the helper
+    forgets a script's own modules when it ends.
+
+21. **Expressions could read terminals and the home folder. (Severity
+    1; fixed in `ea881d27`.)** The sandbox allowed all of `/dev`, so a
+    confined expression could open a Terminal's tty and read what was
+    typed, passwords too (shown with a pseudo-terminal; the test fails
+    with `/dev` back); and a `~/bin/python3` made the whole home folder
+    readable and runnable. `/dev` is gone (the base profile allows what
+    Python needs), an installation that is or holds the home folder is
+    left out, and the confinement tests now try `os.fork`,
+    `posix_spawn` and the interpreter in `subprocess`: all refused.
+
+22. **Repeated IDs crashed the app. (Severity 2; fixed in
+    `17eb57a1`.)** Two media files, timelines, layers or sections with
+    one ID (read regardless of case) crashed the browser, the timeline
+    or the first section edit. A file repeating one is refused, saying
+    which; `view-state.json` keeps the first of two clashing keys.
+
+23. **A negative keyframing component trapped (fixed in `1aaeaf0b`),
+    and package repeats and delays trapped or hung (fixed in
+    `4a8566c8`). (Severity 2.)** A component outside the control's
+    range now writes nothing; a look's passes are finite and at most
+    256, and a delay too far to keep draws the picture as it is.
+
+### Open: project and package input (severity 2 to 3)
+
+- **Numbers in range of JSON but not of the app** crash on open or on
+  the first redraw: a trim of 2×10^17 s overflows in frame alignment
+  (`Model/ClipPlacement.swift:25`), a frame width of 10^19 traps in
+  `Int(frameSize.width)` (`Model/Timeline.swift:39` and the header),
+  a frame rate of 10^19 or a time near 4×10^17 s in timecode
+  formatting (`CMTime+Formatting.swift:18`), and a beat position of
+  Int64.min (`BeatMap.swift:144`). Reported. Wants range checks after
+  the shape check that refuse the file, as the repeated IDs now are.
+- **Text runs past the end of their text** trap on the first typed
+  letter (`TextRuns.swift:330`; `start` near Int.max overflows at
+  `:279`). Reported.
+- **A timeline holding clips of itself** loads; rendering refuses it,
+  but the Waveform's walk (`WaveformEffect.swift:548`) has no visited
+  set and makes N^8 calls. Reported. Cycles want refusing at load.
+- **Names made into paths** without cleaning: Duplicate of a package
+  whose manifest name is `../../Desktop/x`, Make Package, and backups
+  named for the project (`EffectPackageStore.swift:386–425`,
+  `ProjectBackups.swift:105–209`). Each only creates and never
+  overwrites. Reported.
+- **Clips whose source is missing are dropped silently** at load
+  (`ProjectStore+Load.swift:85`), so the next save loses them; a
+  negative clip length is kept. Reported.
+- **A kernel that never ends** stalls the GPU until macOS's watchdog,
+  every frame. Nothing limits it; a warning when installing a package
+  from Finder may be wanted.
+- `audio.bin` with billions of levels asks for memory in proportion
+  (`crossCorrelation`); its count must equal its length, so it needs a
+  file that large. Damaged reference files are analysed again without
+  a message, by design.
+
+### Open: Python (severity 2 to 3)
+
+- **One expressions helper serves every project**, with real builtins,
+  so approved code in one can patch the helper's caches or leave a
+  thread answering the next run, and another project's different
+  approved code then gives its values (`expressions.py:311,340`).
+  Reported. Wants a helper per project, or a restart after a run that
+  leaves threads.
+- **Non-finite expression samples** are counted but not checked in the
+  app (`PythonHelper.swift:167–176`); NaN keyframes would then fail
+  saving. Reported.
+- **Helper messages are buffered without limit** (`ScriptMessages`
+  payload sizes up to 9×10^15, `HelperFrameReader.frames` while no run
+  reads) and copied per frame. Reported.
+- **A script's time as `[n, d]` has no bound** (`ProjectBridge.swift:
+  506–515`), unlike one in seconds. Reported.
+- **Recording another app with its permission refused** probably gives
+  a silent take with no message (`AudioCapture.swift:79–116`).
+  Suspected; wants trying with `tccutil reset`.
+- Low: confined code can still stat any path (`file-read-metadata`),
+  and whether `cfprefsd` refuses it a write is untested.
+
+### Privacy and dependencies
+
+- **Network:** none in the app's sources (no `URLSession`, sockets, web
+  views or links); confined expressions are denied it.
+- **Logs:** with finding 15 fixed, what is logged is error text and
+  file and package names, in the system log. Kept.
+- **Python download:** `fetch-python.sh` fetches over HTTPS and checks
+  the archive against the pinned SHA-256; `--pin` takes that hash from
+  the same release, so the first pin trusts what was offered then.
+- **Licenses:** nothing copies the CPython build's license, or those
+  of what it bundles (OpenSSL, SQLite, libffi, zlib and the rest),
+  into the app. Needed before the app is given to anyone.
+
+### Decisions for the owner
+
+- **Commit `scripts/python-pin`?** It is git-ignored, so a build from
+  a clean checkout has no Python (finding 7) and two Macs can bundle
+  different ones. Recommended: commit it, for reproducible releases.
+- **Pin CI's actions by commit?** `actions/checkout@v4` and
+  `actions/upload-artifact@v4` follow their tags. Recommended: pin by
+  SHA, since CI only runs by hand and the cost is a line each.
+- **"Always Run This Project's Scripts"** trusts whatever arrives at
+  the same project ID and path later: a `git pull`, a synced folder or
+  a Finder Replace runs without asking (`CodeApproval.swift:114–122`).
+  Hashing each script would ask again after every edit in an outside
+  editor. Keep as designed, or ask again when a script changed outside
+  the app?
+- **App Sandbox:** not adopted. Adopting it needs security-scoped
+  bookmarks for media referenced in place and on other drives, export
+  destinations and the Python interpreter, and a new way to confine the
+  helper, as `sandbox-exec` can't run inside the App Sandbox.
+  Recommended: not before release; the confinement above covers the
+  code the app runs, and the parsers were the open door.
