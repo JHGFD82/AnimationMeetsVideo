@@ -383,7 +383,8 @@ enum EffectPackageStore {
         guard EffectRegistry.current.effect(named: id) == nil else {
             throw EffectPackageError("An effect called \"\(id)\" is already installed.")
         }
-        let url = folder.appending(path: "\(name).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
+        // The folder's name made safe; the name shown stays as typed.
+        let url = folder.appending(path: "\(SafeFileName.make(name, fallback: "Effect")).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
         guard !FileManager.default.fileExists(atPath: url.path) else {
             throw EffectPackageError("The Effects folder already has a package called \"\(name)\".")
         }
@@ -411,8 +412,12 @@ enum EffectPackageStore {
     /// that name as a made one's, version 1, its controls and kernel as they
     /// were. Returns its folder.
     static func copyPackage(_ package: EffectPackage, in folder: URL = defaultFolder) throws -> URL {
+        // A package's name comes from its manifest, which anyone can write:
+        // its folder's name is made safe, or "../../Desktop/x" copied it
+        // outside the Effects folder.
+        let folderName = { (name: String) in "\(SafeFileName.make(name, fallback: "Effect")).\(EffectPackage.fileExtension)" }
         let taken = { (name: String) in
-            FileManager.default.fileExists(atPath: folder.appending(path: "\(name).\(EffectPackage.fileExtension)").path)
+            FileManager.default.fileExists(atPath: folder.appending(path: folderName(name)).path)
                 || EffectRegistry.current.effect(named: userID(for: name, in: folder)) != nil
         }
         var name = "\(package.name) Copy"
@@ -422,7 +427,7 @@ enum EffectPackageStore {
             number += 1
         }
         let id = userID(for: name, in: folder)
-        let url = folder.appending(path: "\(name).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
+        let url = folder.appending(path: folderName(name), directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: package.url, to: url)
         let manifest = url.appending(path: manifestName)

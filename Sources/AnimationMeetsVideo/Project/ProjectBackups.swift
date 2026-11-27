@@ -102,7 +102,7 @@ enum ProjectBackups {
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         let previous = backups(in: folder).last
 
-        let name = "\(project.name) \(stamp(now)).\(fileExtension)"
+        let name = "\(SafeFileName.make(project.name, fallback: "Project")) \(stamp(now)).\(fileExtension)"
         let destination = uniqueURL(folder.appending(path: name, directoryHint: .isDirectory))
         // Written beside it under a name no listing takes for a backup, and
         // renamed into place once whole, so a backup cut off half-way is
@@ -199,7 +199,7 @@ enum ProjectBackups {
 
     /// The name a restored project gets: "Name from backup 2026-10-24 14.30".
     static func restoredName(for info: Info) -> String {
-        "\(info.projectName) from backup \(stamp(info.createdAt, seconds: false))"
+        "\(SafeFileName.make(info.projectName, fallback: "Project")) from backup \(stamp(info.createdAt, seconds: false))"
     }
 
     /// Where a restored project goes when nothing else is asked: beside the
