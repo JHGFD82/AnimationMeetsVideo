@@ -836,7 +836,9 @@ struct ViewerHandlesOverlay: View {
         projectState?.endHold()
         // A drag let go (`ProjectState.letGo`) has written it already.
         if project.clipAndLayer(start.id, in: source.timelineID)?.clip != edited {
-            source.project.wrappedValue.editClip(start.id, in: source.timelineID) { $0 = edited }
+            // Only what the drag changed: the clip may have been written
+            // from elsewhere since the drag began.
+            source.project.wrappedValue.editClip(start.id, in: source.timelineID) { $0 = $0.applyingDrag(from: start, to: edited) }
         }
         source.state.drag = nil
         let history = self.history
