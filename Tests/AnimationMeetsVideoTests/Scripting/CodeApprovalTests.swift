@@ -5,7 +5,6 @@ import Testing
 /// What may run on this Mac (docs/python-scripting.md, "Safety").
 @MainActor @Suite struct CodeApprovalTests {
     private let file = FileManager.default.temporaryDirectory.appending(path: "amv-allowed-\(UUID().uuidString).json")
-    private let package = URL(filePath: "/Projects/Demo.amv")
 
     @Test func codeIsAllowedByItsExactText() {
         defer { try? FileManager.default.removeItem(at: file) }
@@ -14,37 +13,6 @@ import Testing
         #expect(approval.isAllowed("value + 1"))
         // One character changed outside the app makes it unallowed again.
         #expect(!approval.isAllowed("value + 2"))
-    }
-
-    /// A project's script runs with its folder first on the import path,
-    /// so allowing it allows the files beside it too: one changed or added
-    /// there asks again, rather than running unseen with it.
-    @Test func allowingAScriptCoversTheFilesBesideIt() throws {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-scripts-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: folder)
-            try? FileManager.default.removeItem(at: file)
-        }
-        let script = folder.appending(path: "Tidy.py")
-        let text = "\"\"\"Tidy\"\"\"\nimport util\n"
-        try Data(text.utf8).write(to: script)
-        // Alone in its folder, a script is allowed by its text.
-        #expect(CodeApproval.approvalCode(forScript: text, at: script) == text)
-
-        let util = folder.appending(path: "util.py")
-        try Data("WORD = 1\n".utf8).write(to: util)
-        let approval = CodeApproval(file: file)
-        approval.allow(CodeApproval.approvalCode(forScript: text, at: script))
-        #expect(approval.isAllowed(CodeApproval.approvalCode(forScript: text, at: script)))
-        #expect(!approval.isAllowed(text))
-
-        try Data("open('/tmp/x', 'w')\n".utf8).write(to: util)
-        #expect(!approval.isAllowed(CodeApproval.approvalCode(forScript: text, at: script)))
-        try Data("WORD = 1\n".utf8).write(to: util)
-        try FileManager.default.createDirectory(at: folder.appending(path: "lib"), withIntermediateDirectories: true)
-        try Data("".utf8).write(to: folder.appending(path: "lib/csv.py"))
-        #expect(!approval.isAllowed(CodeApproval.approvalCode(forScript: text, at: script)))
     }
 
     @Test func theModelReadsOnlyTheAppsOwnList() {
@@ -59,49 +27,24 @@ import Testing
 
     @Test func whatIsAllowedIsKeptOnThisMacBetweenLaunches() {
         defer { try? FileManager.default.removeItem(at: file) }
-        let id = UUID()
         CodeApproval(file: file).allow("print(1)")
-        CodeApproval(file: file).allowScripts(ofProject: id, at: package)
-        let again = CodeApproval(file: file)
-        #expect(again.isAllowed("print(1)"))
-        #expect(again.allowsScripts(ofProject: id, at: package))
+        #expect(CodeApproval(file: file).isAllowed("print(1)"))
     }
 
-    @Test func aProjectIsKnownByItsIDAndItsPlace() {
+    /// Approval is of content only (decision D5): the list keeps hashes,
+    /// and no project, by ID or path, is in it to vouch for what arrives
+    /// there later.
+    @Test func noProjectIsRemembered() throws {
         defer { try? FileManager.default.removeItem(at: file) }
-        let approval = CodeApproval(file: file)
-        let id = UUID()
-        approval.allowScripts(ofProject: id, at: package)
-        #expect(approval.mayRun(script: "import amv", ofProject: id, at: package))
-        // A copy arriving from elsewhere under the same ID asks again.
-        #expect(!approval.mayRun(script: "import amv", ofProject: id, at: URL(filePath: "/Downloads/Demo.amv")))
-        #expect(!approval.mayRun(script: "import amv", ofProject: UUID(), at: package))
-    }
-
-    @Test func saveAsKeepsWhatWasAllowed() {
-        defer { try? FileManager.default.removeItem(at: file) }
-        let approval = CodeApproval(file: file)
-        let id = UUID()
-        let moved = URL(filePath: "/Projects/Demo 2.amv")
-        approval.allowScripts(ofProject: id, at: package)
-        approval.projectMoved(id, from: package, to: moved)
-        #expect(approval.allowsScripts(ofProject: id, at: moved))
-    }
-
-    @Test func aScriptAllowedOnceRunsUntilItChanges() {
-        defer { try? FileManager.default.removeItem(at: file) }
-        let approval = CodeApproval(file: file)
-        let id = UUID()
-        approval.allow("import amv\nprint(1)")
-        #expect(approval.mayRun(script: "import amv\nprint(1)", ofProject: id, at: package))
-        #expect(!approval.mayRun(script: "import amv\nprint(2)", ofProject: id, at: package))
+        CodeApproval(file: file).allow("print(1)")
+        let stored = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
+        #expect(Set(stored?.keys.map { $0 } ?? []) == ["formatVersion", "code"])
     }
 
     @Test func forgettingForgetsEverything() {
         defer { try? FileManager.default.removeItem(at: file) }
         let approval = CodeApproval(file: file)
         approval.allow("1")
-        approval.allowScripts(ofProject: UUID(), at: package)
         approval.forgetAll()
         #expect(approval.isEmpty)
         #expect(CodeApproval(file: file).isEmpty)
@@ -113,5 +56,115 @@ import Testing
         defer { try? FileManager.default.removeItem(at: file) }
         #expect(CodeApproval.defaultFile.path.contains("Application Support/AnimationMeetsVideo/AllowedCode.json"))
         #expect(CodeApproval(file: file).isEmpty)
+    }
+
+    /// The question says what an unrestricted script can do, what approval
+    /// covers and what it doesn't.
+    @Test func theQuestionSaysWhatApprovalCovers() {
+        let alone = ScriptActions.approvalText(withFilesBeside: false)
+        let beside = ScriptActions.approvalText(withFilesBeside: true)
+        for text in [alone, beside] {
+            #expect(text.contains("files") && text.contains("network") && text.contains("your permissions"))
+            #expect(text.contains("asked again"))
+            #expect(text.contains("aren't checked"))
+        }
+        #expect(beside.contains("the files in its folder"))
+        #expect(!alone.contains("the files in its folder"))
+    }
+}
+
+/// What a project's script is approved as and runs as (`ScriptSnapshot`).
+@Suite struct ScriptSnapshotTests {
+    private let folder = FileManager.default.temporaryDirectory.appending(path: "amv-scripts-\(UUID().uuidString)", directoryHint: .isDirectory)
+
+    private func write(_ text: String, to name: String) throws {
+        let url = folder.appending(path: name)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url)
+    }
+
+    private var script: URL { folder.appending(path: "Tidy.py") }
+    private let text = "\"\"\"Tidy\"\"\"\nimport util\n"
+
+    /// A project's script runs with its folder first on Python's import
+    /// path, so approving it approves the files beside it too: one
+    /// changed or added there asks again, rather than running unseen.
+    @Test func approvalCoversTheFilesBesideIt() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try write(text, to: "Tidy.py")
+        // Alone in its folder, a script is approved by its text.
+        #expect(try ScriptSnapshot.take(of: script).approvalCode == text)
+
+        try write("WORD = 1\n", to: "util.py")
+        let approved = try ScriptSnapshot.take(of: script).approvalCode
+        #expect(approved != text)
+        try write("open('/tmp/x', 'w')\n", to: "util.py")
+        #expect(try ScriptSnapshot.take(of: script).approvalCode != approved)
+        try write("WORD = 1\n", to: "util.py")
+        #expect(try ScriptSnapshot.take(of: script).approvalCode == approved)
+        try write("", to: "lib/csv.py")
+        #expect(try ScriptSnapshot.take(of: script).approvalCode != approved)
+    }
+
+    /// A link could point outside the folder, and be pointed elsewhere
+    /// after approval: the script doesn't run.
+    @Test func aLinkInTheFolderIsRefused() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try write(text, to: "Tidy.py")
+        try FileManager.default.createSymbolicLink(at: folder.appending(path: "util.py"), withDestinationURL: URL(filePath: "/etc/hosts"))
+        #expect(throws: ScriptSnapshot.Problem.link("util.py")) { try ScriptSnapshot.take(of: script) }
+        try FileManager.default.removeItem(at: folder.appending(path: "util.py"))
+        try FileManager.default.createSymbolicLink(at: folder.appending(path: "lib"), withDestinationURL: URL(filePath: "/usr/lib"))
+        #expect(throws: ScriptSnapshot.Problem.link("lib")) { try ScriptSnapshot.take(of: script) }
+    }
+
+    @Test func aLinkedScriptIsRefused() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try write(text, to: "elsewhere/Real.py")
+        let linked = folder.appending(path: "Linked.py")
+        try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: folder.appending(path: "elsewhere/Real.py"))
+        #expect(throws: ScriptSnapshot.Problem.link("Linked.py")) { try ScriptSnapshot.take(of: linked) }
+    }
+
+    /// Compiled modules could run in place of their source: they are left
+    /// out of what is approved and of the copy that runs.
+    @Test func compiledModulesAreLeftOut() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try write(text, to: "Tidy.py")
+        try write("WORD = 1\n", to: "util.py")
+        let before = try ScriptSnapshot.take(of: script)
+        try write("not really bytecode", to: "__pycache__/util.cpython-314.pyc")
+        try write("", to: ".DS_Store")
+        let after = try ScriptSnapshot.take(of: script)
+        #expect(after.approvalCode == before.approvalCode)
+        let copy = try after.materialize()
+        defer { try? FileManager.default.removeItem(at: copy) }
+        #expect(!FileManager.default.fileExists(atPath: copy.appending(path: "__pycache__").path))
+    }
+
+    /// What runs is what was read: a file changed after the snapshot
+    /// (after approval) doesn't reach the copy imported from.
+    @Test func theCopyHoldsWhatWasRead() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try write(text, to: "Tidy.py")
+        try write("WORD = 1\n", to: "util.py")
+        try write("", to: "lib/csv.py")
+        let snapshot = try ScriptSnapshot.take(of: script)
+        try write("WORD = 'changed after approval'\n", to: "util.py")
+        try write("import os\n", to: "Tidy.py")
+        let copy = try snapshot.materialize()
+        defer { try? FileManager.default.removeItem(at: copy) }
+        #expect(try String(contentsOf: copy.appending(path: "util.py"), encoding: .utf8) == "WORD = 1\n")
+        #expect(try String(contentsOf: copy.appending(path: "Tidy.py"), encoding: .utf8) == text)
+        #expect(FileManager.default.fileExists(atPath: copy.appending(path: "lib/csv.py").path))
+        let mode = try FileManager.default.attributesOfItem(atPath: copy.path)[.posixPermissions] as? Int
+        #expect(mode == 0o700)
+    }
+
+    @Test func aFolderTooLargeToCheckIsRefused() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try write(text, to: "Tidy.py")
+        for index in 0...ScriptSnapshot.mostFiles { try write("", to: "many/\(index).txt") }
+        #expect(throws: ScriptSnapshot.Problem.tooLarge) { try ScriptSnapshot.take(of: script) }
     }
 }

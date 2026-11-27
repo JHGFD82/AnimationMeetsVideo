@@ -10,19 +10,25 @@ enum ScriptActions {
     /// How many scripts Run Script File… remembers.
     static let recentCount = 5
 
-    /// Runs one of the project's own scripts, once allowed.
+    /// Runs one of the project's own scripts, once approved as it is now:
+    /// its text and the files beside it, read once (`ScriptSnapshot`), and
+    /// that reading is what runs. Approval is of that content, never of
+    /// the project, so a script changed since asks again (decision D5).
     static func run(_ script: ScriptFile, in session: ProjectSession) async {
-        guard let package = session.projectURL else { return }
-        guard let text = read(script.url) else { return }
+        guard session.projectURL != nil else { return }
+        let snapshot: ScriptSnapshot
+        do {
+            snapshot = try ScriptSnapshot.take(of: script.url)
+        } catch {
+            showProblem("Couldn't Run \u{201C}\(script.title)\u{201D}", ErrorAdvice.sentence(for: error))
+            return
+        }
         let approval = CodeApproval.shared
-        // Its text with the files beside it, which it may import.
-        let code = CodeApproval.approvalCode(forScript: text, at: script.url)
-        if !approval.mayRun(script: code, ofProject: session.project.id, at: package) {
-            switch ask(about: script) {
-            case .run:
-                approval.allow(code)
-            case .always:
-                approval.allowScripts(ofProject: session.project.id, at: package)
+        let code = snapshot.approvalCode
+        if !approval.isAllowed(code) {
+            switch ask(about: script, withFilesBeside: !snapshot.files.isEmpty) {
+            case .run(let remember):
+                if remember { approval.allow(code) }
             case .show:
                 NSWorkspace.shared.open(script.url)
                 return
@@ -30,7 +36,15 @@ enum ScriptActions {
                 return
             }
         }
-        await run(text, at: script.url, named: script.title, in: session)
+        let imports: URL
+        do {
+            imports = try snapshot.materialize()
+        } catch {
+            showProblem("Couldn't Run \u{201C}\(script.title)\u{201D}", ErrorAdvice.sentence(for: error))
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: imports) }
+        await run(snapshot.text, at: script.url, importingFrom: imports, named: script.title, in: session)
     }
 
     /// Runs a script picked with Run Script File…, from wherever it is:
@@ -96,9 +110,12 @@ enum ScriptActions {
 
     // MARK: - Running
 
-    private static func run(_ text: String, at url: URL, named name: String, in session: ProjectSession) async {
+    private static func run(
+        _ text: String, at url: URL, importingFrom imports: URL? = nil, named name: String, in session: ProjectSession
+    ) async {
         let runner = ScriptRunner.shared
-        let request = HelperRequest(kind: .script, code: text, path: url)
+        var request = HelperRequest(kind: .script, code: text, path: url)
+        request.imports = imports
         runner.transcript.append(.note("Running \u{201C}\(name)\u{201D}\n"))
         switch await runner.run(request, named: name, on: ScriptTarget(session: session)) {
         case .failed(let failure) where !failure.wasStopped:
@@ -114,24 +131,38 @@ enum ScriptActions {
         }
     }
 
-    private enum Answer { case run, always, show, cancel }
+    private enum Answer: Equatable { case run(remember: Bool), show, cancel }
 
-    /// The question for a script that came with a project from elsewhere.
-    private static func ask(about script: ScriptFile) -> Answer {
+    /// The question for a script not approved as it is now: new, from
+    /// elsewhere, or changed since.
+    private static func ask(about script: ScriptFile, withFilesBeside: Bool) -> Answer {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "\u{201C}\(script.title)\u{201D} came with this project."
-        alert.informativeText = "A script can read and change files on this Mac. Run it only if you trust where the project came from."
+        alert.messageText = "Run \u{201C}\(script.title)\u{201D}?"
+        alert.informativeText = approvalText(withFilesBeside: withFilesBeside)
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Remember approval for these scripts"
+        alert.suppressionButton?.state = .off
         alert.addButton(withTitle: "Run")
-        alert.addButton(withTitle: "Always Run This Project's Scripts")
         alert.addButton(withTitle: "Show Script")
         alert.addButton(withTitle: "Cancel")
         switch alert.runModal() {
-        case .alertFirstButtonReturn: return .run
-        case .alertSecondButtonReturn: return .always
-        case .alertThirdButtonReturn: return .show
+        case .alertFirstButtonReturn: return .run(remember: alert.suppressionButton?.state == .on)
+        case .alertSecondButtonReturn: return .show
         default: return .cancel
         }
+    }
+
+    /// What the question says: what an unrestricted script can do, what
+    /// approving it covers, and what it doesn't.
+    static func approvalText(withFilesBeside: Bool) -> String {
+        let covered = withFilesBeside
+            ? "Approving covers this script and the files in its folder exactly as they are now"
+            : "Approving covers this script exactly as it is now"
+        return "Scripts aren't restricted: this one can read, change and delete your files and use the network, with your permissions. "
+            + "\(covered); if any of it changes, in this app or elsewhere, you're asked again. "
+            + "Modules it imports from outside its folder, such as installed packages, aren't checked. "
+            + "Run it only if you trust where it came from."
     }
 
     private static func read(_ url: URL) -> String? {

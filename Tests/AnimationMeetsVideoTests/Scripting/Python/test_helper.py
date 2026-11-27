@@ -355,6 +355,26 @@ class HelperTests(unittest.TestCase):
                 words.append(printed.strip())
         self.assertEqual(words, ["first", "second"])
 
+    def test_a_project_script_imports_the_approved_copy_of_its_folder(self):
+        """A project's script imports from the copy of its folder that was
+        approved ("imports"), not from the folder, where a module may have
+        changed since; it still works in its own folder, and the copy's
+        modules are forgotten after."""
+        with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as approved:
+            with open(os.path.join(folder, "helpers.py"), "w") as file:
+                file.write("WORD = 'changed since'\n")
+            with open(os.path.join(folder, "shots.csv"), "w") as file:
+                file.write("a,b\n")
+            with open(os.path.join(approved, "helpers.py"), "w") as file:
+                file.write("WORD = 'approved'\n")
+            code = "import helpers\nprint(helpers.WORD, open('shots.csv').read().strip())"
+            path = os.path.join(folder, "stagger.py")
+            printed, result = self.helper.run("script", code, self.app, path=path, folder=folder, imports=approved)
+            self.assertEqual(result["type"], "result")
+            self.assertEqual(printed, "approved a,b\n")
+            printed, _ = self.helper.run("script", "import sys\nprint('helpers' in sys.modules)", self.app, path=path, folder=folder, imports=approved)
+            self.assertEqual(printed, "False\n")
+
     def test_a_scripts_error_names_its_line_in_its_file(self):
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, "broken.py")

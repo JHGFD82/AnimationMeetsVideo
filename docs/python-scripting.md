@@ -153,12 +153,18 @@ Python that came from somewhere else doesn't run until the person has
 seen and allowed it (see [Safety](#safety)).
 
 - Code typed into the designer's editor or the console is allowed by
-  that act, and so are the scripts of a project made on this Mac.
-- **A script in a project that came from somewhere else** asks the first
-  time it is chosen: "“Stagger Selected Clips” came with this project.
-  A script can read and change files on this Mac." with **Run**,
-  **Always Run This Project's Scripts**, **Show Script** and Cancel. Run
-  allows that file as it is; changed, it asks again.
+  that act.
+- **A script in a project** asks when it is chosen and hasn't been
+  approved as it is now: new, from elsewhere, or changed since, in the
+  app or outside it, the person's own included. "Run “Stagger Selected
+  Clips”?" says that scripts aren't restricted (they can read, change
+  and delete files and use the network, with the person's permissions),
+  that approving covers the script and the files in its folder exactly
+  as they are, and that modules imported from outside the folder aren't
+  checked. **Run**, **Show Script** or Cancel, with **Remember approval
+  for these scripts** to skip the question until any of it changes;
+  without it, Run runs it once.
+- Opening a project never runs a script: scripts run only when chosen.
 - An expression that arrived another way (a project from someone else, a
   preset, `project.json` edited outside the app) plays exactly as saved,
   since its keyframes are in the project. It just isn't run again: its
@@ -173,7 +179,7 @@ seen and allowed it (see [Safety](#safety)).
 A **Scripting** tab in Settings: which Python runs (**Built In**, with
 its version, or **Choose…** for an interpreter of the person's own,
 3.11 or later, so their packages can be imported) and **Forget Allowed
-Code**, which also forgets which projects' scripts were allowed.
+Code**.
 
 ## The idea: expressions write keyframes
 
@@ -636,21 +642,34 @@ rules, in order of weight:
    was allowed on this Mac in
    `~/Library/Application Support/AnimationMeetsVideo/AllowedCode.json`,
    never in a project, which could then vouch for itself: the SHA-256
-   of each piece of code, and the projects whose scripts may run.
+   of each piece of code, and nothing else. Approval is of content,
+   never of a project (decision D5 in code-review-notes.md): a
+   project's ID and path say where code is, not what arrived there
+   since.
    - An **expression** runs only if its code's hash is there. Applying
      code typed in the editor adds it; changing one character outside
      the app makes it unallowed again.
-   - A **script in a project** runs when chosen if the project was made
-     on this Mac, or its scripts were allowed, or that file's hash was.
-     Otherwise it asks first. Since a script runs with its folder first
-     on the import path, the hash allowed is of its text with the name
-     and hash of every other file in its folder
-     (`CodeApproval.approvalCode`): a helper module changed or added
-     beside it asks again. Modules a script imports from its folder are
-     forgotten when it ends, so the next script imports its own.
-   - A project is known by its ID and where its package was when it was
-     allowed, so a copy arriving from elsewhere under the same ID asks
-     again.
+   - A **script in a project** is read once, with every file of its
+     folder (`ScriptSnapshot`), and runs when chosen if that reading's
+     hash is allowed; otherwise it asks first. The hash is of its text
+     with the path and hash of every other file in its folder and the
+     folders in it (`ScriptSnapshot.approvalCode`), since it runs with
+     its folder first on the import path: a module changed, added or
+     removed beside it asks again. A link anywhere in the folder, or a
+     folder too large to check (2,000 files or 64 MB), refuses to run;
+     `__pycache__` is left out, so compiled modules never run in place
+     of what was read.
+   - **What runs is what was approved.** The reading is copied to a
+     private folder (`ScriptSnapshot.materialize`), and the helper
+     imports from that copy ("imports" in the request) while the
+     script's own folder stays its working directory; the copy is
+     removed when the run ends. A file changed between approval and
+     import isn't the one imported. Modules a script imports from its
+     folder are forgotten when it ends, so the next script imports its
+     own.
+   - Not bounded, and the question says so: modules from outside the
+     folder (the standard library, installed packages, the interpreter's
+     `site`), and files a script opens and runs itself.
    - A file picked with **Run Script File…** runs: picking it is the
      person's act, as opening a file is.
 2. **Expressions are confined.** Their helper runs under a sandbox
@@ -665,8 +684,8 @@ rules, in order of weight:
 3. **Runs are bounded**: the time limit, Stop, and a cap on printed
    output (1 MB a run; the rest is dropped with a note).
 
-What this doesn't do: confine scripts, limit memory, or vet what an
-allowed expression computes. Allowing code means trusting it, the way
+What this doesn't do: confine scripts, which run with the person's own
+permissions, limit memory, or vet what an allowed expression computes. Allowing code means trusting it, the way
 installing an effect package does
 ([effect-packages.md](effect-packages.md#safety)).
 
@@ -884,8 +903,12 @@ build starts; the first two shape everything after them.
 10. **Four fixed inputs, A to D**, rather than inputs the code declares,
     since a kind's controls come from the registry.
 11. **A script is all or nothing and one undo step.**
-12. **A project made on this Mac runs its scripts without asking**, and
-    one from elsewhere asks once.
+12. **A script is approved for its content, never for its project**
+    (D5): a script asks whenever it isn't approved exactly as it is,
+    wherever the project was made, and what runs is the reading that was
+    approved. It replaced letting a project made here, or one whose
+    scripts were allowed by ID and path, run whatever arrived there
+    later.
 13. **The module is `amv`**, after the project's extension.
 14. **At most 8 moments between frames**, at the shutter's own places.
     A clip set to 64 samples reads lines between the eight.

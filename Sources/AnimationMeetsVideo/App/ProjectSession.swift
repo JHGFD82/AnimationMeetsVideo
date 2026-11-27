@@ -166,8 +166,6 @@ final class ProjectSession {
             try await ProjectStore.trashPackage(at: url, checkingLock: true)
             try ProjectStore.preparePackage(at: url)
             _ = try await ProjectStore.save(fresh, to: url)
-            // Made on this Mac, so its scripts run without asking.
-            CodeApproval.shared.allowScripts(ofProject: fresh.id, at: url)
             return url
         } catch {
             showAlert(title: "Couldn't Create Project", message: ErrorAdvice.sentence(for: error))
@@ -446,7 +444,6 @@ final class ProjectSession {
             changeWaitingForLocks = nil
             analysis.packageURL = url
             if isNewLocation {
-                if let previous = projectURL { CodeApproval.shared.projectMoved(project.id, from: previous, to: url) }
                 setProjectURL(url)
                 viewMemory.move(to: url)
             }

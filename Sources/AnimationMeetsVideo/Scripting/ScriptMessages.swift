@@ -88,8 +88,13 @@ struct HelperRequest: Sendable {
 
     var kind: Kind
     var code: String
-    /// For a script: its file, which tracebacks name.
+    /// For a script: its file, which tracebacks name; its folder is the
+    /// working directory.
     var path: URL?
+    /// For a project's script: the folder its approved files were copied
+    /// to (`ScriptSnapshot.materialize`), imported from in place of its
+    /// own folder.
+    var imports: URL?
     /// The timeline shown, the clips selected and the playhead, for
     /// `amv.timeline`, `amv.selection` and `amv.playhead`.
     var context: JSONValue = .object([:])
@@ -111,6 +116,7 @@ struct HelperRequest: Sendable {
             header["path"] = .string(path.path)
             header["folder"] = .string(path.deletingLastPathComponent().path)
         }
+        if let imports { header["imports"] = .string(imports.path) }
         if freshConsole { header["fresh"] = .bool(true) }
         return .object(header)
     }

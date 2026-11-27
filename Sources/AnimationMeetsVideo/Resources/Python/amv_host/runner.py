@@ -131,10 +131,13 @@ class Host:
 
     def run_script(self, header):
         """Runs a script's text in a namespace of its own, with its folder
-        as the working directory and first on the import path."""
+        as the working directory and first on the import path; or, for a
+        project's script, the copy of its folder that was approved
+        ("imports"), so a module changed since isn't the one imported."""
         self.begin(header)
         path = header.get("path") or "<script>"
         folder = header.get("folder")
+        imports = header.get("imports") or folder
         namespace = {"__name__": "__main__", "__file__": path, "__builtins__": __builtins__}
         previous = os.getcwd()
         added = False
@@ -146,14 +149,14 @@ class Host:
                 except OSError as error:
                     self.end(error_message(error, path))
                     return
-                sys.path.insert(0, folder)
+                sys.path.insert(0, imports)
                 added = True
             message = self._execute(header["code"], path, namespace, show=False)
         finally:
-            if added and folder in sys.path:
-                sys.path.remove(folder)
+            if added and imports in sys.path:
+                sys.path.remove(imports)
             if folder:
-                _forget_modules_from(folder, set(sys.modules) - imported_before)
+                _forget_modules_from(imports, set(sys.modules) - imported_before)
             try:
                 os.chdir(previous)
             except OSError:
