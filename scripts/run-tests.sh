@@ -9,7 +9,9 @@
 # finished without being skipped. A run in which no test finishes for
 # STALL_SECONDS is taken for a hang: every test process's threads are
 # sampled and its tasks listed before it is stopped (F4), so the hang can
-# be diagnosed rather than only rerun. Everything is kept in LOG_DIR.
+# be diagnosed rather than only rerun. Only the processes this run started
+# are sampled and stopped. A run with a test that legitimately takes long
+# (a benchmark) wants a larger STALL_SECONDS. Everything is kept in LOG_DIR.
 #
 # Usage: scripts/run-tests.sh [swift test arguments…]
 #   MIN_TESTS=2700 REQUIRED_SUITES="ProjectStoreTests,LoopBarInteractionTests" \
@@ -35,6 +37,17 @@ echo "run-tests: swift test $* (log: $log)"
 swift test "$@" > "$log" 2>&1 &
 runner=$!
 
+# Every process this run started, below its `swift test`: only these are
+# sampled and stopped, never another session's or worktree's test run,
+# which a match by name (`pkill -f swiftpm-testing-helper`) would take too.
+descendants() {
+    local pid
+    for pid in $(pgrep -P "$1"); do
+        echo "$pid"
+        descendants "$pid"
+    done
+}
+
 # The watchdog: progress is a test or suite finishing.
 finished() { grep -cE '(Test|Suite) .* (passed|failed|skipped)' "$log" 2>/dev/null || echo 0; }
 last_count=-1
@@ -52,9 +65,13 @@ while kill -0 "$runner" 2>/dev/null; do
     if [ "$quiet" -ge "$stall" ]; then
         hung=1
         echo "run-tests: no test finished for ${stall} s; sampling before stopping it"
-        for pid in $(pgrep -f 'swiftpm-testing-helper|AnimationMeetsVideoTests.xctest'); do
-            sample "$pid" 5 -file "$log_dir/hang-$stamp-$pid.sample.txt" >/dev/null 2>&1
+        own=$(descendants "$runner")
+        for pid in $own; do
             ps -o pid,ppid,etime,%cpu,rss,state,command -p "$pid" >> "$log_dir/hang-$stamp-processes.txt"
+            case "$(ps -o command= -p "$pid")" in
+                *swiftpm-testing-helper*|*AnimationMeetsVideoTests*)
+                    sample "$pid" 5 -file "$log_dir/hang-$stamp-$pid.sample.txt" >/dev/null 2>&1 ;;
+            esac
         done
         # The tests started and never finished, for whoever reads the hang.
         sed 's/\x1b\[[0-9;]*m//g' "$log" > "$clean"
@@ -62,7 +79,8 @@ while kill -0 "$runner" 2>/dev/null; do
             <(grep -oE 'Test [A-Za-z0-9_]+\(\) started' "$clean" | awk '{print $2}' | sort -u) \
             <(grep -oE 'Test [A-Za-z0-9_]+\(\) (passed|failed|skipped)' "$clean" | awk '{print $2}' | sort -u) \
             > "$log_dir/hang-$stamp-unfinished.txt"
-        pkill -f 'swiftpm-testing-helper' 2>/dev/null
+        # Deepest first, then the run itself; nothing outside this run.
+        for pid in $(printf '%s\n' $own | sort -rn); do kill "$pid" 2>/dev/null; done
         kill "$runner" 2>/dev/null
         break
     fi
