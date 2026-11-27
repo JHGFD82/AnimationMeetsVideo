@@ -735,7 +735,7 @@ extension EditingProject {
         let (baseSamples, width) = base.flatValues(at: sampling.sources)
         guard width > 0 else { return base }
         let count = sampling.sources.count
-        let components = setup.component.map { $0 < width ? [$0] : [] } ?? Array(0..<width)
+        let components = setup.component.map { (0..<width).contains($0) ? [$0] : [] } ?? Array(0..<width)
         let signal = KeyframeSignal(
             effect: effect, sampling: sampling, base: base, baseSamples: baseSamples, width: width, beats: beats, heard: heard
         )

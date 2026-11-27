@@ -119,6 +119,23 @@ private struct KeyframingFixture {
         #expect(keyframes.count < 97)
     }
 
+    /// A component no control has, as a hand-edited project.json can give,
+    /// changes no value: -1 passed the bound and indexed before the
+    /// samples, a trap.
+    @Test func aComponentOutOfRangeChangesNothing() {
+        for component in [-1, 2, Int.min] {
+            var f = KeyframingFixture()
+            f.keyframe(.position, [(0, 0), (4, 100)])
+            let times = [0.25, 1, 2.5]
+            let before = times.map { (f.value(.position, at: $0), f.value(.position, at: $0, component: 1)) }
+            let id = f.add(.oscillator)
+            f.point(id, at: .position, component: component)
+            for (time, (x, y)) in zip(times, before) {
+                #expect(abs(f.value(.position, at: time) - x) < 0.6 && f.value(.position, at: time, component: 1) == y)
+            }
+        }
+    }
+
     @Test func addRidesOnTheHandMadeMoveAndKeepsItsBase() {
         var f = KeyframingFixture()
         f.keyframe(.position, [(0, 0), (4, 100)])

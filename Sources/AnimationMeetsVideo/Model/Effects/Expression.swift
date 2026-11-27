@@ -546,7 +546,7 @@ extension EditingProject {
         guard range.duration > .zero, count > 0, result.width > 0, result.values.count == count * result.width else { return base }
         let (baseSamples, width) = base.flatValues(at: result.times)
         guard width > 0 else { return base }
-        let components = setup.component.map { $0 < width ? [$0] : [] } ?? Array(0..<width)
+        let components = setup.component.map { (0..<width).contains($0) ? [$0] : [] } ?? Array(0..<width)
         let clamp = clip.clamp(for: target)
         var samples = baseSamples
         for k in 0..<count {
