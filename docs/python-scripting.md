@@ -640,7 +640,12 @@ rules, in order of weight:
      the app makes it unallowed again.
    - A **script in a project** runs when chosen if the project was made
      on this Mac, or its scripts were allowed, or that file's hash was.
-     Otherwise it asks first.
+     Otherwise it asks first. Since a script runs with its folder first
+     on the import path, the hash allowed is of its text with the name
+     and hash of every other file in its folder
+     (`CodeApproval.approvalCode`): a helper module changed or added
+     beside it asks again. Modules a script imports from its folder are
+     forgotten when it ends, so the next script imports its own.
    - A project is known by its ID and where its package was when it was
      allowed, so a copy arriving from elsewhere under the same ID asks
      again.

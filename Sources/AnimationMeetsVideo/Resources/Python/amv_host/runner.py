@@ -138,6 +138,7 @@ class Host:
         namespace = {"__name__": "__main__", "__file__": path, "__builtins__": __builtins__}
         previous = os.getcwd()
         added = False
+        imported_before = set(sys.modules)
         try:
             if folder:
                 try:
@@ -151,6 +152,8 @@ class Host:
         finally:
             if added and folder in sys.path:
                 sys.path.remove(folder)
+            if folder:
+                _forget_modules_from(folder, set(sys.modules) - imported_before)
             try:
                 os.chdir(previous)
             except OSError:
@@ -199,6 +202,18 @@ def run_code(code, filename, namespace):
     if last is not None:
         return eval(compile(last, filename, "eval"), namespace)
     return None
+
+
+def _forget_modules_from(folder, names):
+    """Drops the modules among `names` that were loaded from `folder`, so
+    a later script, perhaps of another project, imports its own rather
+    than getting this one's `util` from the cache."""
+    root = os.path.realpath(folder) + os.sep
+    for name in names:
+        module = sys.modules.get(name)
+        location = getattr(module, "__file__", None)
+        if location and os.path.realpath(location).startswith(root):
+            del sys.modules[name]
 
 
 def error_message(error, filename):

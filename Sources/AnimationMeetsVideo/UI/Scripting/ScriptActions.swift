@@ -15,10 +15,12 @@ enum ScriptActions {
         guard let package = session.projectURL else { return }
         guard let text = read(script.url) else { return }
         let approval = CodeApproval.shared
-        if !approval.mayRun(script: text, ofProject: session.project.id, at: package) {
+        // Its text with the files beside it, which it may import.
+        let code = CodeApproval.approvalCode(forScript: text, at: script.url)
+        if !approval.mayRun(script: code, ofProject: session.project.id, at: package) {
             switch ask(about: script) {
             case .run:
-                approval.allow(text)
+                approval.allow(code)
             case .always:
                 approval.allowScripts(ofProject: session.project.id, at: package)
             case .show:

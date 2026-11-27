@@ -16,6 +16,37 @@ import Testing
         #expect(!approval.isAllowed("value + 2"))
     }
 
+    /// A project's script runs with its folder first on the import path,
+    /// so allowing it allows the files beside it too: one changed or added
+    /// there asks again, rather than running unseen with it.
+    @Test func allowingAScriptCoversTheFilesBesideIt() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-scripts-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.removeItem(at: file)
+        }
+        let script = folder.appending(path: "Tidy.py")
+        let text = "\"\"\"Tidy\"\"\"\nimport util\n"
+        try Data(text.utf8).write(to: script)
+        // Alone in its folder, a script is allowed by its text.
+        #expect(CodeApproval.approvalCode(forScript: text, at: script) == text)
+
+        let util = folder.appending(path: "util.py")
+        try Data("WORD = 1\n".utf8).write(to: util)
+        let approval = CodeApproval(file: file)
+        approval.allow(CodeApproval.approvalCode(forScript: text, at: script))
+        #expect(approval.isAllowed(CodeApproval.approvalCode(forScript: text, at: script)))
+        #expect(!approval.isAllowed(text))
+
+        try Data("open('/tmp/x', 'w')\n".utf8).write(to: util)
+        #expect(!approval.isAllowed(CodeApproval.approvalCode(forScript: text, at: script)))
+        try Data("WORD = 1\n".utf8).write(to: util)
+        try FileManager.default.createDirectory(at: folder.appending(path: "lib"), withIntermediateDirectories: true)
+        try Data("".utf8).write(to: folder.appending(path: "lib/csv.py"))
+        #expect(!approval.isAllowed(CodeApproval.approvalCode(forScript: text, at: script)))
+    }
+
     @Test func theModelReadsOnlyTheAppsOwnList() {
         defer { try? FileManager.default.removeItem(at: file) }
         let code = "value + \(UUID())"

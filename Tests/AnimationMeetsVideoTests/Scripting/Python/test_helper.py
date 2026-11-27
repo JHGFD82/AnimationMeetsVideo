@@ -340,6 +340,21 @@ class HelperTests(unittest.TestCase):
             _, error = self.line("left")
             self.assertEqual(error["exception"], "NameError")
 
+    def test_a_module_beside_one_script_isnt_the_next_ones(self):
+        """Each script imports the modules of its own folder: one project's
+        `helpers` left in the cache would run for another project's
+        script, which no one allowed for it."""
+        words = []
+        for word in ("first", "second"):
+            with tempfile.TemporaryDirectory() as folder:
+                with open(os.path.join(folder, "helpers.py"), "w") as file:
+                    file.write("WORD = %r\n" % word)
+                path = os.path.join(folder, "stagger.py")
+                printed, result = self.helper.run("script", "import helpers\nprint(helpers.WORD)", self.app, path=path, folder=folder)
+                self.assertEqual(result["type"], "result")
+                words.append(printed.strip())
+        self.assertEqual(words, ["first", "second"])
+
     def test_a_scripts_error_names_its_line_in_its_file(self):
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, "broken.py")

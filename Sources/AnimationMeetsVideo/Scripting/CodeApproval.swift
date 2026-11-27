@@ -84,6 +84,31 @@ final class CodeApproval {
         SHA256.hash(data: Data(code.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// What allowing a script of a project's `Scripts/` allows: its text,
+    /// and every other file in its folder by name and hash. The script
+    /// runs with its folder first on Python's import path, so `import
+    /// util` runs the `util.py` beside it: allowing only the chosen
+    /// script's text let a sibling no one was shown run with it. Changing
+    /// any file of the folder asks again; a script alone in its folder is
+    /// allowed by its text alone, as before.
+    nonisolated static func approvalCode(forScript text: String, at url: URL) -> String {
+        let folder = url.deletingLastPathComponent().standardizedFileURL
+        let own = url.standardizedFileURL.path
+        guard let walk = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey]) else { return text }
+        var siblings: [String] = []
+        for case let file as URL in walk {
+            let path = file.standardizedFileURL.path
+            guard path != own, file.lastPathComponent != ".DS_Store",
+                  (try? file.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
+            else { continue }
+            let data = (try? Data(contentsOf: file)) ?? Data()
+            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            siblings.append("\(path.dropFirst(folder.path.count)) \(digest)")
+        }
+        guard !siblings.isEmpty else { return text }
+        return text + "\n\0beside it:\n" + siblings.sorted().joined(separator: "\n")
+    }
+
     // MARK: Code
 
     func isAllowed(_ code: String) -> Bool {
