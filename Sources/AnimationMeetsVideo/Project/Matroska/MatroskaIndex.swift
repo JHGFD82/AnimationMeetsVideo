@@ -129,6 +129,16 @@ private enum ID {
 private struct Parser {
     let bytes: MatroskaBytes
     var index = MatroskaIndex()
+    /// Each track's place in `index.tracks`, by its number, so a block
+    /// finds its track at once however many the file declares.
+    var trackIndices: [UInt64: Int] = [:]
+    /// Blocks read, to check now and then that the import wasn't stopped
+    /// between the reads of the file that check it too.
+    var blocksRead = 0
+
+    /// More tracks than any file holds: a file declaring more is refused
+    /// rather than indexed.
+    static let maximumTracks = 1024
 
     init(bytes: MatroskaBytes) {
         self.bytes = bytes
@@ -182,7 +192,11 @@ private struct Parser {
     private mutating func parseInfo(_ info: Element) throws {
         for child in try children(of: info) {
             switch child.id {
-            case ID.timestampScale: index.timestampScale = try unsigned(child)
+            case ID.timestampScale:
+                // Nothing would make every time 0.
+                let scale = try unsigned(child)
+                guard scale > 0 else { throw MatroskaError.malformed("its timestamp scale is 0") }
+                index.timestampScale = scale
             case ID.duration: index.duration = try float(child)
             default: break
             }
@@ -226,6 +240,8 @@ private struct Parser {
                 default: break
                 }
             }
+            guard index.tracks.count < Self.maximumTracks else { throw MatroskaError.malformed("it declares too many tracks") }
+            if trackIndices[track.number] == nil { trackIndices[track.number] = index.tracks.count }
             index.tracks.append(track)
         }
     }
@@ -266,16 +282,22 @@ private struct Parser {
         let relative = Int16(bitPattern: UInt16(try bytes[position]) << 8 | UInt16(try bytes[position + 1]))
         let flags = try bytes[position + 2]
         position += 3
-        guard let trackIndex = index.tracks.firstIndex(where: { $0.number == trackNumber }) else { return }
+        blocksRead += 1
+        if blocksRead.isMultiple(of: 4096) { try Task.checkCancellation() }
+        guard let trackIndex = trackIndices[trackNumber] else { return }
 
         let (time, overflow) = clusterTime.addingReportingOverflow(Int64(relative))
         guard !overflow else { throw MatroskaError.malformed("a block's time is out of range") }
         let isKey = simple ? flags & 0x80 != 0 : !hasReference
         let sizes = try laceSizes(lacing: (flags >> 1) & 0x3, position: &position, end: end)
         for (laceIndex, size) in sizes.enumerated() {
-            index.tracks[trackIndex].frames.append(
-                .init(offset: position, size: size, time: time, isKey: isKey, laceIndex: laceIndex)
-            )
+            // A frame of nothing holds no picture or sound: kept, a few
+            // bytes of fixed lacing made 256 of them.
+            if size > 0 {
+                index.tracks[trackIndex].frames.append(
+                    .init(offset: position, size: size, time: time, isKey: isKey, laceIndex: laceIndex)
+                )
+            }
             position += size
         }
         guard position == end else { throw MatroskaError.malformed("a block's frames don't fill it") }
@@ -304,13 +326,15 @@ private struct Parser {
                 sizes.append(size)
             }
         case 3: // EBML: the first size, then signed differences.
-            guard let (first, length) = try vint(at: position, keepMarker: false) else {
+            // Each size must end inside the block: one running past it
+            // left the ranges below backwards, which traps.
+            guard let (first, length) = try vint(at: position, keepMarker: false), position + length <= end else {
                 throw MatroskaError.malformed("a laced block's sizes can't be read")
             }
             position += length
             sizes.append(Int(first))
             for _ in 0..<(count - 2) {
-                guard let (raw, length) = try vint(at: position, keepMarker: false) else {
+                guard let (raw, length) = try vint(at: position, keepMarker: false), position + length <= end else {
                     throw MatroskaError.malformed("a laced block's sizes can't be read")
                 }
                 position += length
@@ -350,8 +374,12 @@ private struct Parser {
         }
         let start = position + idLength + sizeLength
         let unknown = size == (UInt64(1) << (7 * UInt64(sizeLength))) - 1
+        // Inside its parent, not only the file: a child claiming bytes past
+        // its parent's end could take in the rest of the file, once for
+        // every child before it.
+        guard start <= limit else { throw MatroskaError.malformed("an element at byte \(position) runs past the end") }
         if unknown { return Element(id: UInt32(id), start: start, end: nil) }
-        guard size <= UInt64(bytes.count - start) else {
+        guard size <= UInt64(limit - start) else {
             throw MatroskaError.malformed("an element at byte \(position) runs past the end")
         }
         return Element(id: UInt32(id), start: start, end: start + Int(size))

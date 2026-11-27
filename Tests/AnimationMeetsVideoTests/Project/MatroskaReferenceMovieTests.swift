@@ -291,6 +291,73 @@ private func decodedFrames(_ url: URL) async throws -> [(time: Double, hash: Str
         }
     }
 
+    /// EBML lacing whose sizes run past the block: a block of 2 frames
+    /// whose first size starts in its last byte, and one of 3 whose second
+    /// does. Each left a backwards range that trapped, the app's crash.
+    @Test(arguments: [[UInt8]([0x01, 0x40]), [0x02, 0x81, 0x40]])
+    func laceSizesRunningPastTheBlockAreMalformed(body: [UInt8]) {
+        #expect(throws: MatroskaError.self) {
+            try MatroskaIndex.read(file(tracks: [videoTrack], clusters: [cluster(time: 0, flags: 0x86, body: body), cluster(time: 1)]))
+        }
+    }
+
+    /// Fixed lacing of 256 frames over no bytes, and a block of nothing:
+    /// frames of nothing aren't indexed, which a few bytes of each made
+    /// hundreds of times over.
+    @Test func framesOfNothingArentIndexed() throws {
+        let laced = try MatroskaIndex.read(file(tracks: [videoTrack], clusters: [cluster(time: 0, flags: 0x84, body: [0xFF])]))
+        #expect(laced.tracks.first?.frames.isEmpty == true)
+        let empty = try MatroskaIndex.read(file(tracks: [videoTrack], clusters: [cluster(time: 0, body: [])]))
+        #expect(empty.tracks.first?.frames.isEmpty == true)
+    }
+
+    /// A track's codec data claiming bytes past its track, in reach in
+    /// the file: it would take in what follows, once for each such track.
+    @Test func anElementLargerThanItsParentIsMalformed() {
+        var overrun = EBMLWriter.id(0x63A2)
+        overrun.append(EBMLWriter.size(1_000))
+        overrun.append(Data([1, 2, 3]))
+        let padding = cluster(time: 0, body: Array(repeating: 0, count: 2_000))
+        #expect(throws: MatroskaError.self) {
+            try MatroskaIndex.read(file(tracks: [videoTrack + [overrun]], clusters: [padding]))
+        }
+    }
+
+    @Test func moreTracksThanAnyFileHasAreMalformed() {
+        let tracks = Array(repeating: [EBMLWriter.unsigned(0xD7, 9)], count: 1_025)
+        #expect(throws: MatroskaError.self) { try MatroskaIndex.read(file(tracks: tracks)) }
+    }
+
+    @Test func aTimestampScaleOfZeroIsMalformed() {
+        var bad = EBMLWriter.element(0x1A45DFA3, [EBMLWriter.string(0x4282, "matroska")])
+        bad.append(EBMLWriter.element(0x18538067, [
+            EBMLWriter.element(0x1549A966, [EBMLWriter.unsigned(0x2AD7B1, 0)]),
+            EBMLWriter.element(0x1654AE6B, [EBMLWriter.element(0xAE, videoTrack)]),
+        ]))
+        #expect(throws: MatroskaError.self) { try MatroskaIndex.read(bad) }
+    }
+
+    /// A small file with laced and unlaced blocks, cut at every length and
+    /// with every byte set to 0x00, 0x01 and 0xFF in turn: each is read or
+    /// refused, never a trap, which would end the test run.
+    @Test func everyCutAndEveryChangedByteIsReadOrRefused() {
+        let good = file(tracks: [videoTrack], clusters: [
+            cluster(time: 0, flags: 0x86, body: [0x02, 0x82, 0xBF, 1, 2, 3, 4, 5, 6]),
+            cluster(time: 40, flags: 0x82, body: [0x01, 0x02, 1, 2, 3, 4]),
+            cluster(time: 80, flags: 0x84, body: [0x03, 1, 2, 3, 4]),
+            cluster(time: 120),
+        ])
+        #expect((try? MatroskaIndex.read(good)) != nil)
+        for length in 0..<good.count { _ = try? MatroskaIndex.read(good.prefix(length)) }
+        for offset in good.indices {
+            for byte: UInt8 in [0x00, 0x01, 0xFF] {
+                var changed = good
+                changed[offset] = byte
+                _ = try? MatroskaIndex.read(changed)
+            }
+        }
+    }
+
     // MARK: The movie's tracks
 
     private func pcm(channels: Int = 2, bitDepth: Int = 16, sampleRate: Double = 48_000) -> MatroskaIndex.Track {
@@ -320,6 +387,17 @@ private func decodedFrames(_ url: URL) async throws -> [(time: Double, hash: Str
     @Test func pcmWhoseFrameSizeOverflowsIsRefused() {
         #expect(throws: MatroskaError.self) { try plan(pcm(channels: Int(Int32.max), bitDepth: 32)) }
         #expect(throws: MatroskaError.self) { try plan(pcm(bitDepth: Int(UInt32.max) + 1)) }
+    }
+
+    /// A PCM block holding part of a sample was given a whole one, past
+    /// its bytes and, at the file's end, past the file; and a sample size
+    /// no PCM has made a frame hundreds of megabytes long.
+    @Test func pcmBlocksOfPartSamplesAndOddSampleSizesAreRefused() {
+        var partial = pcm()
+        partial.frames = [.init(offset: 61, size: 3, time: 0, isKey: true)]
+        #expect(throws: MatroskaError.self) { try plan(partial) }
+        #expect(throws: MatroskaError.self) { try plan(pcm(bitDepth: 12)) }
+        #expect(throws: MatroskaError.self) { try plan(pcm(bitDepth: 0x7FFF_FFF8)) }
     }
 
     @Test(arguments: [Double.infinity, 1e300, 0.25])

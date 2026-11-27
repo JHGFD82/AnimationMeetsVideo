@@ -267,7 +267,9 @@ enum MatroskaReferenceMovie {
         default:
             // A frame of every channel's sample, which each packet's
             // length is divided by, so it can't be nothing or overflow.
-            guard let bits = UInt32(exactly: track.bitDepth) else {
+            // Only sample sizes there are: one like 0x7FFFFFF8 bits made a
+            // frame hundreds of megabytes long, read far past the file.
+            guard let bits = UInt32(exactly: track.bitDepth), [8, 16, 24, 32].contains(bits) else {
                 throw MatroskaError.unsupported("its sound's sample size is out of range")
             }
             let (bytesPerFrame, overflowed) = UInt32(max(bits, 8) / 8).multipliedReportingOverflow(by: channels)
@@ -302,6 +304,12 @@ enum MatroskaReferenceMovie {
         let isPCM = formatID == kAudioFormatLinearPCM
         for frame in track.frames {
             guard frame.offset + frame.size <= bytes.count else { throw MatroskaError.malformed("a frame runs past the end") }
+            // A PCM sample is a whole frame of every channel's sample: a
+            // block holding part of one was given a whole one, past its
+            // bytes and, at the end, past the file's.
+            if isPCM, frame.size % Int(description.mBytesPerFrame) != 0 {
+                throw MatroskaError.malformed("a sound block holds part of a sample")
+            }
             let frames = max(packetFrames(bytes[frame.offset..<(frame.offset + frame.size)]), 1)
             samples.append(.init(
                 offset: frame.offset, size: isPCM ? Int(description.mBytesPerFrame) : frame.size,
