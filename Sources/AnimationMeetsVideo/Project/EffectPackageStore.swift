@@ -473,15 +473,35 @@ enum EffectPackageStore {
         return (package, existing.isEmpty ? .install(destination: destination) : .replace(existing: existing))
     }
 
-    /// Copies the package at `url` into `folder`, first removing
-    /// `replacing`. Returns where it is.
+    /// Copies the package at `url` into `folder`, replacing `replacing`.
+    /// Returns where it is. The new package is copied in whole beside its
+    /// place before anything it replaces goes: removing them first lost a
+    /// package the person wrote when the copy then failed.
     @discardableResult
     static func copyIn(_ url: URL, into folder: URL = defaultFolder, replacing: [URL] = []) throws -> URL {
+        let fileManager = FileManager.default
         let destination = folder.appending(path: url.lastPathComponent, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        for old in replacing { try FileManager.default.removeItem(at: old) }
-        if url.standardizedFileURL != destination.standardizedFileURL {
-            try FileManager.default.copyItem(at: url, to: destination)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let isDestination = { (other: URL) in other.standardizedFileURL == destination.standardizedFileURL }
+        if !isDestination(url) {
+            // A hidden name no listing takes for a package.
+            let partial = folder.appending(path: ".\(UUID().uuidString).partial", directoryHint: .isDirectory)
+            try fileManager.copyItem(at: url, to: partial)
+            do {
+                if fileManager.fileExists(atPath: destination.path) {
+                    _ = try fileManager.replaceItemAt(destination, withItemAt: partial)
+                } else {
+                    try fileManager.moveItem(at: partial, to: destination)
+                }
+            } catch {
+                try? fileManager.removeItem(at: partial)
+                throw error
+            }
+        }
+        // The destination itself was replaced above; other installed copies
+        // of the package, elsewhere, go once the new one is in place.
+        for old in replacing where !isDestination(old) {
+            try fileManager.removeItem(at: old)
         }
         return destination
     }
