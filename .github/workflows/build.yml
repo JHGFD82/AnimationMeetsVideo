@@ -25,7 +25,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Check for the pinned Xcode
         run: |
           if [ ! -d "$DEVELOPER_DIR" ]; then
@@ -52,7 +52,7 @@ jobs:
         run: MIN_TESTS=2700 LOG_DIR=build/test-logs scripts/run-tests.sh --experimental-maximum-parallelization-width 8
       - name: Upload the test logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-logs
           path: build/test-logs
@@ -66,7 +66,7 @@ jobs:
           ditto -c -k --keepParent build/AnimationMeetsVideo.app build/AnimationMeetsVideo.zip
       - name: Upload the app bundle
         if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: AnimationMeetsVideo-app
           path: build/AnimationMeetsVideo.zip
