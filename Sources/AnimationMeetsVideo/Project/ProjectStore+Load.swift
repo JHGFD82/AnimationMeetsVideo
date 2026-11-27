@@ -25,6 +25,7 @@ extension ProjectStore {
             throw ProjectStoreError.unsupportedVersion(version)
         }
         let file = try JSONFile.decode(ProjectFile.self, from: data, shape: ProjectFile.shape, failure: ProjectStoreError.invalidFile)
+        try refuseRepeatedIDs(in: file)
 
         var importedClips: [UUID: MediaClip] = [:]
         var orderedIDs: [UUID] = []
@@ -223,5 +224,25 @@ extension ProjectStore {
             codecName: asset.codec ?? reference?.codecName ?? "Offline",
             hasAudio: asset.hasAudio ?? reference?.hasAudio ?? (kind == .audio || uses.contains { $0.streams == ClipStreams.audio.rawValue })
         )
+    }
+
+    /// Refuses a file that gives two things one ID, as only a hand edit
+    /// can (IDs are read without regard to case, too). The app takes an ID
+    /// for one thing: two media files with one crashed the browser, two
+    /// layers of a timeline the timeline, and two sections the first edit
+    /// of one.
+    static func refuseRepeatedIDs(in file: ProjectFile) throws {
+        func once(_ ids: [UUID], _ what: String) throws {
+            var seen = Set<UUID>()
+            for id in ids where !seen.insert(id).inserted {
+                throw ProjectStoreError.invalidFile("Two \(what) have the ID \(id.uuidString.lowercased()).")
+            }
+        }
+        try once(file.assets.map(\.id), "media files")
+        try once(file.timelines.map(\.id), "timelines")
+        for timeline in file.timelines {
+            try once(timeline.layers.map(\.id), "layers of the timeline \u{201C}\(timeline.name)\u{201D}")
+            try once(timeline.sections?.map(\.id) ?? [], "sections of the timeline \u{201C}\(timeline.name)\u{201D}")
+        }
     }
 }

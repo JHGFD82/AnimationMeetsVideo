@@ -213,6 +213,40 @@ private struct Sandbox {
         #expect(loaded.project.timeline(id: timelineID)?.sections.first?.color == BarColor(0x05A7A7))
     }
 
+    /// A hand edit giving two things one ID is refused with a message: the
+    /// app takes an ID for one thing, and two media files, layers or
+    /// sections with one crashed it once open.
+    @Test(arguments: ["media files", "timelines", "layers", "sections"])
+    func aRepeatedIDIsRefused(what: String) async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        _ = project.addSection(named: "Chorus", in: project.rootTimelineID, from: .zero, to: CMTime(value: 2, timescale: 1))
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        var file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        func repeatFirst(_ list: Any?) throws -> [Any] {
+            let items = try #require(list as? [Any])
+            return [try #require(items.first)] + items
+        }
+        var timelines = try #require(file["timelines"] as? [[String: Any]])
+        switch what {
+        case "media files": file["assets"] = try repeatFirst(file["assets"])
+        case "timelines": timelines = try repeatFirst(timelines) as! [[String: Any]]
+        case "layers": timelines[0]["layers"] = try repeatFirst(timelines[0]["layers"])
+        default: timelines[0]["sections"] = try repeatFirst(timelines[0]["sections"])
+        }
+        file["timelines"] = timelines
+        try JSONSerialization.data(withJSONObject: file).write(to: sandbox.projectJSON)
+
+        do {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+            Issue.record("A file repeating an ID of its \(what) opened")
+        } catch ProjectStoreError.invalidFile(let detail) {
+            #expect(detail.hasPrefix("Two "), "\(detail)")
+        }
+    }
+
     @Test func roundTripKeepsAnEffectsInput() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
