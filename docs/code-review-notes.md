@@ -4,7 +4,9 @@ Status: **review notes** for the first pass of
 [code-review-plan.md](code-review-plan.md). Phases 1 to 3 have been
 reviewed (phase 1 only in part), phase 4 is being reviewed, and the
 plan's stabilization checkpoint is done but for F4's hang, which hasn't
-recurred to be captured; phases 5 to 12 haven't started. Many findings
+recurred to be captured; the owner's decisions D3 to D8 are recorded
+and built (F89, F90), but for release gates that wait for phase 12;
+phases 5 to 12 haven't started. Many findings
 are still open: being reviewed is not being resolved. Where each phase
 stands is under "Where each phase stands"; every finding is in the
 ledger.
@@ -41,9 +43,10 @@ reviewers. Nothing here has been checked by anyone outside it.
 
 | Phase | Coverage | What keeps it from complete | Open findings |
 | --- | --- | --- | --- |
-| 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F7, F24 |
+| 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F24 |
 | 2. Architecture and maintainability | Complete | | F30–F47; its severity-1 findings are fixed |
-| 3. Security, privacy and dependencies | Complete | | F53–F55, F59–F62 |
+| 3. Security, privacy and dependencies | Complete | | F54, F55, F59–F62 (F53 accepted under D8) |
+| Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
 | 5 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
@@ -136,7 +139,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F50 | A timeline holding clips of itself | 3 | crash | 2 | code-verified | fixed | `d437134f` · test | blocking |
 | F51 | Names made into paths without cleaning | 3 | data safety | 3 | code-verified | fixed | `c79dfff3` · test | blocking |
 | F52 | Clips with a missing source dropped at load | 3 | data safety | 1 | code-verified | fixed | `361b2418` · test | blocking |
-| F53 | A kernel that never ends stalls the GPU | 3 | security | 4 | code-verified | open (D8 decided; F90) | | nonblocking |
+| F53 | A kernel that never ends stalls the GPU | 3 | security | 4 | code-verified | accepted risk (D8) | `4c7ab74c` · approval and recovery launch | nonblocking |
 | F54 | `audio.bin` with billions of levels | 3 | performance | 4 | reported | open | | nonblocking |
 | F55 | One expressions helper for every project | 3 | security | 3 | reported | open | | blocking |
 | F56 | Non-finite expression samples | 3 | data safety | 3 | code-verified | fixed | `5996cf1a` · test | blocking |
@@ -172,8 +175,8 @@ From the plan's checkpoint, with the findings each part covers.
 | F86 | Damaged approval store emptied silently | 4 | usability | 5 | reported | open | | nonblocking |
 | F87 | Naming an edit costs a scene scan | 4 | performance | 4 | suspected | open | | nonblocking |
 | F88 | Fields not saved or reset on reopen | 4 | correctness | 6 | reported | open | | nonblocking |
-| F89 | Remembered script approval trusts a project's ID and path | D5 | security | 1 | code-verified | open | | blocking |
-| F90 | External effect kernels compile without the person's approval | D8 | security | 1 | code-verified | open | | blocking |
+| F89 | Remembered script approval trusts a project's ID and path | D5 | security | 1 | code-verified | fixed | `5ab4864e` · test (`AMV_PYTHON` run) | blocking |
+| F90 | External effect kernels compile without the person's approval | D8 | security | 1 | code-verified | fixed | `4c7ab74c` · test, snapshot | blocking |
 
 ## Open findings: detail and next action
 
@@ -329,8 +332,10 @@ them. A missing *file* doesn't lead here (it loads offline); a missing
 naming the clip, rather than drop it.
 
 **F53 — A kernel that never ends** stalls the GPU until the watchdog,
-every frame; a Swift cancellation doesn't stop submitted work. *Next:*
-decision D8.
+every frame; a Swift cancellation doesn't stop submitted work. *Accepted
+under D8:* no time limit is promised; an outside package runs only once
+approved for its content (F90), and a recovery launch leaves such
+packages out.
 
 **F54 — `audio.bin` with billions of levels** asks for memory in
 proportion (its count must equal its length). *Next:* cap the levels.
@@ -502,7 +507,17 @@ made on this Mac are allowed that way at creation
 (`ProjectSession.swift:170`). The helper imports the script's siblings
 from the folder itself after approval, so a file changed between the
 check and the import runs unreviewed, and links in the folder are
-hashed through to their targets. *Next:* build D5.
+hashed through to their targets. *Fixed in `5ab4864e`:* approval is of
+a `ScriptSnapshot` (the script and every file of its folder, read once;
+links and folders over 2,000 files or 64 MB refused; `__pycache__` left
+out), whose files are copied to a private folder the helper imports
+from; the project allowance is gone; "Remember approval for these
+scripts" is a checkbox; the prompt says what scripts can reach and that
+modules from outside the folder aren't checked. Tested in Swift and in
+the helper's Python tests (the approved copy is imported, not the
+changed folder). *Cost, as decided:* the person's own scripts ask again
+after every edit. *Left:* F20's residual (the interpreter's `site` and
+user site-packages, threads outliving a run).
 
 **F90 — External effect kernels compile without the person's approval**
 (D8). *Expected:* an external package's kernels are compiled or run only
@@ -511,7 +526,16 @@ in the library folder, installed from the Finder or changed there, is
 compiled in the background as soon as it is found (at launch, on
 install, on each live reload: `EffectPackageStatus.compile`), whether or
 not a project uses it. Projects don't embed packages today; D8's rule
-covers them if they come to. *Next:* build D8.
+covers them if they come to. *Fixed in `4c7ab74c`:* `EffectApproval`
+keeps the SHA-256 of each approved package's effect.json and kernel;
+`PackageKernels` compiles and draws only built-in and approved ones, one
+gate for launch, install, reload and render; render keys carry the
+approval; the library lists waiting packages with Approve…; opening
+from the Finder and adding a waiting effect ask; Shift at launch (or
+`disableExternalEffects`) leaves every outside package out. Shown by
+a test that a broken kernel reports nothing until approved (it was
+never compiled) and something after. *Left:* no Settings button yet to
+forget approved packages, as Forget Allowed Code does for Python.
 
 ## Fixed findings: detail
 
@@ -663,7 +687,7 @@ review, not claims that the code meets them; each says what is done.
   these scripts", and the prompt says plainly that unrestricted scripts
   can reach files and the network with the person's permissions, and,
   where dependencies can't be bounded, that not every line run was
-  reviewed. *Status:* not yet built; tracked as F89.
+  reviewed. *Done* (`5ab4864e`, F89).
 - **D6. App Sandbox deferred for the first release.** Decided: defer,
   kept as a separate security project and not a prerequisite for this
   review. *Release gates in its place,* before any public distribution:
@@ -679,6 +703,12 @@ review, not claims that the code meets them; each says what is done.
   the app's own file operations reach anything the person can; approved
   scripts run unconfined by design. *Revisit* before a Mac App Store
   release or a significant growth in plugins or executable content.
+  *Gates already met:* confined expressions fail closed, as an
+  expressions helper refuses to start without `sandbox-exec`
+  (`PythonHelper.swift`, `HelperConnection.init`); the scripting doc
+  says approved scripts run with the person's permissions. *Open:*
+  Developer ID signing, hardened runtime and notarization (phase 12),
+  and confinement validated on the signed app.
 - **D7. Licensed footage before the qualitative checks.** Decided:
   synthetic fixtures now (checkpoint D, done), never blocking the
   persistence, timing or security review; representative footage and
@@ -702,7 +732,8 @@ review, not claims that the code meets them; each says what is done.
   being compiled for thumbnails or previews; a recovery launch turns
   external effects off. The warning supplements validation and resource
   limits, and no GPU time limit is promised that the code can't enforce
-  (F53). *Status:* not yet built; tracked as F90.
+  (F53). *Done* (`4c7ab74c`, F90), but for a Settings button to forget
+  approved packages.
 
 ## Phase records
 
