@@ -36,7 +36,13 @@ struct ProjectFile: Codable {
             default:
                 throw ProjectStoreError.invalidTime(text)
             }
+            // Beyond any project (about 31 years), and short of where frame
+            // and timecode arithmetic overflows: a hand-edited trim of
+            // 2×10^17 s trapped aligning it to frames on opening.
+            guard abs(time.seconds) <= Self.farthestSeconds else { throw ProjectStoreError.invalidTime(text) }
         }
+
+        static let farthestSeconds = 1e9
 
         /// Throws for an invalid, indefinite or infinite time rather than
         /// writing a rational that wouldn't read back, or would read back as
@@ -781,6 +787,24 @@ struct ProjectFile: Codable {
             font = content.fontName
             runs = content.runs.isEmpty ? nil : content.runs.map(TextRunEntry.init)
             variations = content.variations.isEmpty ? nil : content.variations.map(VariationEntry.init)
+        }
+
+        /// Refuses a styled run outside the words, as only a hand edit
+        /// makes: one starting past their end, or of negative length,
+        /// trapped at the first letter typed or styled.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            string = try container.decode(String.self, forKey: .string)
+            font = try container.decode(String.self, forKey: .font)
+            runs = try container.decodeIfPresent([TextRunEntry].self, forKey: .runs)
+            variations = try container.decodeIfPresent([VariationEntry].self, forKey: .variations)
+            let length = string.utf16.count
+            for entry in runs ?? [] {
+                let run = entry.run
+                guard run.start >= 0, run.length >= 0, run.length <= length, run.start <= length - run.length else {
+                    throw ProjectStoreError.invalidFile("A text's styled letters (\(run.start) to \(run.start &+ run.length)) lie outside its \(length).")
+                }
+            }
         }
 
         var content: TextContent {

@@ -247,6 +247,55 @@ private struct Sandbox {
         }
     }
 
+    /// Numbers that are valid JSON but that no project has are refused
+    /// with a message: each crashed the app on opening or its first
+    /// redraw.
+    @Test(arguments: ["width", "frame rate", "trim", "beat"])
+    func numbersNoProjectHasAreRefused(what: String) async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        var file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        var timelines = try #require(file["timelines"] as? [[String: Any]])
+        switch what {
+        case "width": timelines[0]["width"] = 1e19
+        case "frame rate": timelines[0]["frameRate"] = 1e19
+        case "trim":
+            var layers = try #require(timelines[0]["layers"] as? [[String: Any]])
+            var clips = try #require(layers[0]["clips"] as? [[String: Any]])
+            clips[0]["trimEnd"] = "200000000000000000s"
+            layers[0]["clips"] = clips
+            timelines[0]["layers"] = layers
+        default:
+            var assets = try #require(file["assets"] as? [[String: Any]])
+            assets[0]["beatMap"] = ["sections": [[
+                "id": UUID().uuidString, "kind": "steady", "start": "0s", "end": "4s", "beatsPerMeasure": 4,
+                "steadiness": "steady", "confirmed": false,
+                "beats": [["time": "1s", "position": Int64.min]],
+            ]]]
+            file["assets"] = assets
+        }
+        file["timelines"] = timelines
+        try JSONSerialization.data(withJSONObject: file).write(to: sandbox.projectJSON)
+
+        await #expect(throws: ProjectStoreError.self) {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        }
+    }
+
+    /// A styled run outside its text's words trapped at the first letter
+    /// typed; it is refused as it is read.
+    @Test func aTextRunOutsideItsWordsIsRefused() throws {
+        for run in [#"{"start":5,"length":1}"#, #"{"start":0,"length":-1}"#, #"{"start":9223372036854775807,"length":1}"#] {
+            let json = #"{"string":"Hi","font":"Helvetica","runs":["# + run + "]}"
+            #expect(throws: ProjectStoreError.self) { try JSONDecoder().decode(ProjectFile.TextEntry.self, from: Data(json.utf8)) }
+        }
+        let good = #"{"string":"Hi","font":"Helvetica","runs":[{"start":0,"length":2}]}"#
+        #expect(try JSONDecoder().decode(ProjectFile.TextEntry.self, from: Data(good.utf8)).content.runs.count == 1)
+    }
+
     @Test func roundTripKeepsAnEffectsInput() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

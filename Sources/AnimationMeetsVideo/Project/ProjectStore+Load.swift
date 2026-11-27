@@ -26,6 +26,7 @@ extension ProjectStore {
         }
         let file = try JSONFile.decode(ProjectFile.self, from: data, shape: ProjectFile.shape, failure: ProjectStoreError.invalidFile)
         try refuseRepeatedIDs(in: file)
+        try refuseOutOfRange(in: file)
 
         var importedClips: [UUID: MediaClip] = [:]
         var orderedIDs: [UUID] = []
@@ -245,4 +246,36 @@ extension ProjectStore {
             try once(timeline.sections?.map(\.id) ?? [], "sections of the timeline \u{201C}\(timeline.name)\u{201D}")
         }
     }
+
+    /// Refuses numbers that are valid JSON but that no project has, and
+    /// that the app's arithmetic doesn't survive: a frame 10^19 pixels wide
+    /// trapped turning into an Int, a frame rate of 10^19 trapped in
+    /// timecode, and a beat at position Int64.min numbering its measure.
+    /// (Times are bounded where they are read, `TimeEntry`.)
+    static func refuseOutOfRange(in file: ProjectFile) throws {
+        func refuse(_ what: String) throws { throw ProjectStoreError.invalidFile(what) }
+        for timeline in file.timelines {
+            let name = "\u{201C}\(timeline.name)\u{201D}"
+            guard [timeline.width, timeline.height].allSatisfy({ $0.isFinite && $0 >= 1 && $0 <= Self.largestFrameSide }) else {
+                return try refuse("The timeline \(name) has a frame size no timeline has (\(timeline.width) × \(timeline.height)).")
+            }
+            guard timeline.frameRate.isFinite, timeline.frameRate >= 0, timeline.frameRate <= Self.fastestFrameRate else {
+                return try refuse("The timeline \(name) has a frame rate no timeline has (\(timeline.frameRate)).")
+            }
+        }
+        for asset in file.assets {
+            if let rate = asset.frameRate, !(rate.isFinite && rate >= 0 && rate <= Self.fastestFrameRate) {
+                return try refuse("The media file \u{201C}\(asset.name)\u{201D} has a frame rate no file has (\(rate)).")
+            }
+            let beats = asset.beatMap?.sections.flatMap(\.beats) ?? []
+            if beats.contains(where: { abs($0.position) > Self.farthestBeatPosition }) {
+                return try refuse("The beats of \u{201C}\(asset.name)\u{201D} are numbered out of range.")
+            }
+        }
+    }
+
+    /// Sides of a frame past any Metal texture.
+    static let largestFrameSide = 16_384.0
+    static let fastestFrameRate = 1_000.0
+    static let farthestBeatPosition = 1 << 20
 }
