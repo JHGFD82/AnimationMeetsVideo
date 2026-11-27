@@ -155,7 +155,7 @@ final class CodeApproval {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONFile.encode(stored).write(to: file, options: .atomic)
         } catch {
-            NSLog("Couldn't save the code allowed to run: \(error.localizedDescription)")
+            NSLog("%@", "Couldn't save the code allowed to run: \(error.localizedDescription)")
         }
     }
 }

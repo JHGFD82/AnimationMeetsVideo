@@ -396,7 +396,7 @@ final class ProjectSession {
             return true
         } catch {
             if quietly {
-                NSLog("Saving automatically failed: \(error.localizedDescription)")
+                NSLog("%@", "Saving automatically failed: \(error.localizedDescription)")
                 automaticSaveFailed = true
                 autosaveStatus.failed(ErrorAdvice.sentence(for: error), kind: .save)
             } else {
@@ -429,7 +429,7 @@ final class ProjectSession {
             lastAutosaved = snapshot
             autosaveStatus.succeeded(.backup)
         } catch {
-            NSLog("Autosave failed: \(error.localizedDescription)")
+            NSLog("%@", "Autosave failed: \(error.localizedDescription)")
             autosaveStatus.failed(ErrorAdvice.sentence(for: error))
         }
     }
@@ -472,7 +472,7 @@ final class ProjectSession {
             lastBackupAt = .now
             autosaveStatus.succeeded(.backup)
         } catch {
-            NSLog("Backup failed: \(error.localizedDescription)")
+            NSLog("%@", "Backup failed: \(error.localizedDescription)")
             // Tried again at the next interval, not at every tick.
             lastBackupAt = .now
             autosaveStatus.failed(ErrorAdvice.sentence(for: error))

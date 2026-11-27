@@ -47,7 +47,7 @@ enum PackageKernels {
         let outcome = compile(package)
         outcomes.withLock { $0[key] = outcome }
         if case .failed(let message) = outcome {
-            NSLog("The kernel of effect package \(package.id) couldn't be compiled: \(message)")
+            NSLog("%@", "The kernel of effect package \(package.id) couldn't be compiled: \(message)")
         }
         return outcome
     }

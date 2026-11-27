@@ -39,7 +39,7 @@ final class ProjectLock {
                 close(descriptor)
                 throw ProjectStoreError.locked(holder?.isEmpty == false ? holder : nil)
             case ENOTSUP, EOPNOTSUPP:
-                NSLog("The volume of \(packageURL.path) doesn't support file locks; opening the project without one.")
+                NSLog("%@", "The volume of \(packageURL.path) doesn't support file locks; opening the project without one.")
             default:
                 close(descriptor)
                 throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)

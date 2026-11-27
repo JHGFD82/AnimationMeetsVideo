@@ -190,7 +190,7 @@ final class EffectPackageStatus {
             read = await Task.detached(priority: .userInitiated) { Result { try EffectPackageStore.read(url) } }.value
         }
         if case .failure(let error)? = read {
-            NSLog("The effect package \(url.lastPathComponent) can't be used: \(error.localizedDescription)")
+            NSLog("%@", "The effect package \(url.lastPathComponent) can't be used: \(error.localizedDescription)")
         }
         let reload = reloadIntoRegistry(url, read)
         if let changed = reload.changed, let replaced = reload.replaced {
@@ -254,7 +254,7 @@ enum EffectPackageStore {
         }
         let library = load(from: folder, builtIn: true)
         for problem in library.problems {
-            NSLog("The built-in effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
+            NSLog("%@", "The built-in effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
         }
         return library
     }
@@ -273,7 +273,7 @@ enum EffectPackageStore {
             return load(from: folder)
         }.value
         for problem in library.problems {
-            NSLog("The effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
+            NSLog("%@", "The effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
         }
         EffectRegistry.install(library.packages, problems: library.problems)
         // Compiled now rather than at first use, so a kernel's mistake shows
@@ -606,7 +606,7 @@ enum EffectPackageStore {
         }
         guard closed, !parameters.contains(where: { $0.contains("#") }) else {
             let first = uncounted.withLock { $0.insert(function).inserted }
-            if first { NSLog("The parameters of kernel \(function) couldn't be counted with certainty, so its arguments aren't checked against them.") }
+            if first { NSLog("%@", "The parameters of kernel \(function) couldn't be counted with certainty, so its arguments aren't checked against them.") }
             return nil
         }
         return parameters.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
