@@ -63,10 +63,15 @@ enum MediaImportFlow {
                     if let existing = ProjectStore.existingCopy(of: url, in: packageURL, excluding: usedPaths) {
                         source = existing
                     } else {
-                        madeCopy = try await PackageCoordinator.shared.run(on: [packageURL]) {
+                        let copy = try await PackageCoordinator.shared.run(on: [packageURL]) {
                             try ProjectStore.copyIntoPackage(url, packageURL: packageURL)
                         }
-                        source = madeCopy ?? url
+                        // A file already in the package is used where it is,
+                        // and is the person's: only a copy this import made
+                        // is removed if it fails. Taking it for a copy
+                        // deleted the file itself on any import error.
+                        if copy.standardizedFileURL != url.standardizedFileURL { madeCopy = copy }
+                        source = copy
                     }
                 }
                 var progress: @Sendable (Double) -> Void = { _ in }
