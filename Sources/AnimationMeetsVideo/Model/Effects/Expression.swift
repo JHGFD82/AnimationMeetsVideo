@@ -171,10 +171,13 @@ final class ExpressionResults: @unchecked Sendable {
         return results[effectID] ?? []
     }
 
-    func removeAll() {
+    /// Forgets one effect's results. Only that effect's: the store is the
+    /// app's one, shared by every test running at the same time, and
+    /// clearing it all once took a result from under another test.
+    func remove(for effectID: UUID) {
         lock.lock()
         defer { lock.unlock() }
-        results = [:]
+        results[effectID] = nil
     }
 }
 

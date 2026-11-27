@@ -233,7 +233,7 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(effect.keyframing?.reads == [read])
         #expect(effect.keyframing?.readPrint == x.expression.keyframing?.readPrint)
         // Opening a project never starts Python when nothing it read changed.
-        ExpressionResults.shared.removeAll()
+        ExpressionResults.shared.remove(for: x.expressionID)
         #expect(loaded.waitingExpressions().isEmpty)
     }
 
