@@ -1054,7 +1054,9 @@ In order, each step usable on its own:
    anything. Sound at other speeds is the host's audio time-pitch algorithm
    (Keep Pitch is `.spectral`, Change Pitch `.varispeed`) on a track of its
    own, or no track for Mute. A clip's volume keeps counting in source time
-   through its speed (at the speed it starts at, for a ramp). Speed
+   through its speed; on a ramp, through the same pieces its sound is
+   placed in (`MixTimeMap`), so a keyframe is heard with the moment it was
+   set on. Speed
    keyframes are in source time and can be set now (stopwatch and graph in
    the panel). Not yet drawn: Time (speed, blend, echo, sound) and trails on a
    nested timeline's clip, whose Time rows aren't offered

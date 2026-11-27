@@ -73,14 +73,15 @@ extension CompositionExporter {
                     return stack
                 }
                 // The clip's volume counts in its source time, which a
-                // retimed clip plays through at its speed (at the speed it
-                // starts at, when that is changing).
+                // retimed clip plays through at its speed; when that is
+                // changing, on the pieces its sound plays in.
                 let rate = abs(clip.speed(atSource: clip.trimStart)) / 100
-                let clipVolume = MixStage(
+                var clipVolume = MixStage(
                     id: clip.id,
                     shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, CMTimeMultiplyByFloat64(clip.trimStart, multiplier: 1 / rate))),
                     rate: rate
                 )
+                clipVolume.timeMap = mixTimeMap(of: clip, window: window, offset: offset, frameDuration: timeline.frameDuration)
                 // Fades under its transitions and its neighbors', with the
                 // sound past its ends that a crossfade at a cut plays.
                 let audioFades = project.playsAudio(clip) ? project.audioFades(of: clip, among: clips) : ([], .zero, .zero)
@@ -510,28 +511,48 @@ extension CompositionExporter {
                 at: CMTimeAdd(a, offset), duration: CMTimeSubtract(b, a)
             )
         }
-        var pieces: [Placement.Piece] = []
-        if clip.isReversed || clip.time.speed.isAnimated {
-            // A composition can't play footage backwards, so backwards
-            // footage is a piece for every frame, each placed after the
-            // one that follows it in the file.
-            let step = clip.isReversed ? frameDuration : CMTimeMultiply(frameDuration, multiplier: 4)
-            // A piece plays at one speed, so one also ends where a hold
-            // keyframe's step does, rather than spreading the jump over it.
-            let keyframes = clip.time.speed.keyframes
-            let steps = zip(keyframes, keyframes.dropFirst()).filter { $0.0.hold }.map { clip.timelineTime(forSourceTime: $0.1.time) }.sorted()
-            var cursor = visible.start
-            while cursor < visible.end {
-                var end = CMTimeMinimum(CMTimeAdd(cursor, step), visible.end)
-                if let jump = steps.first(where: { $0 > cursor && $0 < end }) { end = jump }
-                pieces.append(piece(from: cursor, to: end))
-                cursor = end
-            }
-        } else {
-            pieces = [piece(from: visible.start, to: visible.end)]
-        }
+        let edges = retimedEdges(of: clip, over: visible, frameDuration: frameDuration)
+        let pieces = zip(edges, edges.dropFirst()).map { piece(from: $0, to: $1) }
         let base = info.orientedTransform.concatenating(fitTransform(from: info.orientedSize, to: frameSize))
         return (Placement(info: info, pieces: pieces, includesVideo: includesVideo, includesAudio: includesAudio), base)
+    }
+
+    /// Where a retimed clip's pieces start and end across `visible`, in its
+    /// timeline's time, first and last included: each piece plays at one
+    /// speed. A clip whose speed is steady is one piece.
+    static func retimedEdges(of clip: TimelineClip, over visible: CMTimeRange, frameDuration: CMTime) -> [CMTime] {
+        guard clip.isReversed || clip.time.speed.isAnimated else { return [visible.start, visible.end] }
+        // A composition can't play footage backwards, so backwards
+        // footage is a piece for every frame, each placed after the
+        // one that follows it in the file.
+        let step = clip.isReversed ? frameDuration : CMTimeMultiply(frameDuration, multiplier: 4)
+        // A piece plays at one speed, so one also ends where a hold
+        // keyframe's step does, rather than spreading the jump over it.
+        let keyframes = clip.time.speed.keyframes
+        let steps = zip(keyframes, keyframes.dropFirst()).filter { $0.0.hold }.map { clip.timelineTime(forSourceTime: $0.1.time) }.sorted()
+        var edges = [visible.start]
+        var cursor = visible.start
+        while cursor < visible.end {
+            var end = CMTimeMinimum(CMTimeAdd(cursor, step), visible.end)
+            if let jump = steps.first(where: { $0 > cursor && $0 < end }) { end = jump }
+            edges.append(end)
+            cursor = end
+        }
+        return edges
+    }
+
+    /// The source time of a clip whose speed changes at each root time, on
+    /// the pieces its sound is placed in across `window`; nil for a clip
+    /// at a steady speed, which one rate describes, or one not in `window`.
+    static func mixTimeMap(of clip: TimelineClip, window: CMTimeRange, offset: CMTime, frameDuration: CMTime) -> MixTimeMap? {
+        guard clip.time.speed.isAnimated, !clip.isReversed else { return nil }
+        let visible = CMTimeRange(start: clip.startOffset, end: clip.endOffset).intersection(window)
+        guard visible.isValid, visible.duration > .zero else { return nil }
+        let edges = retimedEdges(of: clip, over: visible, frameDuration: frameDuration)
+        return MixTimeMap(
+            root: edges.map { CMTimeAdd($0, offset).seconds },
+            source: edges.map { clip.sourceTime(atTimelineTime: $0).seconds }
+        )
     }
 
     /// A still clip's picture for `timeline`, decoded, with the transform that

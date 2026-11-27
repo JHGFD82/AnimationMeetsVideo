@@ -20,11 +20,54 @@ struct MixStage: Equatable, Sendable {
     /// Set for a stage that is a fade under a transition rather than the
     /// clip's or layer's own volume and pan.
     var fade: AudioFade?
+    /// Set for a clip whose speed changes, in place of `shift` and `rate`:
+    /// where in its source the clip is at each root time, as its sound is
+    /// placed. One rate would hear its keyframes where the speed it starts
+    /// at would put them.
+    var timeMap: MixTimeMap?
 
     /// The stage's own time at root time `time`.
     func local(_ time: CMTime) -> CMTime {
+        if let timeMap { return timeMap.local(time) }
         let local = CMTimeSubtract(time, shift)
         return rate == 1 ? local : CMTimeMultiplyByFloat64(local, multiplier: rate)
+    }
+}
+
+/// Where a clip whose speed changes is in its source at root time, as its
+/// sound plays: in pieces, each a straight line from source time to root
+/// time (`CompositionExporter.retimedEdges`), so the volume is read at the
+/// moment of the source being heard. Kept as the pieces' edges, so an audio
+/// tap finds a time by binary search, with nothing allocated or locked on
+/// the render thread. Before the first edge and past the last, the end
+/// pieces carry on.
+struct MixTimeMap: Equatable, Sendable {
+    /// Root seconds at each edge, ascending; at least two.
+    let root: [Double]
+    /// Source seconds at each edge.
+    let source: [Double]
+
+    init?(root: [Double], source: [Double]) {
+        guard root.count >= 2, root.count == source.count else { return nil }
+        self.root = root
+        self.source = source
+    }
+
+    func local(_ time: CMTime) -> CMTime {
+        CMTime(seconds: local(seconds: time.seconds), preferredTimescale: 240_000)
+    }
+
+    func local(seconds time: Double) -> Double {
+        // The last edge at or before `time`, held to a piece that exists.
+        var low = 0, high = root.count - 1
+        while low < high {
+            let middle = (low + high + 1) / 2
+            if root[middle] <= time { low = middle } else { high = middle - 1 }
+        }
+        let index = min(low, root.count - 2)
+        let span = root[index + 1] - root[index]
+        guard span > 0 else { return source[index] }
+        return source[index] + (time - root[index]) * (source[index + 1] - source[index]) / span
     }
 }
 
