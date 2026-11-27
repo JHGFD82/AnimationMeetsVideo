@@ -73,6 +73,20 @@ extension ProjectStore {
             }
         }
 
+        // A clip whose media file or nested timeline the file doesn't have,
+        // as only a hand edit leaves, refuses the file: it was dropped, and
+        // the next save lost it for good. (A file that is merely missing
+        // loads offline, above.)
+        for timeline in file.timelines {
+            for layer in timeline.layers {
+                for clip in layer.clips where resolveSource(clip.source) == nil {
+                    throw ProjectStoreError.invalidFile(
+                        "A clip of the timeline \u{201C}\(timeline.name)\u{201D} (\(clip.id.uuidString.lowercased())) uses a \(clip.source.kind == .timeline ? "timeline" : "media file") the project doesn\u{2019}t have."
+                    )
+                }
+            }
+        }
+
         let timelines: [Timeline] = file.timelines.map { entry in
             let layerIDs = Set(entry.layers.map(\.id))
             return Timeline(

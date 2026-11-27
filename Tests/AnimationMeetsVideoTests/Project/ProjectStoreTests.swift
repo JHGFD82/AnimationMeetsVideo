@@ -285,6 +285,32 @@ private struct Sandbox {
         }
     }
 
+    /// A clip naming a media file or timeline the file doesn't have was
+    /// dropped at load and lost at the next save (code-review-notes.md,
+    /// F52); the file is refused, naming the timeline.
+    @Test(arguments: ["media", "timeline"])
+    func aClipWhoseSourceIsntThereIsRefused(kind: String) async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        var file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        var timelines = try #require(file["timelines"] as? [[String: Any]])
+        var layers = try #require(timelines[0]["layers"] as? [[String: Any]])
+        var clips = try #require(layers[0]["clips"] as? [[String: Any]])
+        clips[0]["source"] = ["kind": kind, "id": UUID().uuidString]
+        layers[0]["clips"] = clips
+        timelines[0]["layers"] = layers
+        file["timelines"] = timelines
+        try JSONSerialization.data(withJSONObject: file).write(to: sandbox.projectJSON)
+        do {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+            Issue.record("A clip whose \(kind) isn't there was dropped rather than refused")
+        } catch ProjectStoreError.invalidFile(let detail) {
+            #expect(detail.contains("doesn\u{2019}t have"), "\(detail)")
+        }
+    }
+
     /// A styled run outside its text's words trapped at the first letter
     /// typed; it is refused as it is read.
     @Test func aTextRunOutsideItsWordsIsRefused() throws {
