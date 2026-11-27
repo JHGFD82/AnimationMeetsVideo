@@ -139,6 +139,13 @@ enum Preferences {
     /// first, as a JSON array.
     static let recentScriptFiles = "recentScriptFiles"
 
+    // MARK: Effects
+
+    /// Set for a recovery launch without effect packages from outside the
+    /// app (`RecoveryLaunch`), as `open -a AnimationMeetsVideo --args
+    /// -disableExternalEffects YES`; holding Shift at launch does the same.
+    static let disableExternalEffects = "disableExternalEffects"
+
     // MARK: Projects
 
     /// `RecentProjects.stored`: the projects opened last, newest first,

@@ -23,10 +23,13 @@ final class EffectPackageStatus {
 
     /// Why each package's kernel doesn't compile, by package ID.
     private(set) var kernelProblems: [String: String]
-    /// Bumped as packages are installed or changed while the app runs, so
-    /// what lists the effects (read from the registry, which isn't
-    /// observed) does again.
+    /// Bumped as packages are installed, changed or approved while the app
+    /// runs, so what lists the effects (read from the registry, which
+    /// isn't observed) and what draws them do again.
     private(set) var revision = 0
+    /// Whether this launch left the person's packages out (the recovery
+    /// launch, `RecoveryLaunch`): none is installed, compiled or watched.
+    private(set) var externalEffectsOff = false
 
     /// Reading and installing the person's packages at launch, which what
     /// reads a project or installs a package waits for.
@@ -69,6 +72,26 @@ final class EffectPackageStatus {
         }
     }
 
+    /// The recovery launch: the built-in effects only, for when a
+    /// package from outside the app keeps it from working. A project
+    /// using one opens with it missing, as when its package is gone.
+    func launchWithoutExternalEffects() {
+        externalEffectsOff = true
+        launch = Task {
+            await EffectPackageStore.installAtLaunch(from: nil)
+            revision += 1
+        }
+    }
+
+    /// Approves `package` as it is now (`EffectApproval`), then compiles
+    /// its kernel, and what uses it draws again.
+    func approve(_ package: EffectPackage) async {
+        EffectApproval.shared.approve(package)
+        revision += 1
+        await compile([package], priority: .userInitiated)
+        revision += 1
+    }
+
     /// Returns once launch has installed the person's packages; at once if
     /// it has, or isn't installing any. Reading a project waits for this,
     /// so its package effects are known.
@@ -80,6 +103,9 @@ final class EffectPackageStatus {
     /// installed, and compiles its kernel. Throws why it can't be used.
     func install(_ url: URL) async throws -> EffectPackage {
         await packagesInstalled()
+        guard !externalEffectsOff else {
+            throw EffectPackageError("Effects from outside the app are off for this launch. Quit and open the app again, without holding Shift, to install it.")
+        }
         let package = try EffectPackageStore.read(url)
         // Already installed when the folder's watcher read it first.
         if let installed = EffectRegistry.current.effect(named: package.id)?.package,
@@ -261,16 +287,17 @@ enum EffectPackageStore {
 
     /// Reads the person's packages away from the main thread and installs
     /// them beside the built-in effects, then starts compiling every
-    /// package's kernel. Called once at launch, by
+    /// package's kernel that may be (those from outside the app only once
+    /// approved, `PackageKernels`). Called once at launch, by
     /// `EffectPackageStatus.installAtLaunch`, which a project waits for
-    /// before it is read.
+    /// before it is read; with no folder, the built-in effects alone.
     @MainActor
-    static func installAtLaunch(from folder: URL = defaultFolder) async {
+    static func installAtLaunch(from folder: URL? = defaultFolder) async {
         let library = await Task.detached(priority: .userInitiated) {
             // The built-in packages, read the first time the registry is
             // used, are read here rather than on the main thread.
             _ = EffectRegistry.builtIn
-            return load(from: folder)
+            return folder.map { load(from: $0) } ?? EffectPackageLibrary()
         }.value
         for problem in library.problems {
             NSLog("%@", "The effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
@@ -849,6 +876,7 @@ enum EffectPackageStore {
                 url: url, id: id, version: version, name: json["name"] as! String,
                 category: EffectCategory(rawValue: json["category"] as! String)!, systemImage: json["symbol"] as! String,
                 contentHash: EffectPackage.contentHash(manifest, source),
+                isBuiltIn: builtIn, approvalHash: EffectPackage.approvalHash(manifest, source),
                 kernelType: kernelType, kernelFunction: function, kernelFile: kernel["file"] as! String, kernelSource: source,
                 controls: controls,
                 amountIndex: amountIndex ?? (json["amount"] as? Bool == true ? controls.count : nil), arguments: arguments,

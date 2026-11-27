@@ -32,15 +32,26 @@ struct EffectsListPanel: View {
                                     // The double-click goes inside the drag: on
                                     // the outside its tap gesture takes the mouse
                                     // down first, and the chip never starts a drag.
-                                    EffectLibraryChip(kind: kind, problem: packageStatus.kernelProblems[kind.rawValue])
+                                    let waiting = Self.waitingForApproval(kind)
+                                    EffectLibraryChip(
+                                        kind: kind, problem: packageStatus.kernelProblems[kind.rawValue], waitsForApproval: waiting != nil
+                                    )
                                         .onTapGesture(count: 2) { addToSelectedClip(kind) }
                                         .draggable(EffectDragPayload(kind: kind)) { EffectLibraryChip(kind: kind) }
                                         .contextMenu {
+                                            if let waiting {
+                                                Button("Approve\u{2026}") { NewEffectPackagePrompt.shared.askApproval(for: waiting) }
+                                            }
                                             if let package = kind.definition.package {
                                                 Button("Make a Package from This") { NewEffectPackagePrompt.shared.copy(package) }
                                             }
                                         }
                                         .accessibilityAction(named: "Add to the selected clip") { addToSelectedClip(kind) }
+                                        .accessibilityActions {
+                                            if let waiting {
+                                                Button("Approve") { NewEffectPackagePrompt.shared.askApproval(for: waiting) }
+                                            }
+                                        }
                                         .accessibilityAction(named: "Make a Package from This") {
                                             if let package = kind.definition.package { NewEffectPackagePrompt.shared.copy(package) }
                                         }
@@ -48,6 +59,7 @@ struct EffectsListPanel: View {
                             }
                         }
                     }
+                    waitingPackages
                     problems
                 }
                 .padding(Design.Space.group)
@@ -74,6 +86,34 @@ struct EffectsListPanel: View {
                 .overlay(alignment: .top) { Groove() }
         }
         .panelSurface(.base)
+    }
+
+    /// The package of `kind`, if it is one from outside the app not yet
+    /// approved to run: listed, but its kernel not compiled.
+    static func waitingForApproval(_ kind: EffectKind) -> EffectPackage? {
+        kind.definition.package.flatMap { EffectApproval.shared.allows($0) ? nil : $0 }
+    }
+
+    /// The packages from outside the app waiting for approval, each with
+    /// the button that asks; and a note when this launch left them out.
+    @ViewBuilder
+    private var waitingPackages: some View {
+        let waiting = EffectKind.all.compactMap(Self.waitingForApproval)
+        if packageStatus.externalEffectsOff {
+            Text("Effects from outside the app are off for this launch. Quit and open the app again, without holding Shift, to use them.")
+                .font(Design.Typeface.micro)
+                .foregroundStyle(Design.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if !waiting.isEmpty {
+            Text("Waiting for Approval")
+                .font(Design.Typeface.groupTitle)
+                .foregroundStyle(Design.textSecondary)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(waiting, id: \.id) { package in
+                PackageApprovalRow(package: package)
+            }
+        }
     }
 
     /// The packages that couldn't be read or installed, then those whose
@@ -108,6 +148,11 @@ struct EffectsListPanel: View {
     /// Adds to the selected clip; a note saying why not when none is
     /// selected or it can't take the effect.
     private func addToSelectedClip(_ kind: EffectKind) {
+        // One from outside the app is approved before it can draw.
+        if let waiting = Self.waitingForApproval(kind) {
+            NewEffectPackagePrompt.shared.askApproval(for: waiting) { addToSelectedClip(kind) }
+            return
+        }
         let clipID = selection.flatMap { $0.timelineID == timelineID ? $0.timelineClipID : nil }
         guard let clipID, let id = project.addEffect(kind, toClip: clipID, in: timelineID) else {
             RefusalNotice.shared.tellUnlessJustTold(RefusalReason.addingEffect(kind, toClip: clipID, in: timelineID, of: project))
@@ -123,13 +168,18 @@ struct EffectLibraryChip: View {
     /// Why its package's kernel doesn't compile, for one that can be added
     /// but leaves the picture as it is.
     var problem: String?
+    /// Whether its package, from outside the app, waits for the person's
+    /// approval, and leaves the picture as it is until then.
+    var waitsForApproval = false
 
     @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: problem == nil ? kind.systemImage : Design.Symbol.warning)
-                .foregroundStyle(problem != nil ? Design.statusWarning : isHovering ? Design.textPrimary : Design.textSecondary)
+            Image(systemName: waitsForApproval ? Design.Symbol.awaitingApproval : problem == nil ? kind.systemImage : Design.Symbol.warning)
+                .foregroundStyle(
+                    problem != nil || waitsForApproval ? Design.statusWarning : isHovering ? Design.textPrimary : Design.textSecondary
+                )
                 .frame(width: 16)
             Text(kind.name)
                 .font(Design.Typeface.label)
@@ -142,8 +192,14 @@ struct EffectLibraryChip: View {
         .beveledChip(fill: isHovering ? Design.Surface.floating.color : Design.Surface.overlay.color)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .help(problem.map { "\(kind.name) can't draw: its kernel doesn't compile. \($0)" }
-            ?? "\(kind.name): drag onto a clip or into the stack, or double-click to add it to the selected clip")
-        .accessibilityValue(problem == nil ? "" : "Can't draw: its kernel doesn't compile")
+        .help(
+            waitsForApproval
+                ? "\(kind.name) is from outside the app and isn't approved to run yet. Double-click to approve it and add it to the selected clip."
+                : problem.map { "\(kind.name) can't draw: its kernel doesn't compile. \($0)" }
+                ?? "\(kind.name): drag onto a clip or into the stack, or double-click to add it to the selected clip"
+        )
+        .accessibilityValue(
+            waitsForApproval ? "Waiting for approval to run" : problem == nil ? "" : "Can't draw: its kernel doesn't compile"
+        )
     }
 }

@@ -80,7 +80,7 @@ struct CompositionKey: Equatable {
             for layer in timeline.layers {
                 for clip in layer.clips {
                     for effect in clip.effects where effect.kind.rawValue.contains(".") {
-                        if let package = registry.effect(named: effect.kind.rawValue)?.package { used.insert(package.id + "#" + package.contentHash) }
+                        if let package = registry.effect(named: effect.kind.rawValue)?.package { used.insert(package.id + "#" + package.renderIdentity) }
                     }
                 }
             }

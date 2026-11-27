@@ -1,4 +1,5 @@
 import CoreMedia
+import CryptoKit
 import Foundation
 
 /// An effect read from an effect package (see docs/effect-packages.md): a
@@ -186,6 +187,12 @@ struct EffectPackage: Sendable {
     /// A hash of effect.json and the kernel, the same at every launch, so a
     /// render cached before either changed isn't shown after.
     let contentHash: String
+    /// Whether it ships with the app, rather than coming from outside it.
+    let isBuiltIn: Bool
+    /// The SHA-256 of effect.json and the kernel: what the person approves
+    /// of a package from outside the app before its kernel is compiled
+    /// (`EffectApproval`), so a package that changed asks again.
+    let approvalHash: String
     let kernelType: KernelType
     let kernelFunction: String
     /// The kernel's file in the package, for its compiler's messages.
@@ -259,6 +266,22 @@ struct EffectPackage: Sendable {
         )
         definition.package = self
         return definition
+    }
+
+    /// The SHA-256 of the manifest and the kernel source, in hex.
+    static func approvalHash(_ manifest: Data, _ source: String) -> String {
+        var hasher = SHA256()
+        hasher.update(data: manifest)
+        hasher.update(data: Data([0]))
+        hasher.update(data: Data(source.utf8))
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// What a render of its look is cached under: its content, and whether
+    /// it may draw, so a picture drawn while it waited for approval (left
+    /// as it was) isn't shown once it is approved.
+    var renderIdentity: String {
+        EffectApproval.shared.allows(self) ? contentHash : contentHash + "~unapproved"
     }
 
     /// FNV-1a over the manifest and the kernel source, in hex.

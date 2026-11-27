@@ -6,7 +6,9 @@ import SwiftUI
 /// docs/effect-packages.md, "Starting one from the app"): asking for a new
 /// one's name, from the File menu or the effects library, or copying a
 /// look's, then installing it and showing its kernel in Finder; or
-/// installing one opened from Finder.
+/// installing one opened from Finder. And asking the person to approve a
+/// package from outside the app before its kernel is compiled
+/// (`EffectApproval`, "Safety").
 @MainActor
 @Observable
 final class NewEffectPackagePrompt {
@@ -31,6 +33,10 @@ final class NewEffectPackagePrompt {
     /// What opening one did.
     var notice: String?
     var replacement: Replacement?
+    /// The package from outside the app waiting for the person's approval.
+    var approval: EffectPackage?
+    /// What to do once it is approved, as adding its effect to a clip.
+    @ObservationIgnored private var afterApproval: (() -> Void)?
     /// The window whose alerts these are: the editor window last in
     /// front, so with several windows open they show once, where the
     /// person is (see `claimHost`).
@@ -39,7 +45,7 @@ final class NewEffectPackagePrompt {
     /// Whether one of the prompt's alerts is up, during which the host
     /// stays put.
     private var isShowing: Bool {
-        isAsking || problem != nil || notice != nil || replacement != nil
+        isAsking || problem != nil || notice != nil || replacement != nil || approval != nil
     }
 
     /// Makes `window` the one to show the alerts, unless one is up on
@@ -66,17 +72,60 @@ final class NewEffectPackagePrompt {
     /// Copies `package` as a new one in the Effects folder, installs it,
     /// and shows its kernel in Finder.
     func copy(_ package: EffectPackage) {
-        installNew { try EffectPackageStore.copyPackage(package) }
+        // A copy of one not yet approved isn't approved by being copied.
+        installNew(approvesWhatItMakes: EffectApproval.shared.allows(package)) { try EffectPackageStore.copyPackage(package) }
+    }
+
+    /// Asks the person to approve `package`, a package from outside the
+    /// app, before its kernel is compiled; `then` runs once it is.
+    func askApproval(for package: EffectPackage, then: (() -> Void)? = nil) {
+        guard !EffectApproval.shared.allows(package) else {
+            then?()
+            return
+        }
+        afterApproval = then
+        approval = package
+    }
+
+    /// The person approved the package asked about.
+    func approve() {
+        guard let package = approval else { return }
+        approval = nil
+        let then = afterApproval
+        afterApproval = nil
+        Task {
+            await EffectPackageStatus.shared.approve(package)
+            then?()
+        }
+    }
+
+    /// The person didn't approve it, for now.
+    func declineApproval() {
+        approval = nil
+        afterApproval = nil
+    }
+
+    /// What the approval question says: what the package is, where it came
+    /// from, what its kernel can do, and what approving covers.
+    nonisolated static func approvalMessage(for package: EffectPackage) -> String {
+        "\u{201C}\(package.name)\u{201D} (\(package.id), version \(package.version)) is an effect package from outside the app, "
+            + "\(EffectPackageOrigin.describe(package.url)). Its kernel is code that runs on your Mac's graphics processor: "
+            + "a faulty or malicious one can stall the display or make the app unstable, and the app can't always stop it. "
+            + "Approve it only if you trust where it came from. Approving covers the package exactly as it is now; "
+            + "if it changes, you're asked again. To open the app without such packages, hold Shift as it opens."
     }
 
     /// Installs the package `write` makes in the Effects folder and shows
-    /// its kernel in Finder.
-    private func installNew(_ write: @escaping () throws -> URL) {
+    /// its kernel in Finder. The app wrote it, from its own template or a
+    /// look already allowed to run, so it is approved as written
+    /// (`approvesWhatItMakes`); changed after, it asks like any other.
+    private func installNew(approvesWhatItMakes: Bool = true, _ write: @escaping () throws -> URL) {
         Task {
             // Its name is checked against the packages launch installs.
             await EffectPackageStatus.shared.packagesInstalled()
             do {
                 let url = try write()
+                if approvesWhatItMakes { EffectApproval.shared.approve(try EffectPackageStore.read(url)) }
                 let package = try await EffectPackageStatus.shared.install(url)
                 NSWorkspace.shared.activateFileViewerSelecting([url.appending(path: package.kernelFile)])
             } catch {
@@ -106,12 +155,17 @@ final class NewEffectPackagePrompt {
         let installed = "“\(package.name)” is installed: it is in the effects library under \(package.category.name)."
         switch opening.1 {
         case .alreadyInstalled:
-            notice = installed
+            if let current = EffectRegistry.current.effect(named: package.id)?.package, !EffectApproval.shared.allows(current) {
+                askApproval(for: current)
+            } else {
+                notice = installed
+            }
         case .install:
             Task {
                 do {
-                    _ = try await EffectPackageStatus.shared.install(try EffectPackageStore.copyIn(url))
-                    notice = installed
+                    let copied = try await EffectPackageStatus.shared.install(try EffectPackageStore.copyIn(url))
+                    // Installed, but nothing of it compiled until approved.
+                    if EffectApproval.shared.allows(copied) { notice = installed } else { askApproval(for: copied) }
                 } catch {
                     failed("“\(package.name)” Wasn't Installed", error)
                 }
@@ -171,6 +225,19 @@ private struct NewEffectPackageAlerts: ViewModifier {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(prompt.notice ?? "")
+            }
+            .alert(
+                "Approve \u{201C}\(prompt.approval?.name ?? "")\u{201D} to Run?",
+                isPresented: hosted(Binding(get: { prompt.approval != nil }, set: { if !$0 { prompt.declineApproval() } }))
+            ) {
+                Button("Approve") { prompt.approve() }
+                Button("Show in Finder") {
+                    if let url = prompt.approval?.url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    prompt.declineApproval()
+                }
+                Button("Not Now", role: .cancel) { prompt.declineApproval() }
+            } message: {
+                Text(prompt.approval.map(NewEffectPackagePrompt.approvalMessage(for:)) ?? "")
             }
             .alert(
                 "Replace the Installed Package?",

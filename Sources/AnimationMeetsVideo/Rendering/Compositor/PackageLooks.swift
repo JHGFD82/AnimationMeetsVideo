@@ -20,14 +20,20 @@ enum PackageKernels {
 
     /// The package's kernel, compiled the first time it is asked for; nil
     /// when it doesn't compile, and its look leaves the picture as it is.
+    /// Nil, and nothing compiled, for a package from outside the app the
+    /// person hasn't approved as it is (`EffectApproval`, decision D8):
+    /// its kernel is code for the GPU.
     static func kernel(for package: EffectPackage) -> CIKernel? {
+        guard EffectApproval.shared.allows(package) else { return nil }
         if case .compiled(let kernel) = outcome(for: package) { return kernel }
         return nil
     }
 
     /// Why the package's kernel doesn't compile, or nil when it does,
-    /// compiling it the first time it is asked for.
+    /// compiling it the first time it is asked for; nil, and nothing
+    /// compiled, for one not approved.
     static func problem(for package: EffectPackage) -> String? {
+        guard EffectApproval.shared.allows(package) else { return nil }
         if case .failed(let message) = outcome(for: package) { return message }
         return nil
     }
