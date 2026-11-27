@@ -21,6 +21,10 @@ extension ProjectStore {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
+        // In UTC, so the names sort as the autosaves were written, which
+        // choosing the newest and pruning go by: local time repeats an hour
+        // when clocks go back.
+        formatter.timeZone = TimeZone(identifier: "UTC")
         let url = folder.appending(path: "\(backupPrefix)\(formatter.string(from: now)).json")
         try encode(project, packageURL: packageURL).write(to: url, options: .atomic)
 

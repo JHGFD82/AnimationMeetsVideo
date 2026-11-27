@@ -1035,6 +1035,7 @@ private struct Sandbox {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
+        formatter.timeZone = TimeZone(identifier: "UTC")
         let kept = (2..<5).map { "\(newest)\(formatter.string(from: Date(timeIntervalSince1970: 1_700_000_000 + Double($0)))).json" }
         #expect(names == kept)
     }

@@ -110,6 +110,26 @@ private struct BackupSandbox {
         #expect(newestFirstMinute == start.addingTimeInterval(120))
     }
 
+    /// Backups begin with the project's name, and were kept by name: once
+    /// the project was renamed to sort earlier, each new backup was deleted
+    /// as the oldest as soon as it was written.
+    @Test func aRenamedProjectsNewBackupIsKept() async throws {
+        let sandbox = try await BackupSandbox()
+        defer { sandbox.cleanUp() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        var project = sandbox.project
+        project.name = "Zeta"
+        for minute in 0..<ProjectBackups.kept {
+            try ProjectBackups.write(project, packageURL: sandbox.packageURL, now: start.addingTimeInterval(Double(minute) * 60))
+        }
+        project.name = "Alpha"
+        let newest = try ProjectBackups.write(project, packageURL: sandbox.packageURL, now: start.addingTimeInterval(3_600))
+        let kept = ProjectBackups.backups(in: ProjectBackups.folder(forPackage: sandbox.packageURL))
+        #expect(FileManager.default.fileExists(atPath: newest.path))
+        #expect(kept.last == newest)
+        #expect(kept.count == ProjectBackups.kept)
+    }
+
     /// Projects of the same name in different folders keep their backups
     /// apart, so the busier one can't push out the other's.
     @Test func sameNamedProjectsElsewhereKeepTheirOwnBackups() async throws {

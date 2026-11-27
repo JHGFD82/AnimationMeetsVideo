@@ -130,13 +130,21 @@ enum ProjectBackups {
         return destination
     }
 
-    /// The backups in `folder`, oldest first (their names sort by date).
+    /// The backups in `folder`, oldest first by when each says it was taken.
+    /// Not by name: names begin with the project's, so after renaming it
+    /// every new backup sorted first and was deleted as the oldest as soon
+    /// as it was written, and their local times don't sort across the hour
+    /// repeated when clocks go back.
     static func backups(in folder: URL) -> [URL] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         return names
             .filter { $0.hasSuffix(".\(fileExtension)") && !$0.hasPrefix(".") }
-            .sorted()
-            .map { folder.appending(path: $0, directoryHint: .isDirectory) }
+            .map { name -> (url: URL, taken: Date) in
+                let url = folder.appending(path: name, directoryHint: .isDirectory)
+                return (url, (try? readInfo(of: url).createdAt) ?? .distantPast)
+            }
+            .sorted { ($0.taken, $0.url.lastPathComponent) < ($1.taken, $1.url.lastPathComponent) }
+            .map(\.url)
     }
 
     /// Copies `subfolder` of the package into the backup, each file from
