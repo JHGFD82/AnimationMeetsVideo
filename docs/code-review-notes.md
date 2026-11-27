@@ -3,10 +3,11 @@
 Status: **review notes** for the first pass of
 [code-review-plan.md](code-review-plan.md). Phases 1 to 3 have been
 reviewed (phase 1 only in part), phase 4 is being reviewed, and the
-plan's stabilization checkpoint is under way; phases 5 to 12 haven't
-started. Many findings are still open: being reviewed is not being
-resolved. Where each phase stands is under "Where each phase stands";
-every finding is in the ledger.
+plan's stabilization checkpoint is done but for F4's hang, which hasn't
+recurred to be captured; phases 5 to 12 haven't started. Many findings
+are still open: being reviewed is not being resolved. Where each phase
+stands is under "Where each phase stands"; every finding is in the
+ledger.
 
 ## Reading this ledger
 
@@ -40,29 +41,44 @@ reviewers. Nothing here has been checked by anyone outside it.
 
 | Phase | Coverage | What keeps it from complete | Open findings |
 | --- | --- | --- | --- |
-| 1. Scope and build baseline | Partial | No representative projects, so the performance baseline is of the benchmarks' own timelines only; the whole suite under `UI_EVENTS` can hang (F4) | F4, F5, F7, F24 |
-| 2. Architecture and maintainability | Complete | | F25–F47, several of severity 1 not yet verified |
-| 3. Security, privacy and dependencies | Complete | | F50–F62, input validation and helper isolation among them |
-| Stabilization checkpoint | In progress | See below | |
-| 4. Project model and persistence | Partial | Three reviews made and recorded; fixes under way | F67–F88 |
-| 5 to 12 | Not started | Wait for checkpoint A to C | |
+| 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F7, F24 |
+| 2. Architecture and maintainability | Complete | | F30–F47; its severity-1 findings are fixed |
+| 3. Security, privacy and dependencies | Complete | | F53–F55, F59–F62 |
+| Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
+| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
+| 5 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
 
 From the plan's checkpoint, with the findings each part covers.
 
-- **A. Data-loss paths.** F25 (Beat Match Confirm), F26 (viewer handle
-  drag), F27 (no lock without `flock`), F28 (provenance), F29 (backups
-  across a clock change, *fixed*), F52 (clips dropped at load), F51
-  (names made into paths), and phase 4's F71, F72, F74, F79, F81. Open.
-- **B. Untrusted input.** F48 and F49 (*fixed*), F50 (nested-timeline
-  cycles), F57 (helper buffering), F58 (script rational times), F56
-  (non-finite samples). Open.
-- **C. Trust in the test harness.** F2 (*fixed*), F4 (the hang, to be
-  captured before any change to its suspect), and a runner that checks
-  the run's summary. Open.
-- **D. Representative fixtures.** Generated media and projects in place
-  of licensed footage (decision D7). Open.
+- **A. Data-loss paths. Done.** Fixed: F25 (Beat Match Confirm), F26
+  (viewer handle drag), F27 (no lock without `flock`), F28 (provenance),
+  F29 (backups across a clock change), F51 (names made into paths), F52
+  (clips dropped at load), F71 (failed import), F74 (folder marked
+  before load), F79 (package replaced), F81 (undo past arrived
+  analysis, reproduced first); F72 (export over a source) fixed but for
+  asking before stems replace same-named files.
+- **B. Untrusted input. Done.** Fixed: F48 and F49 (numbers, text
+  runs), F50 (timeline cycles), F56 (non-finite samples), F57 (helper
+  budgets: payloads at most 1 GiB, 10,000 unread frames, no per-frame
+  copies), F58 (script rational times). Defensive checks stay at the
+  operations too (F16, F17, F23).
+- **C. Trust in the test harness. Done but for F4.**
+  `scripts/run-tests.sh` (`c55c39b0`, `9bd1b800`, `4bc6cf20`) passes a
+  run only on Swift Testing's summary, with `MIN_TESTS` and
+  `REQUIRED_SUITES`, samples and stops only its own processes when no
+  test finishes for `STALL_SECONDS`, and keeps logs; CI runs it. Tried:
+  a run below `MIN_TESTS`, one whose required suite was skipped, and a
+  stand-in hang beside a decoy test process (only the run's own was
+  sampled and stopped). F4 didn't recur in two whole-suite `UI_EVENTS`
+  runs through it at `ccdb6ea7`; it stays open until captured.
+- **D. Representative fixtures. Done** (`683801be`). `ReviewFixtures`
+  makes numbered long-GOP movies at five rates and a variable one, held
+  drawings, flashes, fades, a gradient and outlines, click tracks on
+  exact samples, and a 320-cut dense edit; `REVIEW_FIXTURES=<folder>`
+  writes the set (38 MB). Real footage stays for a later qualitative
+  check (D7).
 
 ## Findings ledger
 
@@ -92,10 +108,10 @@ From the plan's checkpoint, with the findings each part covers.
 | F22 | Repeated IDs crashed the app | 3 | crash | 2 | code-verified | fixed | `17eb57a1` · test | blocking |
 | F23 | Negative component; package repeats and delays | 3 | crash | 2 | code-verified | fixed | `1aaeaf0b`, `4a8566c8` · test, no test | blocking |
 | F24 | macOS 26 deprecations; sync asset loads | 1 | structure | 6 | reproduced | open | | nonblocking |
-| F25 | Beat Match Confirm writes over a changed map | 2 | data safety | 1 | reported | open | | blocking |
-| F26 | Viewer handle drag puts back a stale clip | 2 | data safety | 1 | reported | open | | blocking |
-| F27 | No lock where `flock` is missing, only a log | 2 | data safety | 1 | reported | open | | blocking |
-| F28 | Provenance rewritten after a failed read | 2 | data safety | 1 | reported | open | | blocking |
+| F25 | Beat Match Confirm writes over a changed map | 2 | data safety | 1 | code-verified | fixed | `30bb1a18` · test | blocking |
+| F26 | Viewer handle drag puts back a stale clip | 2 | data safety | 1 | code-verified | fixed | `6361cdbd` · test (viewer event suites run) | blocking |
+| F27 | No lock where `flock` is missing, only a log | 2 | data safety | 1 | code-verified | fixed | `f683cb3d` · no test (no lockless volume here) | blocking |
+| F28 | Provenance rewritten after a failed read | 2 | data safety | 1 | code-verified | fixed | `eeb7eb61` · test | blocking |
 | F29 | Backups ordered by name across a clock change | 2 | data safety | 1 | code-verified | fixed | `27f199a6` · test (rename case) | blocking |
 | F30 | Keyframes drift on speed-ramped clips | 2 | timing | 3 | code-verified | open | | blocking |
 | F31 | The Waveform builds its own mix | 2 | sound | 3 | reported | open | | nonblocking |
@@ -117,15 +133,15 @@ From the plan's checkpoint, with the findings each part covers.
 | F47 | Files with more than one job | 2 | structure | 6 | reported | open | | nonblocking |
 | F48 | Numbers no project has crashed on opening | 3 | crash | 2 | code-verified | fixed | `d7d4be2c` · test | blocking |
 | F49 | Text runs past their words trapped | 3 | crash | 2 | code-verified | fixed | `d7d4be2c` · test | blocking |
-| F50 | A timeline holding clips of itself | 3 | crash | 2 | reported | open | | blocking |
-| F51 | Names made into paths without cleaning | 3 | data safety | 3 | reported | open | | blocking |
-| F52 | Clips with a missing source dropped at load | 3 | data safety | 1 | reported | open | | blocking |
+| F50 | A timeline holding clips of itself | 3 | crash | 2 | code-verified | fixed | `d437134f` · test | blocking |
+| F51 | Names made into paths without cleaning | 3 | data safety | 3 | code-verified | fixed | `c79dfff3` · test | blocking |
+| F52 | Clips with a missing source dropped at load | 3 | data safety | 1 | code-verified | fixed | `361b2418` · test | blocking |
 | F53 | A kernel that never ends stalls the GPU | 3 | security | 4 | code-verified | decision (D8) | | nonblocking |
 | F54 | `audio.bin` with billions of levels | 3 | performance | 4 | reported | open | | nonblocking |
 | F55 | One expressions helper for every project | 3 | security | 3 | reported | open | | blocking |
-| F56 | Non-finite expression samples | 3 | data safety | 3 | reported | open | | blocking |
-| F57 | Helper messages buffered without limit | 3 | security | 2 | reported | open | | blocking |
-| F58 | A script's rational time has no bound | 3 | crash | 3 | reported | open | | nonblocking |
+| F56 | Non-finite expression samples | 3 | data safety | 3 | code-verified | fixed | `5996cf1a` · test | blocking |
+| F57 | Helper messages buffered without limit | 3 | security | 2 | code-verified | fixed | `2d03725a` · test (`AMV_PYTHON` run) | blocking |
+| F58 | A script's rational time has no bound | 3 | crash | 3 | code-verified | fixed | `958abd9b` · test | nonblocking |
 | F59 | Recording an app with permission refused | 3 | usability | 3 | suspected | open | | nonblocking |
 | F60 | Confined code can stat any path | 3 | security | 5 | reported | accepted risk (proposed) | | nonblocking |
 | F61 | Python's licenses not shipped | 3 | release | 1 | code-verified | open | | blocking |
@@ -135,20 +151,20 @@ From the plan's checkpoint, with the findings each part covers.
 | F65 | Unreadable reload marked seen, then saved over | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
 | F66 | A renamed project's new backups deleted | 4 | data safety | 1 | code-verified | fixed | `27f199a6` · test | blocking |
 | F67 | Moving the open package splits the project | 4 | data safety | 3 | reported | open | | blocking |
-| F68 | A failed Restore says nothing | 4 | data safety | 3 | reported | open | | blocking |
+| F68 | A failed Restore says nothing | 4 | data safety | 3 | code-verified | fixed | `82160372` · no test (modal alert) | blocking |
 | F69 | Forget Original deletes before saving | 4 | data safety | 3 | reported | open | | nonblocking |
-| F70 | Errors don't name the project | 4 | usability | 5 | reported | open (part fixed) | `667aaad6` names the reload's | nonblocking |
-| F71 | A failed import deletes a file in the package | 4 | data safety | 1 | reported | open | | blocking |
-| F72 | An export can replace a source media file | 4 | data safety | 1 | reported | open | | blocking |
+| F70 | Errors don't name the project | 4 | usability | 5 | code-verified | open (part fixed) | `667aaad6`, `82160372` name the reload's and the open's | nonblocking |
+| F71 | A failed import deletes a file in the package | 4 | data safety | 1 | reproduced | fixed | `76e74035` · fails without | blocking |
+| F72 | An export can replace a source media file | 4 | data safety | 1 | code-verified | open (part fixed) | `2142ee55` · test; stems' prompt open | blocking |
 | F73 | Backups copy all media off APFS | 4 | performance | 2 | reported | open | | blocking |
-| F74 | Opening a folder marks and locks it first | 4 | data safety | 1 | reported | open | | blocking |
+| F74 | Opening a folder marks and locks it first | 4 | data safety | 1 | code-verified | fixed | `82160372` · test | blocking |
 | F75 | A file gone while open isn't offline | 4 | export | 3 | reported | open | | nonblocking |
 | F76 | An MKV offline at open stays unreadable | 4 | export | 3 | suspected | open | | nonblocking |
 | F77 | Sound-found offsets not snapped to frames | 4 | timing | 3 | suspected | open | | blocking |
 | F78 | Replacement against stale used ranges | 4 | correctness | 3 | suspected | open | | nonblocking |
-| F79 | Replacing a package deletes it first | 4 | data safety | 1 | reported | open | | blocking |
+| F79 | Replacing a package deletes it first | 4 | data safety | 1 | code-verified | fixed | `f31e5d6b` · test | blocking |
 | F80 | A take moved to a name already taken | 4 | data safety | 5 | reported | open | | nonblocking |
-| F81 | Undo past arrived analysis drops redo and loops | 4 | data safety | 1 | suspected | open | | blocking |
+| F81 | Undo past arrived analysis drops redo and loops | 4 | data safety | 1 | reproduced | fixed | `bed9243e` · fails without | blocking |
 | F82 | Copied Keyframing effects look hand-edited | 4 | correctness | 3 | reported | open | | nonblocking |
 | F83 | Duplicate Timeline keeps old layer references | 4 | correctness | 3 | reported | open | | nonblocking |
 | F84 | Matte-wipe media not counted as used | 4 | correctness | 3 | reported | open | | nonblocking |
@@ -171,11 +187,14 @@ later: five event tests waited on the event lock (one held it), and
 finished; two `RenderCacheTests` timed out alongside. Event suites by
 filter, and the suite without `UI_EVENTS`, never hung. *Lead, not
 diagnosis:* the spectrogram reads sound through `WaveformAudio`, whose
-synchronous asset loads are deprecated (F24). *Next:* with the
-checkpoint C runner, reproduce and capture every thread's stack and the
-task tree before any change to `WaveformAudio`; until then run event
-suites by filter (AGENTS.md's "runs them all at once" isn't yet
-reliable).
+synchronous asset loads are deprecated (F24). *Since:* two whole-suite
+`UI_EVENTS` runs through `scripts/run-tests.sh` at `ccdb6ea7` passed
+(2,749 tests, 81 s each), so the hang is intermittent or was disturbed
+by fixes since (F5's pacing among them). *Next:* run whole-suite event
+runs through the runner (`STALL_SECONDS=60`) until it recurs; its
+samples and unfinished list are the diagnosis to take before any change
+to `WaveformAudio`. Until then run event suites by filter, as AGENTS.md
+now says.
 
 **F5 — Tests that fail when the Mac is busy.** *Expected:* results
 independent of load. *Observed:* `ScrubCacheTests`' fast drag failed in
@@ -198,14 +217,14 @@ F4's capture.
 
 ### Phase 2
 
-**F25 — Beat Match's Confirm writes over a beat map changed
+**F25 — *(fixed in `30bb1a18`)* Beat Match's Confirm writes over a beat map changed
 meanwhile.** *Expected:* Confirm asks, or merges, when the song's map
 changed since the panel opened. *Observed (reported):* it writes the
 draft without comparing (`BeatMatchController.swift:85–93`); a script,
 a reload or another timeline window can change the map in between.
 *Next (A):* session test, then compare with the map the panel opened on.
 
-**F26 — A viewer handle drag puts back the clip as it was at its
+**F26 — *(fixed in `6361cdbd`)* A viewer handle drag puts back the clip as it was at its
 start.** *Observed (reported):* `ViewerHandlesOverlay.swift:839` commits
 the whole clip from drag start; a script finishing during the held drag
 (`ScriptRunner.swift:159` sees no `editCount` change while writes are
@@ -213,13 +232,13 @@ held) has its change to that clip undone on release. *Next (A):* a
 `ProjectState` test of hold, outside write, release; commit only the
 fields the drag changed.
 
-**F27 — No lock where `flock` is missing.** *Observed (reported):*
+**F27 — *(fixed in `f683cb3d`)* No lock where `flock` is missing.** *Observed (reported):*
 `ProjectLock.swift:42` opens without a lock and only logs it; two Macs
 on a share can both save one project, and `trashPackage(checkingLock:)`
 can trash one open elsewhere. *Next (A):* tell the person on opening,
 and refuse trashing without a lock.
 
-**F28 — Provenance rewritten from nothing after a failed read.**
+**F28 — *(fixed in `eeb7eb61`)* Provenance rewritten from nothing after a failed read.**
 *Observed (reported):* `readProvenance` returns `[:]` on any failure
 (`ProjectStore+Provenance.swift:18–46`) and the next record writes only
 the new kind, dropping `.originalScores` for good. *Next (A):* refuse
@@ -286,19 +305,19 @@ tape scrubber, the scene splitter); logic in `UI/` (the export queue,
 
 ### Phase 3
 
-**F50 — A timeline holding clips of itself** loads; rendering refuses
+**F50 — *(fixed in `d437134f`)* A timeline holding clips of itself** loads; rendering refuses
 it, but the Waveform's walk (`WaveformEffect.swift:548`) has no visited
 set and makes N^8 calls. *Next (B):* refuse cycles at load, through
 effect inputs that take a timeline too.
 
-**F51 — Names made into paths without cleaning:** Duplicate of a package
+**F51 — *(fixed in `c79dfff3`)* Names made into paths without cleaning:** Duplicate of a package
 named `../../Desktop/x`, Make Package, backups named for the project
 (`EffectPackageStore.swift:386–425`, `ProjectBackups.swift:105–209`).
 Each only creates and never overwrites, so far as read. *Next (A):*
 clean every name used as a path with one function, as
 `PresetStore.freeID` does.
 
-**F52 — Clips whose source can't be resolved are dropped at load**
+**F52 — *(fixed in `361b2418`)* Clips whose source can't be resolved are dropped at load**
 (`ProjectStore+Load.swift:85`, `compactMap`), and the next save loses
 them. A missing *file* doesn't lead here (it loads offline); a missing
 *asset entry* or nested timeline does. *Next (A):* refuse the file
@@ -317,17 +336,17 @@ thread answering later runs (`expressions.py:311,340`). A helper per
 project limits it across projects, not between runs of one. *Next:*
 restart the helper after a run that leaves threads, and per project.
 
-**F56 — Non-finite expression samples** are counted, not checked, in the
+**F56 — *(fixed in `5996cf1a`)* Non-finite expression samples** are counted, not checked, in the
 app (`PythonHelper.swift:167–176`); NaN keyframes would fail saving.
 *Next (B):* refuse non-finite samples.
 
-**F57 — Helper messages are buffered without limit:** payload sizes up
+**F57 — *(fixed in `2d03725a`)* Helper messages are buffered without limit:** payload sizes up
 to 9×10^15 (`ScriptMessages.swift:53–57`), frames queued while no run
 reads, the buffer copied per frame (`PythonHelper.swift:352`). *Next
 (B):* budgets: payload at most what the request asked for, frames
 dropped outside a run, a read offset instead of copies.
 
-**F58 — A script's time as `[n, d]` has no bound**
+**F58 — *(fixed in `958abd9b`)* A script's time as `[n, d]` has no bound**
 (`ProjectBridge.swift:506–515`), unlike one in seconds. *Next (B):* the
 same bound as `TimeEntry`.
 
@@ -357,7 +376,7 @@ package at the old path with `Media/` paths into nothing, unlocked
 (`ProjectStore.swift:101–108`, `ProjectSession.swift:305,387`). *Next:*
 refuse to save where the package was moved from, or follow it.
 
-**F68 — A failed Restore says nothing** (`ProjectSession.swift:223`,
+**F68 — *(fixed in `82160372`)* A failed Restore says nothing** (`ProjectSession.swift:223`,
 `try?`): the saved version opens, and the first save makes the autosave
 look older, so it is never offered again. *Next:* say so and keep
 offering it.
@@ -366,10 +385,10 @@ offering it.
 is written** (`ProjectStore+Save.swift:91–94` against `:105`); a failed
 write leaves the file saying the original is kept. *Next:* delete after.
 
-**F70 — Errors don't name the project** (`ProjectSession.swift:259`);
+**F70 — *(part fixed in `667aaad6`, `82160372` name the reload's and the open's)* Errors don't name the project** (`ProjectSession.swift:259`);
 the reload's alert now does (`667aaad6`).
 
-**F71 — A failed import deletes a file already in the package.**
+**F71 — *(fixed in `76e74035`)* A failed import deletes a file already in the package.**
 *Observed (reported):* `copyIntoPackage` returns the source itself when
 it is inside the package, and the import's `catch` removes that "copy"
 (`MediaImportFlow.swift:66–69,85`, `ProjectStore+MediaConsolidation.swift:79`):
@@ -377,7 +396,7 @@ a file in a subfolder of `Media/`, one already used, or one through a
 linked folder is deleted for good on any import error. *Next (A):*
 verify with a test, then delete only a file the import made.
 
-**F72 — An export can replace a source media file.** Only other
+**F72 — *(part fixed in `2142ee55`)* An export can replace a source media file.** Only other
 exports' destinations are checked (`ExportDestinations.conflict`), so
 exporting over `clip.mov` that the timeline plays reads it while
 rendering and then replaces it; stems overwrite same-named files in a
@@ -388,7 +407,7 @@ input or matte uses, and ask before replacing stems.
 ten kept, holding saves behind them (`ProjectBackups.swift:145–166`).
 *Next:* skip media, or warn, where `volumeSupportsFileCloning` is false.
 
-**F74 — Opening any folder with a `project.json` marks it a package and
+**F74 — *(fixed in `82160372`)* Opening any folder with a `project.json` marks it a package and
 writes `.lock` into it before the format is checked**
 (`ProjectSession.swift:214–217`). *Next (A):* mark and lock after the
 load succeeds.
@@ -415,7 +434,7 @@ a slow analysis and not taken again; spare frames under dissolves aren't
 counted; effect inputs bound by file time (`MediaReplacementController.swift:410–427`,
 `EffectInputs.swift:65`). *Next:* verify.
 
-**F79 — Replacing an installed effect package deletes the old one before
+**F79 — *(fixed in `f31e5d6b`)* Replacing an installed effect package deletes the old one before
 copying the new** (`EffectPackageStore.swift:482–484`), losing a
 package the person wrote if the copy fails. *Next (A):* copy beside,
 then swap in.
@@ -424,7 +443,7 @@ then swap in.
 two in one second throw and leave it in `/tmp` without saying.
 *Next:* a unique name.
 
-**F81 — An undo past newly arrived analysis records a new step, drops
+**F81 — *(fixed in `bed9243e`)* An undo past newly arrived analysis records a new step, drops
 the redo stack and can't go further back.** *Observed (suspected,
 strong):* arriving beats update only the history's baseline
 (`EditorView.swift:322–356`); after an undo, `refreshKeyframing(after:)`
