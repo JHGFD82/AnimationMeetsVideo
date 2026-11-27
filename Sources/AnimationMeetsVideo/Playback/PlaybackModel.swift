@@ -608,6 +608,8 @@ final class PlaybackModel {
     /// Whether the moves of the playhead and the skimmer go fast enough to
     /// seek roughly.
     @ObservationIgnored private var pacing = ScrubPacing()
+    /// What the moves are paced by and their rests waited on.
+    @ObservationIgnored var paceClock = PaceClock(ContinuousClock())
     /// Where the last move sent the player, for landing there exactly.
     @ObservationIgnored private var lastTarget: CMTime?
     /// Whether the player was sent somewhere roughly and hasn't yet landed
@@ -689,14 +691,14 @@ final class PlaybackModel {
     /// Seeks the player to `time`, after any seek under way: roughly while
     /// the moves go fast, then exactly once they rest, unless `exact`.
     private func show(_ time: CMTime, exact: Bool = false) {
-        let tolerance = exact ? 0 : pacing.tolerance(forMoveTo: time.seconds, at: CACurrentMediaTime())
+        let tolerance = exact ? 0 : pacing.tolerance(forMoveTo: time.seconds, at: paceClock.now())
         lastTarget = time
         landing?.cancel()
         landing = nil
         if tolerance > 0 {
             playerIsRough = true
-            landing = Task { [weak self] in
-                try? await Task.sleep(for: ScrubPacing.rest)
+            landing = Task { [weak self, paceClock] in
+                try? await paceClock.sleep(ScrubPacing.rest)
                 guard !Task.isCancelled, let self else { return }
                 self.landing = nil
                 self.land()
@@ -769,8 +771,8 @@ final class PlaybackModel {
         // Settled: the frame is drawn at full size if it was drawn smaller.
         if !isPlaying, level != .full { redrawPausedFrame() }
         restingPreroll?.cancel()
-        restingPreroll = Task { [weak self] in
-            try? await Task.sleep(for: Self.prerollRest)
+        restingPreroll = Task { [weak self, paceClock] in
+            try? await paceClock.sleep(Self.prerollRest)
             guard !Task.isCancelled, let self else { return }
             self.restingPreroll = nil
             self.prerollIfPaused()

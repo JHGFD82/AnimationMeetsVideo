@@ -230,7 +230,12 @@ are phase 9's first suspects.
    `ClipBlockInteractionTests.aClickSelectsWithTheArrowAndCutsWithTheBlade`
    (`calls.selects == 1` at 99 and 107) failed once too. The scrub
    cache's pace wants a clock the test controls (`ManualClock`), as the
-   plan's testability item asks.
+   plan's testability item asks. *The scrub cache test is fixed:
+   `PlaybackModel` paces scrubbing on a `PaceClock`, the continuous
+   clock in the app and a `ManualClock` in the test, which then passed
+   in a full run with the load average near 14, after failing the
+   project's pre-commit hook twice at 6. The other two remain open,
+   with the `PlaybackSkimTests` that pace on real time.*
 
 6. **The binaries record SDK 15.0. (Phases 1 and 12, packaging,
    severity unknown; open.)** `otool -l` shows `LC_BUILD_VERSION` with

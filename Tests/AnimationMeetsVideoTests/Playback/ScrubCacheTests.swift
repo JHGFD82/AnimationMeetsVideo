@@ -36,10 +36,16 @@ import Testing
         let (playback, fixture) = try await parked(at: 1)
         defer { fixture.cleanUp() }
         try await waitUntil("the cache to fill", every: .milliseconds(20)) { playback.scrubCache.count == 96 }
+        // The drag's pace on a clock of the test's, not the Mac's: with
+        // real sleeps a busy Mac stretched them past the rest, and the
+        // drag was taken for slow moves that seeked.
+        let clock = ManualClock()
+        playback.paceClock = PaceClock(clock)
         // Two frames every 10 ms: eight times normal speed.
         for frame in stride(from: 26, through: 70, by: 2) {
             playback.seek(to: CMTime(value: Int64(frame), timescale: 24))
-            try await Task.sleep(for: .milliseconds(10))
+            clock.advance(by: .milliseconds(10))
+            await Task.yield()
         }
         let last = CMTime(value: 70, timescale: 24)
         // Shown from the cache. The first moves, before the pace told a
@@ -49,6 +55,7 @@ import Testing
         #expect(playback.player.currentTime().seconds < 1.6)
         #expect(playback.currentTime == last)
         // Rested, it lands exactly.
+        clock.advance(by: ScrubPacing.rest)
         try await waitUntil("the player to land", every: .milliseconds(10)) {
             abs(playback.player.currentTime().seconds - last.seconds) < 0.001
         }

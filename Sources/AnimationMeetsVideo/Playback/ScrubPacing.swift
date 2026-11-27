@@ -1,5 +1,23 @@
 import Foundation
 
+/// The clock scrubbing is paced by and rests on: when each move was asked
+/// for, in seconds that only go forward, and the waits for the moves to
+/// rest. The app's is the continuous clock; a test's moves only when the
+/// test moves it, so its pace doesn't depend on how busy the Mac is.
+struct PaceClock: Sendable {
+    let now: @Sendable () -> Double
+    let sleep: @Sendable (Duration) async throws -> Void
+
+    init<C: Clock>(_ clock: C) where C.Duration == Duration {
+        let start = clock.now
+        now = {
+            let since = start.duration(to: clock.now).components
+            return Double(since.seconds) + Double(since.attoseconds) * 1e-18
+        }
+        sleep = { try await clock.sleep(for: $0) }
+    }
+}
+
 /// How the paused seek queue seeks (see docs/rendering.md, "Rough, then
 /// exact"): exactly while the playhead or the skimmer moves no faster than
 /// a little over normal speed, and roughly while it moves faster, within
