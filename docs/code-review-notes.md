@@ -1,21 +1,623 @@
 # Code review notes
 
 Status: **review notes** for the first pass of
-[code-review-plan.md](code-review-plan.md). Phases 1 (scope and build
-baseline), 2 (architecture and maintainability) and 3 (security,
-privacy and dependencies) are done, with their open findings and the
-decisions still wanted listed; phase 1 still lacks its review
-projects. Phases 4 to 12 haven't started. Each
-finding gives its phase, area, severity from the plan's
-[triage order](code-review-plan.md#triage-order), place, how to see it,
-and whether it was already failing at the baseline. Fixes are marked
-with their commits.
+[code-review-plan.md](code-review-plan.md). Phases 1 to 3 have been
+reviewed (phase 1 only in part), phase 4 is being reviewed, and the
+plan's stabilization checkpoint is under way; phases 5 to 12 haven't
+started. Many findings are still open: being reviewed is not being
+resolved. Where each phase stands is under "Where each phase stands";
+every finding is in the ledger.
 
-## Phase 1: Scope and build baseline
+## Reading this ledger
 
-Baseline commit `4387fb11` (Merge the code review plan), 2026-11-26.
+The fields follow the plan's "Recording findings":
 
-### The reviewing Mac and toolchain
+- **Confidence**: *suspected* (a lead), *reported* (one reviewer read
+  the code path and nobody has re-checked it), *code-verified* (read
+  again and confirmed before acting), *reproduced* (a test, probe or run
+  showed it).
+- **Resolution**: *open*, *fixed*, *accepted risk* (with the reason and
+  who accepted it), or *decision* (waiting on the owner).
+- **Fix · verification**: the fix commit, and its test: *fails without*
+  (the test was run against the code without the fix and failed),
+  *test* (a regression test, not run against the unfixed code), or *no
+  test*. Every commit on this branch passed the full suite
+  (`swift test`, gated suites excluded) in the project's pre-commit
+  hook at that commit; gated suites (`UI_EVENTS`, `AMV_PYTHON`) are
+  noted where they were run.
+- **Gate**: *blocking* or *nonblocking* for a release, as proposed by
+  this review; the owner decides.
+- Severity is the plan's triage rank by impact (1 data safety and
+  security, 2 crash or hang, 3 correctness, 4 performance, 5 usability,
+  6 cosmetic), kept apart from the category.
+
+The evidence is this pass's: the runs, probes and tests were made on the
+branch `worktree-code-review-phase1`, on the Mac described under
+"Phase 1 baseline", and the reviews' readings were by this pass's
+reviewers. Nothing here has been checked by anyone outside it.
+
+## Where each phase stands
+
+| Phase | Coverage | What keeps it from complete | Open findings |
+| --- | --- | --- | --- |
+| 1. Scope and build baseline | Partial | No representative projects, so the performance baseline is of the benchmarks' own timelines only; the whole suite under `UI_EVENTS` can hang (F4) | F4, F5, F7, F24 |
+| 2. Architecture and maintainability | Complete | | F25–F47, several of severity 1 not yet verified |
+| 3. Security, privacy and dependencies | Complete | | F50–F62, input validation and helper isolation among them |
+| Stabilization checkpoint | In progress | See below | |
+| 4. Project model and persistence | Partial | Three reviews made and recorded; fixes under way | F67–F88 |
+| 5 to 12 | Not started | Wait for checkpoint A to C | |
+
+## Stabilization checkpoint
+
+From the plan's checkpoint, with the findings each part covers.
+
+- **A. Data-loss paths.** F25 (Beat Match Confirm), F26 (viewer handle
+  drag), F27 (no lock without `flock`), F28 (provenance), F29 (backups
+  across a clock change, *fixed*), F52 (clips dropped at load), F51
+  (names made into paths), and phase 4's F71, F72, F74, F79, F81. Open.
+- **B. Untrusted input.** F48 and F49 (*fixed*), F50 (nested-timeline
+  cycles), F57 (helper buffering), F58 (script rational times), F56
+  (non-finite samples). Open.
+- **C. Trust in the test harness.** F2 (*fixed*), F4 (the hang, to be
+  captured before any change to its suspect), and a runner that checks
+  the run's summary. Open.
+- **D. Representative fixtures.** Generated media and projects in place
+  of licensed footage (decision D7). Open.
+
+## Findings ledger
+
+| ID | Finding | Ph | Category | Sev | Confidence | Resolution | Fix · verification | Gate |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| F1 | Loop region's end edge couldn't be taken | 1 | usability | 5 | reproduced | fixed | `4d9e6481` · fails without | nonblocking |
+| F2 | Event runs ended early and reported success | 1 | test harness | 2 | reproduced | fixed | `85a49bec` · fails without (lldb trace) | blocking |
+| F3 | Convert to Path's refusal said "nil" | 1 | usability | 5 | code-verified | fixed | `98a9a862` · no test | nonblocking |
+| F4 | Whole suite under `UI_EVENTS` can hang | 1 | test harness | 2 | reproduced | open | | blocking |
+| F5 | Tests that fail when the Mac is busy | 1 | test harness | 5 | reproduced | open (part fixed) | `c23427a8` for `ScrubCacheTests` · reproduced at load 14 | nonblocking |
+| F6 | Binaries recorded SDK 15.0 | 1 | packaging | 5 | reproduced | fixed | `193d3e4c` (minimum 26.0) · `otool` | nonblocking |
+| F7 | A clean checkout builds with no Python | 1 | packaging | 3 | reproduced | decision (D3) | | blocking |
+| F8 | A failed export lost the file it replaced | 2 | data safety | 1 | code-verified | fixed | `35d82288` · test | blocking |
+| F9 | A take that couldn't be copied in was deleted | 2 | data safety | 1 | code-verified | fixed | `f2de65a3` · test | blocking |
+| F10 | Outside edit marked seen under Motion Designer locks | 2 | data safety | 1 | code-verified | fixed | `d95d143a` · test | blocking |
+| F11 | Stale background renders of effect inputs | 2 | export | 3 | reproduced | fixed | `7452ceb5` · fails without | blocking |
+| F12 | Waveform and Audio Keys heard silenced clips | 2 | sound | 3 | code-verified | fixed | `b023f30b` · test | nonblocking |
+| F13 | Beat match played a different sound track | 2 | timing | 3 | code-verified | fixed | `b8aa816e` · no test | nonblocking |
+| F14 | Status lines behind the code | 2 | docs | 6 | code-verified | fixed | `14b20a60` | nonblocking |
+| F15 | Logged names read as format strings | 3 | crash | 2 | reproduced | fixed | `e1d78893` · probe, no test | blocking |
+| F16 | Matroska files that crash, hang or overrun | 3 | security | 2 | code-verified | fixed | `1fd07353` · tests and sweep | blocking |
+| F17 | `audio.bin` start overflowed | 3 | crash | 2 | code-verified | fixed | `ca0cd751` · test | blocking |
+| F18 | Edited viewer-copy index deleted any folder | 3 | data safety | 1 | reproduced | fixed | `221d4457` · fails without | blocking |
+| F19 | Linked cache folder emptied | 3 | data safety | 1 | code-verified | fixed | `2305c751` · test | blocking |
+| F20 | Allowed script imported code not allowed | 3 | security | 1 | code-verified | fixed | `d64fd738` · tests (`AMV_PYTHON` run) | blocking |
+| F21 | Expressions could read terminals and home | 3 | security | 1 | reproduced | fixed | `ea881d27` · fails without (`AMV_PYTHON`) | blocking |
+| F22 | Repeated IDs crashed the app | 3 | crash | 2 | code-verified | fixed | `17eb57a1` · test | blocking |
+| F23 | Negative component; package repeats and delays | 3 | crash | 2 | code-verified | fixed | `1aaeaf0b`, `4a8566c8` · test, no test | blocking |
+| F24 | macOS 26 deprecations; sync asset loads | 1 | structure | 6 | reproduced | open | | nonblocking |
+| F25 | Beat Match Confirm writes over a changed map | 2 | data safety | 1 | reported | open | | blocking |
+| F26 | Viewer handle drag puts back a stale clip | 2 | data safety | 1 | reported | open | | blocking |
+| F27 | No lock where `flock` is missing, only a log | 2 | data safety | 1 | reported | open | | blocking |
+| F28 | Provenance rewritten after a failed read | 2 | data safety | 1 | reported | open | | blocking |
+| F29 | Backups ordered by name across a clock change | 2 | data safety | 1 | code-verified | fixed | `27f199a6` · test (rename case) | blocking |
+| F30 | Keyframes drift on speed-ramped clips | 2 | timing | 3 | code-verified | open | | blocking |
+| F31 | The Waveform builds its own mix | 2 | sound | 3 | reported | open | | nonblocking |
+| F32 | Typed value edit leaves rendered stretches stale | 2 | rendering | 3 | reported | open | | nonblocking |
+| F33 | Mono clip's pan dropped silently | 2 | export | 3 | reported | open | | blocking |
+| F34 | Stale Matroska reference movie used | 2 | export | 3 | suspected | open | | nonblocking |
+| F35 | Python console edits the wrong project | 2 | data safety | 3 | reported | open | | blocking |
+| F36 | Render stretch may start between frames | 2 | timing | 3 | suspected | open | | nonblocking |
+| F37 | Open projects can share IDs in app-wide tables | 2 | correctness | 3 | reported | open | | nonblocking |
+| F38 | `TimelinePreviews.shared` serves every project | 2 | performance | 4 | reported | open | | nonblocking |
+| F39 | Browser skim draws as export does | 2 | performance | 4 | reported | open | | nonblocking |
+| F40 | Tape scrub restarts effects every 2 s | 2 | sound | 5 | suspected | open | | nonblocking |
+| F41 | Beat-marker choices in app-wide defaults | 2 | structure | 5 | reported | open | | nonblocking |
+| F42 | Color panel and refusals across windows | 2 | usability | 5 | reported | open | | nonblocking |
+| F43 | Failures nobody hears | 2 | usability | 5 | reported | open | | nonblocking |
+| F44 | Low Power Mode and heat read directly | 2 | test harness | 5 | reported | open | | nonblocking |
+| F45 | Gesture-driven views without event tests | 2 | test harness | 5 | reported | open | | nonblocking |
+| F46 | Logic in `UI/` that belongs elsewhere | 2 | structure | 6 | reported | open | | nonblocking |
+| F47 | Files with more than one job | 2 | structure | 6 | reported | open | | nonblocking |
+| F48 | Numbers no project has crashed on opening | 3 | crash | 2 | code-verified | fixed | `d7d4be2c` · test | blocking |
+| F49 | Text runs past their words trapped | 3 | crash | 2 | code-verified | fixed | `d7d4be2c` · test | blocking |
+| F50 | A timeline holding clips of itself | 3 | crash | 2 | reported | open | | blocking |
+| F51 | Names made into paths without cleaning | 3 | data safety | 3 | reported | open | | blocking |
+| F52 | Clips with a missing source dropped at load | 3 | data safety | 1 | reported | open | | blocking |
+| F53 | A kernel that never ends stalls the GPU | 3 | security | 4 | code-verified | decision (D8) | | nonblocking |
+| F54 | `audio.bin` with billions of levels | 3 | performance | 4 | reported | open | | nonblocking |
+| F55 | One expressions helper for every project | 3 | security | 3 | reported | open | | blocking |
+| F56 | Non-finite expression samples | 3 | data safety | 3 | reported | open | | blocking |
+| F57 | Helper messages buffered without limit | 3 | security | 2 | reported | open | | blocking |
+| F58 | A script's rational time has no bound | 3 | crash | 3 | reported | open | | nonblocking |
+| F59 | Recording an app with permission refused | 3 | usability | 3 | suspected | open | | nonblocking |
+| F60 | Confined code can stat any path | 3 | security | 5 | reported | accepted risk (proposed) | | nonblocking |
+| F61 | Python's licenses not shipped | 3 | release | 1 | code-verified | open | | blocking |
+| F62 | `--pin` trusts the first download | 3 | security | 5 | code-verified | open | | nonblocking |
+| F63 | A save wrote over an outside edit not yet seen | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
+| F64 | Saves and reloads not kept in order | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
+| F65 | Unreadable reload marked seen, then saved over | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
+| F66 | A renamed project's new backups deleted | 4 | data safety | 1 | code-verified | fixed | `27f199a6` · test | blocking |
+| F67 | Moving the open package splits the project | 4 | data safety | 3 | reported | open | | blocking |
+| F68 | A failed Restore says nothing | 4 | data safety | 3 | reported | open | | blocking |
+| F69 | Forget Original deletes before saving | 4 | data safety | 3 | reported | open | | nonblocking |
+| F70 | Errors don't name the project | 4 | usability | 5 | reported | open (part fixed) | `667aaad6` names the reload's | nonblocking |
+| F71 | A failed import deletes a file in the package | 4 | data safety | 1 | reported | open | | blocking |
+| F72 | An export can replace a source media file | 4 | data safety | 1 | reported | open | | blocking |
+| F73 | Backups copy all media off APFS | 4 | performance | 2 | reported | open | | blocking |
+| F74 | Opening a folder marks and locks it first | 4 | data safety | 1 | reported | open | | blocking |
+| F75 | A file gone while open isn't offline | 4 | export | 3 | reported | open | | nonblocking |
+| F76 | An MKV offline at open stays unreadable | 4 | export | 3 | suspected | open | | nonblocking |
+| F77 | Sound-found offsets not snapped to frames | 4 | timing | 3 | suspected | open | | blocking |
+| F78 | Replacement against stale used ranges | 4 | correctness | 3 | suspected | open | | nonblocking |
+| F79 | Replacing a package deletes it first | 4 | data safety | 1 | reported | open | | blocking |
+| F80 | A take moved to a name already taken | 4 | data safety | 5 | reported | open | | nonblocking |
+| F81 | Undo past arrived analysis drops redo and loops | 4 | data safety | 1 | suspected | open | | blocking |
+| F82 | Copied Keyframing effects look hand-edited | 4 | correctness | 3 | reported | open | | nonblocking |
+| F83 | Duplicate Timeline keeps old layer references | 4 | correctness | 3 | reported | open | | nonblocking |
+| F84 | Matte-wipe media not counted as used | 4 | correctness | 3 | reported | open | | nonblocking |
+| F85 | A refused script result reported as kept | 4 | data safety | 3 | reported | open | | nonblocking |
+| F86 | Damaged approval store emptied silently | 4 | usability | 5 | reported | open | | nonblocking |
+| F87 | Naming an edit costs a scene scan | 4 | performance | 4 | suspected | open | | nonblocking |
+| F88 | Fields not saved or reset on reopen | 4 | correctness | 6 | reported | open | | nonblocking |
+
+## Open findings: detail and next action
+
+Every next action's owner is unassigned until the owner says otherwise.
+
+### Phase 1
+
+**F4 — The whole suite under `UI_EVENTS` can hang.** *Expected:* every
+run ends with a summary. *Observed:* one of two full runs after F2's
+fix stopped finishing tests about 31 s in and was still stuck 15 minutes
+later: five event tests waited on the event lock (one held it), and
+`WaveformTests.theSpectrogramShadesItsCellsAndIsEmptyInSilence` never
+finished; two `RenderCacheTests` timed out alongside. Event suites by
+filter, and the suite without `UI_EVENTS`, never hung. *Lead, not
+diagnosis:* the spectrogram reads sound through `WaveformAudio`, whose
+synchronous asset loads are deprecated (F24). *Next:* with the
+checkpoint C runner, reproduce and capture every thread's stack and the
+task tree before any change to `WaveformAudio`; until then run event
+suites by filter (AGENTS.md's "runs them all at once" isn't yet
+reliable).
+
+**F5 — Tests that fail when the Mac is busy.** *Expected:* results
+independent of load. *Observed:* `ScrubCacheTests`' fast drag failed in
+every full run at load 6 (fixed, `c23427a8`: pacing on a clock the test
+drives); still open: `ViewerFramingRedrawTests.thePictureFollowsAScrollAtOnce`
+(66), `ClipBlockInteractionTests.aClickSelectsWithTheArrowAndCutsWithTheBlade`
+(99, 107) once under `UI_EVENTS`, and three `PlaybackSkimTests` that
+pace on real time. *Next:* the same clock for skimming's preroll waits.
+
+**F7 — A clean checkout builds with no Python.** `scripts/python-pin`
+is git-ignored. *Next:* decision D3.
+
+**F24 — Deprecations.** Nine `AVMutableVideoComposition` warnings since
+the minimum became 26 (`ComposedTimeline`, `CompositionPlanning`,
+`PlayheadPrerenderer`), synchronous `tracks(withMediaType:)` and
+`formatDescriptions` in `WaveformAudio.swift:80–81`, and
+`BrowserPanel.swift:118`'s drop result now unused. *Next:* move to
+`AVVideoComposition.Configuration` and `load(_:)`, the latter after
+F4's capture.
+
+### Phase 2
+
+**F25 — Beat Match's Confirm writes over a beat map changed
+meanwhile.** *Expected:* Confirm asks, or merges, when the song's map
+changed since the panel opened. *Observed (reported):* it writes the
+draft without comparing (`BeatMatchController.swift:85–93`); a script,
+a reload or another timeline window can change the map in between.
+*Next (A):* session test, then compare with the map the panel opened on.
+
+**F26 — A viewer handle drag puts back the clip as it was at its
+start.** *Observed (reported):* `ViewerHandlesOverlay.swift:839` commits
+the whole clip from drag start; a script finishing during the held drag
+(`ScriptRunner.swift:159` sees no `editCount` change while writes are
+held) has its change to that clip undone on release. *Next (A):* a
+`ProjectState` test of hold, outside write, release; commit only the
+fields the drag changed.
+
+**F27 — No lock where `flock` is missing.** *Observed (reported):*
+`ProjectLock.swift:42` opens without a lock and only logs it; two Macs
+on a share can both save one project, and `trashPackage(checkingLock:)`
+can trash one open elsewhere. *Next (A):* tell the person on opening,
+and refuse trashing without a lock.
+
+**F28 — Provenance rewritten from nothing after a failed read.**
+*Observed (reported):* `readProvenance` returns `[:]` on any failure
+(`ProjectStore+Provenance.swift:18–46`) and the next record writes only
+the new kind, dropping `.originalScores` for good. *Next (A):* refuse
+to write when the file exists but can't be read.
+
+**F30 — Volume and effect keyframes drift on speed-ramped clips.**
+*Observed (code-verified):* `CompositionFlattening.swift:76–83` gives a
+clip's mix stage the speed at its in point, so on a ramp keyframes are
+heard late in playback and export alike, while the volume line shows
+them in place. *Next:* the mix following the clip's time map; a test
+that keys a step on a ramped clip and finds it in `MixReading`.
+
+**F31 — The Waveform builds its own mix.** Leaves out pan, fades and
+crossfades, the dynamics effects and Keep Pitch, and indexes a
+late-starting track from its first sample. Documented in
+[waveform-effect.md](waveform-effect.md). *Next:* share the mix's stages,
+or accept with the documentation as it is.
+
+**F32 — A typed value edit while paused leaves rendered stretches
+stale** (`PlaybackModel.showValues`, `:304`); export is right. *Next:*
+test `playedUsesRenders` after `showValues`.
+
+**F33 — A mono clip's pan is dropped silently** when its stereo copy
+can't be made (`CompositionExporter.swift:150–156`,
+`StereoProxies.swift:126`). *Next:* fail the export with the reason.
+
+**F34 — A stale Matroska reference movie is used** when remaking it
+fails (`MatroskaMedia.swift:48`). *Next:* verify; refuse rather than
+read moved bytes.
+
+**F35 — The Python console edits the wrong project** with a Timeline
+window in front (`ScriptConsole.swift:67–72`). *Next:* route by the key
+window's session.
+
+**F36 — A render stretch may start between frames**
+(`SegmentRenderer.swift:26`). *Next:* compare exported frames of an
+animated stretch off the grid with and without the cache (phase 7).
+
+**F37 — Open projects can share IDs** (Save As keeps them all) while
+`DetectedBeats`, `TimelinePreviews`, `EqualizerSpectrum` and
+`ExpressionRunner.running` are keyed by them app-wide. *Next:* key by
+session.
+
+**F38–F47.** `TimelinePreviews.shared` drops another project's previews
+(`TimelinePreview.swift:141–229`); browser skim and effect thumbnails
+draw as export does (`TimelinePreview.swift:40`,
+`EffectThumbnails.swift:103`); tape scrub restarts the sound effects
+every 2 s piece (`TapeScrub.swift:193–198`, suspected); beat-marker
+choices live in app-wide defaults (`TimelineView.swift:113`); closing
+any editor window ends the color panel and refusals show in whichever
+window is key (`EditorView.swift:238`); failures nobody hears
+(`MediaReplacer.swift:127`, `Waveform.swift:174`, `Spectrogram.swift:254`,
+Save As folder listing, `PresetStore.swift:89`, `BlankFrame.swift:33`,
+`EffectFolderWatcher.swift:44`); `ScrubCache.swift:150` and
+`RenderScheduler.swift:246–250` read Low Power Mode and heat directly;
+gesture-driven views without an `EventHarness` suite (`TimelineRuler`,
+`BeatMatchWaveform`, `ToneGraph`, `EqualizerGraph`, the lanes, the
+transition curve and gradient editors, `NumericField` scrubbing, the
+tape scrubber, the scene splitter); logic in `UI/` (the export queue,
+`MediaReplacementController`'s change detection, `MediaImportFlow`,
+`TimelineEditorSurface.handle(_:)`); and files with more than one job
+(`Keyframing`, `AssetAnalysis`, `EffectPackageStore`, `ClipTransition`,
+`BeatMatchSession`). *Next:* phases 6, 9, 10 and 11, in that order.
+
+### Phase 3
+
+**F50 — A timeline holding clips of itself** loads; rendering refuses
+it, but the Waveform's walk (`WaveformEffect.swift:548`) has no visited
+set and makes N^8 calls. *Next (B):* refuse cycles at load, through
+effect inputs that take a timeline too.
+
+**F51 — Names made into paths without cleaning:** Duplicate of a package
+named `../../Desktop/x`, Make Package, backups named for the project
+(`EffectPackageStore.swift:386–425`, `ProjectBackups.swift:105–209`).
+Each only creates and never overwrites, so far as read. *Next (A):*
+clean every name used as a path with one function, as
+`PresetStore.freeID` does.
+
+**F52 — Clips whose source can't be resolved are dropped at load**
+(`ProjectStore+Load.swift:85`, `compactMap`), and the next save loses
+them. A missing *file* doesn't lead here (it loads offline); a missing
+*asset entry* or nested timeline does. *Next (A):* refuse the file
+naming the clip, rather than drop it.
+
+**F53 — A kernel that never ends** stalls the GPU until the watchdog,
+every frame; a Swift cancellation doesn't stop submitted work. *Next:*
+decision D8.
+
+**F54 — `audio.bin` with billions of levels** asks for memory in
+proportion (its count must equal its length). *Next:* cap the levels.
+
+**F55 — One expressions helper serves every project,** with real
+builtins: approved code in one can patch the helper's caches or leave a
+thread answering later runs (`expressions.py:311,340`). A helper per
+project limits it across projects, not between runs of one. *Next:*
+restart the helper after a run that leaves threads, and per project.
+
+**F56 — Non-finite expression samples** are counted, not checked, in the
+app (`PythonHelper.swift:167–176`); NaN keyframes would fail saving.
+*Next (B):* refuse non-finite samples.
+
+**F57 — Helper messages are buffered without limit:** payload sizes up
+to 9×10^15 (`ScriptMessages.swift:53–57`), frames queued while no run
+reads, the buffer copied per frame (`PythonHelper.swift:352`). *Next
+(B):* budgets: payload at most what the request asked for, frames
+dropped outside a run, a read offset instead of copies.
+
+**F58 — A script's time as `[n, d]` has no bound**
+(`ProjectBridge.swift:506–515`), unlike one in seconds. *Next (B):* the
+same bound as `TimeEntry`.
+
+**F59 — Recording another app with its permission refused** probably
+gives a silent take with no message (`AudioCapture.swift:79–116`).
+*Next:* try with `tccutil reset`.
+
+**F60 — Confined code can stat any path** (`file-read-metadata`), and
+whether `cfprefsd` refuses it a write is untested. Proposed as accepted
+risk: an expression learns a file exists and its size, and can send out
+only numbers.
+
+**F61 — Python's licenses aren't shipped:** nothing copies the CPython
+build's license or those of what it bundles (OpenSSL, SQLite, libffi,
+zlib). *Next:* copy them into the bundle and list them in an About
+window or a notices file.
+
+**F62 — `--pin` trusts the first download:** it takes the hash from the
+same release it fetches. *Next:* check it against a second source, or
+accept with D3.
+
+### Phase 4
+
+**F67 — Moving or renaming the open package splits the project.**
+Nothing notices the move; the next save's `preparePackage` recreates a
+package at the old path with `Media/` paths into nothing, unlocked
+(`ProjectStore.swift:101–108`, `ProjectSession.swift:305,387`). *Next:*
+refuse to save where the package was moved from, or follow it.
+
+**F68 — A failed Restore says nothing** (`ProjectSession.swift:223`,
+`try?`): the saved version opens, and the first save makes the autosave
+look older, so it is never offered again. *Next:* say so and keep
+offering it.
+
+**F69 — Forget Original deletes `Reference/<id>` before `project.json`
+is written** (`ProjectStore+Save.swift:91–94` against `:105`); a failed
+write leaves the file saying the original is kept. *Next:* delete after.
+
+**F70 — Errors don't name the project** (`ProjectSession.swift:259`);
+the reload's alert now does (`667aaad6`).
+
+**F71 — A failed import deletes a file already in the package.**
+*Observed (reported):* `copyIntoPackage` returns the source itself when
+it is inside the package, and the import's `catch` removes that "copy"
+(`MediaImportFlow.swift:66–69,85`, `ProjectStore+MediaConsolidation.swift:79`):
+a file in a subfolder of `Media/`, one already used, or one through a
+linked folder is deleted for good on any import error. *Next (A):*
+verify with a test, then delete only a file the import made.
+
+**F72 — An export can replace a source media file.** Only other
+exports' destinations are checked (`ExportDestinations.conflict`), so
+exporting over `clip.mov` that the timeline plays reads it while
+rendering and then replaces it; stems overwrite same-named files in a
+chosen folder unasked. *Next (A):* refuse a destination any clip, effect
+input or matte uses, and ask before replacing stems.
+
+**F73 — Backups copy all of `Media/` off APFS** every 15 minutes, up to
+ten kept, holding saves behind them (`ProjectBackups.swift:145–166`).
+*Next:* skip media, or warn, where `volumeSupportsFileCloning` is false.
+
+**F74 — Opening any folder with a `project.json` marks it a package and
+writes `.lock` into it before the format is checked**
+(`ProjectSession.swift:214–217`). *Next (A):* mark and lock after the
+load succeeds.
+
+**F75 — A file that disappears while open isn't treated as offline:**
+`MediaTrackCache` keeps the asset (`MediaReplacementController.swift:154–181`),
+so the viewer and export fail with a generic error. *Next:* drop the
+cache entry for missing files too; a test that deletes one.
+
+**F76 — An MKV offline at open stays unreadable after it returns:** its
+reference movie was removed at load and nothing remakes it until a save
+(`ProjectStore+Load.swift:187`, `MatroskaMedia.swift:44–48`). *Next:*
+make it when the file returns.
+
+**F77 — Offsets found from sound aren't snapped to frames:** in
+hundredths of a second, a one-frame shift at 24 fps (41.7 ms) comes back
+as 40 ms, and every cut then shows the frame before
+(`MediaAlignment.swift:79–81`, `MediaReplacer.swift:146`). *Next:* a
+test with a candidate delayed exactly one frame; snap to the candidate's
+frame grid.
+
+**F78 — Replacement against stale used ranges:** `used` is taken before
+a slow analysis and not taken again; spare frames under dissolves aren't
+counted; effect inputs bound by file time (`MediaReplacementController.swift:410–427`,
+`EffectInputs.swift:65`). *Next:* verify.
+
+**F79 — Replacing an installed effect package deletes the old one before
+copying the new** (`EffectPackageStore.swift:482–484`), losing a
+package the person wrote if the copy fails. *Next (A):* copy beside,
+then swap in.
+
+**F80 — A take is moved to a fixed name** (`AudioRecorder.swift:138`);
+two in one second throw and leave it in `/tmp` without saying.
+*Next:* a unique name.
+
+**F81 — An undo past newly arrived analysis records a new step, drops
+the redo stack and can't go further back.** *Observed (suspected,
+strong):* arriving beats update only the history's baseline
+(`EditorView.swift:322–356`); after an undo, `refreshKeyframing(after:)`
+regenerates keyframes from the stale snapshot, which registers as a new
+step. *Next (A):* reproduce with a session test and a real
+`UndoManager`; refresh inside the restore, or guard it as `followMusic`
+is.
+
+**F82 — A copied clip's Keyframing effects look hand-edited:**
+`duplicated()` doesn't recompute `writtenPrint`
+(`ClipPasting.swift:26–60`; `duplicateEffect` does). *Next:* recompute.
+
+**F83 — Duplicate Timeline doesn't remap references inside effects:**
+`beatLayer`, Audio Keys' `audioSource`, Waveform `listensTo`, expression
+`reads` (`TimelineTree.swift:99–124`). *Next:* remap as `reach` is.
+
+**F84 — Matte-wipe media isn't counted as used** by paste or removal
+(`PasteSources.swift:32–45`, `ItemUses.swift:37–100`). *Next:* count it.
+
+**F85 — A script result refused at the end is reported as kept,** and
+its step name sticks to the next edit (`ScriptRunner.swift:153–161`).
+*Next:* report the refusal; clear the name.
+
+**F86 — A damaged approval store is emptied silently** and the next
+approval writes over it (`CodeApproval.swift:54–58,176–185`). *Next:*
+keep it aside and say so.
+
+**F87 — Naming an edit runs a scene scan** of the clip's whole file per
+keystroke (`ProjectChange.step` before the merge check,
+`EditorView.swift:410–412`). *Next:* measure on a dense fixture (D).
+
+**F88 — Fields not saved or reset on reopen:** an animated value's
+`value`, `BeatMap.usesSections` without sections, held package controls
+(intended); clip, effect and control IDs not checked for repeats at
+load. *Next:* decide which matter; a round-trip test over generated
+projects (phase 11).
+
+## Fixed findings: detail
+
+**F1 — The loop region's end edge couldn't be taken.**
+`UI/Components/LoopBar.swift:177`. The edge handles straddle the chip's
+ends, but the region's content shape was the chip's own rectangle, which
+limits hits for everything inside it: the outer half of each handle was
+dead and a press exactly on the end edge reached nothing.
+`LoopBarInteractionTests` failed its edge click and drag on every
+`UI_EVENTS` run, hidden by F2. The content shape now reaches half a
+handle past each end, sideways only.
+
+**F2 — Event runs ended early and reported success.** A test pressed
+Space on a focused `NSButton`; its click flash left a `CFRunLoopStop`
+that, landing on the main run loop Swift Testing runs on, made the
+process `exit(0)` without a summary, so later tests never ran and
+printed failures still exited 0. Traced in `lldb` on `CFRunLoopStop` and
+`exit`. The button's cell now counts the click instead of flashing.
+
+**F3 — Convert to Path's refusal said "nil".**
+`EffectsPanelEffects.swift:329` interpolated the optional `Effect.name`;
+it uses `displayName`.
+
+**F6 — The binaries recorded SDK 15.0** (`LC_BUILD_VERSION`), the
+deployment target, though built with the 27.2 SDK. With the minimum at
+26.0 they record 26.0: behavior "linked on or after 26" is had, behavior
+new in 27 isn't. Residual, nonblocking.
+
+**F8 — A failed export lost the file it was replacing.** Movie, WAV Mix
+and stems exports deleted the destination before writing. Each writes
+beside it (`Export/ExportFile.swift`) and swaps in only when whole;
+tests stop a mix and a stems export halfway.
+
+**F9 — A take that couldn't be copied into the project was deleted** by
+a `defer`. It is kept in the Recordings folder and the error names it.
+
+**F10 — An outside edit was marked seen while the Motion Designer
+refused it,** and the next save wrote over it. It waits until the locks
+go.
+
+**F11 — Stale background renders for effect inputs.** The render key
+never read `DrawClip.inputs`; it names the input's file, stamp and
+played stretches, or describes the nested timeline. The test fails three
+ways without the fix.
+
+**F12 — The Waveform and Audio Keys heard silenced clips;** one check,
+`EditingProject.soundIsHeard`, states the mix's rule.
+
+**F13 — Beat match played every enabled sound track** while its
+waveform, the timeline and export use the first. It plays the first.
+
+**F14 — Status lines behind the code,** corrected in the docs.
+
+**F15 — Logged names were read as format strings.** Thirteen `NSLog`
+calls interpolated into the format; twelve `%@` in a project's name
+crashed a probe with a bus error. Each logs `"%@"` with the text as its
+argument.
+
+**F16 — Matroska files that crash, hang or overrun the index:** lacing
+running past its block (a trap), children bounded by the file rather
+than their parent, fixed lacing over nothing, a million tracks with a
+linear lookup, a timestamp scale of 0, PCM samples past the file. Each
+is refused or not indexed; a sweep of every cut and changed byte of a
+small laced file reads or refuses, never traps. Not yet run under the
+address sanitizer.
+
+**F17 — `audio.bin`'s start overflowed** (Int64.min); starts beyond
+2^40 windows are damage.
+
+**F18 — An edited viewer-copy index could delete any folder**
+(`../../..`); only plain names with times that fit are read. The test's
+sibling file was deleted without the fix.
+
+**F19 — A cache folder linked out of the package was emptied;** both
+clean-ups clear only a folder resolving inside the package.
+
+**F20 — An allowed script could import code no one allowed.** Allowing
+covers the name and hash of every other file in the script's folder, and
+the helper forgets a script's own modules when it ends. Residual, open
+under F55 and the plan's approval criteria: links and imports reaching
+outside the folder, the interpreter's start-up (`site`, `.pth`), and
+threads outliving a run aren't covered.
+
+**F21 — Expressions could read terminals and the home folder.** `/dev`
+is gone from the readable list, an installation that is or holds the
+home folder is left out, and fork, `posix_spawn` and `subprocess` of the
+interpreter are tested refused.
+
+**F22 — Repeated IDs crashed the app;** a file repeating a media file's,
+timeline's, layer's or section's ID is refused, naming which.
+
+**F23 — A negative keyframing component trapped, and package repeats and
+delays trapped or hung;** components outside the control write nothing,
+passes are finite and at most 256, a delay too far draws the present.
+
+**F29 and F66 — Backups ordered by name.** Outside backups begin with the
+project's name, so after a rename each new one was pruned as soon as it
+was written; package autosaves were named in local time, which repeats
+an hour when clocks go back. Outside backups are ordered by the time in
+their `backup.json`; autosave names are in UTC.
+
+**F48 and F49 — Numbers no project has, and text runs past their
+words,** crashed on opening or the first redraw. Times beyond 10^9 s are
+refused where read; frame sides outside 1 to 16,384, frame rates outside
+0 to 1,000, beat positions past 2^20 and runs outside their words are
+refused at load with a message.
+
+**F63, F64 and F65 — Saves and outside edits.** A save half a second
+after an edit came before the two-second check and wrote over an outside
+edit; saves and reloads shared a busy flag the save cleared mid-reload;
+and a file that couldn't be read was marked seen and then saved over. A
+save now waits for a reload and takes a change first, asking while there
+are unsaved edits; a change it can't take is never written over by an
+automatic save and Save asks; an unreadable file is read again once and
+then told, naming the project.
+
+## Decisions for the owner
+
+- **D1. macOS 26 and later.** Decided by the owner; done (`193d3e4c`).
+- **D2. Apple silicon only.** Decided by the owner; `build-app.sh`
+  builds arm64 and checks it. The CPU fallback for a missing Metal
+  device stays, unsupported, rather than crash a virtual machine.
+- **D3. Commit `scripts/python-pin`?** Recommended: yes, for builds
+  that bundle the same Python from any checkout (F7, F62).
+- **D4. Pin CI's actions by commit?** Recommended: yes.
+- **D5. What "Always Run This Project's Scripts" trusts.** As built it
+  trusts whatever later arrives at the project's ID and path, a `git
+  pull` or a synced folder included; ID and path identify a project but
+  don't vouch for its later code. Either keep it, with the prompt saying
+  it trusts the project's future changes, or ask again when a script
+  changed outside the app.
+- **D6. App Sandbox.** Not adopted. Adopting it needs security-scoped
+  bookmarks for media in place and on other drives, export destinations
+  and the interpreter, and another way to confine expressions, as
+  `sandbox-exec` can't run inside it. Confining expressions protects one
+  boundary, not the app. *Residual risks without it:* media handed to
+  system frameworks (AVFoundation, VideoToolbox, ImageIO) is parsed
+  with the person's full access; package kernels are compiled and run;
+  the app's own file operations reach anything the person can; approved
+  scripts run unconfined by design. *Controls in its place:* the app's
+  own parsers bounded and swept (F16, F17, F48), path checks on deletion
+  (F18, F19), confined expressions (F21), approval of the code run
+  (F20), no network. Recommended: defer, as a recorded product decision
+  accepting those risks, and reconsider before distributing widely.
+- **D7. Review projects.** Licensed footage replaced, for now, by
+  generated fixtures (checkpoint D); real footage for a later
+  qualitative check.
+- **D8. Third-party kernels.** Whether to warn on installing a package
+  from outside, since no time limit can be relied on (F53).
+
+## Phase records
+
+### Phase 1 baseline (historical, at `4387fb11`)
+
+What phase 1 measured, as it was then. Since changed: the minimum is
+26.0 and builds are arm64 only (D1, D2); F1 to F3 are fixed; the Mac's
+load varied in later runs (F5).
 
 | | |
 | --- | --- |
@@ -25,608 +627,59 @@ Baseline commit `4387fb11` (Merge the code review plan), 2026-11-26.
 | Swift | 6.4.2 (swiftlang-6.4.2.1.9) |
 | Python | Homebrew 3.15.2 for `AMV_PYTHON`; the system's 3.9.6 is older than the helper's 3.11 minimum |
 
-### The project at a glance, checked
-
-Every row of the plan's table still holds: macOS 15.0 minimum in
-`Package.swift` and `Info.plist`, ad hoc signing with no entitlements or
-hardened runtime, arm64 only, no `URLSession` or `Network`, 531 Swift
-source files and 295 test files, the source and test counts per area in
-phase 11's table. Two counts elsewhere in the plan need correcting:
-
-- **Effect packages:** `Resources/Effects/` holds 78 folders: the 77
-  looks that ship and the hidden `.template.amveffect` that new
-  packages are made from (`EffectPackageStore.templateName`).
-- **`print` calls:** none in Swift. The plan's phase 3 says 14; the
-  only two textual matches are inside Python source strings
-  (`ScriptLibrary.swift:111`, `PythonRuntime.swift:85`). The 22 `NSLog`
-  and 279 `try?` are as stated, and so are phase 6's 43
-  `@unchecked Sendable`, 26 `nonisolated(unsafe)`, 15 `Task.detached`
-  and 2 `DispatchQueue.global`.
-
-### Builds
+At the baseline the plan's facts table held (then: macOS 15.0 minimum,
+ad hoc signing without entitlements or hardened runtime, no network
+APIs, 531 source and 295 test files), except that `Resources/Effects/`
+holds 78 folders (77 looks and the hidden `.template.amveffect`) and
+Swift has no `print` calls (the two matches are in Python strings).
 
 | Build | Result | Time (wall) |
 | --- | --- | --- |
 | `swift build`, clean | Passed | 26 s |
 | `swift build -c release`, clean | Passed | 2 min 23 s |
 | `swift build -c release -Xswiftc -enable-testing --build-tests` | Passed | 6 min 6 s |
-| `scripts/build-app.sh` (release) | Passed; 43 MB bundle, arm64, ad hoc signature verifies with `codesign --verify --deep --strict` | 2 min 21 s |
-| `CONFIGURATION=debug scripts/build-app.sh` | Passed | 3 s (already built) |
+| `scripts/build-app.sh` (release) | Passed; 43 MB, arm64, ad hoc signature verifies | 2 min 21 s |
 
-`Packaging/Info.plist` passes `plutil -lint`, and its three exported
-types match `ProjectStore.packageTypeIdentifier`,
-`EffectPackageStore.packageTypeIdentifier` and
-`ProjectBackups.typeIdentifier`. All three are declared as packages,
-which `.amvbackup` is (a folder, `ProjectBackups`).
+`Packaging/Info.plist` lints, and its three exported types match the
+code's identifiers. Seven compiler warnings then (F3, F24, and two
+harmless: capture warnings at `TimelineEditorSurface.swift:445`, a
+`var` at `WaveformDrawing.swift:248`); ten unused results in
+`KeyingTests` (harmless); ten CoreMedia low-timescale warnings per run
+from `SceneReviewTests.swift:261`, on purpose.
 
-### Compiler warnings
+**Tests then:** 2,716 tests in 404 suites passed three times as CI runs
+them (41.5 to 43.4 s, 211 skipped in gated suites); `AMV_PYTHON` 20
+passed, the helper's Python 52 passed on 3.15; `SNAPSHOT_DIR` 100 passed
+(143 pictures, not yet looked at); `UI_EVENTS` failed (F1, F2), then
+passed by filter (89 tests) and hung once whole (F4). The suite is now
+2,724 tests and more.
 
-The same seven in debug and release, with none from `sandbox-exec`
-(it is started as a program, not called as an API):
+**Benchmarks (release), not representative** without review projects:
 
-| Kind | Where | Verdict |
+| `RenderThroughputBenchmark` (16 s, 1080p, 24 fps) | Fastest s | fps |
 | --- | --- | --- |
-| Optional interpolated into text | `UI/Effects/EffectsPanelEffects.swift:329` | A defect, now fixed (finding 3) |
-| Deprecated synchronous `tracks(withMediaType:)` and `formatDescriptions` | `Rendering/Compositor/WaveformAudio.swift:80`, `:81` | Open. Blocking asset loads on a global queue; phase 6 should move them to `load(_:)` |
-| `weak` capture differs from implicit strong capture (×3) | `UI/Editor/TimelineEditorSurface.swift:445` | Not a leak: the outer closure is `onAppear`'s, held by SwiftUI, and `onDisappear` clears `drawWithPen`. Worth silencing |
-| `var` never mutated | `Rendering/Compositor/WaveformDrawing.swift:248` | Cosmetic |
+| blur, 1 at once | 2.27 | 169.0 |
+| blur, export without cache | 1.95 | 196.8 |
+| motion, 1 at once | 6.96 | 55.1 |
+| motion, export without cache | 6.43 | 59.8 |
 
-The test target adds ten "result unused" warnings in
-`Tests/.../Rendering/KeyingTests.swift` (388 to 477): `masked(_:)`
-returns the clip's ID, which those tests don't need; they check pixels,
-so nothing is left unchecked. It wants `@discardableResult`.
+`EdgeTransitionsBenchmark`: `effect(at:)` 14.9 ns, `transitionFrame(at:)`
+110.3 ns a frame, `TransitionFrame.key` 255.9 ns.
 
-At run time CoreMedia logs ten "error introduced due to very low
-timescale" warnings per run. They come from `SceneBoundaryTests`
-(`SceneReviewTests.swift:261`), which makes manual cuts at timescale 24
-from random seconds on purpose; they aren't from the app.
+`UIResponsivenessBenchmark` (main thread, ms a step, median / max):
+value drags 0.2 to 3.1 / under 7; step-frame 4.2 / 15.3; nudge-clip
+46.7 / 57.3; zoom 15.9 / 19.4; busy-zoom 61.8 / 66.5; busy zoomed-in
+zoom 100.8 / 153.1; busy zoomed-in step-frame 5.4 / 72.0 (a stall every
+twelfth step). The zooms and nudges are phase 9's first suspects.
 
-### Tests
+### Phases 2 to 4
 
-- **As CI runs them**, three times
-  (`swift test --experimental-maximum-parallelization-width 8`): 2,716
-  tests in 404 suites passed each time, in 41.5, 41.7 and 43.4 s; 211
-  tests skipped, all in gated suites. None of the three load-sensitive
-  audio tests in [loose-ends.md](loose-ends.md) (`ScrubAudioTests`,
-  `DetachAudioTests`, `LoudnessMasteringTests`) failed, here or in the
-  two full runs with `UI_EVENTS`.
-- **`AMV_PYTHON`** (`PythonHelper|Confinement`): 20 tests in 3 suites
-  passed. The helper's Python tests: 52 passed on 3.15; on the system's
-  3.9 they fail with `Unknown option: -P`, as expected below the 3.11
-  minimum that `PythonRuntime.oldestVersion` enforces in the app.
-- **`SNAPSHOT_DIR`**: 100 tests passed and wrote 143 pictures (kept for
-  phase 10, not looked at yet).
-- **`UI_EVENTS`**: failed at the baseline in two ways, findings 1 and
-  2. After their fixes the event suites by filter
-  (`InteractionTests|FieldTextSelectionTests|TextEditEnding`) pass: 89
-  tests in 11 suites, 50 s. The whole suite with `UI_EVENTS` passed once
-  (2,716 tests, 77 s) and hung once (finding 4).
-
-### Benchmarks (release)
-
-The baseline for phase 9, on the Mac above, plugged in.
-
-**`RenderThroughputBenchmark`** (16 s of 1080p at 24 fps, three runs):
-
-| Workload | How | Fastest s | Median s | fps | First piece s |
-| --- | --- | --- | --- | --- | --- |
-| blur | 1 at once | 2.27 | 2.28 | 169.0 | 0.56 |
-| blur | 2 at once | 2.13 | 2.21 | 180.5 | 1.09 |
-| blur | 3 at once | 2.26 | 2.27 | 170.1 | 1.70 |
-| blur | export, no cache | 1.95 | 1.98 | 196.8 | |
-| motion | 1 at once | 6.96 | 7.03 | 55.1 | 2.01 |
-| motion | 2 at once | 6.17 | 6.30 | 62.2 | 3.45 |
-| motion | 3 at once | 6.41 | 6.50 | 59.9 | 4.95 |
-| motion | export, no cache | 6.43 | 6.44 | 59.8 | |
-
-**`EdgeTransitionsBenchmark`** (300 frames, 60 of them a cube):
-`effect(at:)` 14.9 ns a frame, `transitionFrame(at:)` 110.3 ns a frame,
-`TransitionFrame.key` 255.9 ns a key.
-
-**`UIResponsivenessBenchmark`** (ms a step on the main thread, 85
-steps; without `AMV_PROJECT`, since there are no review projects yet):
-
-| Scenario | Median | p90 | Max |
-| --- | --- | --- | --- |
-| shape-size | 0.6 | 0.8 | 0.9 |
-| color-exposure | 1.5 | 1.9 | 2.4 |
-| transform-position | 1.4 | 1.7 | 2.2 |
-| keyframed-scale | 3.1 | 3.4 | 3.7 |
-| wave-height | 1.6 | 2.0 | 2.7 |
-| kaleidoscope-angle | 1.6 | 2.1 | 2.5 |
-| feedback-scale | 2.5 | 4.6 | 6.2 |
-| volume | 0.2 | 0.3 | 0.9 |
-| step-frame | 4.2 | 6.5 | 15.3 |
-| step-ten-frames | 8.3 | 8.9 | 11.2 |
-| step-frame-library | 8.3 | 8.8 | 9.9 |
-| step-frame-no-panel | 4.6 | 6.6 | 8.0 |
-| step-frame-inspector | 5.5 | 6.3 | 8.0 |
-| nudge-clip | 46.7 | 51.5 | 57.3 |
-| zoom | 15.9 | 17.1 | 19.4 |
-| busy-zoom | 61.8 | 63.1 | 66.5 |
-| busy-zoomed-in-zoom | 100.8 | 108.4 | 153.1 |
-| busy-zoomed-in-step-frame | 5.4 | 10.6 | 72.0 |
-| busy-zoomed-in-nudge-clip | 32.4 | 36.7 | 38.5 |
-| busy-step-frame | 5.3 | 5.6 | 11.6 |
-| busy-nudge-clip | 31.4 | 35.9 | 37.9 |
-| long-zoom | 10.9 | 11.2 | 11.4 |
-| long-zoomed-in-zoom | 9.1 | 11.7 | 12.5 |
-| long-nudge-clip | 24.4 | 27.5 | 28.7 |
-
-Value drags stay far inside a frame. Zooming a busy timeline (62 ms,
-and 101 ms zoomed in) and nudging a clip (24 to 47 ms) take several
-frames a step, and stepping a frame zoomed in on a busy timeline
-stalled every twelfth step (37 to 72 ms against a 5.4 ms median). These
-are phase 9's first suspects.
-
-### Findings
-
-1. **The loop region's end edge couldn't be taken. (Phase 1, `UI/`,
-   severity 5; failing at the baseline; fixed in `4d9e6481`.)**
-   `UI/Components/LoopBar.swift:177`. The edge handles straddle the
-   chip's ends, but the region's content shape was the chip's own
-   rectangle, and a content shape limits hits for everything inside it.
-   The outer half of each handle was dead, and a press exactly on the
-   end edge reached nothing: no select, no resize. Only a 3-point strip
-   just inside the end could be grabbed. Seen as
-   `LoopBarInteractionTests` failing `aClickSelectsAndADragMoves` (84)
-   and `anEdgeDragResizesAndSnaps` (101) on every run with
-   `UI_EVENTS=1`; the suite was added with that failure and its runs
-   were hidden by finding 2. The content shape now reaches half a handle
-   past each end, sideways only; the suite passes.
-
-2. **Event runs ended early and reported success. (Phase 1, tests,
-   severity 2 for the harness; failing at the baseline; fixed in
-   `85a49bec`.)**
-   `KeyframeDesignerInteractionTests.spaceLeavesFocusedButtonsAloneButPlaysFromTheGraph`
-   presses Space on a focused `NSButton`. The button's click flash runs
-   a nested event loop that leaves a `CFRunLoopStop` behind; when it
-   landed on the main run loop, which Swift Testing's main actor runs
-   on, `CFRunLoopRun` returned and the process called `exit(0)` without
-   a summary. `UI_EVENTS=1 swift test`, and the event suites by filter,
-   stopped right after that suite: tests still waiting for the event
-   lock never ran, and failures already printed (finding 1) still left
-   the exit status 0. Traced in `lldb` with breakpoints on
-   `CFRunLoopStop` and `exit`. The button now has a cell that counts the
-   click instead of flashing, which also checks that Space reached it.
-
-3. **Convert to Path's refusal said "nil". (Phase 1, `UI/`, severity 5;
-   at the baseline; fixed in `98a9a862`.)**
-   `UI/Effects/EffectsPanelEffects.swift:329` interpolated
-   `Effect.name`, which is nil until the effect is renamed: the notice
-   read "“nil” has no size at the playhead", or
-   "“Optional("Rect 2")”…" once renamed. It uses `displayName` now. No
-   test: the text is built inside a menu button's action.
-
-4. **The whole suite with `UI_EVENTS` can hang. (Phases 6 and 11,
-   tests, severity 2; open; hidden at the baseline by finding 2.)**
-   One of two full runs after the fixes stopped finishing tests about
-   31 s in and was still stuck 15 minutes later. Five event tests, one
-   from each of five suites, were waiting on the event lock (so one of
-   them held it and never finished), and
-   `WaveformTests.theSpectrogramShadesItsCellsAndIsEmptyInSilence`, a
-   synchronous test off the main actor, never finished either. Two
-   `RenderCacheTests` timed out waiting for a render alongside. The
-   event suites by filter and the suite without `UI_EVENTS` never hung.
-   AGENTS.md's "`UI_EVENTS=1 swift test` runs them all at once" is
-   therefore not yet reliable; run the event suites by filter until this
-   is found. A lead, not a diagnosis: the spectrogram reads sound through
-   `WaveformAudio`, whose synchronous asset loads are deprecated (see
-   the warnings above).
-
-5. **Tests that fail when the Mac is busy. (Phases 6 and 11, tests,
-   severity 5; open; at the baseline.)**
-   `ScrubCacheTests.aFastDragOverKeptFramesShowsThemAndLandsExactly`
-   (`currentTime < 1.6` at 49) paces its seeks with 10 ms
-   `Task.sleep`s on the main actor and expects the scrub cache to take
-   them for a fast drag; a busy main actor or Mac stretches the sleeps
-   and the player seeks. It passed in the three runs above and five
-   times alone, then failed in four of four full runs later in the day,
-   with the load average near 6 from other work on the Mac. Two of
-   those runs were on the baseline's sources, so the fixes aren't the
-   cause; one of them also failed
-   `ViewerFramingRedrawTests.thePictureFollowsAScrollAtOnce` (66). In
-   one full run with `UI_EVENTS`,
-   `ClipBlockInteractionTests.aClickSelectsWithTheArrowAndCutsWithTheBlade`
-   (`calls.selects == 1` at 99 and 107) failed once too. The scrub
-   cache's pace wants a clock the test controls (`ManualClock`), as the
-   plan's testability item asks. *The scrub cache test is fixed:
-   `PlaybackModel` paces scrubbing on a `PaceClock`, the continuous
-   clock in the app and a `ManualClock` in the test, which then passed
-   in a full run with the load average near 14, after failing the
-   project's pre-commit hook twice at 6. The other two remain open,
-   with the `PlaybackSkimTests` that pace on real time.*
-
-6. **The binaries record SDK 15.0. (Phases 1 and 12, packaging,
-   severity unknown; open.)** `otool -l` shows `LC_BUILD_VERSION` with
-   `minos 15.0` and `sdk 15.0` for `.build/debug`, `.build/release` and
-   the bundled app, though they are compiled against `MacOSX27.2.sdk`
-   (Xcode's own binary records `sdk 27.2`). AppKit and SwiftUI choose
-   some behavior by the SDK an app was linked against, so the app may
-   get older behavior than the SDK it is written for; CI notes the
-   viewer needs the macOS 26 SDK. Find where the SwiftPM build (Swift
-   Build, `.build/out`) sets the linker's SDK version, then decide
-   whether it matters. *Since the minimum became 26.0 the binaries
-   record `minos 26.0` and `sdk 26.0`: the build writes the deployment
-   target as the SDK version. Behavior chosen by "linked on or after
-   macOS 26" is now had; behavior new in 27 still wouldn't be.*
-
-7. **A build from a clean checkout has no Python. (Phase 3, packaging,
-   decision; open.)** `scripts/build-app.sh` in this checkout warned
-   "built without a Python of its own": `scripts/python-pin` is
-   git-ignored and wasn't there, though the main checkout has one. This
-   is the reproducibility question phase 3 already asks, now seen.
-
-### Decided, and still open, in phase 1
-
-- **macOS 26 (Tahoe) and later**, decided by the project's owner.
-  `Package.swift` says `.macOS("26.0")` (the tools-6.0 manifest has no
-  `.v26`) and `LSMinimumSystemVersion` is 26.0; the one availability
-  check went. Raising the target brings eleven macOS 26 deprecation
-  warnings: nine for `AVMutableVideoComposition` (in
-  `ComposedTimeline`, `CompositionPlanning`, `PlayheadPrerenderer`),
-  which wants moving to `AVVideoComposition.Configuration`, open; and
-  `Text` joined with `+` and `wantsExtendedDynamicRangeContent`, both
-  replaced. `BrowserPanel.swift:118` now drops the result of a Finder
-  drop, as SwiftUI picks another `dropDestination` overload; dropped
-  files still import.
-- **Apple silicon only**, decided by the owner. `scripts/build-app.sh`
-  builds with `--arch arm64` whatever Mac runs it and stops unless
-  `lipo` shows arm64 alone. Every Apple silicon Mac has Metal, so the
-  CPU fallback when `MetalDevice.shared` is nil
-  (`LayeredCompositor.swift:160` and three more) is no longer a
-  supported path; it is left in place, harmless, rather than made a
-  crash for virtual machines without a GPU.
-- **Review projects.** Still none: they need footage and music the
-  project holds the rights to, at a fixed path outside the repository.
-  Until then `UIResponsivenessBenchmark` runs without `AMV_PROJECT`.
-
-## Phase 2: Architecture and maintainability
-
-Baseline: the phase 1 branch at `ad3c3dc0`. Six read-only reviews ran
-side by side, one per group of the plan's items: the edit's one source
-of truth and shared state, preview against export, the mix, logic in
-`UI/` and oversized files, errors and testability, and the docs. Every
-finding fixed below was checked against the code before it was fixed,
-and each fix has a regression test unless it says otherwise. Open
-findings say **verified** where the code path was read again here, and
-**reported** where only the review read it.
-
-### Fixed
-
-8. **A failed export lost the file it was replacing. (Phase 2,
-   `Export/`, severity 1; fixed in `35d82288`.)** The movie and WAV Mix
-   exports deleted the destination before they began
-   (`CompositionExporter.swift:454`, `AudioExport.swift:97`), and stems
-   deleted each old stem before writing it, so an export that failed
-   or was stopped left nothing where the confirmed Replace had been.
-   Each now writes to a hidden file beside the destination
-   (`Export/ExportFile.swift`) and swaps it in only once it is whole.
-   Tests stop a mix and a stems export halfway over earlier ones.
-
-9. **A take that couldn't be copied into the project was deleted.
-   (Phase 2, `Recording/`, severity 1; fixed in `f2de65a3`.)**
-   `AudioRecorder.keep` removed the take in a `defer` whether or not
-   the copy succeeded, so a full disk or an unwritable package lost the
-   only copy of a recording. It is now kept in the Recordings folder an
-   unsaved project uses, and the error names it.
-
-10. **An outside edit was marked seen while the Motion Designer refused
-    it. (Phase 2, `App/`, severity 1; fixed in `d95d143a`.)** A
-    `project.json` changed outside the app that touched clips the
-    Motion Designer locks was refused by `writeRestored`, yet the
-    session took the file as saved and acknowledged it
-    (`ProjectSession.swift:509–511`); the next save wrote over the
-    edit. It now waits, unacknowledged, until the locks are gone.
-
-11. **Stale background renders for effect inputs. (Phase 2, `Export/`
-    and `Rendering/`, severity 3; fixed in `7452ceb5`.)** The render
-    key never read `DrawClip.inputs`, so changing a Matte's or package
-    look's input (its offset, its file, or a clip inside a nested
-    timeline taken as one) reused the old render in the viewer and in
-    ProRes 422 exports, while ProRes 4444 drew the new picture. The key
-    now names the input's file, stamp and played stretches, or
-    describes the nested timeline. The test fails all three ways
-    without the fix.
-
-12. **The Waveform and Audio Keys heard silenced clips. (Phase 2,
-    `Model/`, severity 3; fixed in `b023f30b`.)** Both chose clips by
-    `playsAudio` alone, hearing clips with their sound muted, retimed to
-    Sound Mute, or reversed; Audio Keys also heard turned-off clips.
-    One check, `EditingProject.soundIsHeard`, now states the mix's rule.
-
-13. **Beat match played different sound from the timeline. (Phase 2,
-    `UI/BeatMatch`, severity 3; fixed in `b8aa816e`, no test.)** The
-    panel's player mixed every enabled sound track, while its waveform,
-    the timeline and export use only the first; on a file with two
-    languages, beats were confirmed against sound never played. It
-    plays the first track now.
-
-14. **Status lines behind the code. (Phase 2, docs; fixed in
-    `14b20a60`.)** Viewer handles, the loop region, bar colors and
-    Python scripting's later steps still said they had never been
-    compiled; graphic layers, gradients and parameter rows listed built
-    work as planned; the index left out Path Mask and Expression; the
-    Waveform claimed to hear each clip "as heard".
-
-### Open: data and edits (severity 1)
-
-- **Beat match's Confirm writes over a beat map changed meanwhile.**
-  Reported. `BeatMatchController.swift:85–93` writes the draft without
-  comparing the song's current `beatMap` with the one the panel opened
-  on; a script, a reload or another timeline window of the project can
-  change it in between. Undo brings it back.
-- **A viewer handle drag puts back the clip as it was at its start.**
-  Reported, a narrow window. `ViewerHandlesOverlay.swift:839` commits
-  the whole clip from drag start; a script finishing during the held
-  drag (`ScriptRunner.swift:159` sees no `editCount` change while
-  writes are held) has its change to that clip undone on release.
-- **Volumes without `flock` open unlocked, and only `NSLog` says so.**
-  Reported. `ProjectLock.swift:42`. Two Macs on a share can both save
-  the same project; `trashPackage(checkingLock:)` can trash one open
-  elsewhere.
-- **Provenance rewritten from nothing after a failed read.** Reported.
-  `ProjectStore+Provenance.swift:18–46`: `readProvenance` returns `[:]`
-  on any failure and the next record writes only the new kind, which
-  can drop `.originalScores` for good.
-- **Backups ordered by name, not date.** Reported, rare. Names carry
-  local time without an offset, so in the hour repeated when clocks go
-  back `unsavedBackup` can offer an older autosave and pruning can
-  delete newer ones (`ProjectStore+Backups.swift:27–43`,
-  `ProjectBackups.swift:127–139`).
-
-### Open: timing, sync and export (severity 3)
-
-- **Volume and effect keyframes drift on speed-ramped clips.**
-  Verified. `CompositionFlattening.swift:76–83` gives a clip's mix
-  stage the speed at its in point, so on a ramp keyframes are heard
-  late, in playback and export alike, while the volume line shows them
-  in place. Fixing it means the mix following the clip's time map.
-- **The Waveform builds its own mix.** Reported, partly verified.
-  `WaveformAudio` sums volumes and runs EQs but leaves out pan, fades
-  and crossfades, the Compressor, Limiter and Voice Isolation, and Keep
-  Pitch, and indexes samples from the track's first rather than its
-  start time, so a late-starting track draws early. Now said in
-  [waveform-effect.md](waveform-effect.md).
-- **A typed value edit while paused leaves rendered stretches stale.**
-  Reported. `PlaybackModel.showValues` (`:304`) returns once the paused
-  frame redraws, so other stretches keep playing renders with the old
-  value until the next structural edit; export is right.
-- **A mono clip's pan is dropped silently** when its stereo copy can't
-  be made (`CompositionExporter.swift:150–156`,
-  `StereoProxies.swift:126`). Reported.
-- **A stale Matroska reference movie is used** when remaking it fails
-  (`MatroskaMedia.swift:48`). Reported, suspected.
-- **The Python console edits the wrong project** with a Timeline window
-  in front: `ScriptConsole.swift:67–72` matches only project windows
-  and falls back to the first session. Reported.
-- **A render stretch may start between frames**
-  (`SegmentRenderer.swift:26`), showing content a fraction of a frame
-  early. Reported, suspected.
-- **Open projects can share IDs** (Save As keeps them all), while
-  `DetectedBeats`, `TimelinePreviews`, `EqualizerSpectrum` and
-  `ExpressionRunner.running` key app-wide tables by them. Reported.
-
-### Open: performance and usability (severity 4 to 5)
-
-- `TimelinePreviews.shared` is one table for every project: an edit in
-  one drops the other's previews (`TimelinePreview.swift:141–229`).
-- Browser skim and effect thumbnails draw as export does, Optical Flow
-  and full motion blur included (`TimelinePreview.swift:40`,
-  `EffectThumbnails.swift:103`).
-- Tape scrub restarts the sound effects every 2 s piece
-  (`TapeScrub.swift:193–198`). Suspected.
-- Beat-marker choices are per-project data kept in app-wide defaults
-  (`TimelineView.swift:113`).
-- Closing any editor window ends the bar color panel
-  (`EditorView.swift:238`); a refusal shows in whichever window is key.
-- Failures nobody hears: cut matching in `MediaReplacer.swift:127`, a
-  failed waveform or spectrogram read cached as empty
-  (`Waveform.swift:174`, `Spectrogram.swift:254`), folders skipped in
-  Save As, presets marked installed when writing failed
-  (`PresetStore.swift:89`), `BlankFrame.swift:33`, and
-  `EffectFolderWatcher.swift:44` turning live reload off.
-
-### Open: testability
-
-- `PlaybackModel` paces scrubbing on `CACurrentMediaTime` and real
-  sleeps (`:692`, `:699`, `:773`) though `ScrubPacing` takes `now`: the
-  cause of finding 5. The same pattern is in three `PlaybackSkimTests`.
-  It wants a clock, as `ViewerPipeline` takes.
-- `ScrubCache.swift:150` and `RenderScheduler.swift:246–250` read Low
-  Power Mode and thermal state directly, so their tests time out on a
-  laptop in Low Power Mode.
-- Gesture-driven views without an `EventHarness` suite: `TimelineRuler`,
-  `BeatMatchWaveform`, `ToneGraph`, `EqualizerGraph`, the keyframe,
-  section and volume lanes, the transition curve editor, the gradient
-  editor, `NumericField` scrubbing, the tape scrubber and the scene
-  splitter, among others; `ViewerHandlesOverlay` and `KeyframeGraphView`
-  are covered only in part.
-
-### Open: structure (severity 5 to 6)
-
-- Logic in `UI/` that wants a home outside it: the export queue and its
-  format dispatch (`UI/Export/ExportWindow.swift`, which `App/` relies
-  on for quitting); change detection, folder matching and replacement in
-  `MediaReplacementController` (a third "file changed" check beside
-  `ProjectStore+Load.swift:41` and `AssetAnalysis.changedFiles`);
-  media import in `MediaImportFlow`, untested and bypassed by
-  recordings; `TimelineEditorSurface.handle(_:)`, untested.
-- Files with more than one job: `Keyframing.swift` (editing, signal
-  math, Strobe Keys), `AssetAnalysis.swift` (runner and results
-  store), `EffectPackageStore.swift` (`EffectPackageStatus` apart),
-  `ClipTransition.swift` (render-time evaluation apart),
-  `BeatMatchSession.swift` (transport apart) and, mildly,
-  `LayeredCompositor.swift` and `Effects.swift`. `ProjectFile`,
-  `BeatFitting`, `ViewerHandlesOverlay`, `MotionDesignLanes` and
-  `ClipBlockView` each have one.
-- [loose-ends.md](loose-ends.md): every item is still true, but the
-  Motion Designer's locks are now shown in the Timeline menu's Split,
-  Nudge and Delete; the keys, lanes, browser and drops still only
-  refuse.
-
-## Phase 3: Security, privacy and dependencies
-
-Baseline: `c23427a8`. Three read-only reviews (the Matroska parser and
-binary reference data; project and effect packages; Python
-confinement, code approval and recording permissions) and checks of
-logging, network and dependencies made here. Each fix was checked
-against the code first; most have a test that fails without the fix
-(said where it was shown).
-
-### Fixed
-
-15. **Logged names were read as format strings. (Severity 2; fixed in
-    `e1d78893`.)** Thirteen `NSLog` calls interpolated error text,
-    package paths and package names into the format. A name with `%@`
-    logged "(null)", and a project folder named with twelve crashed a
-    probe with a bus error. Each now logs `"%@"` with the text as its
-    argument.
-
-16. **Matroska files that crash, hang or overrun the index. (Severity 2;
-    fixed in `1fd07353`.)** EBML lacing sizes running past their block
-    trapped (a crash from a few bytes); children were bounded by the
-    file, not their parent, so a track's codec data could take in the
-    rest of the file per track; fixed lacing over nothing made 256
-    frames; a million tracks with a linear lookup hung past
-    cancelling; a timestamp scale of 0 was taken; and a PCM block of
-    part of a sample, or a bit depth like 0x7FFFFFF8, pointed samples
-    past the file. Each is refused or not indexed, and a sweep cuts a
-    small laced file at every length and sets every byte to 0x00, 0x01
-    and 0xFF: it reads or refuses, never traps.
-
-17. **`audio.bin`'s start overflowed. (Severity 2; fixed in
-    `ca0cd751`.)** An edited start window of Int64.min trapped working
-    out a replacement's offset. Starts beyond 2^40 windows are damage.
-
-18. **An edited viewer-copy index could delete any folder. (Severity 1;
-    fixed in `221d4457`.)** `Cache/ViewerCopies/index.json` names the
-    copies to delete when unused; a record whose file was `../../..`
-    deleted the folder holding the project, on opening, whether copies
-    were on or off. Only plain names with times that fit are read; the
-    test lost its sibling file without the check.
-
-19. **A cache folder linked out of the package was emptied. (Severity 1;
-    fixed in `2305c751`.)** A project arriving with `Cache/References`
-    linked to Documents (zip and AirDrop keep links) had Documents
-    emptied on load, and a linked `Cache/Renders` would lose `.mov`
-    files oldest first. Both clear only a folder that resolves inside
-    the package.
-
-20. **An allowed script could import code no one allowed. (Severity 1;
-    fixed in `d64fd738`.)** A project script runs with its folder first
-    on the import path, but allowing it hashed only its text, so its
-    `import util` ran an unseen `util.py`; and the helper kept that
-    module for the next script, of any project. Allowing now covers
-    the name and hash of every other file in the folder, and the helper
-    forgets a script's own modules when it ends.
-
-21. **Expressions could read terminals and the home folder. (Severity
-    1; fixed in `ea881d27`.)** The sandbox allowed all of `/dev`, so a
-    confined expression could open a Terminal's tty and read what was
-    typed, passwords too (shown with a pseudo-terminal; the test fails
-    with `/dev` back); and a `~/bin/python3` made the whole home folder
-    readable and runnable. `/dev` is gone (the base profile allows what
-    Python needs), an installation that is or holds the home folder is
-    left out, and the confinement tests now try `os.fork`,
-    `posix_spawn` and the interpreter in `subprocess`: all refused.
-
-22. **Repeated IDs crashed the app. (Severity 2; fixed in
-    `17eb57a1`.)** Two media files, timelines, layers or sections with
-    one ID (read regardless of case) crashed the browser, the timeline
-    or the first section edit. A file repeating one is refused, saying
-    which; `view-state.json` keeps the first of two clashing keys.
-
-23. **A negative keyframing component trapped (fixed in `1aaeaf0b`),
-    and package repeats and delays trapped or hung (fixed in
-    `4a8566c8`). (Severity 2.)** A component outside the control's
-    range now writes nothing; a look's passes are finite and at most
-    256, and a delay too far to keep draws the picture as it is.
-
-### Open: project and package input (severity 2 to 3)
-
-- **Numbers in range of JSON but not of the app** crash on open or on
-  the first redraw: a trim of 2×10^17 s overflows in frame alignment
-  (`Model/ClipPlacement.swift:25`), a frame width of 10^19 traps in
-  `Int(frameSize.width)` (`Model/Timeline.swift:39` and the header),
-  a frame rate of 10^19 or a time near 4×10^17 s in timecode
-  formatting (`CMTime+Formatting.swift:18`), and a beat position of
-  Int64.min (`BeatMap.swift:144`). Reported. Wants range checks after
-  the shape check that refuse the file, as the repeated IDs now are.
-- **Text runs past the end of their text** trap on the first typed
-  letter (`TextRuns.swift:330`; `start` near Int.max overflows at
-  `:279`). Reported.
-- **A timeline holding clips of itself** loads; rendering refuses it,
-  but the Waveform's walk (`WaveformEffect.swift:548`) has no visited
-  set and makes N^8 calls. Reported. Cycles want refusing at load.
-- **Names made into paths** without cleaning: Duplicate of a package
-  whose manifest name is `../../Desktop/x`, Make Package, and backups
-  named for the project (`EffectPackageStore.swift:386–425`,
-  `ProjectBackups.swift:105–209`). Each only creates and never
-  overwrites. Reported.
-- **Clips whose source is missing are dropped silently** at load
-  (`ProjectStore+Load.swift:85`), so the next save loses them; a
-  negative clip length is kept. Reported.
-- **A kernel that never ends** stalls the GPU until macOS's watchdog,
-  every frame. Nothing limits it; a warning when installing a package
-  from Finder may be wanted.
-- `audio.bin` with billions of levels asks for memory in proportion
-  (`crossCorrelation`); its count must equal its length, so it needs a
-  file that large. Damaged reference files are analysed again without
-  a message, by design.
-
-### Open: Python (severity 2 to 3)
-
-- **One expressions helper serves every project**, with real builtins,
-  so approved code in one can patch the helper's caches or leave a
-  thread answering the next run, and another project's different
-  approved code then gives its values (`expressions.py:311,340`).
-  Reported. Wants a helper per project, or a restart after a run that
-  leaves threads.
-- **Non-finite expression samples** are counted but not checked in the
-  app (`PythonHelper.swift:167–176`); NaN keyframes would then fail
-  saving. Reported.
-- **Helper messages are buffered without limit** (`ScriptMessages`
-  payload sizes up to 9×10^15, `HelperFrameReader.frames` while no run
-  reads) and copied per frame. Reported.
-- **A script's time as `[n, d]` has no bound** (`ProjectBridge.swift:
-  506–515`), unlike one in seconds. Reported.
-- **Recording another app with its permission refused** probably gives
-  a silent take with no message (`AudioCapture.swift:79–116`).
-  Suspected; wants trying with `tccutil reset`.
-- Low: confined code can still stat any path (`file-read-metadata`),
-  and whether `cfprefsd` refuses it a write is untested.
-
-### Privacy and dependencies
-
-- **Network:** none in the app's sources (no `URLSession`, sockets, web
-  views or links); confined expressions are denied it.
-- **Logs:** with finding 15 fixed, what is logged is error text and
-  file and package names, in the system log. Kept.
-- **Python download:** `fetch-python.sh` fetches over HTTPS and checks
-  the archive against the pinned SHA-256; `--pin` takes that hash from
-  the same release, so the first pin trusts what was offered then.
-- **Licenses:** nothing copies the CPython build's license, or those
-  of what it bundles (OpenSSL, SQLite, libffi, zlib and the rest),
-  into the app. Needed before the app is given to anyone.
-
-### Decisions for the owner
-
-- **Commit `scripts/python-pin`?** It is git-ignored, so a build from
-  a clean checkout has no Python (finding 7) and two Macs can bundle
-  different ones. Recommended: commit it, for reproducible releases.
-- **Pin CI's actions by commit?** `actions/checkout@v4` and
-  `actions/upload-artifact@v4` follow their tags. Recommended: pin by
-  SHA, since CI only runs by hand and the cost is a line each.
-- **"Always Run This Project's Scripts"** trusts whatever arrives at
-  the same project ID and path later: a `git pull`, a synced folder or
-  a Finder Replace runs without asking (`CodeApproval.swift:114–122`).
-  Hashing each script would ask again after every edit in an outside
-  editor. Keep as designed, or ask again when a script changed outside
-  the app?
-- **App Sandbox:** not adopted. Adopting it needs security-scoped
-  bookmarks for media referenced in place and on other drives, export
-  destinations and the Python interpreter, and a new way to confine the
-  helper, as `sandbox-exec` can't run inside the App Sandbox.
-  Recommended: not before release; the confinement above covers the
-  code the app runs, and the parsers were the open door.
+Phase 2 (at `ad3c3dc0`) and phase 3 (at `c23427a8`) each ran read-only
+reviews side by side, one per group of the plan's items, and the fixes
+were checked against the code before they were made. Phase 4 (at
+`deec68d0`) ran three: saving, autosave, the lock and live reload;
+identity, round trip and undo; and footage safety, with a table of every
+write, move and delete in the sources, of which F71, F72, F79 and the
+backup pruning (F66) were the unsafe ones. Privacy and dependency checks
+in phase 3 found no network use and the logs holding error text and file
+and package names, kept.
