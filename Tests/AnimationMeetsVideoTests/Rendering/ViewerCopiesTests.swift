@@ -134,6 +134,32 @@ import Testing
         withExtendedLifetime(second) {}
     }
 
+    /// The index is a file in the package anyone can edit. A record naming
+    /// "../../.." as its copy deleted the folder the project is in once
+    /// the copy counted as unused; one with times no CMTime holds trapped.
+    @Test func anEditedIndexDeletesNothingOutsideItsFolder() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "amv-copies-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let package = root.appending(path: "Cut.amv", directoryHint: .isDirectory)
+        let folder = ViewerCopies.folder(in: package)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let beside = root.appending(path: "Beside the project.txt")
+        try Data("Keep me".utf8).write(to: beside)
+        let record = { (file: String, start: Double) in
+            #"{"file":"\#(file)","original":"/nonexistent","stamp":{"byteCount":0},"start":\#(start),"end":1,"timescale":600,"offsetValue":0,"offsetTimescale":600}"#
+        }
+        let index = "[" + [record("../../..", 0), record("..", 0), record("/tmp", 0), record("big.mov", 1e300)].joined(separator: ",") + "]"
+        try Data(index.utf8).write(to: folder.appending(path: "index.json"))
+
+        let copies = ViewerCopies()
+        copies.waitsForFreeMachine = false
+        copies.packageURL = package
+        copies.update(project: .empty)
+        #expect(FileManager.default.fileExists(atPath: beside.path))
+        #expect(FileManager.default.fileExists(atPath: package.path))
+        #expect(copies.index.isEmpty)
+    }
+
     @Test func theProjectKeepsTheSetting() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

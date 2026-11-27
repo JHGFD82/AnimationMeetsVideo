@@ -149,6 +149,15 @@ final class ViewerCopies {
 
         var offset: CMTime { CMTime(value: offsetValue, timescale: offsetTimescale) }
 
+        /// Whether it names a file of the folder itself and times that fit.
+        var isSound: Bool {
+            let plainName = !file.isEmpty && file != "." && file != ".." && !file.contains("/") && !file.hasPrefix(".")
+            func fits(_ seconds: Double) -> Bool {
+                seconds.isFinite && abs(seconds * Double(timescale)) < Double(1 << 52)
+            }
+            return plainName && timescale > 0 && offsetTimescale > 0 && fits(start) && fits(end) && start <= end
+        }
+
         var range: CMTimeRange {
             CMTimeRange(
                 start: CMTime(value: CMTimeValue((start * Double(timescale)).rounded()), timescale: timescale),
@@ -487,7 +496,14 @@ final class ViewerCopies {
 
     nonisolated private static func readRecords(in packageURL: URL) -> [Record] {
         guard let data = try? Data(contentsOf: indexFile(in: packageURL)) else { return [] }
-        return (try? JSONDecoder().decode([Record].self, from: data)) ?? []
+        // The index is a file in the package anyone can edit, and a copy
+        // it names is deleted once unused: a record whose file was
+        // "../../.." deleted the folder the project is in, and one whose
+        // times didn't fit a CMTime trapped. Only plain names of files in
+        // the folder, with times that fit, are taken; the rest are
+        // forgotten, as a cache can be.
+        let records = (try? JSONDecoder().decode([Record].self, from: data)) ?? []
+        return records.filter(\.isSound)
     }
 
     nonisolated private static func writeRecords(_ records: [Record], in packageURL: URL) {
