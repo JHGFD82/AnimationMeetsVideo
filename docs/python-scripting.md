@@ -7,9 +7,9 @@ the changed samples, following a held drag), the accessibility review
 (13) and these docs (14) were written since. They build and their tests
 pass, with a real interpreter too (the code review's baseline), but
 haven't been tried by hand.
-No Python release is pinned in the repository: `scripts/fetch-python.sh
---pin`, run on the Mac that builds the app, writes the pin to
-`scripts/python-pin`, which git ignores.
+The Python release is pinned in the repository, in `scripts/python-pin`
+(CPython 3.14.10, release 20261110), and `scripts/build-app.sh` fails
+without it.
 
 The document was written as the plan, before the build: it says what
 the person sees, then how it works, then where each piece goes in the
@@ -252,12 +252,14 @@ person's rights. Each runs one thing at a time.
   `Contents/Resources/Python/`, as Blender keeps its own. Everyone on
   one version of the app has one Python, so an expression gives the same
   keyframes on every Mac.
-  **As built**, the pin is kept on the Mac that builds the app, in
-  `scripts/python-pin`, which `scripts/fetch-python.sh --pin` writes and
-  git ignores, so two builds can carry different Pythons, and an
-  expression's keyframes are the same only between apps built with the
-  same pin. Without a pin the app is built without a Python, and asks
-  for one in Settings > Scripting.
+  **As built**, the pin is committed in `scripts/python-pin` (release,
+  CPython version and the archive's SHA-256), so every checkout bundles
+  the same Python, with its license. `scripts/build-app.sh` fails if the
+  pin or the bundled Python is missing; `ALLOW_NO_PYTHON=1` builds an app
+  without one, for development only, which asks for one in Settings >
+  Scripting. The pin changes in a commit of its own, made with
+  `scripts/fetch-python.sh --pin` once the helper's suites and its
+  Python tests pass on the new Python and its license is in the bundle.
 - **Chosen.** Settings can point at another interpreter. The helper's
   own code uses only the standard library, so anything 3.11 or later
   runs it. The built-in one has no third-party packages; this is the way

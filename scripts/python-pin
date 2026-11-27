@@ -1,0 +1,4 @@
+# The Python scripts/fetch-python.sh bundles, written by --pin.
+release=20261110
+version=3.14.10
+sha256=f15ec3d15460dd66c2eb88639b152cd9040e7d1ece11e38bf89e8f53f0171e02

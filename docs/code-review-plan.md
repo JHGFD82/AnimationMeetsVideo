@@ -48,7 +48,7 @@ changed; phase 1 checks each one.
 | Signing | Ad hoc (`codesign --sign -`); no entitlements file, no App Sandbox, no hardened runtime | `scripts/build-app.sh` |
 | Architectures | Apple silicon (arm64) only, decided in the first pass | `scripts/build-app.sh` (`--arch arm64`, checked with `lipo`) |
 | Network | None: no `URLSession` or `Network` use | `Sources/` |
-| Third-party code | No SwiftPM dependencies; a bundled CPython from python-build-standalone, pinned by release and SHA-256 in the git-ignored `scripts/python-pin` | `scripts/fetch-python.sh` |
+| Third-party code | No SwiftPM dependencies; a bundled CPython from python-build-standalone, pinned by release and SHA-256 in the committed `scripts/python-pin` | `scripts/fetch-python.sh` |
 | Export formats | ProRes 422 (reuses background renders), ProRes 4444 (composites from the sources), WAV Mix, WAV Stems | `Export/AudioExport.swift` (`ExportFormat`) |
 | Project format | `.amv` package, `project.json` at `formatVersion` 2, strict loading; no migration of older projects, by design | [project-package.md](project-package.md), `Project/StrictJSON.swift` |
 | Time in the model | `CMTime` throughout; frame snapping in integer frame counts (`ClipPlacement.FrameRounding`) | `Model/ClipPlacement.swift` |
@@ -346,9 +346,8 @@ at run time; people install them by opening them or making their own.
 
 **Dependencies and the app's own scripts.**
 
-- [ ] `scripts/python-pin` is git-ignored, so two builds can bundle
-      different Pythons. Decide whether the pin belongs in the repository
-      for reproducible releases.
+- [x] `scripts/python-pin` is committed and release packaging fails
+      without the pin or the bundled Python (decision D3).
 - [ ] Record the CPython build's license and those of the libraries it
       bundles (OpenSSL, SQLite, libffi, zlib and the rest), and ship their
       notices with the app.

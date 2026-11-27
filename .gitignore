@@ -14,10 +14,9 @@ xcuserdata/
 !.claude/agents/
 build/
 __pycache__/
-# The Python bundled into the app: the pin fetch-python.sh --pin writes,
-# the archives it fetches and what it unpacks (build/ covers those it
-# makes itself).
-scripts/python-pin
+# The Python bundled into the app: the archives fetch-python.sh fetches
+# and what it unpacks (build/ covers those it makes itself). Its pin,
+# scripts/python-pin, is committed, so every checkout bundles the same one.
 cpython-*.tar.gz
 /Python/
 *.app/

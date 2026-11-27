@@ -82,10 +82,13 @@ Follow Google's change-description conventions for every commit.
   `--filter "Script|Python|Confinement|Expression|CodeApproval|ProjectBridge|BetweenFrames"`; the helper's Python tests also run alone with
   `python3 -B -m unittest discover -s Tests/AnimationMeetsVideoTests/Scripting/Python`.
   `scripts/build-app.sh` bundles the CPython that `scripts/fetch-python.sh`
-  fetches by a pinned release and SHA-256, and builds without one while
-  none is pinned; `scripts/fetch-python.sh --pin` looks up the latest
-  release and writes the pins to `scripts/python-pin`, which git ignores. Run with no
-  arguments it puts the pinned Python into the built app, always at
-  `Contents/Resources/Python`.
+  fetches by the release and SHA-256 committed in `scripts/python-pin`,
+  and fails without it (`ALLOW_NO_PYTHON=1` builds one without, for
+  development only); `scripts/fetch-python.sh --pin` looks up the latest
+  release and rewrites the pin, to be committed on its own once the
+  helper's suites pass on the bundled Python
+  (`AMV_PYTHON=build/AnimationMeetsVideo.app/Contents/Resources/Python/bin/python3`).
+  Run with no arguments it puts the pinned Python into the built app,
+  always at `Contents/Resources/Python`.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the
   standalone Command Line Tools).

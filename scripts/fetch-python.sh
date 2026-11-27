@@ -15,7 +15,11 @@
 #       Looks up a release (the latest, or one such as 20251014), takes its
 #       newest CPython 3.14 (PYTHON_MINOR to choose another) and the
 #       archive's SHA-256 from the release's own checksums, and writes the
-#       three to scripts/python-pin (ignored by git), for every build here.
+#       three to scripts/python-pin. The pin is committed: change it in a
+#       commit of its own, after the helper's tests pass on the new Python
+#       (AMV_PYTHON=build/AnimationMeetsVideo.app/Contents/Resources/Python/bin/python3
+#       swift test --filter "PythonHelper|Confinement", and its Python tests)
+#       and its license notice is checked to be in the bundle.
 #   scripts/fetch-python.sh
 #       Bundles the pinned Python into the app, always at
 #       Contents/Resources/Python: build/AnimationMeetsVideo.app, which
@@ -29,7 +33,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 # The pinned archive, kept in scripts/python-pin, which --pin writes and
-# git ignores: each Mac pins the Python it builds with. Setting these in
+# is committed, so every checkout bundles the same Python. Setting these in
 # the environment overrides the file, for trying a release.
 pin_file="scripts/python-pin"
 pinned_value() {
@@ -79,7 +83,7 @@ pin() {
     printf '# The Python scripts/fetch-python.sh bundles, written by --pin.\nrelease=%s\nversion=%s\nsha256=%s\n' \
         "$tag" "$found_version" "$found_sha" > "$pin_file"
     echo "Pinned CPython $found_version, release $tag, SHA-256 $found_sha."
-    echo "Written to $pin_file, which git ignores."
+    echo "Written to $pin_file. Commit it once the helper's tests pass on it."
 }
 
 if [ "${1:-}" = "--pin" ]; then
@@ -124,6 +128,13 @@ tar -xzf "$archive" -C "$unpacked"
 python="$unpacked/python"
 minor="$(printf '%s' "$version" | cut -d . -f 1-2)"
 stdlib="$python/lib/python$minor"
+# The Python goes out with its license (lib/pythonX.Y/LICENSE.txt), or not
+# at all. The archive doesn't carry the notices of the libraries built
+# into it (OpenSSL, SQLite and the rest); see code-review-notes.md, F61.
+if [ ! -f "$stdlib/LICENSE.txt" ]; then
+    echo "fetch-python.sh: $name has no lib/python$minor/LICENSE.txt; a bundled Python must carry its license." >&2
+    exit 1
+fi
 rm -rf "$stdlib/idlelib" "$stdlib/tkinter" "$stdlib/turtledemo" "$stdlib/ensurepip" "$stdlib/test"
 rm -f "$stdlib"/lib-dynload/_tkinter*.so
 rm -rf "$python"/lib/libtcl* "$python"/lib/libtk* "$python"/lib/tcl* "$python"/lib/tk* "$python/lib/itcl"* "$python/lib/thread"*

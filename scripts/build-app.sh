@@ -8,6 +8,9 @@
 #
 # Usage: scripts/build-app.sh [output directory, default: build]
 # CONFIGURATION=debug builds faster, for trying a change (scripts/run.sh).
+# The app always bundles the Python scripts/python-pin names, with its
+# license, and the build fails without it; ALLOW_NO_PYTHON=1 builds one
+# without, for development only (code-review-notes.md, decision D3).
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -37,15 +40,21 @@ cp Packaging/Info.plist "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
 # The Python scripts and expressions run on, in Contents/Resources/Python
-# (PythonRuntime.builtInInterpreter). Until a release is pinned in
-# fetch-python.sh the app is built without one, and Settings > Scripting
-# asks for one of the person's own.
+# (PythonRuntime.builtInInterpreter), from the committed pin. A build that
+# came out without it once only warned, and a clean checkout made an app
+# with no scripting support at all.
 status=0
 AMV_APP_BUNDLE="$app" scripts/fetch-python.sh || status=$?
-if [ "$status" -eq 3 ]; then
-    echo "warning: built without a Python of its own; see scripts/fetch-python.sh." >&2
-elif [ "$status" -ne 0 ]; then
-    exit "$status"
+python="$app/Contents/Resources/Python"
+minor="$(sed -n 's/^version=\([0-9]*\.[0-9]*\).*/\1/p' scripts/python-pin 2>/dev/null | head -n 1)"
+if [ "$status" -eq 0 ] && [ -x "$python/bin/python3" ] && [ -f "$python/lib/python$minor/LICENSE.txt" ]; then
+    :
+elif [ "${ALLOW_NO_PYTHON:-}" = 1 ]; then
+    echo "warning: built without a Python of its own (ALLOW_NO_PYTHON=1), for development only." >&2
+else
+    echo "error: the app has no bundled Python with its license (fetch-python.sh exit status $status)." >&2
+    echo "  Check scripts/python-pin, or set ALLOW_NO_PYTHON=1 for a development build without one." >&2
+    exit 1
 fi
 
 # Ad-hoc signed, so it runs on the Mac that built it. Sharing it with
