@@ -166,7 +166,12 @@ release.
       `ProjectBackups.typeIdentifier`.
 - [ ] Assemble the review projects below at a fixed path outside the
       repository, and set `AMV_PROJECT` to the largest. Never commit
-      footage or music you don't hold the rights to.
+      footage or music you don't hold the rights to. Decided (D7): the
+      generated fixtures (checkpoint D) serve until the real footage and
+      music, with suitable permissions, arrive before phase 7's visual
+      check and phase 8's listening check; record each item's provenance
+      and permitted uses, since permission to test with it isn't
+      permission to use it in fixtures, screenshots or sample projects.
 
 **Review projects**
 
@@ -290,9 +295,14 @@ at run time; people install them by opening them or making their own.
 - [ ] Check that a kernel that fails to compile, or a package that
       declares absurd sizes, pass counts or controls, is reported in the
       effects library and doesn't stop the app from launching.
-- [ ] Note the risk that a kernel can stall the GPU, and decide whether
-      a warning on installing third-party packages is wanted. Don't
-      assume a time limit can be had: cancelling a Swift task doesn't
+- [ ] Note the risk that a kernel can stall the GPU. Decided (D8): an
+      external package is executable GPU code, approved by the person for
+      its exact executable content before its first compilation or run,
+      wherever it comes from (installed, embedded in a project, live
+      reloaded or found in the library folder), listed but not compiled
+      until then, with a recovery launch that turns external effects
+      off. Check each of those paths. Don't assume a time limit can be
+      had: cancelling a Swift task doesn't
       stop GPU work already submitted, and only the system's watchdog
       ends a runaway command buffer; any limit proposed must say what
       stops the work.
@@ -316,10 +326,13 @@ at run time; people install them by opening them or making their own.
       the interpreter's own start-up (`site`, `.pth` files, environment,
       import paths); and threads or processes that outlive a run, which
       can taint later runs in the same project even with a helper per
-      project. A per-project allowance ("Always Run This Project's
-      Scripts") means trusting the project's future code: its ID and path
-      identify it, they don't vouch for what later arrives there, and the
-      prompt should say so.
+      project. Decided (D5): remembered approval ("Remember approval for
+      these scripts") covers an exact snapshot of the executable content,
+      never a project's ID and path, and is asked again when the content
+      changes; the approved snapshot is what runs; opening a project
+      never runs an unrestricted script; and the prompt says unrestricted
+      scripts reach files and the network with the person's permissions.
+      Check each, including links and imports outside the snapshot.
 - [ ] Treat every message from the helper (`ScriptMessages`) as
       untrusted: malformed or huge messages, edits through `ProjectBridge`
       that would be refused from the UI, a helper that hangs or never
@@ -366,9 +379,11 @@ at run time; people install them by opening them or making their own.
       expressions protects one boundary, not the app: the app also hands
       untrusted media to system frameworks, compiles packages' kernels,
       moves and deletes files, and runs approved scripts unconfined on
-      purpose. Deferring the App Sandbox can be a deliberate product
-      decision, recorded with the residual risks and the controls that
-      stand in for it, without claiming the same protection.
+      purpose. Decided (D6): deferred for the first release, as a
+      separate security project, with the residual risks recorded and the
+      release gates under phase 12's "Signing" standing in; they don't
+      give the same protection. Revisit before a Mac App Store release or
+      a significant growth in plugins or executable content.
 
 **Goal:** settle the trust boundaries before exercising complex media
 workflows.
@@ -715,6 +730,11 @@ checks, and of work that is correct but in the wrong place.
       reduced-quality segment can never be exported, and that viewer
       copies are never read by export.
 
+- [ ] **Real footage, by eye** (D7). On the licensed review projects,
+      look at line art, held drawings, flashes, gradients and subtitles
+      in the viewer and the export against their sources; the generated
+      fixtures stay the oracle for exact checks.
+
 **Goal:** the exported image matches what the person built.
 
 ## 8. Audio and export
@@ -772,6 +792,10 @@ checks, and of work that is correct but in the wrong place.
 - [ ] Editing while an export runs: the export uses the project as it was
       when it started, or the person is told.
 - [ ] Missing media and fonts are found before export starts, not halfway.
+
+- [ ] **Real music, by ear** (D7). On the licensed review projects,
+      listen to the mix and an export against the source song: beat
+      sync, clicks, level jumps and resampling.
 
 **Goal:** export is reliable, not merely successful according to the
 export API.
@@ -906,7 +930,13 @@ across the whole workflow.
       bundled Python (`Contents/Resources/Python`), and add the
       entitlements the hardened runtime needs for the microphone and for
       recording other apps' sound. Check the confined helper still starts
-      under `sandbox-exec` once signed.
+      under `sandbox-exec` once signed. These, with notarization, are
+      release gates for public distribution while the App Sandbox is
+      deferred (D6), together with: confined expressions fail closed
+      where confinement is unavailable; the release-blocking parser,
+      file-system, approval and helper-protocol findings are closed; and
+      the documentation says approved unrestricted scripts run with the
+      person's permissions.
 - [ ] **Notarization.** Submit with `notarytool`, staple the ticket, and
       check Gatekeeper accepts the downloaded app.
 - [ ] **Packaging.** `CFBundleShortVersionString` (0.1 today) and the

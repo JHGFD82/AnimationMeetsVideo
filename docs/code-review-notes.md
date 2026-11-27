@@ -90,7 +90,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F4 | Whole suite under `UI_EVENTS` can hang | 1 | test harness | 2 | reproduced | open | | blocking |
 | F5 | Tests that fail when the Mac is busy | 1 | test harness | 5 | reproduced | open (part fixed) | `c23427a8` for `ScrubCacheTests` · reproduced at load 14 | nonblocking |
 | F6 | Binaries recorded SDK 15.0 | 1 | packaging | 5 | reproduced | fixed | `193d3e4c` (minimum 26.0) · `otool` | nonblocking |
-| F7 | A clean checkout builds with no Python | 1 | packaging | 3 | reproduced | decision (D3) | | blocking |
+| F7 | A clean checkout builds with no Python | 1 | packaging | 3 | reproduced | fixed | `96409e50` · tried both ways | blocking |
 | F8 | A failed export lost the file it replaced | 2 | data safety | 1 | code-verified | fixed | `35d82288` · test | blocking |
 | F9 | A take that couldn't be copied in was deleted | 2 | data safety | 1 | code-verified | fixed | `f2de65a3` · test | blocking |
 | F10 | Outside edit marked seen under Motion Designer locks | 2 | data safety | 1 | code-verified | fixed | `d95d143a` · test | blocking |
@@ -136,7 +136,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F50 | A timeline holding clips of itself | 3 | crash | 2 | code-verified | fixed | `d437134f` · test | blocking |
 | F51 | Names made into paths without cleaning | 3 | data safety | 3 | code-verified | fixed | `c79dfff3` · test | blocking |
 | F52 | Clips with a missing source dropped at load | 3 | data safety | 1 | code-verified | fixed | `361b2418` · test | blocking |
-| F53 | A kernel that never ends stalls the GPU | 3 | security | 4 | code-verified | decision (D8) | | nonblocking |
+| F53 | A kernel that never ends stalls the GPU | 3 | security | 4 | code-verified | open (D8 decided; F90) | | nonblocking |
 | F54 | `audio.bin` with billions of levels | 3 | performance | 4 | reported | open | | nonblocking |
 | F55 | One expressions helper for every project | 3 | security | 3 | reported | open | | blocking |
 | F56 | Non-finite expression samples | 3 | data safety | 3 | code-verified | fixed | `5996cf1a` · test | blocking |
@@ -144,7 +144,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F58 | A script's rational time has no bound | 3 | crash | 3 | code-verified | fixed | `958abd9b` · test | nonblocking |
 | F59 | Recording an app with permission refused | 3 | usability | 3 | suspected | open | | nonblocking |
 | F60 | Confined code can stat any path | 3 | security | 5 | reported | accepted risk (proposed) | | nonblocking |
-| F61 | Python's licenses not shipped | 3 | release | 1 | code-verified | open | | blocking |
+| F61 | Python's licenses not shipped | 3 | release | 1 | code-verified | open (part fixed) | `96409e50` · CPython's own license required | blocking |
 | F62 | `--pin` trusts the first download | 3 | security | 5 | code-verified | open | | nonblocking |
 | F63 | A save wrote over an outside edit not yet seen | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
 | F64 | Saves and reloads not kept in order | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
@@ -172,6 +172,8 @@ From the plan's checkpoint, with the findings each part covers.
 | F86 | Damaged approval store emptied silently | 4 | usability | 5 | reported | open | | nonblocking |
 | F87 | Naming an edit costs a scene scan | 4 | performance | 4 | suspected | open | | nonblocking |
 | F88 | Fields not saved or reset on reopen | 4 | correctness | 6 | reported | open | | nonblocking |
+| F89 | Remembered script approval trusts a project's ID and path | D5 | security | 1 | code-verified | open | | blocking |
+| F90 | External effect kernels compile without the person's approval | D8 | security | 1 | code-verified | open | | blocking |
 
 ## Open findings: detail and next action
 
@@ -204,8 +206,11 @@ drives); still open: `ViewerFramingRedrawTests.thePictureFollowsAScrollAtOnce`
 (99, 107) once under `UI_EVENTS`, and three `PlaybackSkimTests` that
 pace on real time. *Next:* the same clock for skimming's preroll waits.
 
-**F7 — A clean checkout builds with no Python.** `scripts/python-pin`
-is git-ignored. *Next:* decision D3.
+**F7 — A clean checkout builds with no Python.** *(fixed in
+`96409e50`)* The pin is committed (D3) and `build-app.sh` fails unless
+the app has the pinned Python and its license; tried without the pin
+(fails, exit 1), with `ALLOW_NO_PYTHON=1` (builds, warns) and with it
+(bundles 3.14.10).
 
 **F24 — Deprecations.** Nine `AVMutableVideoComposition` warnings since
 the minimum became 26 (`ComposedTimeline`, `CompositionPlanning`,
@@ -359,14 +364,18 @@ whether `cfprefsd` refuses it a write is untested. Proposed as accepted
 risk: an expression learns a file exists and its size, and can send out
 only numbers.
 
-**F61 — Python's licenses aren't shipped:** nothing copies the CPython
-build's license or those of what it bundles (OpenSSL, SQLite, libffi,
-zlib). *Next:* copy them into the bundle and list them in an About
-window or a notices file.
+**F61 — Python's licenses aren't shipped:** *(part fixed in
+`96409e50`)* the CPython license (`lib/python3.14/LICENSE.txt`) is now
+required in the bundle, but the notices of what the build links in
+(OpenSSL, SQLite, libffi, zlib, and others python-build-standalone
+documents) aren't in its archive. *Next:* gather them into a notices
+file in the bundle and list it in an About window.
 
 **F62 — `--pin` trusts the first download:** it takes the hash from the
-same release it fetches. *Next:* check it against a second source, or
-accept with D3.
+same release it fetches. Since D3 a new pin lands only in a reviewed
+commit of its own, which narrows it to a release compromised when the
+pin is made. *Next:* check the hash against a second source (the
+release's signed attestation), or the owner accepts the risk.
 
 ### Phase 4
 
@@ -480,6 +489,29 @@ keystroke (`ProjectChange.step` before the merge check,
 (intended); clip, effect and control IDs not checked for repeats at
 load. *Next:* decide which matter; a round-trip test over generated
 projects (phase 11).
+
+### From the owner's decisions
+
+**F89 — Remembered script approval trusts a project's ID and path**
+(D5). *Expected:* remembered approval covers an exact snapshot of the
+code that runs and is asked again when it changes. *Observed:* "Always
+Run This Project's Scripts" stores the project's ID and package path
+(`CodeApproval.allowedProjects`), and every script later at that path
+runs without asking, a `git pull` or synced change included; projects
+made on this Mac are allowed that way at creation
+(`ProjectSession.swift:170`). The helper imports the script's siblings
+from the folder itself after approval, so a file changed between the
+check and the import runs unreviewed, and links in the folder are
+hashed through to their targets. *Next:* build D5.
+
+**F90 — External effect kernels compile without the person's approval**
+(D8). *Expected:* an external package's kernels are compiled or run only
+after the person approved its exact content. *Observed:* every package
+in the library folder, installed from the Finder or changed there, is
+compiled in the background as soon as it is found (at launch, on
+install, on each live reload: `EffectPackageStatus.compile`), whether or
+not a project uses it. Projects don't embed packages today; D8's rule
+covers them if they come to. *Next:* build D8.
 
 ## Fixed findings: detail
 
@@ -602,33 +634,75 @@ then told, naming the project.
 - **D2. Apple silicon only.** Decided by the owner; `build-app.sh`
   builds arm64 and checks it. The CPU fallback for a missing Metal
   device stays, unsupported, rather than crash a virtual machine.
-- **D3. Commit `scripts/python-pin`?** Recommended: yes, for builds
-  that bundle the same Python from any checkout (F7, F62).
-- **D4. Pin CI's actions by commit?** Recommended: yes.
-- **D5. What "Always Run This Project's Scripts" trusts.** As built it
-  trusts whatever later arrives at the project's ID and path, a `git
-  pull` or a synced folder included; ID and path identify a project but
-  don't vouch for its later code. Either keep it, with the prompt saying
-  it trusts the project's future changes, or ask again when a script
-  changed outside the app.
-- **D6. App Sandbox.** Not adopted. Adopting it needs security-scoped
-  bookmarks for media in place and on other drives, export destinations
-  and the interpreter, and another way to confine expressions, as
-  `sandbox-exec` can't run inside it. Confining expressions protects one
-  boundary, not the app. *Residual risks without it:* media handed to
-  system frameworks (AVFoundation, VideoToolbox, ImageIO) is parsed
-  with the person's full access; package kernels are compiled and run;
+The owner decided D3 to D8 on 2026-11-27. They are policies for the
+review, not claims that the code meets them; each says what is done.
+
+- **D3. The Python pin is committed.** Decided: yes. The release,
+  artifact and SHA-256 are in the repository; release packaging fails
+  without the pin or the bundled Python (Python-free development builds
+  only through an explicit option); the pin changes in a reviewed commit
+  of its own, with the helper's tests on the new Python and its license
+  notices checked. *Done* (`96409e50`): `ALLOW_NO_PYTHON=1` is the
+  option; the helper's suites (23) and Python tests (53) pass on the
+  bundled 3.14.10. The notices of the libraries built into CPython are
+  still F61.
+- **D4. CI's actions pinned by commit.** Decided: yes, every external
+  action by full SHA with its release in a comment, updates proposed by
+  Dependabot. *Done* (`7b323e77`). A pinned commit fixes which revision
+  runs; it doesn't establish that the revision is safe.
+- **D5. Remembered script approval trusts reviewed content, not future
+  changes.** Decided: a project's ID and path never authorize changed
+  code. Approval is remembered locally for an exact snapshot (the
+  executable content, its dependencies as far as they can be bounded,
+  and file names) and asked again when that content changes, inside the
+  app or outside it; opening a project never runs an unrestricted
+  script, and remembered approval only spares the prompt when the person
+  runs unchanged code; links and imports outside the snapshot are
+  refused or accounted for; the approved snapshot is what runs, not files
+  read again after approval. The option becomes "Remember approval for
+  these scripts", and the prompt says plainly that unrestricted scripts
+  can reach files and the network with the person's permissions, and,
+  where dependencies can't be bounded, that not every line run was
+  reviewed. *Status:* not yet built; tracked as F89.
+- **D6. App Sandbox deferred for the first release.** Decided: defer,
+  kept as a separate security project and not a prerequisite for this
+  review. *Release gates in its place,* before any public distribution:
+  Developer ID signing, the hardened runtime and notarization; helper
+  confinement validated on the signed app; confined expressions failing
+  closed where confinement is unavailable; the release-blocking parser,
+  file-system, approval and helper-protocol findings closed; and the
+  documentation saying approved unrestricted scripts run with the
+  person's permissions. These are not equivalent to the App Sandbox.
+  *Residual risk accepted by the owner:* media handed to system
+  frameworks (AVFoundation, VideoToolbox, ImageIO) is parsed with the
+  person's full access; package kernels are compiled and run on the GPU;
   the app's own file operations reach anything the person can; approved
-  scripts run unconfined by design. *Controls in its place:* the app's
-  own parsers bounded and swept (F16, F17, F48), path checks on deletion
-  (F18, F19), confined expressions (F21), approval of the code run
-  (F20), no network. Recommended: defer, as a recorded product decision
-  accepting those risks, and reconsider before distributing widely.
-- **D7. Review projects.** Licensed footage replaced, for now, by
-  generated fixtures (checkpoint D); real footage for a later
-  qualitative check.
-- **D8. Third-party kernels.** Whether to warn on installing a package
-  from outside, since no time limit can be relied on (F53).
+  scripts run unconfined by design. *Revisit* before a Mac App Store
+  release or a significant growth in plugins or executable content.
+- **D7. Licensed footage before the qualitative checks.** Decided:
+  synthetic fixtures now (checkpoint D, done), never blocking the
+  persistence, timing or security review; representative footage and
+  music, with suitable permissions, acquired before phase 7's visual
+  check and phase 8's listening check, and reused for phase 9's
+  measurements and phase 10's hands-on editing. Each item's provenance
+  and permitted uses are recorded; permission to test with it isn't
+  permission to put it in fixtures, screenshots or sample projects. It
+  covers line art, held animation, flashes, gradients, subtitles,
+  long-GOP decoding and representative music. The synthetic fixtures
+  stay the correctness oracle; real footage supplements them.
+- **D8. Third-party effect packages approved before a kernel runs.**
+  Decided: yes. An external package is executable GPU code, not a
+  preset. Before its first compilation or run the app shows its name,
+  where it came from when known, and whether it is built in or
+  external, and says a faulty or malicious kernel may stall graphics or
+  destabilize the app. Approval is remembered for the package's exact
+  executable content and asked again when that changes, for packages
+  installed from Finder, embedded in projects, live-reloaded, or found
+  in the library folder alike; unapproved packages are listed without
+  being compiled for thumbnails or previews; a recovery launch turns
+  external effects off. The warning supplements validation and resource
+  limits, and no GPU time limit is promised that the code can't enforce
+  (F53). *Status:* not yet built; tracked as F90.
 
 ## Phase records
 
