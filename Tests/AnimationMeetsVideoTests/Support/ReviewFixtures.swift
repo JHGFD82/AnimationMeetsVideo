@@ -119,9 +119,12 @@ enum ReviewFixtures {
 
     /// Writes `count` frames of `picture` as H.264 with a key frame only
     /// every `keyFrameInterval` frames (long-GOP, as broadcast and web video
-    /// are).
+    /// are). `mediaTimeScale` stamps the frames on a coarser track
+    /// timescale than their rate's, rounding their times as a remuxed MP4
+    /// (1000) or an MPEG-TS file (90,000) does.
     static func writeMovie(
-        to url: URL, picture: Picture, timing: Timing, count: Int, keyFrameInterval: Int = 120
+        to url: URL, picture: Picture, timing: Timing, count: Int, keyFrameInterval: Int = 120,
+        mediaTimeScale: CMTimeScale? = nil
     ) async throws {
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
@@ -133,7 +136,11 @@ enum ReviewFixtures {
                 AVVideoAverageBitRateKey: 2_000_000,
             ],
         ])
-        if case .constant(let duration) = timing { input.mediaTimeScale = duration.timescale }
+        if let mediaTimeScale {
+            input.mediaTimeScale = mediaTimeScale
+        } else if case .constant(let duration) = timing {
+            input.mediaTimeScale = duration.timescale
+        }
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
@@ -160,7 +167,9 @@ enum ReviewFixtures {
                 }
             }
             CVPixelBufferUnlockBaseAddress(pixels, [])
-            adaptor.append(pixels, withPresentationTime: time)
+            // Stamped as a muxer at that timescale would: to the nearest tick.
+            let stamped = mediaTimeScale.map { CMTimeConvertScale(time, timescale: $0, method: .roundHalfAwayFromZero) } ?? time
+            adaptor.append(pixels, withPresentationTime: stamped)
         }
         input.markAsFinished()
         await writer.finishWriting()

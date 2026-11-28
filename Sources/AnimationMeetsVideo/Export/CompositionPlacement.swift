@@ -25,6 +25,17 @@ struct MediaTrackInfo: @unchecked Sendable {
     /// carry transparency; nil when the frames may have some, or there is
     /// no video.
     var opaqueSize: CGSize?
+    /// How much later than asked its pictures are read: one tick of the
+    /// video track's timescale, at most a quarter of a frame. A frame is
+    /// shown from its time stamp on, and files whose stamps are rounded to
+    /// a coarse timescale (1 ms from a Matroska file remuxed to MP4, 90 kHz
+    /// from MPEG-TS, QuickTime's 600) stamp many frames a hair after their
+    /// frame time, which then showed the frame before: a 23.976 fps file at
+    /// 90 kHz showed every fourth frame twice and never the next. Read a
+    /// tick late, each frame time falls inside its own frame whichever way
+    /// its stamp was rounded; a file on an exact grid is read inside the
+    /// same frame as before.
+    var videoReadNudge = CMTime.zero
 }
 
 actor MediaTrackCache {
@@ -47,6 +58,7 @@ actor MediaTrackCache {
         var transform = CGAffineTransform.identity
         var size = CGSize.zero
         var opaqueSize: CGSize?
+        var nudge = CMTime.zero
         if let video {
             videoRange = try await video.load(.timeRange)
             let natural = try await video.load(.naturalSize)
@@ -57,6 +69,9 @@ actor MediaTrackCache {
             if let format = try await video.load(.formatDescriptions).first, Self.isOpaque(format) {
                 opaqueSize = natural
             }
+            nudge = Self.readNudge(
+                timescale: try await video.load(.naturalTimeScale), frameRate: Double(try await video.load(.nominalFrameRate))
+            )
         }
         var channels = 0
         if let audio {
@@ -77,10 +92,20 @@ actor MediaTrackCache {
             audioChannels: channels,
             orientedTransform: transform,
             orientedSize: size,
-            opaqueSize: opaqueSize
+            opaqueSize: opaqueSize,
+            videoReadNudge: nudge
         )
         entries[url] = info
         return info
+    }
+
+    /// One tick of `timescale`, at most a quarter of a frame at
+    /// `frameRate` (`MediaTrackInfo.videoReadNudge`).
+    static func readNudge(timescale: CMTimeScale, frameRate: Double) -> CMTime {
+        guard timescale > 0 else { return .zero }
+        let tick = CMTime(value: 1, timescale: timescale)
+        guard frameRate > 0, frameRate.isFinite else { return tick }
+        return CMTimeMinimum(tick, CMTime(seconds: 0.25 / frameRate, preferredTimescale: 1_000_000))
     }
 
     /// Whether frames in `format` have no transparency: those of codecs

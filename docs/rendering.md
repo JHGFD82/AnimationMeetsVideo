@@ -100,6 +100,14 @@ over it, so nothing can show through, be handed over to, or differ from
 it. A picture stays until a newer one replaces it: a new player item, an
 emptied timeline or a slow frame never shows black in between.
 
+- **Which source frame is shown.** A frame is shown from its time stamp
+  on, and many files stamp their frames on a coarse timescale (1 ms in an
+  MP4 remuxed from Matroska, 90 kHz from MPEG-TS, QuickTime's 600), so a
+  frame can begin a hair after its frame time. The composition reads each
+  file's pictures one tick of its track's timescale late, at most a
+  quarter of a frame (`MediaTrackInfo.videoReadNudge`), so each frame time
+  falls inside its own frame, in the viewer and the export alike; sound,
+  and the source time effects are evaluated at, are not moved.
 - **Where frames come from.** Every player item gets an
   `AVPlayerItemVideoOutput` asking for the compositor's own pixel format
   (8-bit BGRA for SDR timelines, half floats otherwise,

@@ -161,14 +161,18 @@ enum CompositionExporter {
                     // the original's less its offset (`ViewerCopies`);
                     // export never has one.
                     var copyOffset = CMTime.zero
+                    var nudge = info.videoReadNudge, readable = info.videoRange
                     if forPreview, let viewerCopies, !viewerCopies.isEmpty {
                         let used = placement.pieces.compactMap { $0.within(info.videoRange)?.file }
                         if let first = used.first {
                             let span = used.dropFirst().reduce(first) { $0.union($1) }
                             if let copy = viewerCopies.copy(of: info.url, covering: span),
-                               let copied = try? await MediaTrackCache.shared.info(for: copy.url).video {
+                               let copiedInfo = try? await MediaTrackCache.shared.info(for: copy.url),
+                               let copied = copiedInfo.video {
                                 sourceVideo = copied
                                 copyOffset = copy.offset
+                                nudge = copiedInfo.videoReadNudge
+                                readable = copiedInfo.videoRange
                             }
                         }
                     }
@@ -178,8 +182,25 @@ enum CompositionExporter {
                         if videoTrack == nil {
                             videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                        let read = CMTimeRange(start: CMTimeSubtract(file.start, copyOffset), duration: file.duration)
-                        try videoTrack?.insertTimeRange(read, of: sourceVideo, at: at)
+                        // A tick late, so a frame stamped a hair after its
+                        // time is still the one shown (`videoReadNudge`). A
+                        // piece that ends with the file can't be read past
+                        // its end: it is read to the end, and the file's
+                        // last tick, inside its last frame, fills the tick
+                        // left over. Stretching it back instead would undo
+                        // the tick by the end.
+                        let read = CMTimeRange(start: CMTimeAdd(CMTimeSubtract(file.start, copyOffset), nudge), duration: file.duration)
+                        if readable.isValid, read.end > readable.end, readable.end > read.start,
+                           case let excess = CMTimeSubtract(read.end, readable.end), CMTimeCompare(excess, nudge) <= 0 {
+                            let main = CMTimeRange(start: read.start, end: readable.end)
+                            try videoTrack?.insertTimeRange(main, of: sourceVideo, at: at)
+                            try videoTrack?.insertTimeRange(
+                                CMTimeRange(start: CMTimeSubtract(readable.end, excess), duration: excess),
+                                of: sourceVideo, at: CMTimeAdd(at, main.duration)
+                            )
+                        } else {
+                            try videoTrack?.insertTimeRange(read, of: sourceVideo, at: at)
+                        }
                         // Retimed footage plays faster or slower than it was
                         // shot.
                         if length != file.duration {
