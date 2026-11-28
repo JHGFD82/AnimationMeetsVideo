@@ -117,7 +117,13 @@ final class AudioRecorder {
     ) async throws -> URL {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        let named = take.deletingLastPathComponent().appending(path: "Recording \(formatter.string(from: date)).caf")
+        // Named by the second, in local time: two takes in one second, or
+        // in the hour that repeats when clocks go back, would share a name,
+        // and the move would fail with the take left under its temporary
+        // one (code-review-notes.md, F80). A taken name is numbered.
+        let named = ProjectStore.uniqueDestination(
+            for: "Recording \(formatter.string(from: date)).caf", in: take.deletingLastPathComponent()
+        )
         try FileManager.default.moveItem(at: take, to: named)
         guard let packageURL else { return try keep(named, in: recordings) }
         do {
@@ -134,7 +140,7 @@ final class AudioRecorder {
 
     private static func keep(_ named: URL, in folder: URL) throws -> URL {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let destination = folder.appending(path: named.lastPathComponent)
+        let destination = ProjectStore.uniqueDestination(for: named.lastPathComponent, in: folder)
         try FileManager.default.moveItem(at: named, to: destination)
         return destination
     }

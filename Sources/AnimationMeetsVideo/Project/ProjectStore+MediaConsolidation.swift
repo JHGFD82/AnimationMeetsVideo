@@ -101,7 +101,7 @@ extension ProjectStore {
         return path.hasPrefix(packagePath + "/")
     }
 
-    private static func uniqueDestination(for name: String, in folder: URL) -> URL {
+    static func uniqueDestination(for name: String, in folder: URL) -> URL {
         let fileManager = FileManager.default
         var candidate = folder.appending(path: name)
         let base = candidate.deletingPathExtension().lastPathComponent
