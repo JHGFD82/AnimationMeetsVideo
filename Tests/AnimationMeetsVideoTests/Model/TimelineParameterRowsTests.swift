@@ -243,6 +243,46 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(rotation(project, clips[1], in: timelineID).number.keyframes.count == 2)
     }
 
+    // F94: offsets are seconds, and pasted at 23.976 some came out a tick
+    // before their frame, where a later edit at that frame added a second
+    // keyframe beside each.
+    @Test func keyframesPastedAtNTSCRatesLandOnFrames() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        project.timelines[0].frameRate = 24_000.0 / 1001
+        let frame = CMTime(value: 1001, timescale: 24_000)
+        let media = MediaClip(
+            name: "A.mov", kind: .video, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24_000.0 / 1001,
+            colorSpace: .rec709, codecName: "H.264"
+        )
+        var clips: [UUID] = []
+        for start in [0, 150] {
+            let id = project.importClip(media, intoTimeline: timelineID)!.clipID
+            project.editClip(id, in: timelineID) {
+                $0.trimStart = .zero; $0.trimEnd = CMTimeMultiply(frame, multiplier: 120); $0.startOffset = CMTimeMultiply(frame, multiplier: Int32(start))
+            }
+            _ = project.addEffect(.transform, toClip: id, in: timelineID)
+            clips.append(id)
+        }
+        let times = (0..<100).map { CMTimeMultiply(frame, multiplier: Int32($0)) }
+        let transform = project.clipAndLayer(clips[0], in: timelineID)!.clip.effects.first { $0.kind == .transform }!
+        project.editEffect(transform.id, ofClip: clips[0], in: timelineID) { effect in
+            effect.changeControl(.rotation) { control in
+                control.number = AnimatedValue(ComponentValue(values: [0]), keyframes: times.enumerated().map {
+                    Keyframe(time: $1, value: ComponentValue(values: [Double($0)]))
+                })
+            }
+        }
+        let copied = try #require(project.copiedKeyframes(
+            [transform.id: [transform.control(.rotation)!.id: times]], ofClip: clips[0], in: timelineID
+        ))
+        #expect(project.pasteKeyframes(copied, onClip: clips[1], in: timelineID, at: CMTimeMultiply(frame, multiplier: 151)) == 100)
+        let pasted = rotation(project, clips[1], in: timelineID).number.keyframes
+        let expected = (1...100).map { CMTimeMultiply(frame, multiplier: Int32($0)) }
+        #expect(pasted.count == 100)
+        #expect(pasted.map(\.time).enumerated().allSatisfy { CMTimeCompare($1, expected[$0]) == 0 })
+    }
+
     @Test func oneControlsKeyframesPasteOntoAnotherWithAsManyNumbers() throws {
         var (project, timelineID, clips) = fixture()
         let source = project.clipAndLayer(clips[0], in: timelineID)!.clip

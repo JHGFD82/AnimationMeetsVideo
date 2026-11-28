@@ -89,6 +89,7 @@ extension EditingProject {
         onto: (effectID: UUID, controlID: UUID)? = nil
     ) -> Int {
         guard let clip = clipAndLayer(clipID, in: timelineID)?.clip else { return 0 }
+        let timeline = timeline(id: timelineID)
         var pasted = 0
         for lane in copied.lanes {
             let target: (effectID: UUID, controlID: UUID)?
@@ -104,7 +105,12 @@ extension EditingProject {
                 numbers.flatMap { $0.count == 2 ? KeyframeEase(influence: $0[0], speed: $0[1]) : nil }
             }
             let made = lane.keyframes.filter { $0.values.count == width }.map { frame in
-                let at = CMTimeAdd(time, CMTime(seconds: frame.offset, preferredTimescale: ParameterTimeAxis.timescale))
+                // On the frame nearest, as every keyframe is: offsets are
+                // seconds, and cut down to a tick 234 of 995 frame-spaced
+                // ones at 23.976 came out a tick early, so a later edit at
+                // that frame made a second keyframe beside it (F94).
+                let offset = CMTimeAdd(time, CMTime(seconds: frame.offset, preferredTimescale: ParameterTimeAxis.timescale))
+                let at = timeline?.snappedToFrame(offset) ?? offset
                 return AnimationMeetsVideo.Keyframe(
                     time: clip.sourceTime(atTimelineTime: at), value: ComponentValue(values: frame.values),
                     easeIn: ease(frame.easeIn), easeOut: ease(frame.easeOut), hold: frame.hold ?? false
