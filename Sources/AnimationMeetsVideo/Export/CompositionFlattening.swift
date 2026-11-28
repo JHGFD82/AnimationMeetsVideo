@@ -310,7 +310,7 @@ extension CompositionExporter {
                     // A way in that joins the clip before may start before
                     // the cut, playing this clip's frames before its in
                     // point over the clip before.
-                    if lead > .zero, let node = try await spare(
+                    if lead > .zero, project.playsVideo(clip), let node = try await spare(
                         clip, from: CMTimeSubtract(clip.trimStart, lead), at: CMTimeSubtract(clip.startOffset, lead), for: lead,
                         stack: clipStack, host: overlay
                     ) {

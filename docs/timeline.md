@@ -772,7 +772,8 @@ taking it out to) whatever is underneath: lower layers, or black.
 
 ### Transitions joining two clips
 
-Where two clips with pictures (media or nested timelines) meet on a layer (within
+Where two clips with pictures (media or nested timelines), or two of sound
+alone (audio files, detached sound), meet on a layer (within
 `Timeline.abutmentTolerance`, as clips meet everywhere else, so edges a
 sliver apart from rounding still count), a transition dropped at the cut,
 on either clip, **joins** them: it becomes the incoming clip's
