@@ -3,10 +3,12 @@
 Status: **review notes** for the first pass of
 [code-review-plan.md](code-review-plan.md). Phases 1 to 3 have been
 reviewed (phase 1 only in part), phases 4 and 5 are being reviewed, and
-the plan's stabilization checkpoint is done but for F4's hang, which
-hasn't recurred to be captured; the owner's decisions D3 to D8 are
-recorded and built (F89, F90), but for release gates that wait for
-phase 12; phases 6 to 12 haven't started. Many findings
+the plan's stabilization checkpoint is partial: B and D are done, C is
+done but for F4's hang, which hasn't recurred to be captured, and A has
+open paths to lost work (F35, F72's stems, F73, F123); the owner's
+decisions D3 to D9 are recorded and built (F55, F89, F90), but for
+release gates that wait for phase 12, and D10 and D11 wait on the owner;
+phases 6 to 12 haven't started. Many findings
 are still open: being reviewed is not being resolved. Where each phase
 stands is under "Where each phase stands"; every finding is in the
 ledger.
@@ -26,6 +28,23 @@ follows the clip's time map, ramps and holds included, and F107's
 export already works on one copy of the project, but for the effect
 approvals it reads as it draws (F120).
 
+A third review of the ledger (2026-11-28, also from the document) found
+its headline status ahead of its own evidence. Checked against the code:
+checkpoint A was marked done with F35, F72's stems and F73 open, and is
+now partial, with phase 6 allowed to start as a recorded exception
+rather than because A is closed; F35 was severity 3, but its edit is
+autosaved into a project the person isn't looking at, so it is 1; F67's
+"two seconds before the move is noticed" covers imports, takes, analysis
+and renders, which don't check for a move before they write, and a save
+can be moved under between its check and its write (F123); F20's residual
+pointed at F55, which is fixed and covered only confined expressions,
+while scripts and the console share one process for the app's life
+(F124, D10); *fixed* now means the finding's expected behavior holds,
+not that its next action was done; F60's reads are a decision (D11),
+not an accepted risk, until the owner accepts them; F119 separates
+presentation from a fitted frame grid; and limits that each hold alone
+are to be tried together (F125).
+
 ## Reading this ledger
 
 The fields follow the plan's "Recording findings":
@@ -35,7 +54,13 @@ The fields follow the plan's "Recording findings":
   again and confirmed before acting), *reproduced* (a test, probe or run
   showed it).
 - **Resolution**: *open*, *fixed*, *accepted risk* (with the reason and
-  who accepted it), or *decision* (waiting on the owner).
+  who accepted it), or *decision* (waiting on the owner). A finding is
+  *fixed* when its expected behavior holds, not when its next action is
+  done: a next action can be narrower than what was expected. When part
+  of it is left to another ID, the finding says which part is closed and
+  each successor says which part of the expected behavior it carries.
+  *Accepted risk* needs the owner's acceptance; until then it is a
+  *decision*.
 - **Fix · verification**: the fix commit, and its test: *fails without*
   (the test was run against the code without the fix and failed),
   *test* (a regression test, not run against the unfixed code), or *no
@@ -60,35 +85,49 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Phase | Coverage | What keeps it from complete | Open findings |
 | --- | --- | --- | --- |
 | 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F24 |
-| 2. Architecture and maintainability | Complete | | F30–F47; its severity-1 findings are fixed |
-| 3. Security, privacy and dependencies | Complete | | F54, F59–F62 (F53 accepted under D8; F57's budgets redone; F55 fixed under D9) |
-| Owner's decisions D3–D9 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | F121 |
-| Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs; not to be called complete until it is | F4 |
-| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt; F72, F35 and F73 block a release | F69, F70, F72, F73, F75–F78, F82–F88, F122 |
+| 2. Architecture and maintainability | Complete | | F30–F47; its severity-1 findings are fixed but F35, raised to 1 by the third review |
+| 3. Security, privacy and dependencies | Complete | | F54, F59–F62, F124, F125 (F53 accepted under D8; F57's budgets redone; F55 fixed under D9; F60 waits on D11) |
+| Owner's decisions D3–D11 | D3–D9 done but for release gates; D10 and D11 open | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8; D10 (the scripts helper shared between runs) and D11 (confined code reading metadata) wait on the owner | F60, F121, F124 |
+| Stabilization checkpoint | Partial | A: open paths to lost work (F35, F72's stems, F73, F123). C: F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs. B and D done | F4, F35, F72, F73, F123 |
+| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt; F72, F73 and F123 block a release, with F35 from phase 2 | F69, F70, F72, F73, F75–F78, F82–F88, F122, F123 |
 | 5. Timeline, timing and music sync | Partial | Four reviews made and recorded, and the end-to-end sync export test built (`9207e570`); the beat tick and MIDI taps read, not tried on hardware; detection quality and beat timing judged on generated material, not episodes and songs (D7); no frame-identity check over mixed rates, VFR, ramps and reverse (F119) | F114–F120 |
-| 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4, and phase 6 needn't wait for it | F113 |
+| 6 to 12 | Not started | Phase 6 may start as an exception to the plan's order, not because its prerequisite is met: checkpoint A is open (F35, F72, F73, F123) and C is open for F4. Phase 6 reads concurrency and lifetimes, which A's open findings don't make unsafe to review, and runs event suites by filter while F4 is open. Phase 5 also started before A was closed, unrecorded until now. The plan has the rest wait for A to C | F113 |
 
 ## Stabilization checkpoint
 
 From the plan's checkpoint, with the findings each part covers.
 
-- **A. Data-loss paths. Done.** Fixed: F25 (Beat Match Confirm), F26
+- **A. Data-loss paths. Partial.** Fixed: F25 (Beat Match Confirm), F26
   (viewer handle drag), F27 (no lock without `flock`), F28 (provenance),
   F29 (backups across a clock change), F51 (names made into paths), F52
   (clips dropped at load), F71 (failed import), F74 (folder marked
   before load), F79 (package replaced), F81 (undo past arrived
   analysis, reproduced first), F80 (a take left in the temporary
-  folder); F72 (export over a source) fixed but for asking before stems
-  replace same-named files; F67 (a moved package split in two). Still
-  open and blocking: F35, F73.
+  folder); F67 (a moved package split in two) but for F123; F72's
+  export over a source. *Open, each a path to lost work, so A isn't
+  done:*
+  - F35: with a Timeline window in front, a console line can edit
+    another open project, which autosave then saves, with nothing saying which project it was.
+  - F72's stems: exporting stems into a folder replaces files of the
+    same names there without asking, and those files are gone.
+  - F73: not a loss by itself. Off APFS, backups copy all of `Media/`
+    every 15 minutes and saves wait behind the copy (for how long, and
+    what quitting then does, isn't measured). Its risk is in the fix:
+    until what a backup promises is settled, leaving the media out to
+    save time would make backups that can't be restored.
+  - F123: an import, a take or a save in the moments after the package
+    is moved writes at the old place, and the project then names media
+    that aren't in the package.
 - **B. Untrusted input. Done.** Fixed: F48 and F49 (numbers, text
   runs), F50 (timeline cycles), F56 (non-finite samples), F57 (helper
   budgets: a payload only on an expression's result and only of its
   samples' size, frames not yet read held to 8 MiB for expressions and
   256 MiB for scripts, headers to 1 MiB and 64 MiB; first done per frame,
   redone after the second review), F58 (script rational times), F55
-  (a helper process of its own for each expression run, D9). Defensive checks stay at the
-  operations too (F16, F17, F23).
+  (a helper process of its own for each expression run, D9). Defensive
+  checks stay at the operations too (F16, F17, F23). Limits that each
+  hold alone but are impractical together (F125) are phase 9's to
+  measure.
 - **C. Trust in the test harness. Done but for F4.**
   `scripts/run-tests.sh` (`c55c39b0`, `9bd1b800`, `4bc6cf20`) passes a
   run only on Swift Testing's summary, with `MIN_TESTS` and
@@ -129,7 +168,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F17 | `audio.bin` start overflowed | 3 | crash | 2 | code-verified | fixed | `ca0cd751` · test | blocking |
 | F18 | Edited viewer-copy index deleted any folder | 3 | data safety | 1 | reproduced | fixed | `221d4457` · fails without | blocking |
 | F19 | Linked cache folder emptied | 3 | data safety | 1 | code-verified | fixed | `2305c751` · test | blocking |
-| F20 | Allowed script imported code not allowed | 3 | security | 1 | code-verified | fixed | `d64fd738` · tests (`AMV_PYTHON` run) | blocking |
+| F20 | Allowed script imported code not allowed | 3 | security | 1 | code-verified | fixed (residual F124) | `d64fd738` · tests (`AMV_PYTHON` run) | blocking |
 | F21 | Expressions could read terminals and home | 3 | security | 1 | reproduced | fixed | `ea881d27` · fails without (`AMV_PYTHON`) | blocking |
 | F22 | Repeated IDs crashed the app | 3 | crash | 2 | code-verified | fixed | `17eb57a1` · test | blocking |
 | F23 | Negative component; package repeats and delays | 3 | crash | 2 | code-verified | fixed | `1aaeaf0b`, `4a8566c8` · test, no test | blocking |
@@ -144,7 +183,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F32 | Typed value edit leaves rendered stretches stale | 2 | rendering | 3 | reported | open | | nonblocking |
 | F33 | Mono clip's pan dropped silently | 2 | export | 3 | reported | open | | blocking |
 | F34 | Stale Matroska reference movie used | 2 | export | 3 | suspected | open | | nonblocking |
-| F35 | Python console edits the wrong project | 2 | data safety | 3 | reported | open | | blocking |
+| F35 | Python console edits the wrong project | 2 | data safety | 1 | code-verified | open | | blocking |
 | F36 | Render stretch may start between frames | 2 | timing | 3 | suspected | open | | nonblocking |
 | F37 | Open projects can share IDs in app-wide tables | 2 | correctness | 3 | reported | open | | nonblocking |
 | F38 | `TimelinePreviews.shared` serves every project | 2 | performance | 4 | reported | open | | nonblocking |
@@ -169,14 +208,14 @@ From the plan's checkpoint, with the findings each part covers.
 | F57 | Helper messages buffered without limit | 3 | security | 2 | code-verified | fixed | `2d03725a`, `ee6beea1` (per run, in bytes) · test (`AMV_PYTHON` run) | blocking |
 | F58 | A script's rational time has no bound | 3 | crash | 3 | code-verified | fixed | `958abd9b` · test | nonblocking |
 | F59 | Recording an app with permission refused | 3 | usability | 3 | suspected | open | | nonblocking |
-| F60 | Confined code can stat any path | 3 | security | 5 | reproduced | accepted risk (proposed, reads only) | `ab33f3e3` · test: no write through `cfprefsd` (`AMV_PYTHON`) | nonblocking |
+| F60 | Confined code can stat any path | 3 | security | 5 | reproduced | decision (D11, reads only) | `ab33f3e3` · test: no write through `cfprefsd` (`AMV_PYTHON`) | nonblocking |
 | F61 | Python's licenses not shipped | 3 | release | 1 | code-verified | open (part fixed) | `96409e50` · CPython's own license required | blocking |
 | F62 | `--pin` trusts the first download | 3 | security | 5 | code-verified | open | | nonblocking |
 | F63 | A save wrote over an outside edit not yet seen | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
 | F64 | Saves and reloads not kept in order | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
 | F65 | Unreadable reload marked seen, then saved over | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
 | F66 | A renamed project's new backups deleted | 4 | data safety | 1 | code-verified | fixed | `27f199a6` · test | blocking |
-| F67 | Moving the open package splits the project | 4 | data safety | 3 | reproduced | fixed | `d2999cb8` · test; the split shown on the code before | blocking |
+| F67 | Moving the open package splits the project | 4 | data safety | 3 | reproduced | fixed (residual F123) | `d2999cb8` · test; the split shown on the code before | blocking |
 | F68 | A failed Restore says nothing | 4 | data safety | 3 | code-verified | fixed | `82160372` · no test (modal alert) | blocking |
 | F69 | Forget Original deletes before saving | 4 | data safety | 5 | code-verified | open | | nonblocking |
 | F70 | Errors don't name the project | 4 | usability | 5 | code-verified | open (part fixed) | `667aaad6`, `82160372` name the reload's and the open's | nonblocking |
@@ -198,7 +237,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F86 | Damaged approval store emptied silently | 4 | usability | 5 | reported | open | | nonblocking |
 | F87 | Naming an edit costs a scene scan | 4 | performance | 4 | suspected | open | | nonblocking |
 | F88 | Fields not saved or reset on reopen | 4 | correctness | 6 | reported | open | | nonblocking |
-| F89 | Remembered script approval trusts a project's ID and path | D5 | security | 1 | code-verified | fixed | `5ab4864e` · test (`AMV_PYTHON` run) | blocking |
+| F89 | Remembered script approval trusts a project's ID and path | D5 | security | 1 | code-verified | fixed (residual F124) | `5ab4864e` · test (`AMV_PYTHON` run) | blocking |
 | F90 | External effect kernels compile without the person's approval | D8 | security | 1 | code-verified | fixed (residual F121) | `4c7ab74c` · test, snapshot | blocking |
 | F91 | Rounded frame stamps show frames twice and skip others | 5 | timing | 3 | reproduced | fixed (residual F119) | `620c1ad1` · fails without | blocking |
 | F92 | Tape scrub rests a tick before its frame | 5 | timing | 3 | reproduced | fixed | `909eb1d6` · fails without | blocking |
@@ -232,6 +271,9 @@ From the plan's checkpoint, with the findings each part covers.
 | F120 | An export reads effect approvals frame by frame | 5 | export | 3 | code-verified | open | | nonblocking |
 | F121 | No way to forget approved effect packages | D8 | usability | 5 | code-verified | open | | nonblocking |
 | F122 | Timeline windows lose their project after Save As or a move | 4 | usability | 5 | reported | open | | nonblocking |
+| F123 | Writes in the moments after a move land at the old place | 4 | data safety | 3 | code-verified | open | | blocking |
+| F124 | Scripts and the console share one interpreter for the app's life | 3 | security | 3 | code-verified | decision (D10) | | blocking |
+| F125 | Limits that hold alone aren't tried together | 3 | performance | 2 | suspected | open | | nonblocking |
 
 ## Open findings: detail and next action
 
@@ -346,8 +388,20 @@ fails (`MatroskaMedia.swift:48`). *Next:* verify; refuse rather than
 read moved bytes.
 
 **F35 — The Python console edits the wrong project** with a Timeline
-window in front (`ScriptConsole.swift:67–72`). *Next:* route by the key
-window's session.
+window in front (`ScriptConsole.swift:67–72`). *Read again (third
+review):* `frontSession()` takes the session whose editor window is the
+main window, and otherwise the first open project, so with a Timeline
+window or another project's Timeline in front a line runs on whichever
+project opened first. The console doesn't name the project it ran on.
+The edit is an undo step in that project, which the person isn't
+looking at, and autosave and the next save write it; closing the
+project ends the undo history. *Severity 1, not 3:* nothing tells the
+person to undo, and the plan doesn't count an undo stack that autosave
+and closing outlast as safe. *Next:* route by the session of the
+window in front, Timeline windows included (with F122's keying), refuse
+when there is none rather than take the first, and name the project in
+the console's title; an event test with two projects and a Timeline
+window in front.
 
 **F36 — A render stretch may start between frames**
 (`SegmentRenderer.swift:26`). *Next:* compare exported frames of an
@@ -487,7 +541,8 @@ are enough to carry that out: its results become keyframes in the
 project, which is saved and may be shared, so metadata can leave in
 them. What is accepted, if the owner agrees, is that metadata (not
 contents) of the person's files is visible to approved expression code,
-as it is to every app they run.
+as it is to every app they run. Until the owner does, it is a
+decision (D11), not an accepted risk.
 
 **F61 — Python's licenses aren't shipped:** *(part fixed in
 `96409e50`)* the CPython license (`lib/python3.14/LICENSE.txt`) is now
@@ -524,10 +579,12 @@ Into a package in the Trash, or deleted, nothing is written: a save
 says why, and Save As stays possible, from the Trash with its media.
 Tested: renamed and saved, nothing is at the old path, the media path
 follows in the file and on screen, and the lock still holds; deleted,
-saves, autosaves, backups and the check write nothing. *Left:* a write
-in the two seconds or less before the move is noticed can still make a
-folder at the old place; the Trash case is tested by reading only, not
-by putting a package in the Trash; timeline windows (F122).
+saves, autosaves, backups and the check write nothing. *What is
+closed:* a save, autosave or backup made after a move is noticed writes
+to the package where it is now. *Left, with its own IDs:* writes before
+the move is noticed, and a move during a save (F123); timeline windows
+(F122). The Trash case is tested by reading only, not by putting a
+package in the Trash.
 
 **F68 — *(fixed in `82160372`)* A failed Restore says nothing** (`ProjectSession.swift:223`,
 `try?`): the saved version opens, and the first save makes the autosave
@@ -880,8 +937,9 @@ scripts" is a checkbox; the prompt says what scripts can reach and that
 modules from outside the folder aren't checked. Tested in Swift and in
 the helper's Python tests (the approved copy is imported, not the
 changed folder). *Cost, as decided:* the person's own scripts ask again
-after every edit. *Left:* F20's residual (the interpreter's `site` and
-user site-packages, threads outliving a run).
+after every edit. *Left:* F124 (the interpreter's start-up and user
+site-packages, and what one run leaves in the shared helper for the
+next).
 
 **F90 — External effect kernels compile without the person's approval**
 (D8). *Expected:* an external package's kernels are compiled or run only
@@ -905,8 +963,12 @@ forget approved packages, as Forget Allowed Code does for Python (F121).
 
 Residuals that can be acted on alone, taken out of the findings they
 were left under, and what reading the code again found. A finding
-marked *fixed (residual F1nn)* met its own next action; the residual is
-what it didn't promise.
+marked *fixed (residual F1nn)* has the part of its expected behavior
+its fix covers holding; the residual carries the rest, and says what it
+expects. (As first written, this said the finding had met its own next
+action, which can be narrower than what it expected: F99 copied the
+fades but left Detach Audio sounding different, F114. See "Reading
+this ledger".)
 
 **F113 — The binaries record SDK 26.0, built with the 27.2 SDK** (from
 F6). *Expected:* `LC_BUILD_VERSION`'s `sdk` is the SDK linked against.
@@ -971,7 +1033,18 @@ times alone, compared with what export and the viewer show, for: equal
 and differing rates; forwards and backwards; fractional speeds, ramps
 and holds; VFR with short and long frames; a coarse timescale; split
 and joined again; and Blend's and temporal effects' samples. Gate:
-blocking, as F91 and F106 were.
+blocking, as F91 and F106 were. *Two questions, two oracles (third
+review):* (1) presentation: does the app show the frame presented at
+the source time asked for, from the stamps as written, VFR included?
+(2) fitting: where a constant-rate file's stamps are coarser than its
+grid, does a written-down policy recover the frame the fixture meant? A
+blanket offset that mends (2) at one boundary can cross a real VFR
+boundary under (1). Each gets its policy written in timeline.md before
+its test: ties (a time exactly on a stamp), gaps, ends exclusive, and
+rounding. The expected frame numbers are worked out by the test from
+the fixture's own record of what it wrote, not by the app's mapping
+code, and compared for the viewer, an export with background renders
+and one without.
 
 **F120 — An export reads effect approvals frame by frame** (from F107).
 *Expected:* an export is of one fixed state, as its copy of the project
@@ -999,6 +1072,76 @@ next save makes a second, unlocked one at the old path; since fixed),
 F72 (stems replace same-named files unasked) and F35 (the console edits
 the project behind a Timeline window) stay blocking, and with F73 are
 the persistence work before phase 6 goes far. F69 and F84 are above.
+
+### From the third review of the ledger
+
+Three gaps the third review found, read in the code before recording.
+
+**F123 — Writes in the moments after a move land at the old place**
+(from F67). *Expected:* once the package has moved, nothing is written
+where it was. *Observed (read, not tried):* only saves, autosaves,
+backups and the two-second check follow a move
+(`followPackageIfMoved`, `ProjectSession.swift:420,569,619,666`).
+Imports (`ProjectStore.copyIntoPackage`,
+`ProjectStore+MediaConsolidation.swift:81`), takes
+(`AudioRecorder.keep`, by the same copy), analysis files (`ProjectStore+ReferenceData.swift`,
+`ProjectStore+Provenance.swift`) and renders (`RenderCache.partialURL`)
+write to the package's URL as it was, making its folders again with
+intermediate directories. An import in that window copies the media to
+`<old>/Media/` and the clip names it there; the next check follows the
+move and maps the path to `<new>/Media/`, where the file isn't, so the
+clip goes offline and its media is left outside the package. A save
+checks and then writes, partly off the main thread (backups' copying),
+so a move between the two still makes a folder at the old path.
+Viewer copies and Matroska reference movies weren't followed.
+*Severity 3:* nothing is deleted, and the media can be found at the old
+place and relinked, but the project saved names files it doesn't have.
+*Next:* one way for every package write to get its folder, which
+follows a move first; for writes off the main thread, the package found
+from the lock's descriptor when the write is made, not when it was
+queued. Tests: an import during a move, and a move made between a
+save's check and its write (a hook in the store), each leaving nothing
+at the old path and every clip's media in the package.
+
+**F124 — Scripts and the console share one interpreter for the app's
+life** (from F20 and F89; F20's residual pointed at F55, which is fixed
+and covered only confined expressions). *Expected (D5):* the approved
+snapshot is what runs. *Observed (read):* `PythonHelpers.scripts` is
+one process for every script and console line of every open project,
+kept until the app quits (`PythonHelper.swift:30–37`). A script's own
+modules from its folder are forgotten when it ends
+(`runner.py`, `_forget_modules_from`); anything else it changes stays
+(builtins, `amv`, the standard library's modules, `sys.path`, threads,
+the console's names), so a later approved script runs in an
+interpreter an earlier one shaped, of the same project or another. A
+thread an earlier run left that calls during a later run is tagged with
+that run and answered on its project, as F55 found for expressions. The
+interpreter starts with `-E -P -B` (`PythonRuntime.helperArguments`)
+but not `-s`, so the user's site-packages and their `.pth` files run at
+start-up, before any approval; the prompt says modules outside the
+folder aren't checked, not that start-up code runs. *What it doesn't
+add:* an approved script can already change any file the person can,
+Python's own included, so the shared process gives approved code no
+power it lacked. *What it breaks:* remembered approval no longer
+describes everything that later runs. Severity 3 for that reason; the
+gate is blocking as F89's was, unless the owner accepts it. *Next:*
+the owner decides D10; python-scripting.md's Safety now says how it is.
+
+**F125 — Limits that hold alone aren't tried together** (from the
+second review's budgets). *Expected (checkpoint B):* budgets keep memory
+and work practical, refusing or degrading before anything is allocated.
+*Observed:* each limit is checked by itself: frame sides up to 16,384,
+256 passes of a package (F23), durations, `audio.bin`'s levels (F54), a
+script's 64 MiB header that decodes to several times its size (F57's
+*Left*), approved or not, since the app decodes it. Nothing bounds their
+product: a 16,384-pixel frame through a deep stack of 256-pass effects
+with intermediates, nested timelines each at their limits, an export
+beside background renders and viewer copies. *Suspected, not tried.*
+Severity 2: a project file could exhaust memory or hang the app.
+*Next (phase 9):* generated projects at the limits together; measure
+peak memory and time for a frame, an export and a load; then, for each
+resource, a refusal or a lower-resolution draw that happens before
+allocation and says so, with a test that it does.
 
 ## Fixed findings: detail
 
@@ -1078,10 +1221,11 @@ clean-ups clear only a folder resolving inside the package.
 
 **F20 — An allowed script could import code no one allowed.** Allowing
 covers the name and hash of every other file in the script's folder, and
-the helper forgets a script's own modules when it ends. Residual, open
-under F55 and the plan's approval criteria: links and imports reaching
-outside the folder, the interpreter's start-up (`site`, `.pth`), and
-threads outliving a run aren't covered.
+the helper forgets a script's own modules when it ends. Links in the
+folder are refused since F89. Residual, F124 (it pointed at F55, which
+covers confined expressions only): imports reaching outside the
+folder, the interpreter's start-up (`site`, `.pth`), and what a run
+leaves in the shared scripts helper, threads included.
 
 **F21 — Expressions could read terminals and the home folder.** `/dev`
 is gone from the readable list, an installation that is or holds the
@@ -1220,6 +1364,34 @@ review, not claims that the code meets them; each says what is done.
   against a rerun; otherwise (b), with the weaker boundary written in
   python-scripting.md's Safety and a test that one project's run can't
   see another's state.
+- **D10. How far one script's run is kept from another's** (F124).
+  *Waiting on the owner.* D9 settled confined expressions; scripts and
+  console lines share one unconfined process for the app's life, so an
+  approved script or a console line can change what a later approved
+  script runs (builtins, modules, threads), and the user's site-packages
+  and `.pth` files run at start-up unreviewed. Options: **(a)** a new
+  process for each script run (about 45 ms to start, small beside a
+  script the person chose), with the console keeping a process of its
+  own for each project, so names set on one line are there on the next
+  as the console promises, and nothing of it reaches scripts; **(b)** as
+  now, written down: approved scripts and console lines trust one
+  another across open projects, and the Safety section and the prompt
+  say so. Either way, whether the user's site-packages load (`-s` would
+  stop them, and with them packages installed with `pip install
+  --user`) is part of the decision. *Recommended:* (a), with the
+  user's site-packages kept and the prompt saying start-up code outside
+  the folder isn't checked; a test that a builtin one script sets is
+  gone in the next.
+- **D11. Whether confined code may read file metadata** (F60).
+  *Waiting on the owner.* Confined expressions can't write through
+  `cfprefsd` (tested), but can learn whether any path exists, with its
+  size, dates and owner, and their results become keyframes in a
+  project that may be shared. Options: **(a)** accept it, as metadata
+  every app the person runs can read, and say so in python-scripting.md;
+  **(b)** allow `file-read-metadata` only where reading is allowed (the
+  interpreter and the helper's code), if Python starts and imports
+  under it. *Recommended:* try (b) first, since an expression needs no
+  metadata; (a) if Python can't run under it.
 
 ## Phase records
 
