@@ -247,6 +247,15 @@ cut off (the app quitting while it copies, which quitting doesn't wait
 for, or a crash) leaves its hidden folder, which the next backup of
 the project deletes.
 
+Off APFS, as on most external drives formatted for Windows or older
+Macs and on network shares, there are no clones, so every backup copies
+the project's media again, and a save waits for a backup under way to
+finish. Measured on an HFS+ disk image on the internal SSD, the best
+case for such a volume, a backup of 1 GB of media took 0.8 to 1.7 s
+and a save asked for during it 1.7 s (`BackupCostBenchmark`); a real
+external disk is slower. What backups should do there is still to be
+decided (code-review-notes.md, F73).
+
 Opening a backup (double-clicking it, choosing it in File > Open, or
 File > Open Backup…, which starts in the front project's folder of
 backups beside it, listed by date) never touches the project it came from: it is copied beside that project
