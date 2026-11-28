@@ -49,7 +49,7 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F94–F99, F101–F103, F105–F110, F112 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F98, F99, F101–F103, F105, F106, F108–F110, F112 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
@@ -181,10 +181,10 @@ From the plan's checkpoint, with the findings each part covers.
 | F91 | Rounded frame stamps show frames twice and skip others | 5 | timing | 3 | reproduced | fixed | `620c1ad1` · fails without | blocking |
 | F92 | Tape scrub rests a tick before its frame | 5 | timing | 3 | reproduced | fixed | `909eb1d6` · fails without | blocking |
 | F93 | Whole rates of 10 fps and under taken for NTSC | 5 | timing | 3 | reproduced | fixed | `59ba4470` · test | nonblocking |
-| F94 | Pasted keyframes can land a tick before their frame | 5 | timing | 3 | reported | open | | nonblocking |
-| F95 | A script's split at a fraction is off the frames | 5 | timing | 3 | reported | open | | nonblocking |
-| F96 | A viewer copy can be made again and again | 5 | performance | 4 | reported | open | | nonblocking |
-| F97 | Fast scrub shows the next frame at a typed 23.976 | 5 | rendering | 5 | reported | open | | nonblocking |
+| F94 | Pasted keyframes can land a tick before their frame | 5 | timing | 3 | reproduced | fixed | `fac2eb3f` · fails without | nonblocking |
+| F95 | A script's split at a fraction is off the frames | 5 | timing | 3 | reproduced | fixed | `416ab9d4` · fails without | nonblocking |
+| F96 | A viewer copy can be made again and again | 5 | performance | 4 | reproduced | fixed | `6c66b2ad` · test (old form shown short) | nonblocking |
+| F97 | Fast scrub shows the next frame at a typed 23.976 | 5 | rendering | 5 | reproduced | fixed | `cc3c6a42` · fails without | nonblocking |
 | F98 | Sound-only clips never join, so crossfades dip | 5 | sound | 3 | code-verified | open | | nonblocking |
 | F99 | Detach Audio drops the fades under transitions | 5 | sound | 3 | code-verified | open | | nonblocking |
 | F100 | Scene-following splits land between frames | 5 | timing | 3 | reproduced | fixed | `49fe216a` · fails without | blocking |
@@ -194,7 +194,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F104 | Ramped clips' times cut down a tick | 5 | timing | 3 | reproduced | fixed | `50e32741` · fails without | blocking |
 | F105 | Blend on slowed clips mixes in the next scene | 5 | rendering | 3 | code-verified | open | | nonblocking |
 | F106 | Reversed clips show the frame before | 5 | timing | 3 | code-verified | open | | blocking |
-| F107 | Export doesn't wait for running expressions | 5 | export | 3 | code-verified | open | | blocking |
+| F107 | Export doesn't wait for running expressions | 5 | export | 3 | code-verified | fixed | `a7a486de` · test (the check; the alert by hand) | blocking |
 | F108 | Beat Keys rewritten flat before beats load | 5 | correctness | 3 | suspected | open | | nonblocking |
 | F109 | Speeds outside the time-pitch range untried | 5 | sound | 3 | suspected | open | | nonblocking |
 | F110 | Detected beats about 10 ms early | 5 | timing | 3 | reproduced | open | | blocking |
@@ -534,9 +534,16 @@ start), **F93** (8 and 10 fps had NTSC frame lengths; test only),
 does, and joins what it split), **F104** (ramp times rounded to the
 nearest tick, the trim itself when no time has passed), **F111** (Beat
 Keys pulses on the beat's nearest frame, at full height, and a decay
-under a frame over by the next one).
+under a frame over by the next one), **F94** (pasted keyframes on the
+nearest frame), **F95** (a script's split on the nearest frame for a clip
+with pictures), **F96** (viewer copy records keep their ends exactly; an
+older index reads by seconds and is remade once), **F97** (the scrub
+cache counts frames in the exact frame duration), **F107** (Export…
+asks, Wait or Export Anyway, while expressions or Keyframing effects are
+still being written; never refuses, since an expression can wait for
+good without Python).
 
-**F94 — Pasted keyframes can land a tick before their frame.**
+**F94 — *(fixed in `fac2eb3f`)* Pasted keyframes can land a tick before their frame.**
 `KeyframeCopying.swift:13,73` keeps offsets as `Double` and `:107` makes
 them with truncating `CMTime(seconds:)`; at 23.976, 234 of 995 offsets
 came out 1/240000 s early, and later edits at that frame, matched by
@@ -544,11 +551,11 @@ exact time (`AnimatedValue.swift:191`), add a second keyframe beside it.
 *Next:* keep offsets as `CMTime`, snapped to the frame; a paste test at
 23.976.
 
-**F95 — A script's split at a `Fraction` leaves a picture clip off the
+**F95 — *(fixed in `416ab9d4`)* A script's split at a `Fraction` leaves a picture clip off the
 frames** (`ProjectBridge.swift:518–519`, `EditingProject.swift:284`).
 *Next:* round through `placementTime(.nearest, frameLocked:)`.
 
-**F96 — A viewer copy can be made again and again.** Its record's range
+**F96 — *(fixed in `6c66b2ad`)* A viewer copy can be made again and again.** Its record's range
 is rebuilt from `Double` seconds (`ViewerCopies.swift:161–165`), and with
 edges whose timescales' common multiple overflows 32 bits it comes back
 a little smaller, so `missing` (`:266–270`) never finds it covered and
@@ -556,7 +563,7 @@ the copy is made again (reported: arithmetic reproduced, loop not run).
 *Next:* store value and timescale; a round-trip test with mixed
 timescales.
 
-**F97 — Fast scrubbing shows the next frame at a typed 23.976**
+**F97 — *(fixed in `cc3c6a42`)* Fast scrubbing shows the next frame at a typed 23.976**
 (`ScrubCache.swift:66–68`, `floor(t·rate)`); the exact landing corrects
 it. *Next:* index by the exact frame duration, as F92.
 
@@ -599,7 +606,7 @@ a repeated source frame maps back to; forward clips give the first.
 *Next:* decide and document one convention, evaluate at the frame shown;
 scene-following splits of reversed clips (F100) follow it.
 
-**F107 — Export doesn't wait for running expressions** or Audio Keys
+**F107 — *(fixed in `a7a486de`)* Export doesn't wait for running expressions** or Audio Keys
 still reading: nothing in `Export/` checks `waitingExpressions()` or
 `keyframingFreshness`, so an export started at once has the old values.
 *Next:* wait, or refuse with a note.
