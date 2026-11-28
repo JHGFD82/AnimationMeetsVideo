@@ -72,7 +72,8 @@ extension EditingProject {
     /// Separates the sound from video clips and nested timelines on a layer
     /// (`canDetachAudio`): the clips keep only
     /// their picture, and their sound goes onto a new layer just below with
-    /// the same timing and trims, so it plays exactly as before but can be
+    /// the same timing and trims, and the fades it had under the picture's
+    /// transitions (`soundTransitions`), so it plays as before but can be
     /// moved, trimmed or deleted on its own. `clipIDs` limits it to those
     /// clips; nil detaches every linked clip on the layer. The new layer is
     /// a sound layer. Returns it, or nil when there was nothing to detach.
@@ -84,9 +85,13 @@ extension EditingProject {
             return nil
         }
         var audioClips: [TimelineClip] = []
+        // The layer as it played, for the fades its sound had there.
+        let playing = timelines[tIndex].layers[lIndex].clips
+        let timeline = timelines[tIndex]
+        let detaching = Set(playing.filter { (clipIDs?.contains($0.id) ?? true) && canDetachAudio($0) }.map(\.id))
         for cIndex in timelines[tIndex].layers[lIndex].clips.indices {
             let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
-            guard clipIDs?.contains(clip.id) ?? true, canDetachAudio(clip) else { continue }
+            guard detaching.contains(clip.id) else { continue }
             timelines[tIndex].layers[lIndex].clips[cIndex].streams = .video
             timelines[tIndex].layers[lIndex].clips[cIndex].soundMuted = false
             // The picture keeps its effects and the sound takes its own.
@@ -97,8 +102,7 @@ extension EditingProject {
             // Sound muted as it was placed plays once it is on a layer of
             // its own: taking it out is what the mute was waiting for.
             audio.soundMuted = false
-            audio.transitionIn = nil
-            audio.transitionOut = nil
+            soundTransitions(of: clip, into: &audio, among: playing, detaching: detaching, in: timeline)
             audio.autoMatteEnabled = false
             audio.effects = []
             audio.anchorPoint = AnimatedValue(Vector2.zero)
@@ -110,5 +114,57 @@ extension EditingProject {
         let layer = TimelineLayer(customName: nil, kind: .sound, clips: audioClips)
         timelines[tIndex].layers.insert(layer, at: lIndex + 1)
         return layer.id
+    }
+
+    /// Gives the sound of `clip`, being detached into `audio`, the fades it
+    /// had under picture transitions, as transitions of sound, so it plays
+    /// as it did. They were dropped, and detached sound came in and went
+    /// out at full level (F99).
+    ///
+    /// At a cut joined to a clip whose sound is detached too, the two
+    /// copies join as the pictures did (`canJoin`), with the joint's timing
+    /// and the shape the sounds crossfaded with. Elsewhere the sound fades
+    /// over the span it faded over, and where it played past its end into a
+    /// joint that stays, the copy is lengthened by that much. A picture
+    /// transition's sound at an open end follows its curve at equal power;
+    /// a transition of sound has no curve, so the copy fades at equal power
+    /// over the same span, the same fade where the curve was linear.
+    private func soundTransitions(
+        of clip: TimelineClip, into audio: inout TimelineClip, among clips: [TimelineClip], detaching: Set<UUID>, in timeline: Timeline
+    ) {
+        audio.transitionIn = nil
+        audio.transitionOut = nil
+        let heard = audioFades(of: clip, among: clips)
+        func kind(_ shape: AudioCrossfade) -> TransitionKind {
+            switch shape {
+            case .sCurve: .crossfade
+            case .equalPower: .equalPowerCrossfade
+            case .linear: .linearCrossfade
+            }
+        }
+        func sound(_ transition: ClipTransition) -> ClipTransition {
+            let shape = transition.kind.soundShape ?? transition.audioCrossfade ?? jointAudioCrossfade
+            return ClipTransition(kind: kind(shape), duration: transition.duration, curve: .linear, lead: transition.lead, options: kind(shape).defaultOptions)
+        }
+        func fade(_ fade: AudioFade) -> ClipTransition {
+            let length = timeline.frameAligned(CMTime(seconds: fade.end - fade.start, preferredTimescale: 240_000), .nearest)
+            return ClipTransition(kind: kind(fade.crossfade ?? .equalPower), duration: length, curve: .linear)
+        }
+
+        let joinedBefore = predecessor(joining: clip, among: clips).map { detaching.contains($0.id) } ?? false
+        let joinedAfter = successor(joining: clip, among: clips).map { detaching.contains($0.id) } ?? false
+        if joinedBefore {
+            audio.transitionIn = clip.transitionIn.map(sound)
+        } else if let rising = heard.fades.first(where: \.rising) {
+            audio.startOffset = CMTimeSubtract(audio.startOffset, heard.head)
+            audio.trimStart = CMTimeSubtract(audio.trimStart, heard.head)
+            audio.transitionIn = fade(rising)
+        }
+        if joinedAfter {
+            audio.transitionOut = clip.transitionOut.map(sound)
+        } else if let falling = heard.fades.first(where: { !$0.rising }) {
+            audio.trimEnd = CMTimeAdd(audio.trimEnd, heard.tail)
+            audio.transitionOut = fade(falling)
+        }
     }
 }

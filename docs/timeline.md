@@ -733,7 +733,14 @@ in the inspector) splits them: the clips keep only their picture
 only the sound (`streams = .audio`), go onto a new sound layer. From
 then on the two are ordinary clips: the sound is colored as audio, moves
 freely off the frame grid, carries the beats, and takes only the Audio
-transitions (see [transitions.md](transitions.md#sound)).
+transitions (see [transitions.md](transitions.md#sound)). The fades it
+had under the picture's transitions come along as Audio transitions:
+copies of two clips joined at a cut join as the pictures did; elsewhere
+a copy fades over the span its sound faded over, lengthened by any
+sound it played past its end into a joint that stays with the picture.
+At an open end a picture transition's sound follows its curve, which an
+Audio transition hasn't, so there the copy fades at equal power over the
+same span: the same fade when the curve was linear.
 
 A **nested timeline's** clip detaches the same way, from its menu, the
 layer header or the inspector, when anything in it makes sound
