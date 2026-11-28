@@ -110,6 +110,25 @@ private struct BackupSandbox {
         #expect(newestFirstMinute == start.addingTimeInterval(120))
     }
 
+    /// A backup cut off while it copied, as by quitting, left a hidden
+    /// partial folder that nothing listed or deleted, holding a copy of
+    /// the media off APFS (code-review-notes.md, F127). The next backup
+    /// deletes it, and leaves the backups that are whole.
+    @Test func aBackupCutOffIsClearedByTheNext() async throws {
+        let sandbox = try await BackupSandbox()
+        defer { sandbox.cleanUp() }
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let earlier = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL, now: start)
+        let folder = ProjectBackups.folder(forPackage: sandbox.packageURL)
+        let cutOff = folder.appending(path: ".\(UUID().uuidString).partial", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: cutOff.appending(path: "Media"), withIntermediateDirectories: true)
+        try Data("half a copy".utf8).write(to: cutOff.appending(path: "Media/footage.mov"))
+
+        let later = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL, now: start.addingTimeInterval(60))
+        #expect(!FileManager.default.fileExists(atPath: cutOff.path))
+        #expect(ProjectBackups.backups(in: folder) == [earlier, later])
+    }
+
     /// Backups begin with the project's name, and were kept by name: once
     /// the project was renamed to sort earlier, each new backup was deleted
     /// as the oldest as soon as it was written.

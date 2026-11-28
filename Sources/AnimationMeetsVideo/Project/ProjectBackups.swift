@@ -100,6 +100,7 @@ enum ProjectBackups {
         let fileManager = FileManager.default
         let folder = folder(forPackage: packageURL)
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        removeLeftoverPartials(in: folder)
         let previous = backups(in: folder).last
 
         let name = "\(SafeFileName.make(project.name, fallback: "Project")) \(stamp(now)).\(fileExtension)"
@@ -128,6 +129,19 @@ enum ProjectBackups {
             try? fileManager.removeItem(at: old)
         }
         return destination
+    }
+
+    /// Deletes what backups cut off in `folder` left: the app quitting
+    /// while one copied (quitting doesn't wait for it), a crash or a power
+    /// cut. Hidden and never listed, they were never deleted either, and
+    /// off APFS each holds a real copy of the media (code-review-notes.md,
+    /// F127). The folder is this project's alone, and its backups are
+    /// written one at a time, so none of them is under way.
+    static func removeLeftoverPartials(in folder: URL) {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for name in names where name.hasPrefix(".") && name.hasSuffix(".partial") {
+            try? FileManager.default.removeItem(at: folder.appending(path: name, directoryHint: .isDirectory))
+        }
     }
 
     /// The backups in `folder`, oldest first by when each says it was taken.

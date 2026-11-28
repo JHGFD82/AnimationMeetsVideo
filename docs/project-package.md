@@ -242,7 +242,10 @@ the same files in the project's package. Restoring a backup clears the
 mark, so the new project's media is backed up as usual. A backup is written half-way under a
 hidden name and renamed when whole, off the main thread through the
 `PackageCoordinator`. One that fails shows **Not backed up** in the
-header above the viewer and is tried again at the next interval.
+header above the viewer and is tried again at the next interval. One
+cut off (the app quitting while it copies, which quitting doesn't wait
+for, or a crash) leaves its hidden folder, which the next backup of
+the project deletes.
 
 Opening a backup (double-clicking it, choosing it in File > Open, or
 File > Open Backup…, which starts in the front project's folder of
