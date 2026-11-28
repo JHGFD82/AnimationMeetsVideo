@@ -176,6 +176,28 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(f.joint != nil)
     }
 
+    // F102: a slip at a joint was held only to the file's ends, so it
+    // could leave the joint less spare footage than it plays: the last
+    // frames dissolved over what is below the layer.
+    @Test func aSlipAtAJointKeepsTheFootageTheJointPlays() throws {
+        var f = Fixture()
+        f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)
+        // 1 s centered: half a second from before B's in point, half from
+        // after A's out point; each has 6 s spare.
+        f.project.applyJointEdit(.slipOut(seconds(5.8)), at: f.b, in: f.t, layer: f.layer)
+        var joint = try #require(f.joint)
+        #expect(joint.spareTail == seconds(0.5))
+        #expect(f.clipA.trimEnd == seconds(9.5) && f.clipA.endOffset == seconds(4))
+
+        f.project.applyJointEdit(.slipIn(seconds(-5.8)), at: f.b, in: f.t, layer: f.layer)
+        joint = try #require(f.joint)
+        #expect(joint.spareHead == seconds(0.5))
+        #expect(f.clipB.trimStart == seconds(0.5) && f.clipB.startOffset == seconds(4))
+        // Back the other way, nothing holds it.
+        f.project.applyJointEdit(.slipOut(seconds(-2)), at: f.b, in: f.t, layer: f.layer)
+        #expect(f.clipA.trimEnd == seconds(7.5))
+    }
+
     @Test func withoutSpareFootageTheTransitionStaysInTheClip() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID

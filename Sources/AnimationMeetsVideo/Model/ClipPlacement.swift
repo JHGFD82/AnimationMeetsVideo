@@ -343,6 +343,30 @@ extension EditingProject {
         return trimmed
     }
 
+    /// How far `clip`'s footage can slip (in its source time) and still
+    /// give the joints at its ends the spare footage they play: before a
+    /// cut it comes in at, the joint's lead from before its in point; after
+    /// a cut it goes out at, the rest of that joint from after its out
+    /// point. A slip took only the file's ends into account, and could
+    /// leave a joint dissolving into what is below the layer with the
+    /// outgoing sound stopping partway through its fade (F102). Nil where
+    /// there is no joint, or the footage is a still, which has no end.
+    func jointSlipLimits(
+        of clip: TimelineClip, among clips: [TimelineClip], sourceDuration: CMTime
+    ) -> (lowest: CMTime?, highest: CMTime?) {
+        guard !isStill(clip) else { return (nil, nil) }
+        var lowest: CMTime?, highest: CMTime?
+        if let lead = joinedLead(of: clip, among: clips) {
+            lowest = CMTimeSubtract(lead, clip.trimStart)
+        }
+        if let next = successor(joining: clip, among: clips), let transition = next.transitionIn,
+           let nextLead = joinedLead(of: next, among: clips) {
+            let after = CMTimeMaximum(.zero, CMTimeSubtract(transition.duration, nextLead))
+            highest = CMTimeSubtract(CMTimeSubtract(sourceDuration, after), clip.trimEnd)
+        }
+        return (lowest, highest)
+    }
+
     /// The footage a trim of the clip's picture keeps to: from the start of
     /// the scene its first frame is in to the end of the scene its last
     /// frame is in, so an edge stops at a cut rather than running on into
@@ -360,7 +384,8 @@ extension EditingProject {
     /// of the source it plays moves. Where the file runs out the footage
     /// stops at the file's start or end and the clip gets shorter from its
     /// end instead, down to the minimum length; `slipClip` then moves the
-    /// clips after it in by as much. Video slips by whole frames.
+    /// clips after it in by as much. Video slips by whole frames. A joint at
+    /// either end keeps the spare footage it plays (`jointSlipLimits`).
     func resolvedSlip(of id: UUID, in timelineID: UUID, layer layerID: UUID, by proposedDelta: CMTime) -> TimelineClip? {
         guard let (timeline, clip, _) = placementContext(id, in: timelineID, layer: layerID),
               let sourceDuration = sourceDuration(for: clip.source)
@@ -370,7 +395,12 @@ extension EditingProject {
         let locked = isFrameLocked(clip)
         // The drag is in timeline time; a retimed clip's footage moves by
         // more or less than that.
-        let delta = clip.sourceDelta(forPlacedDelta: locked ? timeline.frameAligned(proposedDelta, .nearest) : proposedDelta)
+        var delta = clip.sourceDelta(forPlacedDelta: locked ? timeline.frameAligned(proposedDelta, .nearest) : proposedDelta)
+        let limits = jointSlipLimits(of: clip, among: timeline.layer(id: layerID)?.clips ?? [], sourceDuration: sourceDuration)
+        // Only a slip that would take footage a joint plays is held back,
+        // never one that gives it more.
+        if let lowest = limits.lowest, delta < .zero { delta = CMTimeMaximum(delta, CMTimeMinimum(lowest, .zero)) }
+        if let highest = limits.highest, delta > .zero { delta = CMTimeMinimum(delta, CMTimeMaximum(highest, .zero)) }
         let minimum = clip.isRetimed ? clip.sourceDuration(forPlaced: minimumDuration(of: clip, in: timeline)) : minimumDuration(of: clip, in: timeline)
         var start = CMTimeAdd(clip.trimStart, delta)
         var end = CMTimeAdd(clip.trimEnd, delta)
