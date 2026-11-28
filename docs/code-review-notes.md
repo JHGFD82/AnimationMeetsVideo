@@ -49,7 +49,7 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F105, F106, F108, F109, F112 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F106, F112 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
@@ -192,11 +192,11 @@ From the plan's checkpoint, with the findings each part covers.
 | F102 | A joint slip can leave a transition without footage | 5 | rendering | 3 | reproduced | fixed | `8b6ab67d` · fails without | nonblocking |
 | F103 | A joint drawn beside a disabled clip | 5 | usability | 5 | reproduced | fixed | `5d8e870a` · fails without | nonblocking |
 | F104 | Ramped clips' times cut down a tick | 5 | timing | 3 | reproduced | fixed | `50e32741` · fails without | blocking |
-| F105 | Blend on slowed clips mixes in the next scene | 5 | rendering | 3 | code-verified | open | | nonblocking |
+| F105 | Blend on slowed clips mixes in the next scene | 5 | rendering | 3 | reproduced | fixed | `769adb5e` · fails without | nonblocking |
 | F106 | Reversed clips show the frame before | 5 | timing | 3 | code-verified | open | | blocking |
 | F107 | Export doesn't wait for running expressions | 5 | export | 3 | code-verified | fixed | `a7a486de` · test (the check; the alert by hand) | blocking |
-| F108 | Beat Keys rewritten flat before beats load | 5 | correctness | 3 | suspected | open | | nonblocking |
-| F109 | Speeds outside the time-pitch range untried | 5 | sound | 3 | suspected | open | | nonblocking |
+| F108 | Beat Keys rewritten flat before beats load | 5 | correctness | 3 | reproduced | fixed | `ea7b1981` · fails without | nonblocking |
+| F109 | Speeds outside the time-pitch range untried | 5 | export | 3 | reproduced | fixed | `51523f38` · fails without | blocking |
 | F110 | Detected beats about 10 ms early | 5 | timing | 3 | reproduced | fixed | `8d7f131a`, `10bba6bd` · fails without | blocking |
 | F111 | Beat Keys pulses late or missing between frames | 5 | timing | 3 | reproduced | fixed | `41f74dc5` · fails without | blocking |
 | F112 | Held drawings and two-frame flashes cut | 5 | correctness | 3 | reproduced | open | | nonblocking |
@@ -554,7 +554,13 @@ same span, lengthened into a joint that stays), **F101** (a joint is
 fitted clear of the outgoing clip's way in and of the joint after the
 incoming clip), **F102** (a slip stops where a joint at either end would
 lose footage it plays), **F103** (a disabled clip joins nothing, so the
-timeline draws the transition at an open end as the export plays it).
+timeline draws the transition at an open end as the export plays it),
+**F105** (Blend and Optical Flow mix in no frame past the trim; the
+render format version goes to 5, retiring renders made before F91, F104
+and F105), **F108** (Beat Keys waits while a layer's beats aren't in
+yet), **F109** (sound outside 3.125% to 3,200% is left out and silent;
+tried first: such sound came back empty, and a WAV Mix of only a 2%
+clip was written with no frames and reported done).
 
 **F94 — *(fixed in `fac2eb3f`)* Pasted keyframes can land a tick before their frame.**
 `KeyframeCopying.swift:13,73` keeps offsets as `Double` and `:107` makes
@@ -612,7 +618,7 @@ neighbors' shares; a widening test.
 a gap (`LayerClipRow.swift:293,402`). *Next:* leave disabled clips out
 of the drawn joint.
 
-**F105 — Blend and Optical Flow on slowed clips mix in the frame after
+**F105 — *(fixed in `769adb5e`)* Blend and Optical Flow on slowed clips mix in the frame after
 the trim** (`CompositionFlattening.swift:263–264`,
 `LayeredCompositor.swift:759–781`): at 50% the last frame is half the
 next shot's first. *Next:* no blend past the trim's last frame; a
@@ -632,13 +638,13 @@ still reading: nothing in `Export/` checks `waitingExpressions()` or
 `keyframingFreshness`, so an export started at once has the old values.
 *Next:* wait, or refuse with a note.
 
-**F108 — Beat Keys is rewritten flat before beats load**
+**F108 — *(fixed in `ea7b1981`)* Beat Keys is rewritten flat before beats load**
 (`Keyframing.swift:465–470,610,637`; Audio Keys has the guard,
 `:621–631`), into the undo step and the autosave (suspected). With F37,
 which open project's detected beats win is arbitrary. *Next:* treat
 beats not yet loaded as Audio Keys treats sound not yet read.
 
-**F109 — Speeds below 3.125% or above 3200%** are outside the documented
+**F109 — *(fixed in `51523f38`)* Speeds below 3.125% or above 3200%** are outside the documented
 time-pitch range (1/32 to 32) and untried in playback and export
 (`CompositionFlattening.swift:244`). *Next:* try 1%, 2%, 5000% and
 10,000%; mute or clamp outside, and document it.
