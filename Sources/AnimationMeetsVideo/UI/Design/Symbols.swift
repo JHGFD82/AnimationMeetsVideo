@@ -57,6 +57,9 @@ extension Design {
         /// paste that changed things, a sheet's warning. Outlined, as the
         /// refusal and the sheets' other callouts are, in every size.
         static let warning = "exclamationmark.triangle"
+        /// An effect package from outside the app waiting for the person's
+        /// approval before its kernel is compiled.
+        static let awaitingApproval = "lock.shield"
 
         /// Bringing another open graph into a graph editor panel.
         static let linkGraph = "link.badge.plus"

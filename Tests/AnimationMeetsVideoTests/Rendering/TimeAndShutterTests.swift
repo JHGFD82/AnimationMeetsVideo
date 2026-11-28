@@ -289,6 +289,29 @@ private let frame = CMTime(value: 1, timescale: 24)
         return try #require(placed)
     }
 
+    // F105: slowed down, a clip's last frame falls half way between its
+    // last frame and the first after its trim, the next shot's, and Blend
+    // mixed that in.
+    @Test func blendMixesInNothingPastTheTrim() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        // One dark second, then the next shot, bright.
+        let placed = try await movie(in: &fixture, segments: [(50, 24), (200, 24)])
+        fixture.project.editClip(placed.clipID, in: fixture.timelineID) {
+            $0.trimEnd = CMTime(value: 1, timescale: 1)
+            $0.time.speed = AnimatedValue(50)
+            $0.time.frameBlending = .blend
+        }
+        let composed = try await fixture.build()
+        // Its last frame, at 47/48 s of the source: half way to frame 24.
+        let last = try await grayLevel(of: composed, at: CMTime(value: 47, timescale: 24))
+        #expect(abs(last - 50) < 12, "the last frame mixed in the next shot: \(last)")
+        // Inside the trim it still blends: half way from frame 22 to 23 is
+        // the same dark shot, and the clip's first frames are untouched.
+        let inside = try await grayLevel(of: composed, at: CMTime(value: 45, timescale: 24))
+        #expect(abs(inside - 50) < 12)
+    }
+
     @Test func halfSpeedPlaysTheSourceInTwiceTheTime() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

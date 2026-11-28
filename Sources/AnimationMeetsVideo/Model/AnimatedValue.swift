@@ -345,14 +345,19 @@ extension Timeline {
     /// rather than rounding them to 24/30/60. Other fractional rates, such
     /// as 12.5, are kept to a thousandth of a frame a second rather than
     /// rounded to a whole number.
+    ///
+    /// A whole rate is tried first: an NTSC rate is n/1001 below its whole
+    /// one, which at 10 fps and under is inside the NTSC test's 0.01, so 8
+    /// and 10 fps were given 7.992 and 9.99 and drifted a frame in every
+    /// thousand against their media.
     static func frameDuration(for frameRate: Double) -> CMTime {
         let clamped = frameRate.clamped(between: 1, and: 1000)
         let rounded = clamped.rounded()
-        if abs(clamped - rounded * 1000 / 1001) < 0.01 {
-            return CMTime(value: 1001, timescale: Int32(rounded) * 1000)
-        }
         if abs(clamped - rounded) < 0.0005 {
             return CMTime(value: 1, timescale: Int32(rounded))
+        }
+        if abs(clamped - rounded * 1000 / 1001) < 0.01 {
+            return CMTime(value: 1001, timescale: Int32(rounded) * 1000)
         }
         return CMTime(value: 1000, timescale: Int32((clamped * 1000).rounded()))
     }

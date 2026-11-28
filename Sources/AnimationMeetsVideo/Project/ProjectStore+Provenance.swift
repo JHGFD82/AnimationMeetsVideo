@@ -38,6 +38,16 @@ extension ProjectStore {
     private static func recordProvenance(
         _ kind: AnalysisKind, resultData: Data, source: FileStamp?, for assetID: UUID, in packageURL: URL
     ) throws {
+        // A record file there that can't be read now (no permission, or an
+        // iCloud file not downloaded) is never written over: started from
+        // nothing, the write kept only this kind's record and lost the
+        // others for good, the original's scores among them, which can't
+        // be made again once the file is replaced. One that reads but is
+        // damaged has nothing to keep.
+        let url = referenceFolder(for: assetID, in: packageURL).appending(path: provenanceFileName)
+        if FileManager.default.fileExists(atPath: url.path) {
+            _ = try Data(contentsOf: url)
+        }
         var records = readProvenance(for: assetID, in: packageURL)
         let current = AnalysisProvenance.current(for: kind)
         records[kind] = AnalysisProvenance(

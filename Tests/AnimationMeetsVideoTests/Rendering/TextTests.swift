@@ -165,7 +165,7 @@ extension DrawingFixture {
         #expect(effect.animatedRanges.contains(.zero...second))
         var clip = TimelineClip(source: .graphic, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(seconds: 2, preferredTimescale: 600))
         clip.effects = [effect]
-        let easedAny = clip.easeKeyframes(atTimelineTime: second, .easeIn)
+        let easedAny = clip.easeKeyframes(atTimelineTime: second, frame: CMTime(value: 1, timescale: 24), .easeIn)
         #expect(easedAny)
         let eased = try #require(clip.effects[0].text?.runs.first?.style.size?.keyframes.last)
         #expect(eased != effect.text?.runs.first?.style.size?.keyframes.last)
@@ -830,7 +830,7 @@ extension DrawingFixture {
         var clip = try #require(project.clipAndLayer(text.clipID, in: t)?.clip)
         #expect(clip.animatedSourceRanges.contains(.zero...second))
         let before = clip.effects[0].text?.variations.first?.value.keyframes.last
-        let eased = clip.easeKeyframes(atTimelineTime: second, .easeIn)
+        let eased = clip.easeKeyframes(atTimelineTime: second, frame: CMTime(value: 1, timescale: 24), .easeIn)
         #expect(eased)
         #expect(clip.effects[0].text?.variations.first?.value.keyframes.last != before)
     }

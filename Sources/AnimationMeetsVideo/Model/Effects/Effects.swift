@@ -1004,8 +1004,8 @@ extension TimelineClip {
     /// pan and effect controls have at `time` in the timeline, for the F9 keys.
     /// Returns whether there was one.
     @discardableResult
-    mutating func easeKeyframes(atTimelineTime time: CMTime, _ preset: KeyframeEase.Preset) -> Bool {
-        let source = sourceTime(atTimelineTime: time)
+    mutating func easeKeyframes(atTimelineTime time: CMTime, frame: CMTime, _ preset: KeyframeEase.Preset) -> Bool {
+        let source = shownSourceTime(atTimelineTime: time, frame: frame)
         var eased = false
         if anchorPoint.keyframe(at: source) != nil {
             anchorPoint.applyEase(preset, at: source)

@@ -55,6 +55,15 @@ final class ProjectSession {
     @ObservationIgnored private var lastAutosaved: EditingProject?
     /// True while the project file is being written or reloaded.
     @ObservationIgnored private var isBusy = false
+    /// A change to `project.json` that would change clips a tool holds,
+    /// waiting for it to let go (`checkForExternalProjectChange`).
+    @ObservationIgnored private var changeWaitingForLocks: ProjectFileMonitor.Change?
+    /// The reload under way, which a save waits for.
+    @ObservationIgnored private var reloading: Task<Void, Never>?
+    /// A change that couldn't be read once, read again at the next check.
+    @ObservationIgnored private var unreadableOnce: ProjectFileMonitor.Change?
+    /// A change that couldn't be read twice, and was reported.
+    @ObservationIgnored private var unreadableChange: ProjectFileMonitor.Change?
     /// The latest save asked for. Each save waits for the one before, so
     /// two never write the package at once.
     @ObservationIgnored private var saveInProgress: Task<Bool, Never>?
@@ -157,8 +166,6 @@ final class ProjectSession {
             try await ProjectStore.trashPackage(at: url, checkingLock: true)
             try ProjectStore.preparePackage(at: url)
             _ = try await ProjectStore.save(fresh, to: url)
-            // Made on this Mac, so its scripts run without asking.
-            CodeApproval.shared.allowScripts(ofProject: fresh.id, at: url)
             return url
         } catch {
             showAlert(title: "Couldn't Create Project", message: ErrorAdvice.sentence(for: error))
@@ -209,15 +216,45 @@ final class ProjectSession {
         guard isEmpty else { return isOpen(url) }
         do {
             try ProjectStore.validatePackage(at: url)
+            // Locked first, so no other window opens it meanwhile, but
+            // marked as a package only once it has loaded: a folder that
+            // only holds a project.json, another tool's, was made a package
+            // in Finder and left with a .lock before its file was refused.
+            let lockFile = url.appending(path: ProjectStore.lockFileName)
+            let hadLockFile = FileManager.default.fileExists(atPath: lockFile.path)
             let lock = try ProjectLock.acquire(at: url)
+            let saved: ProjectLoadResult
+            do {
+                saved = try await ProjectStore.load(from: url)
+            } catch {
+                lock.release()
+                if !hadLockFile { try? FileManager.default.removeItem(at: lockFile) }
+                throw error
+            }
             ProjectStore.markAsPackage(url)
-            let saved = try await ProjectStore.load(from: url)
+            // Said, not only logged: without the lock, another Mac can open
+            // and save the project at the same time, the last save winning.
+            if !lock.isHeld {
+                presentAlert(
+                    "\u{201C}\(url.deletingPathExtension().lastPathComponent)\u{201D} Isn\u{2019}t Locked While Open",
+                    "It\u{2019}s on a disk that can\u{2019}t lock files, so nothing keeps it from being opened and saved on another Mac at the same time, and the last save would win. Open it on one Mac at a time."
+                )
+            }
             // Work an autosave holds that was never saved, as after quitting
             // without saving or a crash, is offered back.
             var restored: ProjectLoadResult?
             if let backup = ProjectStore.unsavedBackup(in: url) {
                 if askToRestore(backup, name: saved.project.name) {
-                    restored = try? await ProjectStore.load(from: url, projectFile: backup)
+                    // A restore that fails is said, and where the autosave
+                    // is: it opened the saved version without a word.
+                    do {
+                        restored = try await ProjectStore.load(from: url, projectFile: backup)
+                    } catch {
+                        presentAlert(
+                            "The Autosave of \u{201C}\(saved.project.name)\u{201D} Couldn\u{2019}t Be Restored",
+                            "\(ErrorAdvice.sentence(for: error))\n\nThe project opens as it was last saved. The autosave is kept, as \u{201C}\(backup.lastPathComponent)\u{201D} in the project\u{2019}s Backups folder."
+                        )
+                    }
                 } else {
                     await ProjectStore.markBackupsSeenQueued(in: url)
                 }
@@ -253,7 +290,7 @@ final class ProjectSession {
             reportMediaProblems(in: result)
             return true
         } catch {
-            Self.showAlert(title: "Couldn't Open Project", message: ErrorAdvice.sentence(for: error))
+            presentAlert("Couldn\u{2019}t Open \u{201C}\(url.deletingPathExtension().lastPathComponent)\u{201D}", ErrorAdvice.sentence(for: error))
             return false
         }
     }
@@ -329,6 +366,26 @@ final class ProjectSession {
             return false
         }
 
+        // A change made to the file outside the app is taken, or asked
+        // about, before the save writes over it: a save half a second after
+        // an edit came before the check every two seconds and wrote over
+        // what another program had just written, and one during a reload
+        // had the reload put a version on screen that wasn't on disk.
+        if isOpen(url) {
+            if let reloading { await reloading.value }
+            await reloadOutsideChange()
+            if fileMonitor.pendingChange() != nil {
+                if quietly {
+                    autosaveStatus.failed(
+                        "The project file was changed outside the app and the change couldn\u{2019}t be taken, so it wasn\u{2019}t saved over.",
+                        kind: .save
+                    )
+                    return false
+                }
+                guard confirmSavingOverOutsideChange() else { return false }
+            }
+        }
+
         isBusy = true
         defer { isBusy = false }
         do {
@@ -382,9 +439,11 @@ final class ProjectSession {
             autosaveStatus.succeeded()
             projectLock = lock
             fileMonitor.track(package: url)
+            unreadableOnce = nil
+            unreadableChange = nil
+            changeWaitingForLocks = nil
             analysis.packageURL = url
             if isNewLocation {
-                if let previous = projectURL { CodeApproval.shared.projectMoved(project.id, from: previous, to: url) }
                 setProjectURL(url)
                 viewMemory.move(to: url)
             }
@@ -393,7 +452,7 @@ final class ProjectSession {
             return true
         } catch {
             if quietly {
-                NSLog("Saving automatically failed: \(error.localizedDescription)")
+                NSLog("%@", "Saving automatically failed: \(error.localizedDescription)")
                 automaticSaveFailed = true
                 autosaveStatus.failed(ErrorAdvice.sentence(for: error), kind: .save)
             } else {
@@ -426,7 +485,7 @@ final class ProjectSession {
             lastAutosaved = snapshot
             autosaveStatus.succeeded(.backup)
         } catch {
-            NSLog("Autosave failed: \(error.localizedDescription)")
+            NSLog("%@", "Autosave failed: \(error.localizedDescription)")
             autosaveStatus.failed(ErrorAdvice.sentence(for: error))
         }
     }
@@ -469,7 +528,7 @@ final class ProjectSession {
             lastBackupAt = .now
             autosaveStatus.succeeded(.backup)
         } catch {
-            NSLog("Backup failed: \(error.localizedDescription)")
+            NSLog("%@", "Backup failed: \(error.localizedDescription)")
             // Tried again at the next interval, not at every tick.
             lastBackupAt = .now
             autosaveStatus.failed(ErrorAdvice.sentence(for: error))
@@ -481,53 +540,111 @@ final class ProjectSession {
     /// Picks up edits made to `project.json` outside the app. With nothing
     /// unsaved the file's version replaces the project; with unsaved edits
     /// the person chooses. Either way the switch is an ordinary edit, so
-    /// undo brings the previous version back.
-    func checkForExternalProjectChange() {
-        guard let url = projectURL, !isBusy, replacement.session == nil,
-              let change = fileMonitor.pendingChange()
-        else { return }
-
-        isBusy = true
-        Task {
-            defer { isBusy = false }
-            do {
-                let result = try await ProjectStore.load(from: url)
-                if project != savedProject {
-                    let alert = NSAlert()
-                    alert.messageText = "The project file was changed outside the app"
-                    alert.informativeText = "You also have unsaved changes. If you keep them, the next save overwrites the file. If you use the file's version, you can undo to get your changes back."
-                    alert.addButton(withTitle: "Keep My Changes")
-                    alert.addButton(withTitle: "Use the File's Version")
-                    guard alert.runModal() == .alertSecondButtonReturn else {
-                        fileMonitor.acknowledge(change)
-                        return
-                    }
-                }
-                // The file's version whole, whatever it changed: not an
-                // edit by hand of keyframes a method made.
-                projectState.writeRestored { project = result.project }
-                savedProject = result.project
-                lastAutosaved = nil
-                fileMonitor.acknowledge(change)
-                analysis.reset(
-                    tracks: result.changeScores, references: result.references,
-                    thumbnailed: result.assetsWithThumbnails, beats: result.beats,
-                    originalScores: result.originalScores, sources: result.analysisSources,
-                    rejected: result.rejectedAnalysis, packageURL: url
-                )
-                analysis.update(with: result.project)
-                replacement.reset()
-                replacement.markChanged(result.changedMedia)
-                replacement.markMissing(result.offlineMedia)
-                reportMediaProblems(in: result)
-            } catch {
-                fileMonitor.acknowledge(change)
-                Self.showAlert(
-                    title: "The Project File Changed but Couldn't Be Read",
-                    message: "\(ErrorAdvice.sentence(for: error))\n\nThe open project is unchanged. Saving will overwrite the file."
-                )
-            }
+    /// undo brings the previous version back. A file that changes clips
+    /// a tool holds (the Motion Designer's locks) waits, unacknowledged,
+    /// until the tool lets go of them: taken now it would be refused, and
+    /// marking it seen would let the next save write over it.
+    ///
+    /// A file that can't be read is left unacknowledged too: one caught
+    /// halfway through another program writing it is read again at the
+    /// next check, and only one that still can't be read is reported, once.
+    /// Saves never write over either without asking (`performSave`).
+    func checkForExternalProjectChange() async {
+        // A save checks for itself before it writes; one reload at a time.
+        guard !isBusy else { return }
+        if let reloading {
+            await reloading.value
+            return
         }
+        guard replacement.session == nil else { return }
+        await reloadOutsideChange()
+    }
+
+    /// Reads a change to `project.json` and takes it, asking first while
+    /// there are unsaved edits, unless it is one already waiting.
+    private func reloadOutsideChange() async {
+        guard let url = projectURL, let change = fileMonitor.pendingChange() else { return }
+        // Read again only once the locks it waited for may be gone.
+        if change == changeWaitingForLocks, !projectState.clipLocks.isEmpty { return }
+        // Reported already; read again once the file changes again.
+        if change == unreadableChange { return }
+        let task = Task { await reload(change, from: url) }
+        reloading = task
+        await task.value
+        reloading = nil
+    }
+
+    private func reload(_ change: ProjectFileMonitor.Change, from url: URL) async {
+        do {
+            let result = try await ProjectStore.load(from: url)
+            guard projectState.allows(result.project) else {
+                changeWaitingForLocks = change
+                return
+            }
+            changeWaitingForLocks = nil
+            unreadableOnce = nil
+            if project != savedProject {
+                let alert = NSAlert()
+                alert.messageText = "The project file was changed outside the app"
+                alert.informativeText = "You also have unsaved changes. If you keep them, the next save overwrites the file. If you use the file's version, you can undo to get your changes back."
+                alert.addButton(withTitle: "Keep My Changes")
+                alert.addButton(withTitle: "Use the File's Version")
+                guard alert.runModal() == .alertSecondButtonReturn else {
+                    fileMonitor.acknowledge(change)
+                    return
+                }
+            }
+            // The file's version whole, whatever it changed: not an
+            // edit by hand of keyframes a method made.
+            projectState.writeRestored { project = result.project }
+            savedProject = result.project
+            lastAutosaved = nil
+            fileMonitor.acknowledge(change)
+            analysis.reset(
+                tracks: result.changeScores, references: result.references,
+                thumbnailed: result.assetsWithThumbnails, beats: result.beats,
+                originalScores: result.originalScores, sources: result.analysisSources,
+                rejected: result.rejectedAnalysis, packageURL: url
+            )
+            analysis.update(with: result.project)
+            replacement.reset()
+            replacement.markChanged(result.changedMedia)
+            replacement.markMissing(result.offlineMedia)
+            reportMediaProblems(in: result)
+        } catch {
+            // Not marked seen, which let the next save write over a file of
+            // another version or one being written. The first time it is
+            // read again at the next check; still unreadable, it is told.
+            guard change == unreadableOnce else {
+                unreadableOnce = change
+                return
+            }
+            unreadableChange = change
+            presentAlert(
+                "\u{201C}\(url.deletingPathExtension().lastPathComponent)\u{201D}\u{2019}s Project File Changed but Couldn\u{2019}t Be Read",
+                "\(ErrorAdvice.sentence(for: error))\n\nThe open project is unchanged. Saving asks before writing over the file."
+            )
+        }
+    }
+
+    /// Asks before a save writes over a `project.json` changed outside the
+    /// app that it couldn't take (one it can't read, or one waiting for
+    /// clips a tool holds).
+    private func confirmSavingOverOutsideChange() -> Bool {
+        confirmSavingOver(projectURL?.deletingPathExtension().lastPathComponent ?? "")
+    }
+
+    /// Shows a message; settable so tests can record it.
+    @ObservationIgnored var presentAlert: (String, String) -> Void = { ProjectSession.showAlert(title: $0, message: $1) }
+    /// Asks whether to save over a project file changed outside the app;
+    /// settable so tests can answer.
+    @ObservationIgnored var confirmSavingOver: (String) -> Bool = { name in
+        let alert = NSAlert()
+        alert.messageText = "Save Over the Changed Project File?"
+        alert.informativeText = "\u{201C}\(name)\u{201D}\u{2019}s project file was changed outside the app, and the change couldn\u{2019}t be taken here. Saving replaces it with the project as it is open."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Save Over It")
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     // MARK: - Closing

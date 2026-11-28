@@ -73,6 +73,22 @@ struct TrackCopy: Equatable, Sendable {
     /// How much later in time its footage plays than the clip's own, so a
     /// moment of it is how the clip was that long before.
     var delay = CMTime.zero
+    /// For an effect's input, the file and which of its times play when,
+    /// which the render key reads (a copy of the clip's own footage is
+    /// keyed by the clip).
+    var source: InputSource?
+}
+
+/// The footage an effect's input shows: a file, and the stretches of it
+/// played at root times.
+struct InputSource: Equatable, Sendable {
+    struct Piece: Equatable, Sendable {
+        var file: CMTimeRange
+        var at: CMTime
+    }
+
+    var url: URL
+    var pieces: [Piece]
 }
 
 /// A picture read from a composition track, or a still, which has none.
@@ -99,6 +115,12 @@ struct MediaDraw: @unchecked Sendable {
     /// two (Optical Flow) instead of fading (Blend). Drawn so only at full
     /// quality: the viewer blends while it plays.
     var opticalFlow = false
+    /// The end of the clip's trim, in its source time: Blend and Optical
+    /// Flow mix in no frame from there on, which is the next shot's. Slowed
+    /// down, a clip's last frames fall between its last frame and the one
+    /// after the trim, and at 50% its last showed half the next shot's
+    /// first (F105). Nil for none.
+    var trimEnd: CMTime?
     /// For Echo: earlier frames, nearest first, layered under the current one.
     var echoes: [TrackCopy] = []
     /// For Trails: the footage as it was at earlier moments, nearest first,

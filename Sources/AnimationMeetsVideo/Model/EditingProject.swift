@@ -184,6 +184,29 @@ struct EditingProject: Identifiable, Equatable {
         return !visited.contains(targetTimelineID)
     }
 
+    /// A timeline that holds itself, through nested timelines or a timeline
+    /// taken as an effect's input, as only a hand edit can make: nil when
+    /// none does. Rendering refuses one, but walks without a visited set
+    /// (the Waveform's sources) went round it many times over.
+    func timelineContainingItself() -> Timeline? {
+        timelines.first { timeline in
+            var visited: Set<UUID> = []
+            for layer in timeline.layers {
+                for clip in layer.clips {
+                    if case .timeline(let nestedID) = clip.source {
+                        collectNestedTimelineIDs(startingFrom: nestedID, visited: &visited)
+                    }
+                    for effect in clip.effects {
+                        if case .timeline(let inputID)? = effect.input?.source {
+                            collectNestedTimelineIDs(startingFrom: inputID, visited: &visited)
+                        }
+                    }
+                }
+            }
+            return visited.contains(timeline.id)
+        }
+    }
+
     func collectNestedTimelineIDs(startingFrom timelineID: UUID, visited: inout Set<UUID>) {
         guard visited.insert(timelineID).inserted, let timeline = timeline(id: timelineID) else { return }
         for layer in timeline.layers {

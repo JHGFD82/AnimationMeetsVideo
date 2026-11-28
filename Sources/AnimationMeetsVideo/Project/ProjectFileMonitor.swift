@@ -61,7 +61,7 @@ final class ProjectFileMonitor {
 
 extension View {
     /// Calls `check` every couple of seconds and whenever the app becomes active.
-    func onExternalProjectChange(perform check: @escaping @MainActor () -> Void) -> some View {
+    func onExternalProjectChange(perform check: @escaping @MainActor () async -> Void) -> some View {
         onPeriodicCheck(every: .seconds(2), perform: check)
     }
 

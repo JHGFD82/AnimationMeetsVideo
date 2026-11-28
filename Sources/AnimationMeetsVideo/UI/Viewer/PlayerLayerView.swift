@@ -33,7 +33,7 @@ final class ViewerLayerHostView: NSView {
         wantsLayer = true
         pictureLayer.contentsGravity = .resizeAspect
         // HDR timelines' frames carry values above 1.0.
-        pictureLayer.wantsExtendedDynamicRangeContent = true
+        pictureLayer.preferredDynamicRange = .high
         layer = pictureLayer
     }
 
@@ -86,9 +86,7 @@ final class PlayerContainerView: NSView {
     private func configureLayer() {
         wantsLayer = true
         playerLayer.videoGravity = .resizeAspect
-        if #available(macOS 26.0, *) {
-            playerLayer.preferredDynamicRange = .high
-        }
+        playerLayer.preferredDynamicRange = .high
         layer = playerLayer
     }
 }

@@ -4,10 +4,12 @@ Status: **built**, but for NumPy (step 12 of [Building it](#building-it)),
 which step 10's measurement doesn't call for. Steps 1 to 8 have been
 built and tried on a Mac; steps 9 to 11 (Between Frames, re-running only
 the changed samples, following a held drag), the accessibility review
-(13) and these docs (14) were written since and haven't been built yet.
-No Python release is pinned in the repository: `scripts/fetch-python.sh
---pin`, run on the Mac that builds the app, writes the pin to
-`scripts/python-pin`, which git ignores.
+(13) and these docs (14) were written since. They build and their tests
+pass, with a real interpreter too (the code review's baseline), but
+haven't been tried by hand.
+The Python release is pinned in the repository, in `scripts/python-pin`
+(CPython 3.14.10, release 20261110), and `scripts/build-app.sh` fails
+without it.
 
 The document was written as the plan, before the build: it says what
 the person sees, then how it works, then where each piece goes in the
@@ -151,12 +153,18 @@ Python that came from somewhere else doesn't run until the person has
 seen and allowed it (see [Safety](#safety)).
 
 - Code typed into the designer's editor or the console is allowed by
-  that act, and so are the scripts of a project made on this Mac.
-- **A script in a project that came from somewhere else** asks the first
-  time it is chosen: "“Stagger Selected Clips” came with this project.
-  A script can read and change files on this Mac." with **Run**,
-  **Always Run This Project's Scripts**, **Show Script** and Cancel. Run
-  allows that file as it is; changed, it asks again.
+  that act.
+- **A script in a project** asks when it is chosen and hasn't been
+  approved as it is now: new, from elsewhere, or changed since, in the
+  app or outside it, the person's own included. "Run “Stagger Selected
+  Clips”?" says that scripts aren't restricted (they can read, change
+  and delete files and use the network, with the person's permissions),
+  that approving covers the script and the files in its folder exactly
+  as they are, and that modules imported from outside the folder aren't
+  checked. **Run**, **Show Script** or Cancel, with **Remember approval
+  for these scripts** to skip the question until any of it changes;
+  without it, Run runs it once.
+- Opening a project never runs a script: scripts run only when chosen.
 - An expression that arrived another way (a project from someone else, a
   preset, `project.json` edited outside the app) plays exactly as saved,
   since its keyframes are in the project. It just isn't run again: its
@@ -171,7 +179,7 @@ seen and allowed it (see [Safety](#safety)).
 A **Scripting** tab in Settings: which Python runs (**Built In**, with
 its version, or **Choose…** for an interpreter of the person's own,
 3.11 or later, so their packages can be imported) and **Forget Allowed
-Code**, which also forgets which projects' scripts were allowed.
+Code**.
 
 ## The idea: expressions write keyframes
 
@@ -250,12 +258,14 @@ person's rights. Each runs one thing at a time.
   `Contents/Resources/Python/`, as Blender keeps its own. Everyone on
   one version of the app has one Python, so an expression gives the same
   keyframes on every Mac.
-  **As built**, the pin is kept on the Mac that builds the app, in
-  `scripts/python-pin`, which `scripts/fetch-python.sh --pin` writes and
-  git ignores, so two builds can carry different Pythons, and an
-  expression's keyframes are the same only between apps built with the
-  same pin. Without a pin the app is built without a Python, and asks
-  for one in Settings > Scripting.
+  **As built**, the pin is committed in `scripts/python-pin` (release,
+  CPython version and the archive's SHA-256), so every checkout bundles
+  the same Python, with its license. `scripts/build-app.sh` fails if the
+  pin or the bundled Python is missing; `ALLOW_NO_PYTHON=1` builds an app
+  without one, for development only, which asks for one in Settings >
+  Scripting. The pin changes in a commit of its own, made with
+  `scripts/fetch-python.sh --pin` once the helper's suites and its
+  Python tests pass on the new Python and its license is in the bundle.
 - **Chosen.** Settings can point at another interpreter. The helper's
   own code uses only the standard library, so anything 3.11 or later
   runs it. The built-in one has no third-party packages; this is the way
@@ -285,6 +295,19 @@ starts, so `print` and stray writes from C never land in a frame.
 | helper | `call` | A read or a change, answered by the app with `reply` |
 | helper | `output` | Text printed, with its stream |
 | helper | `result`, `error` | The samples, or nothing for a script; or the exception with its line and traceback |
+
+The app holds the helper to what it asked for, since code it runs can
+write to the pipe itself (`HelperLimits`). Only an expression's
+`result` carries a payload, of exactly its count of samples times their
+width in `float64`s; a header claiming any other is a broken stream as
+soon as it is read, before its payload is waited for. Frames no run has
+read yet may hold 8 MiB in all for the expressions helper, whose headers
+are at most 1 MiB, and 256 MiB for scripts, whose headers are at most
+64 MiB; and 10,000 frames. A `call` or `output` tagged with a run other
+than the one under way is from a thread an earlier run left and is never
+answered. Each of these ends the helper, and the next run starts a new
+one. The expressions helper is still shared by every open project and
+between runs (code-review-notes.md, F55).
 
 **Stop** and the time limit send `SIGINT`, which Python raises as
 `KeyboardInterrupt`, and after a second end the process. The next run
@@ -433,7 +456,11 @@ finished result in `ExpressionResults`, a store for the session like
 - **None that fits**: the control keeps its keyframes and its note says
   "Running…", exactly as Audio Keys does with "Reading the sound…"
   while a spectrogram is made. The editor sees the effect waiting and asks
-  `ExpressionRunner` to run it on the project as it is.
+  `ExpressionRunner` to run it on the project as it is. An export takes the
+  project as it is when it starts, so Export… started meanwhile says that
+  keyframes are still being written (`keyframesStillComing`) and offers
+  to wait or export anyway; it never refuses, since an expression can
+  wait for good where no Python runs.
 - **When the result lands**, the editor does what it does when analysis
   arrives (`EditorView.analysisArrived`): the keyframes are made in the
   project and in the undo baseline. Applying the code was the undo step;
@@ -560,7 +587,9 @@ Names follow `project.json`'s keys, in Python's snake case. Effects and
 controls are looked up by the `kind` they are saved under
 (`"gaussianBlur"`, `"blurRadius"`) or by name. Times are
 `fractions.Fraction` seconds, exact as in the file; a float is taken and
-rounded to a frame of the timeline.
+rounded to a frame of the timeline. The editor call then places it as an
+edit by hand would: `split` of a clip with pictures goes to the nearest
+frame, whatever the time's form.
 
 | Object | Reads | Changes, and the `EditingProject` call behind each |
 | --- | --- | --- |
@@ -632,16 +661,34 @@ rules, in order of weight:
    was allowed on this Mac in
    `~/Library/Application Support/AnimationMeetsVideo/AllowedCode.json`,
    never in a project, which could then vouch for itself: the SHA-256
-   of each piece of code, and the projects whose scripts may run.
+   of each piece of code, and nothing else. Approval is of content,
+   never of a project (decision D5 in code-review-notes.md): a
+   project's ID and path say where code is, not what arrived there
+   since.
    - An **expression** runs only if its code's hash is there. Applying
      code typed in the editor adds it; changing one character outside
      the app makes it unallowed again.
-   - A **script in a project** runs when chosen if the project was made
-     on this Mac, or its scripts were allowed, or that file's hash was.
-     Otherwise it asks first.
-   - A project is known by its ID and where its package was when it was
-     allowed, so a copy arriving from elsewhere under the same ID asks
-     again.
+   - A **script in a project** is read once, with every file of its
+     folder (`ScriptSnapshot`), and runs when chosen if that reading's
+     hash is allowed; otherwise it asks first. The hash is of its text
+     with the path and hash of every other file in its folder and the
+     folders in it (`ScriptSnapshot.approvalCode`), since it runs with
+     its folder first on the import path: a module changed, added or
+     removed beside it asks again. A link anywhere in the folder, or a
+     folder too large to check (2,000 files or 64 MB), refuses to run;
+     `__pycache__` is left out, so compiled modules never run in place
+     of what was read.
+   - **What runs is what was approved.** The reading is copied to a
+     private folder (`ScriptSnapshot.materialize`), and the helper
+     imports from that copy ("imports" in the request) while the
+     script's own folder stays its working directory; the copy is
+     removed when the run ends. A file changed between approval and
+     import isn't the one imported. Modules a script imports from its
+     folder are forgotten when it ends, so the next script imports its
+     own.
+   - Not bounded, and the question says so: modules from outside the
+     folder (the standard library, installed packages, the interpreter's
+     `site`), and files a script opens and runs itself.
    - A file picked with **Run Script File…** runs: picking it is the
      person's act, as opening a file is.
 2. **Expressions are confined.** Their helper runs under a sandbox
@@ -656,8 +703,8 @@ rules, in order of weight:
 3. **Runs are bounded**: the time limit, Stop, and a cap on printed
    output (1 MB a run; the rest is dropped with a note).
 
-What this doesn't do: confine scripts, limit memory, or vet what an
-allowed expression computes. Allowing code means trusting it, the way
+What this doesn't do: confine scripts, which run with the person's own
+permissions, limit memory, or vet what an allowed expression computes. Allowing code means trusting it, the way
 installing an effect package does
 ([effect-packages.md](effect-packages.md#safety)).
 
@@ -875,8 +922,12 @@ build starts; the first two shape everything after them.
 10. **Four fixed inputs, A to D**, rather than inputs the code declares,
     since a kind's controls come from the registry.
 11. **A script is all or nothing and one undo step.**
-12. **A project made on this Mac runs its scripts without asking**, and
-    one from elsewhere asks once.
+12. **A script is approved for its content, never for its project**
+    (D5): a script asks whenever it isn't approved exactly as it is,
+    wherever the project was made, and what runs is the reading that was
+    approved. It replaced letting a project made here, or one whose
+    scripts were allowed by ID and path, run whatever arrived there
+    later.
 13. **The module is `amv`**, after the project's extension.
 14. **At most 8 moments between frames**, at the shutter's own places.
     A clip set to 64 samples reads lines between the eight.

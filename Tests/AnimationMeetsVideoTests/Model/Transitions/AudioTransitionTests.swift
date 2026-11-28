@@ -38,6 +38,35 @@ import Testing
         #expect(try clip(soundIDs).transitionIn?.kind == .equalPowerCrossfade)
     }
 
+    // F98: sound clips never joined, so a crossfade dropped between two
+    // left one fading out to silence at the cut and the next cutting in
+    // at full level.
+    @Test func twoSoundClipsCrossfadeOverTheirSpareSoundAtACut() async throws {
+        let tone = try AudioMixSupport.tone(amplitude: 0.25, seconds: 4)
+        defer { try? FileManager.default.removeItem(at: tone) }
+        var (project, firstID, layerID) = try AudioMixSupport.project(playing: tone, seconds: 4)
+        let timelineID = project.rootTimelineID
+        // 0–1.5 s of the tone, then 2.5–4 s of it from the cut: a second
+        // of spare sound after the first and before the second.
+        project.editClip(firstID, in: timelineID) { $0.trimEnd = self.seconds(1.5) }
+        let source = try #require(project.clipAndLayer(firstID, in: timelineID)?.clip.source)
+        let second = TimelineClip(source: source, startOffset: seconds(1.5), trimStart: seconds(2.5), trimEnd: seconds(4))
+        let index = try #require(project.timelines[0].layers.firstIndex { $0.id == layerID })
+        project.timelines[0].layers[index].clips.append(second)
+
+        project.setTransition(.linearCrossfade, at: .trailing, of: firstID, in: timelineID, layer: layerID)
+        let joined = try #require(project.clipAndLayer(second.id, in: timelineID)?.clip.transitionIn)
+        #expect(joined.kind == .linearCrossfade && joined.lead > .zero)
+        #expect(project.clipAndLayer(firstID, in: timelineID)?.clip.transitionOut == nil)
+
+        // The two gains add to one, so the tone holds its level across the
+        // cut rather than dipping to nothing before it.
+        let before = try await AudioMixSupport.loudest(of: project, after: 1.40, before: 1.49)
+        let after = try await AudioMixSupport.loudest(of: project, after: 1.51, before: 1.60)
+        #expect(before.x > 0.2 && before.x < 0.3, "before the cut: \(before.x)")
+        #expect(after.x > 0.2 && after.x < 0.3, "after the cut: \(after.x)")
+    }
+
     @Test func aTransitionOfSoundFadesWithItsShapeAtAnOpenEnd() throws {
         var project = EditingProject.empty
         var clip = TimelineClip(source: .media(UUID()), startOffset: .zero, trimStart: .zero, trimEnd: seconds(4))

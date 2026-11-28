@@ -18,24 +18,34 @@ struct RenderSegment: Equatable, @unchecked Sendable {
     /// loses little and finished parts play as soon as they're done.
     static let maxFrames = 96
     /// Bumped when drawing changes in a way the key doesn't capture, so old
-    /// renders stop matching.
-    static let formatVersion = 4
+    /// renders stop matching. 5: footage is read a tick late (F91), ramped
+    /// times round to the nearest tick (F104), and Blend mixes in nothing
+    /// past the trim (F105). 6: a backwards clip shows its own frames,
+    /// from its last included one, not the next shot's (F106).
+    static let formatVersion = 6
 }
 
 /// Rendered segments in a package's `Cache/Renders/` folder, one ProRes
 /// movie per key. Anything here can be deleted at any time.
 struct RenderCache: Sendable {
     let folder: URL
+    private let packageURL: URL
 
     static let folderName = "Renders"
     /// How much the renders may take before the least recently used go.
     static let defaultLimit: Int64 = 20 * 1024 * 1024 * 1024
 
     init(packageURL: URL) {
+        self.packageURL = packageURL
         folder = packageURL
             .appending(path: ProjectStore.cacheFolderName, directoryHint: .isDirectory)
             .appending(path: Self.folderName, directoryHint: .isDirectory)
     }
+
+    /// Whether the folder is the package's own, not a link out of it:
+    /// clearing a `Cache/Renders` linked to Movies would delete the
+    /// person's movies, least recently used first.
+    private var isInPackage: Bool { ProjectStore.isInside(folder, package: packageURL) }
 
     func url(for key: String) -> URL {
         folder.appending(path: "\(key).mov")
@@ -72,7 +82,7 @@ struct RenderCache: Sendable {
     func evict(toFit limit: Int64 = defaultLimit, keeping: Set<String> = []) {
         let fileManager = FileManager.default
         let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
-        guard let urls = try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys) else { return }
+        guard isInPackage, let urls = try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys) else { return }
         var entries: [(url: URL, key: String, size: Int64, used: Date)] = []
         for url in urls where url.pathExtension == "mov" {
             let name = url.deletingPathExtension().lastPathComponent
@@ -89,7 +99,7 @@ struct RenderCache: Sendable {
 
     /// Deletes partial renders left by a render that never finished.
     func removePartials(except active: String? = nil) {
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
+        guard isInPackage, let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
         for name in names where name.hasSuffix(".partial.mov") && name != active.map({ "\($0).partial.mov" }) {
             try? FileManager.default.removeItem(at: folder.appending(path: name))
         }

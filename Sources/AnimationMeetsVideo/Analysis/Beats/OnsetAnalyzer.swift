@@ -15,6 +15,44 @@ final class OnsetAnalyzer {
         Int64(frame * hopSize + windowSize / 2)
     }
 
+    /// How far before the hit itself the curve peaks, in samples at
+    /// detection's rate: spectral flux rises as soon as a hit enters the
+    /// window, which is centered after it. Measured on sharp clicks with
+    /// peaks refined as `hitSample` refines them, as `BeatFitting.onsetLead`
+    /// was at its finer hop (180 samples, 8.2 ms, the median lead of refined
+    /// peaks). Reported at the center, beats came a median
+    /// 9 ms early, so a quarter landed a frame early at 24 fps (F110).
+    static let detectionLead = 180
+
+    /// The sample where the hit at `frame` of `envelope` is: the curve's
+    /// peak there found between frames, by the parabola through it and its
+    /// neighbors (its center, for a frame that isn't a peak), moved later
+    /// by `detectionLead`.
+    static func hitSample(ofFrame frame: Int, in envelope: [Float]) -> Int64 {
+        var center = Double(centerSample(ofFrame: frame))
+        if frame > 0, frame + 1 < envelope.count {
+            let before = Double(envelope[frame - 1]), at = Double(envelope[frame]), after = Double(envelope[frame + 1])
+            let bend = before - 2 * at + after
+            if at >= before, at >= after, bend < 0 {
+                let offset = (0.5 * (before - after) / bend).clamped(between: -0.5, and: 0.5)
+                center += offset * Double(hopSize)
+            }
+        }
+        return Int64((center + Double(detectionLead)).rounded())
+    }
+
+    /// `hitSample` of each of `frames`, in order, kept strictly increasing:
+    /// two beats a frame apart could otherwise meet between them.
+    static func hitSamples(ofFrames frames: [Int], in envelope: [Float]) -> [Int64] {
+        var samples: [Int64] = []
+        samples.reserveCapacity(frames.count)
+        for frame in frames {
+            let sample = hitSample(ofFrame: frame, in: envelope)
+            samples.append(samples.last.map { max(sample, $0 + 1) } ?? sample)
+        }
+        return samples
+    }
+
     /// Samples from one frame to the next. Detection uses `hopSize`; beat
     /// matching uses a smaller hop, for beats placed within a few
     /// milliseconds.

@@ -146,11 +146,41 @@ final class ViewerCopies {
         /// The original's time of the copy's first frame, exactly.
         var offsetValue: Int64
         var offsetTimescale: Int32
+        /// The stretch's ends exactly, each in its own timescale. From
+        /// `start` and `end` on one timescale, ends whose timescales share
+        /// no multiple that fits came back a nanosecond inside the stretch
+        /// wanted, which then never counted as held and was copied again
+        /// and again (F96). Missing in an index written before; `start` and
+        /// `end` are used then.
+        var startValue: Int64? = nil
+        var startTimescale: Int32? = nil
+        var endValue: Int64? = nil
+        var endTimescale: Int32? = nil
 
         var offset: CMTime { CMTime(value: offsetValue, timescale: offsetTimescale) }
 
+        /// Whether it names a file of the folder itself and times that fit.
+        var isSound: Bool {
+            let plainName = !file.isEmpty && file != "." && file != ".." && !file.contains("/") && !file.hasPrefix(".")
+            func fits(_ seconds: Double) -> Bool {
+                seconds.isFinite && abs(seconds * Double(timescale)) < Double(1 << 52)
+            }
+            let exact = exactRange.map { $0.start <= $0.end } ?? true
+            return plainName && timescale > 0 && offsetTimescale > 0 && fits(start) && fits(end) && start <= end && exact
+        }
+
+        /// The ends as kept exactly, when they were and are valid.
+        private var exactRange: CMTimeRange? {
+            guard let startValue, let startTimescale, let endValue, let endTimescale, startTimescale > 0, endTimescale > 0
+            else { return nil }
+            return CMTimeRange(
+                start: CMTime(value: startValue, timescale: startTimescale), end: CMTime(value: endValue, timescale: endTimescale)
+            )
+        }
+
         var range: CMTimeRange {
-            CMTimeRange(
+            if let exactRange { return exactRange }
+            return CMTimeRange(
                 start: CMTime(value: CMTimeValue((start * Double(timescale)).rounded()), timescale: timescale),
                 end: CMTime(value: CMTimeValue((end * Double(timescale)).rounded()), timescale: timescale)
             )
@@ -281,7 +311,9 @@ final class ViewerCopies {
                 made = Record(
                     file: name, original: next.original.path, stamp: stamp,
                     start: next.range.start.seconds, end: next.range.end.seconds, timescale: timescale,
-                    offsetValue: offset.value, offsetTimescale: offset.timescale
+                    offsetValue: offset.value, offsetTimescale: offset.timescale,
+                    startValue: next.range.start.value, startTimescale: next.range.start.timescale,
+                    endValue: next.range.end.value, endTimescale: next.range.end.timescale
                 )
             } catch {
                 try? FileManager.default.removeItem(at: folder.appending(path: name))
@@ -487,7 +519,14 @@ final class ViewerCopies {
 
     nonisolated private static func readRecords(in packageURL: URL) -> [Record] {
         guard let data = try? Data(contentsOf: indexFile(in: packageURL)) else { return [] }
-        return (try? JSONDecoder().decode([Record].self, from: data)) ?? []
+        // The index is a file in the package anyone can edit, and a copy
+        // it names is deleted once unused: a record whose file was
+        // "../../.." deleted the folder the project is in, and one whose
+        // times didn't fit a CMTime trapped. Only plain names of files in
+        // the folder, with times that fit, are taken; the rest are
+        // forgotten, as a cache can be.
+        let records = (try? JSONDecoder().decode([Record].self, from: data)) ?? []
+        return records.filter(\.isSound)
     }
 
     nonisolated private static func writeRecords(_ records: [Record], in packageURL: URL) {

@@ -105,6 +105,8 @@ enum RecordingError: LocalizedError {
     case microphoneDenied
     case cantTap(OSStatus)
     case nothingRecorded
+    /// Copying the take into the project failed; it was kept at `keptAt`.
+    case notCopiedIntoProject(keptAt: URL, because: String)
 
     var errorDescription: String? {
         switch self {
@@ -114,6 +116,8 @@ enum RecordingError: LocalizedError {
             "Animation Meets Video isn't allowed to record from the microphone. Allow it in System Settings › Privacy & Security › Microphone."
         case .cantTap(let status): "That app's sound couldn't be recorded (error \(status))."
         case .nothingRecorded: "Nothing was recorded."
+        case .notCopiedIntoProject(let kept, let reason):
+            "The recording couldn't be copied into the project, so it was kept as \u{201C}\(kept.lastPathComponent)\u{201D} in \(kept.deletingLastPathComponent().path). \(reason)"
         }
     }
 }

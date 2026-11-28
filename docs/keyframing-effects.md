@@ -149,7 +149,7 @@ as heard, not as stored.
 | Kind | What it makes | Settings |
 | --- | --- | --- |
 | **Audio Keys** | Follows how loud a range of frequencies is in a sound: kicks, hi-hats, a vocal. | Source, frequency range, amplitude range, attack and release, output range, see below |
-| **Beat Keys** | A pulse on each beat of a beat map: up at the beat, back over a decay. | Beat map (from a Sound or Music layer), every N beats (1), offset, downbeats only, accent on the one (+50%), shape: pulse, step, ramp or alternate; peak; decay |
+| **Beat Keys** | A pulse on each beat of a beat map: up at the beat, back over a decay. Each pulse is on the frame nearest its beat, as a cut snapped to the beat is, at its full height there; a decay under a frame is over by the next frame. | Beat map (from a Sound or Music layer), every N beats (1), offset, downbeats only, accent on the one (+50%), shape: pulse, step, ramp or alternate; peak; decay |
 | **Strobe Keys** | A repeating pulse with a full envelope, from Min to Max and back: a strobe on an opacity, a flash on a Glow, a gate on a volume. | Timing: beats (divided down to 1/8 or triplets), every N frames or per second; offset; an attack, decay, sustain and release, as a share of the interval or in frames, each linear, eased or exponential; overlap; Min and Max; swing, skip chance, a pattern, seed and fade. See below |
 | **Wiggler** | Random, organic movement around the current value. | Frequency (wiggles per second, 2), magnitude, type: smooth (Perlin) or jagged, octaves (1), dimensions: independent or together, seed |
 | **Oscillator** | A regular wave. | Wave: sine, triangle, square or sawtooth; frequency (Hz, 1); amplitude; phase; fade, in seconds, at each end of the range |
@@ -640,7 +640,11 @@ In order, each step usable on its own:
    while a file is still being read the effect keeps its keyframes (with
    a "Reading the sound…" note), and when it arrives the editor makes them
    in the undo baseline as well as the project, since the analysis
-   arriving isn't an edit.
+   arriving isn't an edit. Beat Keys, and Strobe Keys timed by beats,
+   wait the same way while a song on their layer has neither confirmed
+   beats nor detected ones yet (`beatsStillComing`), so an edit made
+   before the beats load doesn't flatten them; a song found to have no
+   beats has nothing to pulse to.
 5. **Keyframe Designer** (done), as described in
    [The Keyframe Designer](#the-keyframe-designer): the methods move out
    of the Effects Library into a panel opened from an effect's ⋯ menu,

@@ -46,8 +46,13 @@ struct AnimationMeetsVideoApp: App {
 
     init() {
         // In the background; a project waits for it before it is read, so
-        // its package effects are known.
-        EffectPackageStatus.shared.installAtLaunch()
+        // its package effects are known. Without the person's packages for
+        // a recovery launch.
+        if RecoveryLaunch.externalEffectsOff() {
+            EffectPackageStatus.shared.launchWithoutExternalEffects()
+        } else {
+            EffectPackageStatus.shared.installAtLaunch()
+        }
         // The projects open at the last quit are opened again by the first
         // window (`ProjectWindows.projectsToReopen`). Windows the system
         // restored as well would race it for the same projects, so its

@@ -47,6 +47,53 @@ private func seconds(_ value: Double) -> CMTime {
         return project.audioFades(of: clip, among: layer.clips)
     }
 
+    /// How `clip`'s sound is heard at each hundredth of a second to 10 s:
+    /// its fades' gains where it plays, past its ends included, else 0.
+    private func heard(_ clip: TimelineClip, among clips: [TimelineClip], in project: EditingProject) -> [Float] {
+        let (fades, head, tail) = project.audioFades(of: clip, among: clips)
+        let from = CMTimeSubtract(clip.startOffset, head).seconds, to = CMTimeAdd(clip.endOffset, tail).seconds
+        return (0..<1000).map { step in
+            let t = Double(step) / 100 + 0.005
+            guard t >= from, t < to else { return 0 }
+            return fades.reduce(Float(1)) { $0 * $1.gain(at: t) }
+        }
+    }
+
+    private func close(_ a: [Float], _ b: [Float]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { abs($0 - $1) < 0.001 }
+    }
+
+    // F99: detaching dropped the fades the sound had under the picture's
+    // transitions, so detached sound came in and went out at full level.
+    @Test(arguments: [false, true])
+    func detachedSoundIsHeardAsItWasAttached(both: Bool) throws {
+        var (project, a, b, layer) = try joined()
+        let t = project.rootTimelineID
+        // From black into A, linear; and a joint at the cut, A into B.
+        project.setTransition(.crossDissolve, at: .leading, of: a, in: t, layer: layer)
+        project.editClip(a, in: t) { $0.transitionIn?.curve = .linear }
+        project.setTransition(.crossDissolve, at: .leading, of: b, in: t, layer: layer)
+        let before = try #require(project.timeline(id: t)?.layer(id: layer)?.clips)
+        let clipA = try #require(before.first { $0.id == a }), clipB = try #require(before.first { $0.id == b })
+        #expect(clipB.transitionIn?.lead ?? .zero > .zero)
+
+        let detached = project.detachAudio(of: both ? nil : [b], in: t, layer: layer)
+        let soundLayer = try #require(detached)
+        let copies = try #require(project.timeline(id: t)?.layer(id: soundLayer)?.clips).sorted { $0.startOffset < $1.startOffset }
+        let pictures = try #require(project.timeline(id: t)?.layer(id: layer)?.clips)
+        #expect(copies.count == (both ? 2 : 1))
+
+        let copyB = try #require(copies.last)
+        #expect(close(heard(copyB, among: copies, in: project), heard(clipB, among: before, in: project)))
+        if both {
+            #expect(close(heard(copies[0], among: copies, in: project), heard(clipA, among: before, in: project)))
+        } else {
+            // A's sound, still attached, fades out across the joint as before.
+            let stillA = try #require(pictures.first { $0.id == a })
+            #expect(close(heard(stillA, among: pictures, in: project), heard(clipA, among: before, in: project)))
+        }
+    }
+
     @Test func aJoinedCutCrossfadesBothClipsOverTheTransition() throws {
         var (project, a, b, layer) = try joined()
         // Centered on the cut: 3.5 s to 4.5 s.

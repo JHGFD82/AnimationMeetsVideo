@@ -615,6 +615,20 @@ extension EditingProject {
             return regenerateExpression(effect, setup: setup, base: base, target: target, clip: clip, timeline: timeline, current: current)
         }
         setup.readPrint = readPrint ?? keyframingReadPrint(of: effect, in: clip, of: timeline, tracks: tracks)
+        // Beats not in yet, as when a project has just opened: keep what is
+        // there, as Audio Keys does while reading the sound, so the beats
+        // arriving make the keyframes. Remade from the beats there were, an
+        // edit made first flattened them into its undo step and the
+        // autosave, and for good if the beats never came.
+        if effect.followsBeats, let layer = setup.beatLayer.flatMap({ timeline.layer(id: $0) }),
+           beatsStillComing(in: layer, tracks: tracks) {
+            setup.writtenPrint = Self.fingerprint(of: current)
+            guard setup != effect.keyframing else { return false }
+            editClip(clipID, in: timelineID) { clip in
+                if let index = clip.effects.index(of: effectID) { clip.effects[index].keyframing = setup }
+            }
+            return true
+        }
         var heard: [[Double]]?
         if effect.kind == .audioKeys {
             let range = Self.writtenRange(setup, of: clip)
@@ -735,7 +749,7 @@ extension EditingProject {
         let (baseSamples, width) = base.flatValues(at: sampling.sources)
         guard width > 0 else { return base }
         let count = sampling.sources.count
-        let components = setup.component.map { $0 < width ? [$0] : [] } ?? Array(0..<width)
+        let components = setup.component.map { (0..<width).contains($0) ? [$0] : [] } ?? Array(0..<width)
         let signal = KeyframeSignal(
             effect: effect, sampling: sampling, base: base, baseSamples: baseSamples, width: width, beats: beats, heard: heard
         )
@@ -857,17 +871,24 @@ struct KeyframeSampling {
     var before: CMTime?
     var after: CMTime?
     var frameSeconds: Double
+    /// The timeline's frame, the step between samples on frames.
+    var frame: CMTime
 
     /// One sample per timeline frame of `range`, and, with `between`, one
     /// more at each of those offsets in seconds from each frame, inside the
     /// range: the moments motion blur draws (see `BetweenFrames`). Every
     /// method samples on frames alone; an expression may ask for more.
     init(clip: TimelineClip, range: CMTimeRange, frame: CMTime, between offsets: [Double] = []) {
-        let a = clip.timelineTime(forSourceTime: range.start)
-        let b = clip.timelineTime(forSourceTime: range.end)
-        start = CMTimeMinimum(a, b)
+        // The frames showing the range, by the mapping the picture is drawn
+        // with: a backwards clip's are a frame earlier than its edges'.
+        let a = clip.timelineTime(forShownSourceTime: range.start, frame: frame)
+        let b = clip.timelineTime(forShownSourceTime: range.end, frame: frame)
+        // Held to the clip's own time: backwards, the range's exclusive end
+        // is shown a frame before the clip starts.
+        start = CMTimeMaximum(CMTimeMinimum(a, b), CMTimeMinimum(clip.startOffset, CMTimeMaximum(a, b)))
         let end = CMTimeMaximum(a, b)
         frameSeconds = frame.seconds
+        self.frame = frame
         var times: [CMTime] = []
         let frames = CMTimeSubtract(end, start).seconds / frame.seconds
         if frames.isFinite, frames >= 0, frames < Double(Int32.max) { times.reserveCapacity(Int(frames) + 2) }
@@ -894,12 +915,12 @@ struct KeyframeSampling {
         }
         let start = start
         timelineTimes = times
-        let sources = times.map { Self.clamp(clip.sourceTime(atTimelineTime: $0), to: range) }
+        let sources = times.map { Self.clamp(clip.shownSourceTime(atTimelineTime: $0, frame: frame), to: range) }
         self.sources = sources
         sourceSeconds = sources.map(\.seconds)
         let elapsed = times.map { CMTimeSubtract($0, start).seconds }
         self.elapsed = elapsed
-        let outside = [CMTimeSubtract(start, frame), CMTimeAdd(end, frame)].map { clip.sourceTime(atTimelineTime: $0) }
+        let outside = [CMTimeSubtract(start, frame), CMTimeAdd(end, frame)].map { clip.shownSourceTime(atTimelineTime: $0, frame: frame) }
         let earlier = outside.min(by: <)!, later = outside.max(by: <)!
         before = earlier < range.start ? earlier : nil
         after = later > range.end ? later : nil
@@ -1198,7 +1219,13 @@ private struct KeyframeSignal {
         for beat in beats where beat.time >= start && (!downbeatsOnly || beat.isDownbeat) {
             defer { index += 1 }
             guard index >= offset, (index - offset) % every == 0 else { continue }
-            let elapsed = CMTimeSubtract(beat.time, start).seconds
+            // On the frame nearest the beat, by the rounding cuts snapped
+            // to it use, and to the sample's own time there: the first
+            // frame at or after it came a fraction of a frame late, already
+            // decaying, and at no decay a beat between frames, as nearly
+            // all are, was never seen.
+            let onFrame = Timeline.frameAligned(CMTimeSubtract(beat.time, start), toFramesOf: sampling.frame, .nearest)
+            let elapsed = CMTimeSubtract(CMTimeAdd(start, onFrame), start).seconds
             let k = min(sampling.elapsed.lowerBound(of: elapsed) { $0 }, sampling.elapsed.count - 1)
             let height = peak.at(max(k, 0), default: 10)
             pulses.append(KeyframeGenerators.Pulse(time: elapsed, height: beat.isDownbeat && !downbeatsOnly ? height * (1 + accent) : height))
@@ -1269,7 +1296,7 @@ private struct KeyframeSignal {
                 }
             }
         case .beatKeys:
-            // The sample at or after each beat.
+            // The sample at each beat, which is on a frame.
             let starts = pulses.map { pulse in sampling.elapsed.lowerBound(of: pulse.time) { $0 } }
             for (n, pulse) in pulses.enumerated() {
                 let at = starts[n]
@@ -1282,7 +1309,9 @@ private struct KeyframeSignal {
                     add(next - 1)
                 case .pulse, .step, .alternate:
                     add(at, out: .easy)
-                    let settled = sampling.elapsed.lowerBound(of: pulse.time + decays[at]) { $0 }
+                    // At least the next sample: a decay under a frame is
+                    // over by then, where it glided down to the next beat.
+                    let settled = max(sampling.elapsed.lowerBound(of: pulse.time + decays[at]) { $0 }, at + 1)
                     if settled < next - 1 { add(settled, in: .easy) }
                 }
             }

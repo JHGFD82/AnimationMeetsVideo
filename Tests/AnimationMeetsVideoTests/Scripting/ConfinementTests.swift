@@ -111,6 +111,26 @@ struct ConfinementTests {
         #expect(try await outcome("import os\nassert os.system(\"/bin/echo x\") == 0") != "'allowed'")
     }
 
+    /// Forking, and spawning even the interpreter itself, which the
+    /// profile lets the helper start as: the commands above are refused
+    /// for being outside the installation whether or not forking is.
+    @Test func forkingAndSpawningAreRefused() async throws {
+        #expect(try await outcome("import os\nos.fork()") != "'allowed'")
+        #expect(try await outcome("import os, sys\nos.posix_spawn(sys.executable, [sys.executable, \"-c\", \"pass\"], {})") != "'allowed'")
+        #expect(try await outcome("import subprocess, sys\nsubprocess.run([sys.executable, \"-c\", \"pass\"], check=True)") != "'allowed'")
+    }
+
+    /// A terminal's tty is the person's to read, and what is typed into
+    /// it, passwords too, mustn't reach an expression.
+    @Test func aTerminalsTtyCantBeOpened() async throws {
+        let main = posix_openpt(O_RDWR | O_NOCTTY)
+        #expect(main >= 0)
+        defer { close(main) }
+        #expect(grantpt(main) == 0 && unlockpt(main) == 0)
+        let tty = try #require(ptsname(main).map { String(cString: $0) })
+        #expect(try await outcome("open(\"\(tty)\", \"rb\", buffering=0).close()") != "'allowed'")
+    }
+
     @Test func readingTheHomeFolderIsRefused() async throws {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         #expect(try await outcome("import os\nos.listdir(\"\(home)\")") != "'allowed'")
@@ -128,6 +148,31 @@ struct ConfinementTests {
         #expect(end == .finished(display: "True"))
     }
 
+    /// Confined code can't write preferences through `cfprefsd`, a way
+    /// out the profile's file rules wouldn't cover: no Mach service is
+    /// allowed, so the write goes nowhere. The same calls unconfined do
+    /// write (tried by hand, code-review-notes.md, F60).
+    @Test func preferencesCantBeWrittenThroughCfprefsd() async throws {
+        let domain = "com.example.amv-confinement-\(UUID().uuidString)"
+        let synchronized = try await run("""
+        import ctypes
+        cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+        cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+        cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+        cf.CFPreferencesSetAppValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        cf.CFPreferencesAppSynchronize.argtypes = [ctypes.c_void_p]
+        cf.CFPreferencesAppSynchronize.restype = ctypes.c_bool
+        text = lambda t: cf.CFStringCreateWithCString(None, t.encode(), 0x08000100)
+        app = text("\(domain)")
+        cf.CFPreferencesSetAppValue(text("written"), text("yes"), app)
+        cf.CFPreferencesAppSynchronize(app)
+        """)
+        #expect(synchronized == "False")
+        CFPreferencesAppSynchronize(domain as CFString)
+        #expect(CFPreferencesCopyAppValue("written" as CFString, domain as CFString) == nil)
+        let plist = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Preferences/\(domain).plist")
+        #expect(!FileManager.default.fileExists(atPath: plist.path))
+    }
 }
 
 /// The profile itself, which needs no Mac to read.
@@ -142,6 +187,19 @@ struct ConfinementTests {
         // The denials come last, so they win over anything allowed before.
         #expect(profile.hasSuffix("(deny process-fork)\n(deny network*)"))
         #expect(!profile.contains("(allow network") && !profile.contains("(allow process-fork") && !profile.contains("file-write*"))
+    }
+
+    /// A Python linked from the home folder's bin gives the home folder
+    /// as its installation, which would make all of it readable and
+    /// runnable: only the link itself and where it leads are.
+    @Test func aPythonInTheHomeFoldersBinDoesntOpenTheHomeFolder() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+        let python = URL(filePath: home + "/bin/python3")
+        let profile = HelperConfinement.profile(interpreter: python, host: URL(filePath: "/App/Python/amv_host/__main__.py"))
+        #expect(!HelperConfinement.installations(of: python).contains(home))
+        #expect(!profile.contains("(subpath \"\(home)\")"))
+        #expect(profile.contains("(literal \"\(home)/bin/python3\")"))
+        #expect(!HelperConfinement.readableFolders(interpreter: python, host: URL(filePath: "/App/Python/amv_host/__main__.py")).contains("/dev"))
     }
 
     @Test func aFrameworkPythonMayStartAsItsPythonApp() {

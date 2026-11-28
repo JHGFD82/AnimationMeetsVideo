@@ -25,6 +25,8 @@ extension ProjectStore {
             throw ProjectStoreError.unsupportedVersion(version)
         }
         let file = try JSONFile.decode(ProjectFile.self, from: data, shape: ProjectFile.shape, failure: ProjectStoreError.invalidFile)
+        try refuseRepeatedIDs(in: file)
+        try refuseOutOfRange(in: file)
 
         var importedClips: [UUID: MediaClip] = [:]
         var orderedIDs: [UUID] = []
@@ -68,6 +70,20 @@ extension ProjectStore {
             case .timeline: entry.id.flatMap { timelineIDs.contains($0) ? ClipSource.timeline($0) : nil }
             case .adjustment: .adjustment
             case .graphic: .graphic
+            }
+        }
+
+        // A clip whose media file or nested timeline the file doesn't have,
+        // as only a hand edit leaves, refuses the file: it was dropped, and
+        // the next save lost it for good. (A file that is merely missing
+        // loads offline, above.)
+        for timeline in file.timelines {
+            for layer in timeline.layers {
+                for clip in layer.clips where resolveSource(clip.source) == nil {
+                    throw ProjectStoreError.invalidFile(
+                        "A clip of the timeline \u{201C}\(timeline.name)\u{201D} (\(clip.id.uuidString.lowercased())) uses a \(clip.source.kind == .timeline ? "timeline" : "media file") the project doesn\u{2019}t have."
+                    )
+                }
             }
         }
 
@@ -149,6 +165,13 @@ extension ProjectStore {
             canvasMargin: file.canvasMargin ?? EditingProject.defaultCanvasMargin,
             jointAudioCrossfade: file.jointAudioCrossfade.flatMap(AudioCrossfade.init(rawValue:)) ?? .sCurve
         )
+        // A timeline holding itself is refused here rather than only when
+        // drawn (code-review-notes.md, F50).
+        if let looped = project.timelineContainingItself() {
+            throw ProjectStoreError.invalidFile(
+                "The timeline \u{201C}\(looped.name)\u{201D} contains itself, through a nested timeline or an effect\u{2019}s input."
+            )
+        }
         project.alignClipLengthsToFrames()
         var scores: [UUID: ChangeScoreTrack] = [:]
         var references: [UUID: AssetReference] = [:]
@@ -224,4 +247,56 @@ extension ProjectStore {
             hasAudio: asset.hasAudio ?? reference?.hasAudio ?? (kind == .audio || uses.contains { $0.streams == ClipStreams.audio.rawValue })
         )
     }
+
+    /// Refuses a file that gives two things one ID, as only a hand edit
+    /// can (IDs are read without regard to case, too). The app takes an ID
+    /// for one thing: two media files with one crashed the browser, two
+    /// layers of a timeline the timeline, and two sections the first edit
+    /// of one.
+    static func refuseRepeatedIDs(in file: ProjectFile) throws {
+        func once(_ ids: [UUID], _ what: String) throws {
+            var seen = Set<UUID>()
+            for id in ids where !seen.insert(id).inserted {
+                throw ProjectStoreError.invalidFile("Two \(what) have the ID \(id.uuidString.lowercased()).")
+            }
+        }
+        try once(file.assets.map(\.id), "media files")
+        try once(file.timelines.map(\.id), "timelines")
+        for timeline in file.timelines {
+            try once(timeline.layers.map(\.id), "layers of the timeline \u{201C}\(timeline.name)\u{201D}")
+            try once(timeline.sections?.map(\.id) ?? [], "sections of the timeline \u{201C}\(timeline.name)\u{201D}")
+        }
+    }
+
+    /// Refuses numbers that are valid JSON but that no project has, and
+    /// that the app's arithmetic doesn't survive: a frame 10^19 pixels wide
+    /// trapped turning into an Int, a frame rate of 10^19 trapped in
+    /// timecode, and a beat at position Int64.min numbering its measure.
+    /// (Times are bounded where they are read, `TimeEntry`.)
+    static func refuseOutOfRange(in file: ProjectFile) throws {
+        func refuse(_ what: String) throws { throw ProjectStoreError.invalidFile(what) }
+        for timeline in file.timelines {
+            let name = "\u{201C}\(timeline.name)\u{201D}"
+            guard [timeline.width, timeline.height].allSatisfy({ $0.isFinite && $0 >= 1 && $0 <= Self.largestFrameSide }) else {
+                return try refuse("The timeline \(name) has a frame size no timeline has (\(timeline.width) × \(timeline.height)).")
+            }
+            guard timeline.frameRate.isFinite, timeline.frameRate >= 0, timeline.frameRate <= Self.fastestFrameRate else {
+                return try refuse("The timeline \(name) has a frame rate no timeline has (\(timeline.frameRate)).")
+            }
+        }
+        for asset in file.assets {
+            if let rate = asset.frameRate, !(rate.isFinite && rate >= 0 && rate <= Self.fastestFrameRate) {
+                return try refuse("The media file \u{201C}\(asset.name)\u{201D} has a frame rate no file has (\(rate)).")
+            }
+            let beats = asset.beatMap?.sections.flatMap(\.beats) ?? []
+            if beats.contains(where: { abs($0.position) > Self.farthestBeatPosition }) {
+                return try refuse("The beats of \u{201C}\(asset.name)\u{201D} are numbered out of range.")
+            }
+        }
+    }
+
+    /// Sides of a frame past any Metal texture.
+    static let largestFrameSide = 16_384.0
+    static let fastestFrameRate = 1_000.0
+    static let farthestBeatPosition = 1 << 20
 }

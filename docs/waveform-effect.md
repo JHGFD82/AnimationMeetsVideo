@@ -34,8 +34,16 @@ of **preset styles** or set by hand.
 ### What it listens to
 
 **Listen To**, as Audio Keys has it: the whole mix (the default), a
-Sound or Music layer, or one clip with sound, each as heard, with its
-volume and EQ ([Audio Keys](keyframing-effects.md#audio-keys-in-detail)).
+Sound or Music layer, or one clip with sound, with its volume and EQ
+([Audio Keys](keyframing-effects.md#audio-keys-in-detail)). Only clips
+the mix plays are heard: not one turned off, with its sound muted, or
+retimed to silence (Sound Mute, or played backwards). It doesn't build
+the mix the way playback and export do, though, so it leaves out a
+clip's pan, the fades under transitions and the sound a crossfade at a
+joined cut plays past a clip's ends, the Compressor, Limiter and Voice
+Isolation, Keep Pitch (a retimed clip is read like tape), and a sound
+track that starts later than its file; those are open findings of the
+code review ([code-review-notes.md](code-review-notes.md)).
 What it draws at each frame is the sound around that frame's time on
 the timeline, so it lines up with what is heard wherever the clip
 drawing it is. It is saved as the effect's `listensToLayer` or

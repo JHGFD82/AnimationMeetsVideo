@@ -21,6 +21,10 @@ extension ProjectStore {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
+        // In UTC, so the names sort as the autosaves were written, which
+        // choosing the newest and pruning go by: local time repeats an hour
+        // when clocks go back.
+        formatter.timeZone = TimeZone(identifier: "UTC")
         let url = folder.appending(path: "\(backupPrefix)\(formatter.string(from: now)).json")
         try encode(project, packageURL: packageURL).write(to: url, options: .atomic)
 
@@ -86,7 +90,11 @@ extension ProjectStore {
         try await PackageCoordinator.shared.run(on: [url]) {
             guard FileManager.default.fileExists(atPath: url.path) else { return }
             if checkingLock, (try? validatePackage(at: url)) != nil {
-                _ = try ProjectLock.acquire(at: url)
+                // Without file locks there is no telling whether it is open
+                // on another Mac, so it isn't trashed from under it.
+                guard try ProjectLock.acquire(at: url).isHeld else {
+                    throw ProjectStoreError.cantLock(url.deletingPathExtension().lastPathComponent)
+                }
             }
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
         }

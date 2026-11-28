@@ -107,13 +107,13 @@ import Testing
             effect.controls[2].number.set(ComponentValue(values: [90]), at: second(6))
         }
         var changed = p.clipAndLayer(clip, in: t)!.clip
-        let didEase = changed.easeKeyframes(atTimelineTime: second(6), .easyEase)
+        let didEase = changed.easeKeyframes(atTimelineTime: second(6), frame: CMTime(value: 1, timescale: 24), .easyEase)
         #expect(didEase)
         #expect(changed.volume.keyframes[0].easeOut == .easy)
         #expect(changed.effects[0].controls[2].number.keyframes[0].easeOut == .easy)
         // Nothing at another time.
         var other = p.clipAndLayer(clip, in: t)!.clip
-        let didEaseOther = other.easeKeyframes(atTimelineTime: second(7), .easyEase)
+        let didEaseOther = other.easeKeyframes(atTimelineTime: second(7), frame: CMTime(value: 1, timescale: 24), .easyEase)
         #expect(!didEaseOther)
     }
 

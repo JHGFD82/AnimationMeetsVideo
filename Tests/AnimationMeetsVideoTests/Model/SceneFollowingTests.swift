@@ -182,4 +182,57 @@ private func volume(at times: [Double]) -> AnimatedValue<Double> {
         #expect(result == SceneFollowResult())
         #expect(clips(project).count == 2)
     }
+
+    // F100: a 30 fps source on a 24 fps timeline puts a scene cut between
+    // two timeline frames. Split there, the halves weren't whole frames;
+    // reopening trimmed the first back to whole frames and left a frame of
+    // nothing, and the scene could no longer be merged.
+    @Test func aCutBetweenTimelineFramesSplitsOnTheFramesAndPlaysAsBefore() {
+        let thirty = MediaClip(
+            name: "Thirty", kind: .video, url: nil, duration: seconds(10),
+            frameRate: 30, colorSpace: .rec709, codecName: "H.264"
+        )
+        var project = EditingProject.empty
+        project.addMedia(thirty)
+        project.timelines[0].frameRate = 24
+        let whole = TimelineClip(source: .media(thirty.id), startOffset: .zero, trimStart: .zero, trimEnd: seconds(5))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [whole])]
+        let cut = CMTime(value: 31, timescale: 30)
+
+        let result = project.editScenesFollowingClips(ofAsset: thirty.id, track: nil) { $0.addCut(at: cut) }
+        #expect(result.split.count == 1)
+        let pieces = clips(project)
+        #expect(pieces.count == 2)
+        guard pieces.count == 2 else { return }
+        let timeline = project.timelines[0]
+        // The second half starts on the first frame after the cut, the first
+        // ends there, and both last whole frames, so reopening keeps them.
+        #expect(pieces[1].startOffset == CMTime(value: 25, timescale: 24))
+        #expect(pieces[0].endOffset == pieces[1].startOffset)
+        #expect(pieces[1].trimStart >= cut)
+        var reopened = project
+        reopened.alignClipLengthsToFrames()
+        #expect(clips(reopened) == pieces)
+        // Every timeline frame shows what the whole clip showed there, the
+        // new scene from its first frame on.
+        for index in 0..<120 {
+            let time = CMTimeMultiply(timeline.frameDuration, multiplier: Int32(index))
+            let piece = pieces[time < pieces[1].startOffset ? 0 : 1]
+            #expect(piece.sourceTime(atTimelineTime: time) == whole.sourceTime(atTimelineTime: time), "frame \(index)")
+            #expect((piece.sourceTime(atTimelineTime: time) >= cut) == (index >= 25), "frame \(index)")
+        }
+
+        // Merging the scene back gives the whole clip again.
+        let merged = project.editScenesFollowingClips(ofAsset: thirty.id, track: nil) {
+            $0.removeCut(SceneCut(time: cut, origin: .manual))
+        }
+        #expect(merged.joined == 1)
+        let back = clips(project)
+        #expect(back.count == 1)
+        if let first = back.first {
+            var expected = whole
+            expected.id = first.id
+            #expect(first == expected)
+        }
+    }
 }

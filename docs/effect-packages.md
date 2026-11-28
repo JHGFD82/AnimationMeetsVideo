@@ -725,10 +725,44 @@ from the old one, in the viewer or in `Cache/Renders/`.
 
 A package is data and a GPU kernel. Expressions are arithmetic only, and
 a Core Image kernel can't reach files, the network or memory outside its
-images. The risk is speed: a slow kernel slows the viewer and exports,
-and Core Image has no time limit to stop one. The app doesn't sandbox
-packages beyond this; installing one means trusting it the way a person
-trusts a plug-in.
+images. But a kernel is code run on the GPU: a faulty or malicious one
+can stall graphics or make the app unstable, and Core Image has no time
+limit to stop one (cancelling a render doesn't stop work already sent to
+the GPU; only the system's watchdog ends it). So a package from outside
+the app is treated as executable code, not a preset (decision D8 in
+code-review-notes.md):
+
+- **Nothing of it is compiled until the person approves it as it is.**
+  `EffectApproval` keeps, in
+  `~/Library/Application Support/AnimationMeetsVideo/ApprovedEffects.json`,
+  the SHA-256 of each approved package's effect.json and kernel
+  (`EffectPackage.approvalHash`); `PackageKernels` compiles and draws
+  only built-in packages and approved ones. One not approved is listed
+  in the library, its chip marked and under **Waiting for Approval**
+  with an **Approve…** button, and in a project its effect leaves the
+  picture as it is and says why. Nothing is compiled for it at launch,
+  on installing, on a live reload, or to draw a preview.
+- **Changed, it asks again.** An edit to effect.json or the kernel, in
+  the app or outside it, makes another hash; a live reload of a changed
+  package installs it but compiles nothing until it is approved.
+- **The question** names the package, its ID and version, and where it
+  came from as far as the Mac recorded it (the site it was downloaded
+  from, or that it was downloaded, or its folder), and says what a
+  kernel can do. Opening a package from the Finder asks once it is
+  installed; double-clicking a waiting effect in the library asks before
+  adding it. A package the app makes (New Effect Package…, or Make a
+  Package from This on a look already allowed to run) is approved as
+  written.
+- **A recovery launch** leaves out every package from outside the app:
+  hold Shift as the app opens, or set `disableExternalEffects`
+  (`open -a AnimationMeetsVideo --args -disableExternalEffects YES`).
+  A project using one opens with it missing, and is saved with it as it
+  was read.
+
+The warning is on top of the package's checks and limits (its shape,
+sizes and pass counts, below), not in place of them. The app doesn't
+otherwise sandbox packages; approving one means trusting it the way a
+person trusts a plug-in.
 
 ## What stays in Swift
 

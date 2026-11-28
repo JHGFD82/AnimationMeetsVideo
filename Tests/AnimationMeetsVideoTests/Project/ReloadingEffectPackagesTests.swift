@@ -272,8 +272,18 @@ import Testing
         try kernel("return s * strength").write(to: url.appending(path: "kernel.metal"), atomically: true, encoding: .utf8)
         await status.reload(url)
         #expect(status.revision == 1)
+        let edited = try #require(registry.current.effect(named: "com.example.tint")?.package)
+        #expect(edited.kernelSource == kernel("return s * strength"))
+        // Changed, it isn't approved, so nothing of it is compiled (D8)...
+        #expect(!EffectApproval.shared.allows(edited))
+        #expect(status.kernelProblems["com.example.tint"] == nil && PackageKernels.knownProblem(for: edited) == nil)
+        // ...until the person approves it as it is now.
+        EffectApproval.shared.approveInSession(hash: edited.approvalHash)
+        await status.compileKernels(of: [edited])
         #expect(status.kernelProblems["com.example.tint"]?.hasPrefix("kernel.metal:1:") == true)
-        #expect(registry.current.effect(named: "com.example.tint")?.package?.kernelSource == kernel("return s * strength"))
+        EffectApproval.shared.approveInSession(hash: EffectPackage.approvalHash(
+            try Data(contentsOf: url.appending(path: "effect.json")), kernel("return s * strength;")
+        ))
 
         try kernel("return s * strength;").write(to: url.appending(path: "kernel.metal"), atomically: true, encoding: .utf8)
         await status.reload(url)

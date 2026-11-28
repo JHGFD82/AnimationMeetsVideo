@@ -32,28 +32,45 @@ enum HelperConfinement {
     /// lead to, as a Homebrew or virtual environment's Python links into
     /// another), and the helper's own code.
     static func readableFolders(interpreter: URL, host: URL) -> [String] {
+        // Not /dev: the base profile already gives what Python needs there
+        // (null, zero, random, urandom), and all of it let an expression
+        // open a Terminal's tty and read what was typed into it.
         let system = [
             "/System", "/usr/lib", "/usr/share", "/Library/Apple", "/private/var/db/dyld", "/private/var/db/timezone",
-            "/private/etc", "/dev",
+            "/private/etc",
         ]
-        let resolved = interpreter.resolvingSymlinksInPath()
-        // bin/python3 → the installation it is in.
-        let prefixes = [interpreter, resolved].map { $0.deletingLastPathComponent().deletingLastPathComponent().path }
         // amv_host/__main__.py → the folder holding amv_host.
         let code = host.deletingLastPathComponent().deletingLastPathComponent()
-        let folders = system + prefixes + [code.path, code.resolvingSymlinksInPath().path]
+        let folders = system + installations(of: interpreter) + [code.path, code.resolvingSymlinksInPath().path]
         var seen = Set<String>()
         return folders.filter { seen.insert($0).inserted }
     }
 
     /// The installations the helper may run code from: the interpreter's,
-    /// by the path it was chosen at and the one its links lead to. A
-    /// framework build (Homebrew's, python.org's) starts again as its
-    /// Python.app, inside its installation, at once.
+    /// by the path it was chosen at and the one its links lead to (bin/
+    /// python3 → the folder holding bin). A framework build (Homebrew's,
+    /// python.org's) starts again as its Python.app, inside its
+    /// installation, at once. Never the home folder or a folder holding
+    /// it: a `~/bin/python3` linking to Homebrew's made the whole home
+    /// folder readable and runnable; its link is allowed by itself
+    /// instead (`interpreterFiles`).
     static func installations(of interpreter: URL) -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
         let paths = [interpreter, interpreter.resolvingSymlinksInPath()].map {
-            $0.deletingLastPathComponent().deletingLastPathComponent().path
+            $0.deletingLastPathComponent().deletingLastPathComponent().standardizedFileURL.path
         }
+        var seen = Set<String>()
+        return paths.filter { path in
+            let holdsHome = path == "/" || home == path || home.hasPrefix(path.hasSuffix("/") ? path : path + "/")
+            return !holdsHome && seen.insert(path).inserted
+        }
+    }
+
+    /// The interpreter's own file, by the path it was chosen at and the
+    /// one its links lead to, which may be outside every installation
+    /// allowed.
+    static func interpreterFiles(_ interpreter: URL) -> [String] {
+        let paths = [interpreter.standardizedFileURL.path, interpreter.resolvingSymlinksInPath().path]
         var seen = Set<String>()
         return paths.filter { seen.insert($0).inserted }
     }
@@ -65,11 +82,10 @@ enum HelperConfinement {
     /// where they disagree, so the last ones take away what an expression
     /// mustn't have whatever the base allows.
     static func profile(interpreter: URL, host: URL) -> String {
-        let readable = readableFolders(interpreter: interpreter, host: host)
-            .map { "    (subpath \(quoted($0)))" }
+        let files = interpreterFiles(interpreter).map { "    (literal \(quoted($0)))" }
+        let readable = (readableFolders(interpreter: interpreter, host: host).map { "    (subpath \(quoted($0)))" } + files)
             .joined(separator: "\n")
-        let runnable = installations(of: interpreter)
-            .map { "    (subpath \(quoted($0)))" }
+        let runnable = (installations(of: interpreter).map { "    (subpath \(quoted($0)))" } + files)
             .joined(separator: "\n")
         return """
         (version 1)

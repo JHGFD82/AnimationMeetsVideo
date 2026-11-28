@@ -46,6 +46,18 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(await bridge.error("split", arguments)?.kind == .gone)
     }
 
+    // F95: a fraction is taken exactly, and a picture clip split at 1/5 s
+    // had its second half start between two frames.
+    @Test func aSplitAtAFractionIsOnTheNearestFrame() async throws {
+        let f = BridgeFixture()
+        let bridge = ProjectBridge(project: f.project)
+        var arguments = f.clipArguments
+        arguments["time"] = [1, 5]
+        _ = try await bridge.value("split", arguments)
+        let starts = try #require(await bridge.working.timeline(id: f.timelineID)?.layer(id: f.layerID)).clips.map(\.startOffset).sorted()
+        #expect(starts == [.zero, CMTime(value: 5, timescale: 24)])
+    }
+
     @Test func aSplitOutsideTheClipIsAValueError() async throws {
         let f = BridgeFixture()
         var arguments = f.clipArguments

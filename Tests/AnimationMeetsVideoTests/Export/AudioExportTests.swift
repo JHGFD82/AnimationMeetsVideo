@@ -116,6 +116,79 @@ import Testing
         #expect(!left.contains { $0.hasPrefix("Cut - ") })
     }
 
+    /// Holds a mix export's task, so its own progress can stop it.
+    private final class MixTaskBox: @unchecked Sendable {
+        var task: Task<LoudnessMastering.Report?, Error>?
+    }
+
+    /// The save panel's Replace takes effect only once the new file is
+    /// whole: an export stopped halfway leaves the earlier one as it was,
+    /// and nothing of its own beside it.
+    @Test func aStoppedMixExportKeepsTheFileItWouldReplace() async throws {
+        let (project, tones) = try twoLayerProject(seconds: 3)
+        defer { for tone in tones { try? FileManager.default.removeItem(at: tone) } }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-mix-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "Cut.wav")
+        let earlier = Data("An earlier export".utf8)
+        try earlier.write(to: url)
+
+        let box = MixTaskBox()
+        box.task = Task {
+            try await AudioExport.exportMix(
+                project: project, timelineID: project.rootTimelineID, loudness: .asMixed, to: url,
+                progress: { if $0 >= 0.5 { box.task?.cancel() } }
+            )
+        }
+        await #expect(throws: CancellationError.self) { try await box.task?.value }
+        #expect(try Data(contentsOf: url) == earlier)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["Cut.wav"])
+    }
+
+    @Test func aFinishedMixExportReplacesTheFileThere() async throws {
+        let (project, tones) = try twoLayerProject(seconds: 1)
+        defer { for tone in tones { try? FileManager.default.removeItem(at: tone) } }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-mix-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "Cut.wav")
+        try Data("An earlier export".utf8).write(to: url)
+        try await AudioExport.exportMix(project: project, timelineID: project.rootTimelineID, loudness: .asMixed, to: url)
+        #expect(abs(try read(url).seconds - 1) < 0.01)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["Cut.wav"])
+    }
+
+    @Test func aStoppedStemsExportKeepsTheStemsItWouldReplace() async throws {
+        let (project, tones) = try twoLayerProject(seconds: 3)
+        defer { for tone in tones { try? FileManager.default.removeItem(at: tone) } }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-stems-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let earlier = try await AudioExport.exportStems(project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder)
+        let before = try earlier.map { try Data(contentsOf: $0) }
+        await stopStemsHalfway(of: project, in: folder)
+        #expect(try earlier.map { try Data(contentsOf: $0) } == before)
+        let left = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+        #expect(left == earlier.map(\.lastPathComponent).sorted())
+    }
+
+    /// An export over a media file the project plays would read it while
+    /// rendering and then replace the person's file (code-review-notes.md,
+    /// F72): it is refused, and the file is left as it was.
+    @Test func anExportOverAFileTheProjectUsesIsRefused() async throws {
+        let tone = try AudioMixSupport.tone(frequency: 440, amplitude: 0.25, seconds: 1)
+        defer { try? FileManager.default.removeItem(at: tone) }
+        let (project, _, _) = try AudioMixSupport.project(playing: tone, seconds: 1)
+        let before = try Data(contentsOf: tone)
+        await #expect(throws: CompositionError.self) {
+            try await AudioExport.exportMix(project: project, timelineID: project.rootTimelineID, loudness: .asMixed, to: tone)
+        }
+        await #expect(throws: CompositionError.self) {
+            try await CompositionExporter.export(project: project, timelineID: project.rootTimelineID, preset: .proRes422, to: tone)
+        }
+        #expect(try Data(contentsOf: tone) == before)
+    }
+
     @Test func aTimelineWithoutSoundIsRefused() async throws {
         let project = EditingProject.empty
         let url = FileManager.default.temporaryDirectory.appending(path: "amv-silent-\(UUID().uuidString).wav")

@@ -1,10 +1,10 @@
 # Bar colors and Clear Layer
 
-Status: **built, not yet run**. Everything below is built
-(`Model/BarColor.swift`, `UI/Design/BarColors.swift`,
+Status: **built and tested, not yet tried on screen**. Everything below
+is built (`Model/BarColor.swift`, `UI/Design/BarColors.swift`,
 `UI/Components/BarColorMenu.swift`, `UI/Components/BarColorPanel.swift`,
-`UI/Timeline/TimelineColors.swift`), but it was written where there is
-no Xcode: it hasn't been compiled, its tests haven't run, and the
+`UI/Timeline/TimelineColors.swift`). It was written where there is no
+Xcode; the code review's baseline built it and its tests pass, but the
 swatch grid in a context menu hasn't been looked at on screen (see "Not
 tried"). Where the build differs from the plan, this document says so.
 Choices the request didn't settle are listed under
@@ -102,7 +102,7 @@ struct BarColorMenu: View {
 ```
 
 **Not tried.** This was written without a Mac to run it on. Palette
-pickers in menus are a macOS 14 API and the package targets macOS 15,
+pickers in menus are a macOS 14 API and the package targets macOS 26,
 but whether eight stacked palette pickers draw as a tidy 8 × 8 grid of
 tinted swatches inside a *context* menu must be looked at on screen;
 menus are AppKit windows, so the snapshot tests can't show it. If it

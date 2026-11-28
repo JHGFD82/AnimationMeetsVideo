@@ -73,7 +73,12 @@ extension ProjectBridge {
             result = .null
         case "split":
             let (timelineID, clip, layer) = try self.clip(call)
-            let time = try ScriptTime.time(call["time"], in: project.timeline(id: timelineID))
+            let given = try ScriptTime.time(call["time"], in: project.timeline(id: timelineID))
+            // On a frame for a clip with pictures, as the blade splits: a
+            // time given as a fraction is taken exactly, and 1/5 s left the
+            // second half between two frames (F95).
+            let time = project.timeline(id: timelineID)?
+                .placementTime(given, .nearest, frameLocked: project.isFrameLocked(clip)) ?? given
             guard time > clip.startOffset, time < clip.endOffset else {
                 throw ScriptCallError.value("A clip is split at a time strictly inside it, between its start and end")
             }

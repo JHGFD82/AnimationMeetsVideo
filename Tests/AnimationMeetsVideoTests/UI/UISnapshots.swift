@@ -998,7 +998,7 @@ struct UISnapshots {
             .frame(width: 300)
             ParameterRowLanes(
                 groups: groups, isClosed: { rows.isClosed($0, on: layer.id) },
-                lane: { row in ParameterLaneMarks(row.key, of: layer.clips) }, currentTime: time, pixelsPerSecond: 80, width: 500,
+                lane: { row in ParameterLaneMarks(row.key, of: layer.clips, frame: CMTime(value: 1, timescale: 24)) }, currentTime: time, pixelsPerSecond: 80, width: 500,
                 snap: { $0 }, onSeek: { _ in }, onEdit: { _, _, _ in }
             )
         }
@@ -1410,6 +1410,30 @@ struct UISnapshots {
                     state: EffectsPanelState(), packageStatus: status
                 ),
                 "effects-library-problems", size: CGSize(width: 380, height: 1100)
+            )
+        }
+    }
+
+    /// The effects library with a package from outside the app that isn't
+    /// approved to run: its chip is marked, and it is listed with the
+    /// button that asks (decision D8).
+    @Test func effectsLibraryWaitingForApproval() throws {
+        let project = EditingProject.empty
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = try writeEffectPackage(
+            effectManifest("com.example.duotone", function: "exDuotone", extra: ["name": "Duotone"]),
+            kernel: "extern \"C\" [[stitchable]] float4 exDuotone(coreimage::sample_t s, float space) { return s; }",
+            in: folder, named: "Duotone.amveffect", approved: false
+        )
+        let package = try EffectPackageStore.read(url)
+        try EffectRegistry.$override.withValue(EffectRegistry.withBuiltIns([package])) {
+            try SnapshotSupport.render(
+                EffectsListPanel(
+                    project: .constant(project), timelineID: project.rootTimelineID, selection: nil,
+                    state: EffectsPanelState(), packageStatus: EffectPackageStatus()
+                ),
+                "effects-library-waiting-for-approval", size: CGSize(width: 380, height: 1600)
             )
         }
     }

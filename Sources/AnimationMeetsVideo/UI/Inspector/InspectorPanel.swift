@@ -351,13 +351,15 @@ extension InspectorPanel {
     var shapeGroups: some View {
         if let timelineClip, let timeline = project.timeline(id: timelineID) {
             let shapes = timelineClip.effects.filter { $0.kind.isShape && $0.missing == nil }
-            let sourceNow = PlayheadTime(playhead) { timeline.snappedToFrame(timelineClip.sourceTime(atTimelineTime: $0)) }
+            let sourceNow = PlayheadTime(playhead) {
+                timeline.snappedToFrame(timelineClip.shownSourceTime(atTimelineTime: $0, frame: timeline.frameDuration))
+            }
             let named = shapes.count > 1
             ForEach(shapes) { effect in
                 let onEdit: ((inout Effect) -> Void) -> Void = { change in
                     project.editEffect(effect.id, ofClip: timelineClip.id, in: timelineID, change)
                 }
-                let onSeek: (CMTime) -> Void = { onSeek(timelineClip.timelineTime(forSourceTime: $0)) }
+                let onSeek: (CMTime) -> Void = { onSeek(timelineClip.timelineTime(forShownSourceTime: $0, frame: timeline.frameDuration)) }
                 if effect.kind == .text {
                     TextInspectorGroup(
                         effect: effect, prefix: named ? effect.displayName : nil, playhead: sourceNow, onEdit: onEdit, onSeek: onSeek

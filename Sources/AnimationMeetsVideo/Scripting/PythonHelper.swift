@@ -94,10 +94,23 @@ actor PythonHelper: ScriptHelper {
         }
         defer { timer?.cancel() }
 
+        // Its result may carry what it asked for and no more; nothing
+        // sent outside a run may carry anything (F57).
+        connection.reader.allowPayload(upTo: request.largestResult)
+        defer { connection.reader.allowPayload(upTo: 0) }
+
         do {
             try connection.send(HelperFrame(header: request.header(id: id), payload: request.payload))
             while true {
                 let frame = try await connection.reader.next()
+                // The helper tags calls and output with the run under way,
+                // or none between runs. Any other is from a thread an earlier
+                // run left, or code writing to the pipe itself; answered, it
+                // would read this run's project, which may be another's
+                // (code-review-notes.md, F55). The helper is ended instead.
+                if frame.type == "call" || frame.type == "output", frame.header["run"]?.int != id {
+                    throw ScriptHelperError.brokenStream("a \(frame.type) from outside the run under way")
+                }
                 switch frame.type {
                 case "call":
                     guard let callID = frame.header["id"]?.int, let call = HelperCall(frame.header) else {
@@ -241,7 +254,7 @@ actor PythonHelper: ScriptHelper {
 /// One helper process and its pipes.
 final class HelperConnection: @unchecked Sendable {
     let interpreter: PythonInterpreter
-    let reader = HelperFrameReader()
+    let reader: HelperFrameReader
     private let process = Process()
     private let input: FileHandle
     private let writing = NSLock()
@@ -250,6 +263,7 @@ final class HelperConnection: @unchecked Sendable {
         // A write to a helper that has gone would end the app.
         signal(SIGPIPE, SIG_IGN)
         self.interpreter = interpreter
+        reader = HelperFrameReader(limits: confined ? .expressions : .scripts)
         let toHelper = Pipe(), fromHelper = Pipe(), errors = Pipe()
         input = toHelper.fileHandleForWriting
         if confined {
@@ -337,20 +351,87 @@ final class HelperConnection: @unchecked Sendable {
     }
 }
 
+/// How much the app holds of what a helper sends before taking its stream
+/// for broken and ending it (code-review-notes.md, F57). The memory a
+/// helper can make the app hold is at most `mostBuffered` and one header,
+/// plus the result its run asked for.
+struct HelperLimits: Sendable, Equatable {
+    /// The longest header of one frame.
+    var largestHeader: Int
+    /// The most bytes of frames read but not yet taken by a run, and of
+    /// the frame still arriving, beside the run's own result.
+    var mostBuffered: Int
+    /// The most such frames.
+    var mostUnread = 10_000
+
+    /// A script's: its calls can carry a timeline's worth of edits.
+    static let scripts = HelperLimits(largestHeader: HelperFrame.largestHeader, mostBuffered: 256 * 1024 * 1024)
+    /// An expression's, which sends small calls, its output (a megabyte at
+    /// most from the helper's own code), an error and one result whose
+    /// payload the run sets. Code it runs can write to the pipe itself, so
+    /// these hold whatever it sends.
+    static let expressions = HelperLimits(largestHeader: 1024 * 1024, mostBuffered: 8 * 1024 * 1024)
+}
+
 /// The frames the helper has written, waited for one at a time.
 final class HelperFrameReader: @unchecked Sendable {
+    let limits: HelperLimits
     private let lock = NSLock()
     private var decoder = HelperFrame.Decoder()
-    private var frames: [HelperFrame] = []
+    private var frames: [(frame: HelperFrame, size: Int)] = []
+    /// What `frames` hold, as sent.
+    private var queuedBytes = 0
+    /// The payload the run under way may be sent, as its result; none
+    /// outside a run.
+    private var allowedPayload = 0
     private var waiter: CheckedContinuation<HelperFrame, Error>?
     private var ending: Error?
+    /// Whether what it sent broke a limit or the format: what follows is
+    /// dropped, not read from the middle of a frame.
+    private var broken = false
+
+    init(limits: HelperLimits = .scripts) {
+        self.limits = limits
+        decoder.largestHeader = limits.largestHeader
+        decoder.largestPayload = 0
+    }
+
+    /// Lets the frames that follow carry a payload of up to `bytes`, the
+    /// result the run about to start asked for; 0 when it ends. A frame
+    /// with more is a broken stream from its header on, before its payload
+    /// is waited for.
+    func allowPayload(upTo bytes: Int) {
+        lock.lock()
+        allowedPayload = min(max(bytes, 0), HelperFrame.largestPayload)
+        decoder.largestPayload = allowedPayload
+        lock.unlock()
+    }
 
     /// Takes bytes read from the helper's output.
     func take(_ data: Data) {
         lock.lock()
         do {
-            frames += try decoder.take(data)
+            guard !broken else { throw ScriptHelperError.brokenStream("bytes after the stream broke") }
+            for read in try decoder.takeSized(data) {
+                frames.append(read)
+                queuedBytes += read.size
+            }
+            // Frames nothing reads, as from a thread an earlier run left
+            // sending, end the stream rather than pile up without limit,
+            // counted and by their bytes (code-review-notes.md, F57).
+            if frames.count > limits.mostUnread {
+                throw ScriptHelperError.brokenStream("more than \(limits.mostUnread) messages no run read")
+            }
+            if queuedBytes + decoder.buffered > limits.mostBuffered + allowedPayload {
+                throw ScriptHelperError.brokenStream("more than \(limits.mostBuffered) bytes of messages no run read")
+            }
         } catch {
+            // Its frames are let go of at once: the helper is ended, and a
+            // run reading on is told why.
+            broken = true
+            frames.removeAll()
+            queuedBytes = 0
+            decoder = HelperFrame.Decoder()
             ending = ending ?? error
         }
         let ready = deliver()
@@ -384,7 +465,8 @@ final class HelperFrameReader: @unchecked Sendable {
     private func deliver() -> (() -> Void)? {
         guard let waiter else { return nil }
         if !frames.isEmpty {
-            let frame = frames.removeFirst()
+            let (frame, size) = frames.removeFirst()
+            queuedBytes -= size
             self.waiter = nil
             return { waiter.resume(returning: frame) }
         }

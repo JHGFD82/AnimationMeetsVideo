@@ -246,6 +246,12 @@ own pitch, **Change Pitch** speeds it up and slows it down like tape, and
 time-pitch algorithms (`.spectral` and `.varispeed`) on the clip's audio mix
 track, which is its own track, so they work in playback and export alike.
 Its volume keyframes count in source time, so they follow the sound.
+They are documented for 1/32 to 32 times the speed, so sound played
+slower than 3.125% or faster than 3,200% is left out and silent
+(`ClipTime.soundSpeeds`), the same in playback and export: a ramp
+through a near-stop goes quiet over it and plays on either side, and a
+timeline whose only sound is out of that range has nothing to export,
+as one whose only clip is muted.
 
 ## Meter
 

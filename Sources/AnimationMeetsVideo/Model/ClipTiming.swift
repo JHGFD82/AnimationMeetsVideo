@@ -87,6 +87,23 @@ struct ClipTime: Equatable, Sendable {
     /// How fast a clip may play, in either direction.
     static let speedRange = 1.0...10_000.0
 
+    /// The speeds, as percentages, retimed sound is heard at: AVFoundation's
+    /// time-pitch algorithms are documented for 1/32 to 32 times. Outside,
+    /// a reader handed back no sound for the piece, and an export of a
+    /// timeline whose only sound was a clip at 2% wrote an empty WAV and
+    /// called it done (F109); so sound outside is left out, silent alike
+    /// in playback and export. A ramp through a near-stop goes quiet over
+    /// it and plays on either side.
+    static let soundSpeeds = 3.125...3200.0
+
+    /// Whether `file` of sound played over `length` of the timeline is
+    /// within `soundSpeeds`, give or take rounding.
+    static func playsSound(file: CMTime, over length: CMTime) -> Bool {
+        guard length > .zero, file > .zero else { return false }
+        let speed = 100 * file.seconds / length.seconds
+        return speed >= soundSpeeds.lowerBound * 0.999 && speed <= soundSpeeds.upperBound * 1.001
+    }
+
     /// `speed` held to `speedRange` in size, keeping its sign (zero counts
     /// as forwards).
     static func clampedSpeed(_ speed: Double) -> Double {
@@ -189,7 +206,7 @@ extension TimelineClip {
         let span = CMTimeSubtract(b, a)
         guard !time.speed.isAnimated else {
             let integral = SpeedIntegral.of(time.speed)
-            return CMTime(seconds: integral.length(from: a.seconds, to: b.seconds), preferredTimescale: 240_000)
+            return Self.nearestTick(integral.length(from: a.seconds, to: b.seconds))
         }
         let speed = abs(speed(atSource: a))
         if speed == 100 { return span }
@@ -229,9 +246,48 @@ extension TimelineClip {
         }
         // Playing the source takes more time the more of it has played, so
         // find where the time that has passed is used up.
+        // No time passed is the anchor itself, not the integral's round trip.
+        guard elapsed != .zero else { return anchor }
         let integral = SpeedIntegral.of(self.time.speed)
         let passed = reversed ? -elapsed.seconds : elapsed.seconds
-        return CMTime(seconds: integral.source(atIntegral: integral.at(anchor.seconds) + passed), preferredTimescale: 240_000)
+        return Self.nearestTick(integral.source(atIntegral: integral.at(anchor.seconds) + passed))
+    }
+
+    /// `seconds` on the 1/240000 s grid a ramp's times are placed on, to
+    /// the nearest tick. `CMTime(seconds:)` cuts down instead, and 13/24 s
+    /// is 129999.99… ticks in a Double, so a ramp's first frame came out a
+    /// tick before its trim: on a scene cut, the previous scene's frame.
+    static func nearestTick(_ seconds: Double) -> CMTime {
+        guard seconds.isFinite, abs(seconds) < 1e12 else { return CMTime(seconds: seconds, preferredTimescale: 240_000) }
+        return CMTime(value: Int64((seconds * 240_000).rounded()), timescale: 240_000)
+    }
+
+    /// The moment of the source shown at timeline `time`, `frame` being the
+    /// timeline's frame: what the picture is, and what source-relative
+    /// keyframes, expressions and Blend are read at. One mapping for all of
+    /// them, where reading them at `sourceTime(atTimelineTime:)` read a
+    /// backwards clip a frame off its picture (F106).
+    ///
+    /// A clip's source range is end-exclusive, `[trimStart, trimEnd)`.
+    /// Forwards, the frame at `time` shows the source from
+    /// `sourceTime(atTimelineTime: time)` on, so the two are one. Backwards,
+    /// a timeline frame `[time, time + frame)` plays the source span below
+    /// `sourceTime(atTimelineTime: time)` down to
+    /// `sourceTime(atTimelineTime: time + frame)`, and its picture is the
+    /// frame that span starts at in the file: the lower end. So a backwards
+    /// clip begins on its last included frame, `trimEnd` less a frame's
+    /// worth, not at the exclusive out point, and ends exactly on
+    /// `trimStart`. At 50% it shows each frame twice, last first, as
+    /// forwards does first first. `sourceTime(atTimelineTime:)` stays the
+    /// clip's edges' mapping, for trims and splits.
+    func shownSourceTime(atTimelineTime time: CMTime, frame: CMTime) -> CMTime {
+        isReversed ? sourceTime(atTimelineTime: CMTimeAdd(time, frame)) : sourceTime(atTimelineTime: time)
+    }
+
+    /// The timeline time at which `shownSourceTime(atTimelineTime:frame:)`
+    /// is `source`: where a keyframe set on that moment of the source is.
+    func timelineTime(forShownSourceTime source: CMTime, frame: CMTime) -> CMTime {
+        isReversed ? CMTimeSubtract(timelineTime(forSourceTime: source), frame) : timelineTime(forSourceTime: source)
     }
 
     /// How much source plays in `length` of timeline time from the clip's

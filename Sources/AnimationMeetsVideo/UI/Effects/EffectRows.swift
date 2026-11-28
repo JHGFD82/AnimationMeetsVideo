@@ -540,7 +540,7 @@ struct ControlSectionHeader: View {
     var detail: String?
 
     var body: some View {
-        (Text(name.uppercased()) + Text(detail.map { " \($0)" } ?? ""))
+        Text(name.uppercased() + (detail.map { " \($0)" } ?? ""))
             .font(Design.Typeface.micro)
             .foregroundStyle(Design.textTertiary)
             .lineLimit(1)

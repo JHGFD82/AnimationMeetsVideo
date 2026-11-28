@@ -126,7 +126,7 @@ enum ViewStateFile {
 
             var rows: TimelineParameterRows {
                 func sets(_ keyed: [String: [ParameterRowKey]]?) -> [UUID: Set<ParameterRowKey>] {
-                    Dictionary(uniqueKeysWithValues: (keyed ?? [:]).compactMap { key, keys in UUID(uuidString: key).map { ($0, Set(keys)) } })
+                    Dictionary((keyed ?? [:]).compactMap { key, keys in UUID(uuidString: key).map { ($0, Set(keys)) } }, uniquingKeysWith: { first, _ in first })
                 }
                 return TimelineParameterRows(picked: sets(picked), removed: sets(removed), closed: Set(closed ?? []))
             }

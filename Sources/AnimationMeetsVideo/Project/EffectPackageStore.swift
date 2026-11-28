@@ -23,10 +23,13 @@ final class EffectPackageStatus {
 
     /// Why each package's kernel doesn't compile, by package ID.
     private(set) var kernelProblems: [String: String]
-    /// Bumped as packages are installed or changed while the app runs, so
-    /// what lists the effects (read from the registry, which isn't
-    /// observed) does again.
+    /// Bumped as packages are installed, changed or approved while the app
+    /// runs, so what lists the effects (read from the registry, which
+    /// isn't observed) and what draws them do again.
     private(set) var revision = 0
+    /// Whether this launch left the person's packages out (the recovery
+    /// launch, `RecoveryLaunch`): none is installed, compiled or watched.
+    private(set) var externalEffectsOff = false
 
     /// Reading and installing the person's packages at launch, which what
     /// reads a project or installs a package waits for.
@@ -69,6 +72,26 @@ final class EffectPackageStatus {
         }
     }
 
+    /// The recovery launch: the built-in effects only, for when a
+    /// package from outside the app keeps it from working. A project
+    /// using one opens with it missing, as when its package is gone.
+    func launchWithoutExternalEffects() {
+        externalEffectsOff = true
+        launch = Task {
+            await EffectPackageStore.installAtLaunch(from: nil)
+            revision += 1
+        }
+    }
+
+    /// Approves `package` as it is now (`EffectApproval`), then compiles
+    /// its kernel, and what uses it draws again.
+    func approve(_ package: EffectPackage) async {
+        EffectApproval.shared.approve(package)
+        revision += 1
+        await compile([package], priority: .userInitiated)
+        revision += 1
+    }
+
     /// Returns once launch has installed the person's packages; at once if
     /// it has, or isn't installing any. Reading a project waits for this,
     /// so its package effects are known.
@@ -80,6 +103,9 @@ final class EffectPackageStatus {
     /// installed, and compiles its kernel. Throws why it can't be used.
     func install(_ url: URL) async throws -> EffectPackage {
         await packagesInstalled()
+        guard !externalEffectsOff else {
+            throw EffectPackageError("Effects from outside the app are off for this launch. Quit and open the app again, without holding Shift, to install it.")
+        }
         let package = try EffectPackageStore.read(url)
         // Already installed when the folder's watcher read it first.
         if let installed = EffectRegistry.current.effect(named: package.id)?.package,
@@ -190,7 +216,7 @@ final class EffectPackageStatus {
             read = await Task.detached(priority: .userInitiated) { Result { try EffectPackageStore.read(url) } }.value
         }
         if case .failure(let error)? = read {
-            NSLog("The effect package \(url.lastPathComponent) can't be used: \(error.localizedDescription)")
+            NSLog("%@", "The effect package \(url.lastPathComponent) can't be used: \(error.localizedDescription)")
         }
         let reload = reloadIntoRegistry(url, read)
         if let changed = reload.changed, let replaced = reload.replaced {
@@ -254,26 +280,27 @@ enum EffectPackageStore {
         }
         let library = load(from: folder, builtIn: true)
         for problem in library.problems {
-            NSLog("The built-in effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
+            NSLog("%@", "The built-in effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
         }
         return library
     }
 
     /// Reads the person's packages away from the main thread and installs
     /// them beside the built-in effects, then starts compiling every
-    /// package's kernel. Called once at launch, by
+    /// package's kernel that may be (those from outside the app only once
+    /// approved, `PackageKernels`). Called once at launch, by
     /// `EffectPackageStatus.installAtLaunch`, which a project waits for
-    /// before it is read.
+    /// before it is read; with no folder, the built-in effects alone.
     @MainActor
-    static func installAtLaunch(from folder: URL = defaultFolder) async {
+    static func installAtLaunch(from folder: URL? = defaultFolder) async {
         let library = await Task.detached(priority: .userInitiated) {
             // The built-in packages, read the first time the registry is
             // used, are read here rather than on the main thread.
             _ = EffectRegistry.builtIn
-            return load(from: folder)
+            return folder.map { load(from: $0) } ?? EffectPackageLibrary()
         }.value
         for problem in library.problems {
-            NSLog("The effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
+            NSLog("%@", "The effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
         }
         EffectRegistry.install(library.packages, problems: library.problems)
         // Compiled now rather than at first use, so a kernel's mistake shows
@@ -383,7 +410,8 @@ enum EffectPackageStore {
         guard EffectRegistry.current.effect(named: id) == nil else {
             throw EffectPackageError("An effect called \"\(id)\" is already installed.")
         }
-        let url = folder.appending(path: "\(name).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
+        // The folder's name made safe; the name shown stays as typed.
+        let url = folder.appending(path: "\(SafeFileName.make(name, fallback: "Effect")).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
         guard !FileManager.default.fileExists(atPath: url.path) else {
             throw EffectPackageError("The Effects folder already has a package called \"\(name)\".")
         }
@@ -411,8 +439,12 @@ enum EffectPackageStore {
     /// that name as a made one's, version 1, its controls and kernel as they
     /// were. Returns its folder.
     static func copyPackage(_ package: EffectPackage, in folder: URL = defaultFolder) throws -> URL {
+        // A package's name comes from its manifest, which anyone can write:
+        // its folder's name is made safe, or "../../Desktop/x" copied it
+        // outside the Effects folder.
+        let folderName = { (name: String) in "\(SafeFileName.make(name, fallback: "Effect")).\(EffectPackage.fileExtension)" }
         let taken = { (name: String) in
-            FileManager.default.fileExists(atPath: folder.appending(path: "\(name).\(EffectPackage.fileExtension)").path)
+            FileManager.default.fileExists(atPath: folder.appending(path: folderName(name)).path)
                 || EffectRegistry.current.effect(named: userID(for: name, in: folder)) != nil
         }
         var name = "\(package.name) Copy"
@@ -422,7 +454,7 @@ enum EffectPackageStore {
             number += 1
         }
         let id = userID(for: name, in: folder)
-        let url = folder.appending(path: "\(name).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
+        let url = folder.appending(path: folderName(name), directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: package.url, to: url)
         let manifest = url.appending(path: manifestName)
@@ -473,15 +505,35 @@ enum EffectPackageStore {
         return (package, existing.isEmpty ? .install(destination: destination) : .replace(existing: existing))
     }
 
-    /// Copies the package at `url` into `folder`, first removing
-    /// `replacing`. Returns where it is.
+    /// Copies the package at `url` into `folder`, replacing `replacing`.
+    /// Returns where it is. The new package is copied in whole beside its
+    /// place before anything it replaces goes: removing them first lost a
+    /// package the person wrote when the copy then failed.
     @discardableResult
     static func copyIn(_ url: URL, into folder: URL = defaultFolder, replacing: [URL] = []) throws -> URL {
+        let fileManager = FileManager.default
         let destination = folder.appending(path: url.lastPathComponent, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        for old in replacing { try FileManager.default.removeItem(at: old) }
-        if url.standardizedFileURL != destination.standardizedFileURL {
-            try FileManager.default.copyItem(at: url, to: destination)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let isDestination = { (other: URL) in other.standardizedFileURL == destination.standardizedFileURL }
+        if !isDestination(url) {
+            // A hidden name no listing takes for a package.
+            let partial = folder.appending(path: ".\(UUID().uuidString).partial", directoryHint: .isDirectory)
+            try fileManager.copyItem(at: url, to: partial)
+            do {
+                if fileManager.fileExists(atPath: destination.path) {
+                    _ = try fileManager.replaceItemAt(destination, withItemAt: partial)
+                } else {
+                    try fileManager.moveItem(at: partial, to: destination)
+                }
+            } catch {
+                try? fileManager.removeItem(at: partial)
+                throw error
+            }
+        }
+        // The destination itself was replaced above; other installed copies
+        // of the package, elsewhere, go once the new one is in place.
+        for old in replacing where !isDestination(old) {
+            try fileManager.removeItem(at: old)
         }
         return destination
     }
@@ -606,7 +658,7 @@ enum EffectPackageStore {
         }
         guard closed, !parameters.contains(where: { $0.contains("#") }) else {
             let first = uncounted.withLock { $0.insert(function).inserted }
-            if first { NSLog("The parameters of kernel \(function) couldn't be counted with certainty, so its arguments aren't checked against them.") }
+            if first { NSLog("%@", "The parameters of kernel \(function) couldn't be counted with certainty, so its arguments aren't checked against them.") }
             return nil
         }
         return parameters.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -824,6 +876,7 @@ enum EffectPackageStore {
                 url: url, id: id, version: version, name: json["name"] as! String,
                 category: EffectCategory(rawValue: json["category"] as! String)!, systemImage: json["symbol"] as! String,
                 contentHash: EffectPackage.contentHash(manifest, source),
+                isBuiltIn: builtIn, approvalHash: EffectPackage.approvalHash(manifest, source),
                 kernelType: kernelType, kernelFunction: function, kernelFile: kernel["file"] as! String, kernelSource: source,
                 controls: controls,
                 amountIndex: amountIndex ?? (json["amount"] as? Bool == true ? controls.count : nil), arguments: arguments,

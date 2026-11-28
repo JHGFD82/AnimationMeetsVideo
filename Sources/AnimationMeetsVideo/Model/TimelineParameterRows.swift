@@ -256,8 +256,8 @@ extension EditingProject {
 
     /// A row's value at timeline `time`: the clips' it acts on, if they
     /// agree; nil when they differ or there are none.
-    func parameterValue(_ key: ParameterRowKey, of clips: [TimelineClip], at time: CMTime) -> [Double]? {
-        let values = clips.compactMap { clip in clip.parameter(key)?.control.values(at: clip.sourceTime(atTimelineTime: time)) }
+    func parameterValue(_ key: ParameterRowKey, of clips: [TimelineClip], at time: CMTime, frame: CMTime) -> [Double]? {
+        let values = clips.compactMap { clip in clip.parameter(key)?.control.values(at: clip.shownSourceTime(atTimelineTime: time, frame: frame)) }
         guard let first = values.first, values.allSatisfy({ $0 == first }) else { return nil }
         return first
     }
@@ -269,8 +269,10 @@ extension EditingProject {
         at time: CMTime
     ) {
         for clipID in clips {
-            guard let clip = clipAndLayer(clipID, in: timelineID)?.clip, let parameter = clip.parameter(key) else { continue }
-            let source = clip.sourceTime(atTimelineTime: time)
+            guard let clip = clipAndLayer(clipID, in: timelineID)?.clip, let parameter = clip.parameter(key),
+                  let frame = timeline(id: timelineID)?.frameDuration
+            else { continue }
+            let source = clip.shownSourceTime(atTimelineTime: time, frame: frame)
             let controlID = parameter.control.id
             editEffect(parameter.effect.id, ofClip: clipID, in: timelineID) { effect in
                 guard let c = effect.controlIndex(controlID) else { return }

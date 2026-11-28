@@ -7,8 +7,9 @@ external display, whose markup is gone; the point controls' handles;
 the loupe a held press opens; the handles and guides packages declare
 in `viewer`; and a selected shape's or text block's handles. The pen
 and a selected path's points and tangents are built, described in
-[pen-tool.md](pen-tool.md). None of it
-has been built or run yet (see [As built](#as-built)). Where the code differs from what follows is listed
+[pen-tool.md](pen-tool.md). It builds and its tests pass (the code
+review's baseline, [code-review-notes.md](code-review-notes.md)), but it
+hasn't been tried on screen by hand. Where the code differs from what follows is listed
 under [As built](#as-built). The document says what the person sees,
 then the framework the handles are built on, then where each piece goes
 in the code, then the order to build it in. Choices made while writing
@@ -1021,14 +1022,13 @@ Where the code (steps 1 to 11) differs from the plan above:
   every definition would hold nothing elsewhere. See
   [graphic-layers.md](graphic-layers.md#editing-in-the-viewer) for what
   each shape gets.
-- Not run yet: the code was written without a Swift toolchain, so the
-  tests (`TransformHandlesTests`, `PointControlHandlesTests`,
-  `ShapeHandlesTests`,
-  `DeclaredHandlesTests`, `ViewerPackageTests`,
-  `FineDragTests`, `ViewerMappingTests`,
-  `ViewerCanvasInteractionTests`, the new `StructureKeyTests` case and
-  the `viewerHandles`, `viewerZoomed` and `externalDisplaySynced`
-  snapshots) need a build on a Mac before this is taken as working.
+- Built and tested since it was written without a Swift toolchain:
+  `TransformHandlesTests`, `PointControlHandlesTests`,
+  `ShapeHandlesTests`, `DeclaredHandlesTests`, `ViewerPackageTests`,
+  `FineDragTests`, `ViewerMappingTests`, `ViewerCanvasInteractionTests`
+  (with `UI_EVENTS`) and the `StructureKeyTests` case pass, and the
+  `viewerHandles`, `viewerZoomed` and `externalDisplaySynced` snapshots
+  render. Trying the handles by hand on screen remains.
 
 ## Building it
 

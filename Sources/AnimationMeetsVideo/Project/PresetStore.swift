@@ -146,10 +146,7 @@ enum PresetStore {
     /// A file name for `name` that no other preset uses: the name with
     /// characters a file can't have taken out, numbered if it's taken.
     private static func freeID(for name: String, in folder: URL, except own: String? = nil) -> String {
-        let cleaned = name.map { "/:\\".contains($0) ? "-" : $0 }.map(String.init).joined()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        let base = cleaned.isEmpty ? "Preset" : cleaned
+        let base = SafeFileName.make(name, fallback: "Preset")
         var candidate = base
         var number = 2
         while candidate != own, FileManager.default.fileExists(atPath: fileURL(candidate, in: folder).path) {

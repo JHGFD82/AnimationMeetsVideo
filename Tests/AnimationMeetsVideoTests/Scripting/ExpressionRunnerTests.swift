@@ -59,6 +59,22 @@ import Testing
         #expect(result.failure != nil)
     }
 
+    /// A number no value can have is a failure, whatever the helper's own
+    /// check let through: a NaN keyframe would fail every save after it
+    /// (code-review-notes.md, F56).
+    @Test func samplesThatArentNumbersAreAFailure() async throws {
+        let (f, id) = fixture()
+        let job = ExpressionRunner.Job(timelineID: f.timelineID, clipID: f.clipID, effectID: id)
+        let count = try #require(ExpressionRunner.request(for: job, in: f.project)).times.count
+        for bad in [Double.nan, .infinity, -.infinity] {
+            var samples = Array(repeating: 1.0, count: count)
+            samples[count / 2] = bad
+            let result = try #require(await ExpressionRunner(helper: FakeHelper(end: .samples(samples))).run(job, in: f.project))
+            #expect(result.failure != nil)
+            #expect(result.values.isEmpty)
+        }
+    }
+
     @Test func anExpressionCantChangeTheProject() async throws {
         let (f, _) = fixture()
         let bridge = ProjectBridge(project: f.project, readsOnly: true)

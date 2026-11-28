@@ -146,6 +146,17 @@ final class ExportWindow {
     /// Whether any export in the app has yet to end, stopping or not.
     static var anyUnderWay: Bool { all.allObjects.contains { $0.task != nil } }
 
+    /// Asks whether to export though keyframes are still being written;
+    /// true on yes. Return waits.
+    static func askToExportAnyway(because pending: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Keyframes are still being written"
+        alert.informativeText = pending
+        alert.addButton(withTitle: "Wait")
+        alert.addButton(withTitle: "Export Anyway")
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
     /// Asks whether to stop `jobs`; true on yes.
     static func askToStop(_ jobs: [Job], because reason: String) -> Bool {
         let alert = NSAlert()
@@ -326,6 +337,10 @@ final class ExportWindow {
     /// runs, once those queued before it end. `renderer` pauses
     /// meanwhile, and a ProRes 422 export reuses its renders.
     func run(project: EditingProject, timelineID: UUID, renderer: RenderScheduler) {
+        // The export takes the project as it is now: say so when keyframes
+        // it would show are still being written. Never a refusal, since an
+        // expression may wait for good (no Python here).
+        if let pending = project.keyframesStillComing(), !Self.askToExportAnyway(because: pending) { return }
         let format = format
         let timelineName = project.timeline(id: timelineID)?.name ?? timelineName
         // Read before the panel, which is modal but lets the queue run on:

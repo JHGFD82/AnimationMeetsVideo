@@ -150,7 +150,7 @@ struct ViewerHandlesOverlay: View {
         // viewer's picture follows too.
         let held = projectState?.held
         let drawn = Self.drawnClip(original, drag: source.state.drag, held: held, timelineID: source.timelineID)
-        let sourceTime = original.sourceTime(atTimelineTime: time)
+        let sourceTime = original.shownSourceTime(atTimelineTime: time, frame: timeline.frameDuration)
         var pictureSize: CGSize?
         if case .media(let id) = original.source {
             // Until the picture's size is read the box would be the
@@ -836,7 +836,9 @@ struct ViewerHandlesOverlay: View {
         projectState?.endHold()
         // A drag let go (`ProjectState.letGo`) has written it already.
         if project.clipAndLayer(start.id, in: source.timelineID)?.clip != edited {
-            source.project.wrappedValue.editClip(start.id, in: source.timelineID) { $0 = edited }
+            // Only what the drag changed: the clip may have been written
+            // from elsewhere since the drag began.
+            source.project.wrappedValue.editClip(start.id, in: source.timelineID) { $0 = $0.applyingDrag(from: start, to: edited) }
         }
         source.state.drag = nil
         let history = self.history

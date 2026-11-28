@@ -12,6 +12,17 @@ import Testing
         #expect(Timeline.frameDuration(for: 29.97) == CMTime(value: 1001, timescale: 30_000))
     }
 
+    // Whole rates of 10 fps and under were within the NTSC test's 0.01 of
+    // n·1000/1001, so 8 fps came out 7.992 (code-review-notes.md).
+    @Test func wholeRatesAtTenAndUnderStayWhole() {
+        for rate in 1...12 {
+            #expect(Timeline.frameDuration(for: Double(rate)) == CMTime(value: 1, timescale: Int32(rate)), "\(rate) fps")
+        }
+        // As AVFoundation reports them, a Float's worth of each NTSC rate.
+        #expect(Timeline.frameDuration(for: Double(Float(24_000.0 / 1001))) == CMTime(value: 1001, timescale: 24_000))
+        #expect(Timeline.frameDuration(for: Double(Float(60_000.0 / 1001))) == CMTime(value: 1001, timescale: 60_000))
+    }
+
     @Test func changingTheRateMovesClipsLayerKeyframesAndSectionsOntoTheNewFrames() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID

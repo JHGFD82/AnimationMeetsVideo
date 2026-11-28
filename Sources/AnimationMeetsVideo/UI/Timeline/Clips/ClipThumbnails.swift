@@ -86,7 +86,13 @@ struct ClipThumbnails: View {
     private func time(atTile index: Int, width tile: CGFloat) -> CMTime {
         let x = originX + CGFloat(index) * tile
         let along = CMTime(seconds: Double((x - liveX) / pixelsPerSecond), preferredTimescale: 600)
-        let source = clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, along))
+        var source = clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, along))
+        // Backwards, the picture shown is the frame below that moment; held
+        // under the out point by a frame of the footage, the first tile is
+        // the last frame in the trim, not the next shot's first (F106).
+        if clip.isReversed, case .file(let media) = footage {
+            source = CMTimeMaximum(clip.trimStart, CMTimeMinimum(source, CMTimeSubtract(clip.trimEnd, Timeline.frameDuration(for: media.frameRate))))
+        }
         let played = switch footage {
         case .file(let media): media.fileTime(forSourceTime: source)
         case .timeline: source

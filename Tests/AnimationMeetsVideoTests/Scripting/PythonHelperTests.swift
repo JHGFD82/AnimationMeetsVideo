@@ -94,6 +94,41 @@ struct PythonHelperTests {
         await helper.shutDown()
     }
 
+    /// A thread a run left behind, calling the app after that run ended,
+    /// isn't answered by the next run's project, which may be another's:
+    /// the helper is ended and the next run after starts a new one
+    /// (code-review-notes.md, F55).
+    @Test func aCallFromAnEndedRunIsNotAnsweredByTheNext() async throws {
+        let helper = helper()
+        let leave = """
+        import threading, time
+        call = amv._bridge.connection
+        def later():
+            time.sleep(0.3)
+            try:
+                call("project", {})
+            except BaseException:
+                pass
+        threading.Thread(target=later, daemon=True).start()
+        1
+        """
+        #expect(try await helper.run(HelperRequest(kind: .line, code: leave), output: { _ in }, answer: noCalls) == .finished(display: "1"))
+        try await Task.sleep(for: .milliseconds(800))
+
+        let answered = Printed()
+        var next = HelperRequest(kind: .line, code: "amv.project.name")
+        next.timeLimit = .seconds(5)
+        await #expect(throws: ScriptHelperError.self) {
+            try await helper.run(next, output: { _ in }, answer: { call in
+                answered.add(ScriptOutput(stream: .stdout, text: call.method))
+                return .value(["id": "B", "name": "Another project", "root": "T", "timelines": [], "assets": []])
+            })
+        }
+        #expect(answered.text.isEmpty)
+        #expect(try await helper.run(HelperRequest(kind: .line, code: "3"), output: { _ in }, answer: noCalls) == .finished(display: "3"))
+        await helper.shutDown()
+    }
+
     /// The helper's own unittests, which drive it against a fake app.
     @Test func theHelpersOwnTestsPass() throws {
         let tests = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "Python")

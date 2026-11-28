@@ -41,7 +41,7 @@ final class EffectFolderWatcher {
         guard let stream = FSEventStreamCreate(
             nil, callback, &context, [folder.path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags
         ) else {
-            NSLog("\(folder.lastPathComponent) can't be watched; what changes in it is read the next time it is opened.")
+            NSLog("%@", "\(folder.lastPathComponent) can't be watched; what changes in it is read the next time it is opened.")
             return
         }
         FSEventStreamSetDispatchQueue(stream, .main)

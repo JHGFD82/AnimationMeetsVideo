@@ -424,8 +424,16 @@ change:
 - Nothing is reloaded while a save or another reload is running or while the
   replace-media dialog is open. An export already running keeps rendering the
   project as it was when it started.
-- If the new file does not parse, keep the in-memory project and show the
-  error. The app does not overwrite the file itself, but the next save will.
+- A save looks first: it waits for a reload under way and takes a change
+  not yet noticed (asking as above), since saving half a second after an
+  edit comes before the two-second check. A change it can't take (a file it
+  can't read, or one waiting for clips the Motion Designer holds) is never
+  written over by a save the app makes on its own, which shows as not
+  saved; Save asks before writing over it.
+- If the new file does not parse, keep the in-memory project. It is read
+  again at the next check, as it may have been caught halfway through being
+  written, and only if it still doesn't parse is the error shown, once. It
+  isn't written over without asking (above).
 - Media the new file lists that can't be opened stays in the project,
   offline, as when opening a project (see "Offline media" below).
 

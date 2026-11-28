@@ -146,7 +146,7 @@ extension EditingProject {
                         clips.append(outer)
                         result.embedded.append(location)
                     } else {
-                        clips += clip.pieces(splitAt: cuts)
+                        clips += clip.pieces(splitAt: cuts, on: host)
                         result.split.append(location)
                     }
                 }
@@ -187,7 +187,7 @@ extension EditingProject {
         inner.autoMatteEnabled = clip.autoMatteEnabled
         let nested = Timeline(
             name: name,
-            layers: [TimelineLayer(customName: nil, kind: kind, clips: inner.pieces(splitAt: cuts))],
+            layers: [TimelineLayer(customName: nil, kind: kind, clips: inner.pieces(splitAt: cuts, on: host))],
             frameSize: host.frameSize, frameRate: host.frameRate, colorSpace: host.colorSpace
         )
         var outer = clip
@@ -212,7 +212,8 @@ extension EditingProject {
         var index = 0
         while index + 1 < clips.count {
             let first = clips[index], second = clips[index + 1]
-            guard follows(first, assetID), follows(second, assetID), Self.meet(first, second, at: cut) else {
+            guard follows(first, assetID), follows(second, assetID),
+                  Self.meet(first, second, at: cut, frame: timelines[t].frameDuration) else {
                 index += 1
                 continue
             }
@@ -232,14 +233,23 @@ extension EditingProject {
 
     /// Whether `second` carries on from `first` at `cut`: next to each
     /// other on the layer, and in the footage on either side of the cut.
-    private static func meet(_ first: TimelineClip, _ second: TimelineClip, at cut: CMTime) -> Bool {
+    /// Split on the timeline's frames (`pieces(splitAt:on:)`), they meet at
+    /// the moment playing at the first frame (`frame` long) after the cut.
+    private static func meet(_ first: TimelineClip, _ second: TimelineClip, at cut: CMTime, frame: CMTime) -> Bool {
         guard first.isReversed == second.isReversed,
               CMTimeAbsoluteValue(CMTimeSubtract(second.startOffset, first.endOffset)) < Timeline.abutmentTolerance
         else { return false }
+        let played = first.timelineTime(forSourceTime: cut)
         if first.isReversed {
-            return CMTimeCompare(first.trimStart, cut) == 0 && CMTimeCompare(second.trimEnd, cut) == 0
+            // Split backwards (`pieces(splitAt:on:)`): at the first frame
+            // after the cut's time less a frame, so the cut plays within
+            // the frame from there.
+            guard CMTimeCompare(first.trimStart, second.trimEnd) == 0, CMTimeCompare(first.trimStart, cut) >= 0 else { return false }
+            return CMTimeCompare(played, first.endOffset) >= 0 && CMTimeCompare(CMTimeSubtract(played, first.endOffset), frame) < 0
         }
-        return CMTimeCompare(first.trimEnd, cut) == 0 && CMTimeCompare(second.trimStart, cut) == 0
+        guard CMTimeCompare(first.trimEnd, second.trimStart) == 0, CMTimeCompare(first.trimEnd, cut) >= 0 else { return false }
+        // The cut plays within the first's last frame (or at its end).
+        return CMTimeCompare(played, first.endOffset) <= 0 && CMTimeCompare(CMTimeSubtract(first.endOffset, played), frame) < 0
     }
 
     /// The two clips as one, or nil when they differ in more than their
@@ -356,11 +366,37 @@ extension TimelineClip {
     }
 
     /// The clip split at each of `cuts` it plays, as the blade splits it.
-    func pieces(splitAt cuts: [CMTime]) -> [TimelineClip] {
+    func pieces(splitAt cuts: [CMTime], on timeline: Timeline) -> [TimelineClip] {
         var pieces = [self]
         for cut in cuts.sorted(by: { CMTimeCompare($0, $1) < 0 }) {
             guard let piece = pieces.first(where: { $0.plays(cut) }) else { continue }
-            pieces.splitClip(piece.id, at: cut)
+            // On the timeline's frames, as the blade splits: at the first
+            // frame whose picture (`shownSourceTime`) is the second half's
+            // scene, the new one forwards, the earlier one backwards. Where
+            // the source's rate differs from the timeline's, the cut plays
+            // between two frames, and a half starting there was trimmed to
+            // whole frames on reopening, leaving a frame of nothing. Both
+            // halves meet at the clip's edge mapping there, so each keeps
+            // the whole clip's mapping and every frame shows and reads what
+            // it did; a source frame by the cut may be passed over, as the
+            // whole clip passed over it.
+            //
+            // Forwards the frame at `t` shows the cut's side from the cut's
+            // own time on; backwards a frame shows the source below its
+            // edge time, so it shows the earlier side once its next frame's
+            // edge time is past the cut: from the first frame after the
+            // cut's time less a frame. With matching rates both are the
+            // cut's own time, where they always split.
+            let frameLength = timeline.frameDuration
+            let played = piece.timelineTime(forSourceTime: cut)
+            let frame = piece.isReversed
+                ? CMTimeAdd(timeline.frameAligned(CMTimeSubtract(played, frameLength), .down), frameLength)
+                : timeline.frameAligned(played, .up)
+            let split = piece.sourceTime(atTimelineTime: frame)
+            guard frame > piece.startOffset, frame < piece.endOffset, piece.plays(split) || split == cut,
+                  CMTimeCompare(split, cut) >= 0
+            else { continue }
+            pieces.splitClip(piece.id, at: split, startingSecondAt: frame)
         }
         return pieces
     }

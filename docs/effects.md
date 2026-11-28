@@ -381,6 +381,18 @@ works on frames already chosen:
   exporter builds a backwards clip from a piece for every frame, and its
   sound is silent.
 
+  One mapping says what a clip shows at each timeline frame, and its
+  picture, its source-relative keyframes, expressions and Blend all read
+  it (`TimelineClip.shownSourceTime`); controls that count in timeline
+  time keep doing so. A clip's source range is end-exclusive, so a
+  backwards clip begins on its last included frame and ends on its first:
+  each timeline frame plays a span of the source downwards and shows the
+  frame at the span's lower end. At 50% it shows each frame twice, last
+  first, as forwards shows them first first. Trims and splits keep the
+  clip's edges (`sourceTime(atTimelineTime:)`), where the out point is
+  the clip's start. A backwards clip used to begin on the frame after its
+  out point, the next shot's first, and never showed its own first.
+
   How long a ramp lasts is the integral of 100 / speed over the source
   time it plays, taken from the curve itself (its eases included, speed
   clamped to 1%...10000% in the clip's direction: an ease that overshoots
@@ -405,7 +417,9 @@ works on frames already chosen:
   ramped clip's end moves to the true length, and nothing migrates them.
 - **Frame Blending**: Off, Blend (mix the two nearest frames when the
   speed doesn't land on whole frames), or Optical Flow (build in-between
-  frames from Vision's optical flow). Optical Flow is too slow to draw
+  frames from Vision's optical flow). Neither mixes in a frame from the
+  end of the clip's trim on, the next shot's: the clip's last frames hold
+  its last frame (`MediaDraw.trimEnd`). Optical Flow is too slow to draw
   live, so it is drawn only in background renders and export; until a
   stretch is rendered, the viewer shows it with Blend. The motion between
   two frames is measured once and kept for every moment drawn between
@@ -1054,7 +1068,9 @@ In order, each step usable on its own:
    anything. Sound at other speeds is the host's audio time-pitch algorithm
    (Keep Pitch is `.spectral`, Change Pitch `.varispeed`) on a track of its
    own, or no track for Mute. A clip's volume keeps counting in source time
-   through its speed (at the speed it starts at, for a ramp). Speed
+   through its speed; on a ramp, through the same pieces its sound is
+   placed in (`MixTimeMap`), so a keyframe is heard with the moment it was
+   set on. Speed
    keyframes are in source time and can be set now (stopwatch and graph in
    the panel). Not yet drawn: Time (speed, blend, echo, sound) and trails on a
    nested timeline's clip, whose Time rows aren't offered

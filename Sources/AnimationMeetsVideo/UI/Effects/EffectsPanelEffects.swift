@@ -25,7 +25,7 @@ extension EffectsPanel {
                 unit: " px",
                 isAnimated: clip.anchorPoint.isAnimated,
                 isSelected: false,
-                keyframeTimes: shown.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
+                keyframeTimes: shown.keyframes.map { clip.timelineTime(forShownSourceTime: $0.time, frame: c.timeline.frameDuration) },
                 playhead: c.frameTime(animated: animated),
                 onReset: {
                     editClip(clip.id) { $0.anchorPoint = AnimatedValue(Vector2.zero) }
@@ -323,10 +323,10 @@ extension EffectsPanel {
             Button("Convert to Path") {
                 // Read as it acts: the panel isn't drawn again as the
                 // playhead moves.
-                let time = clip.sourceTime(atTimelineTime: playhead.time)
+                let time = clip.shownSourceTime(atTimelineTime: playhead.time, frame: timeline?.frameDuration ?? .zero)
                 guard let path = effect.convertedToPath(at: time) else {
                     // A size or radius of zero there: no outline to keep.
-                    return RefusalNotice.shared.tell("\u{201C}\(effect.name)\u{201D} has no size at the playhead, so there is no outline to make a path from.")
+                    return RefusalNotice.shared.tell("\u{201C}\(effect.displayName)\u{201D} has no size at the playhead, so there is no outline to make a path from.")
                 }
                 editClip(clip.id) { clip in
                     guard let index = clip.effects.index(of: effect.id) else { return }

@@ -64,7 +64,17 @@ final class ScrubCache {
 
     /// The frame showing at `seconds`: the last to start by then.
     private func index(of seconds: Double) -> Int {
-        Int((seconds * frameRate + 1e-6).rounded(.down))
+        Self.index(of: seconds, frameRate: frameRate)
+    }
+
+    /// The frame showing at `seconds` at `frameRate`, counted in the
+    /// timeline's exact frames. Counted in the typed rate, 23.976 rather
+    /// than 24000/1001, frame k's own time fell under k - 1, so a look-up
+    /// between frames found the next frame (F97).
+    static func index(of seconds: Double, frameRate: Double) -> Int {
+        let frame = Timeline.frameDuration(for: frameRate).seconds
+        let index = (seconds / frame + 1e-6).rounded(.down)
+        return index.isFinite ? Int(index.clamped(between: -Double(Int32.max), and: Double(Int32.max))) : 0
     }
 
     /// The scale a timeline `size` big is read at.

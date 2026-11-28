@@ -510,19 +510,31 @@ enum JointEdit: Equatable {
 }
 
 extension EditingProject {
-    /// Media with pictures and nested timelines join; adjustments and
-    /// shapes have no footage beyond their ends. Retimed clips don't join:
-    /// their spare footage isn't a length of timeline time.
+    /// Media and nested timelines with pictures or sound join; adjustments
+    /// and shapes have no footage beyond their ends. Retimed clips don't
+    /// join: their spare footage isn't a length of timeline time.
     private func isJoinable(_ clip: TimelineClip) -> Bool {
         switch clip.source {
-        case .media, .timeline: !clip.isRetimed && playsVideo(clip)
+        case .media, .timeline: !clip.isRetimed && (playsVideo(clip) || playsAudio(clip))
         case .adjustment, .graphic: false
         }
     }
 
+    /// Whether a transition can join `a` and `b` at a cut: both with
+    /// pictures, blended over their spare footage, or both of sound alone,
+    /// crossfaded over their spare sound (transitions.md, "Sound"). Sound
+    /// clips never joined, so a Crossfade between two faded one out to
+    /// silence and cut the next in (F98). A picture and a sound don't join:
+    /// they take transitions of different kinds. A disabled clip joins
+    /// nothing: it plays as a gap, so the transition beside it plays at an
+    /// open end in the viewer and the export alike, as the timeline now
+    /// draws it too (F103). Enabled again, the joint is back.
+    private func canJoin(_ a: TimelineClip, _ b: TimelineClip) -> Bool {
+        a.enabled && b.enabled && isJoinable(a) && isJoinable(b) && playsVideo(a) == playsVideo(b)
+    }
+
     /// The clip just before `clip` on its layer when they meet at a cut and
-    /// a transition can blend their pictures: both are media with pictures
-    /// or nested timelines.
+    /// a transition can join them (`canJoin`).
     /// They meet within `Timeline.abutmentTolerance`, as the timeline takes
     /// clips to meet everywhere else: edges worked out from source times in
     /// other timescales, or rounded onto frames, can be a sliver apart, and
@@ -530,13 +542,13 @@ extension EditingProject {
     /// stayed on one of them instead of joining them.
     func predecessor(joining clip: TimelineClip, among clips: [TimelineClip]) -> TimelineClip? {
         guard isJoinable(clip) else { return nil }
-        return clips.first { $0.id != clip.id && Self.meet($0.endOffset, clip.startOffset) && isJoinable($0) }
+        return clips.first { $0.id != clip.id && Self.meet($0.endOffset, clip.startOffset) && canJoin($0, clip) }
     }
 
     /// The clip just after `clip` that a transition at its end would join.
     func successor(joining clip: TimelineClip, among clips: [TimelineClip]) -> TimelineClip? {
         guard isJoinable(clip) else { return nil }
-        return clips.first { $0.id != clip.id && Self.meet(clip.endOffset, $0.startOffset) && isJoinable($0) }
+        return clips.first { $0.id != clip.id && Self.meet(clip.endOffset, $0.startOffset) && canJoin(clip, $0) }
     }
 
     /// Whether an end and a start are the same cut.
@@ -561,10 +573,15 @@ extension EditingProject {
 
     /// The length and lead a joining transition can have. Before the cut
     /// the incoming clip plays its spare head, so the lead is at most that
-    /// (and no longer than the outgoing clip); after the cut the outgoing
-    /// clip plays its spare tail, so the rest is at most that (and leaves
-    /// room for the incoming clip's way out). Both land on frames. Nil when
-    /// there is less than a frame of spare footage.
+    /// (and leaves the outgoing clip room for its own way in); after the
+    /// cut the outgoing clip plays its spare tail, so the rest is at most
+    /// that (and leaves room for the incoming clip's way out, or the lead
+    /// of a joint at its end). Both land on frames. Nil when there is less
+    /// than a frame of spare footage.
+    ///
+    /// A joint at the far end of either clip counts: on a short middle
+    /// clip, a joint widened over the next one's lead blended three clips
+    /// at once, and the middle clip's sound faded twice (F101).
     func fittedJoint(
         duration: CMTime,
         lead: CMTime,
@@ -573,9 +590,17 @@ extension EditingProject {
         in timeline: Timeline
     ) -> (duration: CMTime, lead: CMTime)? {
         let spare = spareFootage(outgoing: outgoing, incoming: incoming)
-        let before = timeline.frameAligned(CMTimeMinimum(spare.head, outgoing.placedDuration), .down)
-        let insideRoom = CMTimeSubtract(incoming.placedDuration, incoming.transitionOut?.duration ?? .zero)
-        let after = timeline.frameAligned(CMTimeMinimum(spare.tail, insideRoom), .down)
+        let clips = timeline.layers.first { $0.clips.contains { $0.id == incoming.id } }?.clips ?? []
+        // The outgoing clip's own way in, the part of it inside the clip.
+        let outgoingWayIn = outgoing.transitionIn.map {
+            CMTimeMaximum(.zero, CMTimeSubtract($0.duration, joinedLead(of: outgoing, among: clips) ?? .zero))
+        } ?? .zero
+        let beforeRoom = CMTimeSubtract(CMTimeSubtract(outgoing.placedDuration, outgoingWayIn), outgoing.transitionOut?.duration ?? .zero)
+        let before = timeline.frameAligned(CMTimeMinimum(spare.head, CMTimeMaximum(.zero, beforeRoom)), .down)
+        // The incoming clip's way out, or the lead of the joint after it.
+        let nextLead = successor(joining: incoming, among: clips).flatMap { joinedLead(of: $0, among: clips) } ?? .zero
+        let insideRoom = CMTimeSubtract(CMTimeSubtract(incoming.placedDuration, incoming.transitionOut?.duration ?? .zero), nextLead)
+        let after = timeline.frameAligned(CMTimeMinimum(spare.tail, CMTimeMaximum(.zero, insideRoom)), .down)
         let longest = CMTimeAdd(CMTimeMaximum(.zero, before), CMTimeMaximum(.zero, after))
         let frame = timeline.frameDuration
         guard longest >= frame else { return nil }

@@ -10,9 +10,10 @@ import os
 ///
 /// Kept in `~/Library/Application Support/AnimationMeetsVideo/AllowedCode.json`,
 /// never in a project, which could then vouch for itself: the SHA-256 of
-/// each piece of code allowed, and the projects whose scripts may run. A
-/// project is known by its ID and where its package was when it was
-/// allowed, so a copy arriving from elsewhere under the same ID asks again.
+/// each piece of code allowed, and nothing else. Approval is of content,
+/// never of a project (the owner's decision D5): a project's ID and path
+/// say where code is, not what arrived there since, so a script that
+/// changed, in the app or out of it, asks again.
 @MainActor
 @Observable
 final class CodeApproval {
@@ -29,21 +30,12 @@ final class CodeApproval {
         return published.withLock { $0.contains(hash) }
     }
 
-    /// A project whose scripts run without asking: one made on this Mac,
-    /// or one whose scripts the person allowed.
-    struct AllowedProject: Codable, Hashable, Sendable {
-        var id: UUID
-        var path: String
-    }
-
     private struct Stored: Codable {
-        var formatVersion = 1
+        var formatVersion = 2
         var code: [String] = []
-        var projects: [AllowedProject] = []
     }
 
     private(set) var allowedHashes: Set<String> = []
-    private(set) var allowedProjects: Set<AllowedProject> = []
     @ObservationIgnored private let file: URL
     /// Whether `allowsCode` reads this one's hashes: the app's own.
     @ObservationIgnored private let publishes: Bool
@@ -53,7 +45,6 @@ final class CodeApproval {
         self.publishes = publishes
         if let data = try? Data(contentsOf: file), let stored = try? JSONDecoder().decode(Stored.self, from: data) {
             allowedHashes = Set(stored.code)
-            allowedProjects = Set(stored.projects)
         }
         publish()
     }
@@ -107,55 +98,22 @@ final class CodeApproval {
         NotificationCenter.default.post(name: .expressionsAllowed, object: self)
     }
 
-    // MARK: Projects
-
-    /// Whether a project's scripts run without asking: it was made here,
-    /// or its scripts were allowed, where its package is now.
-    func allowsScripts(ofProject id: UUID, at packageURL: URL) -> Bool {
-        allowedProjects.contains(AllowedProject(id: id, path: Self.path(of: packageURL)))
-    }
-
-    /// Whether a script of a project may run without asking: its project's
-    /// scripts are allowed, or this text of it was.
-    func mayRun(script text: String, ofProject id: UUID, at packageURL: URL) -> Bool {
-        allowsScripts(ofProject: id, at: packageURL) || isAllowed(text)
-    }
-
-    /// Lets a project's scripts run without asking: one made here, or one
-    /// the person chose Always Run This Project's Scripts for.
-    func allowScripts(ofProject id: UUID, at packageURL: URL) {
-        guard allowedProjects.insert(AllowedProject(id: id, path: Self.path(of: packageURL))).inserted else { return }
-        save()
-    }
-
-    /// A project saved somewhere new (Save As) keeps what was allowed of
-    /// it: the person moved it, it didn't arrive from elsewhere.
-    func projectMoved(_ id: UUID, from old: URL, to new: URL) {
-        guard allowsScripts(ofProject: id, at: old) else { return }
-        allowScripts(ofProject: id, at: new)
-    }
-
-    /// Settings > Scripting's Forget Allowed Code: every hash and project.
+    /// Settings > Scripting's Forget Allowed Code: every hash.
     func forgetAll() {
         allowedHashes = []
-        allowedProjects = []
         if publishes { Self.published.withLock { $0 = [] } }
         save()
     }
 
-    var isEmpty: Bool { allowedHashes.isEmpty && allowedProjects.isEmpty }
-
-    private static func path(of packageURL: URL) -> String {
-        packageURL.standardizedFileURL.resolvingSymlinksInPath().path
-    }
+    var isEmpty: Bool { allowedHashes.isEmpty }
 
     private func save() {
-        let stored = Stored(code: allowedHashes.sorted(), projects: allowedProjects.sorted { ($0.path, $0.id.uuidString) < ($1.path, $1.id.uuidString) })
+        let stored = Stored(code: allowedHashes.sorted())
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONFile.encode(stored).write(to: file, options: .atomic)
         } catch {
-            NSLog("Couldn't save the code allowed to run: \(error.localizedDescription)")
+            NSLog("%@", "Couldn't save the code allowed to run: \(error.localizedDescription)")
         }
     }
 }

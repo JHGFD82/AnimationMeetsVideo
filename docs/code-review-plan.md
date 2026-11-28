@@ -1,9 +1,12 @@
 # Code review plan
 
 Status: **planned**. A plan for a full review of the app, not a record
-of one: no pass has been carried out against it yet. Findings go where
-"Recording findings" says, and this document changes only when the plan
-does.
+of one. The first pass is under way: phases 1 to 3 have been reviewed
+(phase 1 only in part, without representative projects) and phases 4
+and 5 are being reviewed, with many of their findings still open; where each phase
+and finding stands is in [code-review-notes.md](code-review-notes.md),
+as "Recording findings" says. A phase being reviewed is not a phase whose
+defects are resolved. This document changes only when the plan does.
 
 The review runs in this order: establish a baseline that can be trusted,
 review the design and the correctness problems that cost the most, then
@@ -13,7 +16,9 @@ anime music videos four things deserve the closest attention:
 - **Frame accuracy.** A cut lands on the frame the person chose, in the
   viewer, after a save and reopen, and in the export.
 - **Beat synchronization.** A cut placed on a beat is still on it after
-  trims, retiming, moving the song and exporting, to the sample.
+  trims, retiming, moving the song and exporting. Sound keeps its timing
+  to the sample; a cut, which can only fall on a frame, follows the
+  documented rounding rule, and the error that leaves is measured.
 - **Preview responsiveness.** Scrubbing, stepping and playing heavy
   effect stacks keep up on a laptop, and a parked playhead always shows
   the exact frame.
@@ -37,13 +42,13 @@ changed; phase 1 checks each one.
 
 | Fact | Today | Where it is set |
 | --- | --- | --- |
-| Minimum macOS | 15.0 | `Package.swift` (`.macOS(.v15)`), `LSMinimumSystemVersion` in `Packaging/Info.plist` |
+| Minimum macOS | 26.0 (Tahoe), decided in the first pass | `Package.swift` (`.macOS("26.0")`), `LSMinimumSystemVersion` in `Packaging/Info.plist` |
 | Toolchain | Xcode 27.2; Swift tools 6.0, so the Swift 6 language mode and complete concurrency checking | `.github/workflows/build.yml` (`DEVELOPER_DIR`), `Package.swift` |
 | Build | One SwiftPM executable target; `scripts/build-app.sh` wraps it into `AnimationMeetsVideo.app` | `Package.swift`, `scripts/build-app.sh` |
 | Signing | Ad hoc (`codesign --sign -`); no entitlements file, no App Sandbox, no hardened runtime | `scripts/build-app.sh` |
-| Architectures | Whatever the building Mac is; Intel support undecided | `scripts/build-app.sh` |
+| Architectures | Apple silicon (arm64) only, decided in the first pass | `scripts/build-app.sh` (`--arch arm64`, checked with `lipo`) |
 | Network | None: no `URLSession` or `Network` use | `Sources/` |
-| Third-party code | No SwiftPM dependencies; a bundled CPython from python-build-standalone, pinned by release and SHA-256 in the git-ignored `scripts/python-pin` | `scripts/fetch-python.sh` |
+| Third-party code | No SwiftPM dependencies; a bundled CPython from python-build-standalone, pinned by release and SHA-256 in the committed `scripts/python-pin` | `scripts/fetch-python.sh` |
 | Export formats | ProRes 422 (reuses background renders), ProRes 4444 (composites from the sources), WAV Mix, WAV Stems | `Export/AudioExport.swift` (`ExportFormat`) |
 | Project format | `.amv` package, `project.json` at `formatVersion` 2, strict loading; no migration of older projects, by design | [project-package.md](project-package.md), `Project/StrictJSON.swift` |
 | Time in the model | `CMTime` throughout; frame snapping in integer frame counts (`ClipPlacement.FrameRounding`) | `Model/ClipPlacement.swift` |
@@ -54,10 +59,32 @@ changed; phase 1 checks each one.
 
 ### Recording findings
 
-- Give each finding: the phase, the area (a source folder from the
-  [coverage map](#coverage-map)), a severity from the
-  [triage order](#triage-order), `file:line`, how to reproduce it, and
-  whether it was already failing at the baseline.
+- Give every finding, open or fixed, a stable ID (`F1`, `F2`, …) that
+  never changes or is reused, and record:
+  - the phase, the area (a source folder from the
+    [coverage map](#coverage-map)) and a **category** (data safety,
+    security, crash, timing, rendering, sound, export, performance,
+    accessibility, usability, test harness, docs, structure);
+  - a **severity** from the [triage order](#triage-order), judged by
+    impact and kept apart from the category: an accessibility failure
+    can block a core workflow, and a harness defect can invalidate the
+    evidence a release rests on, so neither is low because of its kind;
+  - **expected** and **observed** behavior, the **evidence** and how to
+    reproduce it, and `file:line`;
+  - **confidence**: *suspected* (a lead), *reported* (one reviewer read
+    the code path), *code-verified* (read again and confirmed before
+    acting), or *reproduced* (a test, probe or run shows it);
+  - **resolution**: *open*, *fixed*, *accepted risk* (with the reason
+    and who accepted it) or *decision* (waiting on the owner);
+  - **fix verification**: the fix commit, the regression test and
+    whether it was shown to fail without the fix, and the commit at
+    which the suite passed;
+  - **release gate**: *blocking* or *nonblocking*, and the **next
+    action** with its owner;
+  - whether it was already failing at the baseline.
+- Keep each phase's **coverage** (*complete*, *partial* or *blocked*,
+  and why) apart from its findings' resolution: a phase can be fully
+  reviewed while its defects remain open.
 - Keep the findings of a pass in one review-notes document beside this
   one, in the style of [scene-detection-review.md](scene-detection-review.md)
   (what was measured, the defects, the tests that now measure it), or as
@@ -81,8 +108,11 @@ changed; phase 1 checks each one.
 - **Scripts that aren't confined.** Only expressions run in the sandbox;
   scripts are allowed to read and write files once the person approves
   their code ([python-scripting.md](python-scripting.md)).
-- **Items already in loose-ends.md**, unless the review finds them worse
-  than written there.
+
+Previously accepted findings, such as the items in loose-ends.md, are
+not excluded: they remain tracked, and each pass verifies their scope,
+the reason they were accepted, and whether that still holds for the
+release.
 
 ### Tools
 
@@ -136,7 +166,12 @@ changed; phase 1 checks each one.
       `ProjectBackups.typeIdentifier`.
 - [ ] Assemble the review projects below at a fixed path outside the
       repository, and set `AMV_PROJECT` to the largest. Never commit
-      footage or music you don't hold the rights to.
+      footage or music you don't hold the rights to. Decided (D7): the
+      generated fixtures (checkpoint D) serve until the real footage and
+      music, with suitable permissions, arrive before phase 7's visual
+      check and phase 8's listening check; record each item's provenance
+      and permitted uses, since permission to test with it isn't
+      permission to use it in fixtures, screenshots or sample projects.
 
 **Review projects**
 
@@ -260,9 +295,17 @@ at run time; people install them by opening them or making their own.
 - [ ] Check that a kernel that fails to compile, or a package that
       declares absurd sizes, pass counts or controls, is reported in the
       effects library and doesn't stop the app from launching.
-- [ ] Note the risk that a kernel can stall the GPU; decide whether a
-      time limit or a warning on installing third-party packages is
-      wanted.
+- [ ] Note the risk that a kernel can stall the GPU. Decided (D8): an
+      external package is executable GPU code, approved by the person for
+      its exact executable content before its first compilation or run,
+      wherever it comes from (installed, embedded in a project, live
+      reloaded or found in the library folder), listed but not compiled
+      until then, with a recovery launch that turns external effects
+      off. Check each of those paths. Don't assume a time limit can be
+      had: cancelling a Swift task doesn't
+      stop GPU work already submitted, and only the system's watchdog
+      ends a runaway command buffer; any limit proposed must say what
+      stops the work.
 
 **Python** ([python-scripting.md](python-scripting.md)).
 
@@ -275,8 +318,21 @@ at run time; people install them by opening them or making their own.
       `HelperConfinement.isAvailable` is false; expressions must then not
       run unconfined.
 - [ ] Check `CodeApproval`: code runs only after approval on this Mac,
-      approval is tied to the exact code, and opening a project that
-      carries `Scripts/` or expressions never runs them before approval.
+      approval covers the code actually executed, and opening a project
+      that carries `Scripts/` or expressions never runs them before
+      approval. "The code actually executed" includes: what changes
+      between approval and the run; links and imports reaching outside
+      the approved folder; modules the helper keeps from earlier runs;
+      the interpreter's own start-up (`site`, `.pth` files, environment,
+      import paths); and threads or processes that outlive a run, which
+      can taint later runs in the same project even with a helper per
+      project. Decided (D5): remembered approval ("Remember approval for
+      these scripts") covers an exact snapshot of the executable content,
+      never a project's ID and path, and is asked again when the content
+      changes; the approved snapshot is what runs; opening a project
+      never runs an unrestricted script; and the prompt says unrestricted
+      scripts reach files and the network with the person's permissions.
+      Check each, including links and imports outside the snapshot.
 - [ ] Treat every message from the helper (`ScriptMessages`) as
       untrusted: malformed or huge messages, edits through `ProjectBridge`
       that would be refused from the UI, a helper that hangs or never
@@ -303,9 +359,8 @@ at run time; people install them by opening them or making their own.
 
 **Dependencies and the app's own scripts.**
 
-- [ ] `scripts/python-pin` is git-ignored, so two builds can bundle
-      different Pythons. Decide whether the pin belongs in the repository
-      for reproducible releases.
+- [x] `scripts/python-pin` is committed and release packaging fails
+      without the pin or the bundled Python (decision D3).
 - [ ] Record the CPython build's license and those of the libraries it
       bundles (OpenSSL, SQLite, libffi, zlib and the rest), and ship their
       notices with the app.
@@ -320,10 +375,60 @@ at run time; people install them by opening them or making their own.
       today, so security-scoped bookmarks aren't used; adopting it would
       need bookmarks for media referenced in place and on external drives,
       for export destinations and for the Python interpreter, and a new
-      way to confine the helper. Record the decision either way.
+      way to confine the helper. Record the decision either way. Confining
+      expressions protects one boundary, not the app: the app also hands
+      untrusted media to system frameworks, compiles packages' kernels,
+      moves and deletes files, and runs approved scripts unconfined on
+      purpose. Decided (D6): deferred for the first release, as a
+      separate security project, with the residual risks recorded and the
+      release gates under phase 12's "Signing" standing in; they don't
+      give the same protection. Revisit before a Mac App Store release or
+      a significant growth in plugins or executable content.
 
 **Goal:** settle the trust boundaries before exercising complex media
 workflows.
+
+## Stabilization checkpoint
+
+Between the trust-boundary work and the broad correctness, performance
+and interface phases, close what makes the rest of the review unsafe or
+its evidence untrustworthy. Phase 4 runs alongside, since its findings
+are of the same kind; phases 5 onward wait for A to C.
+
+- [ ] **A. Data-loss paths.** Verify, then fix or accept with a reason,
+      every open finding that can lose the person's work or files:
+      clips dropped at load and then saved away; paths made from project,
+      package or effect names; writing with no lock where `flock` isn't
+      available; drafts committed over newer state (Beat Match's
+      Confirm, a viewer handle drag); provenance rewritten after a read
+      failed; backups' order across a clock change; and phase 4's.
+      "Undo brings it back" doesn't make an overwrite safe: autosaves,
+      closing the project and outside edits all outlast the undo stack.
+- [ ] **B. Untrusted input.** Close the open validation gaps: numeric
+      bounds, overflow, non-finite values and invalid times; text runs;
+      cycles of nested timelines; the helper's frame lengths, buffered
+      bytes and queued messages; times a script gives as a rational.
+      Validate where the input arrives, keep defensive checks at the
+      operations that would trap or write, and state explicit budgets
+      (sizes, counts, durations) rather than taking whatever fits an
+      integer.
+- [ ] **C. Trust in the test harness.** A runner that doesn't take the
+      test process's exit status on its word: it requires a valid
+      completion summary, refuses an unexpectedly small run or one
+      missing a required suite, times out a hang and captures its
+      threads' stacks first, and keeps the logs. The `UI_EVENTS` hang is
+      captured that way before any change to the code suspected of it;
+      running event tests in a process of their own may follow, but not
+      in place of finding whether the hang is an app defect.
+- [ ] **D. Representative fixtures, made rather than licensed.**
+      Generated media and projects for the correctness and baseline work:
+      numbered frames with clicks at known samples, held drawings,
+      flashes, fades, gradients and sharp outlines, mixed and variable
+      frame rates, long-GOP files, dense timelines and deep effect
+      stacks. Real anime footage stays for a later qualitative check.
+
+**Goal:** no known open path to lost work, and test results that can be
+trusted, before measuring the rest.
 
 ## 4. Project model and persistence
 
@@ -441,8 +546,12 @@ workflows.
 
 - [ ] `ClipTiming` and `ClipTimeMap`: the map from timeline to source time
       is monotonic where it should be, holds hold, reverse runs backwards,
-      and the inverse map agrees with it (a source frame found from a
-      timeline frame maps back to that timeline frame).
+      and the inverse map agrees with it on the parts that are invertible
+      (a source frame found from a timeline frame maps back to that
+      timeline frame). Holds, freezes and slowed footage repeat source
+      frames, so no inverse is unique there: check the map's documented
+      rule for which timeline frame such a source frame returns (the
+      first, say), and write one down if there isn't one.
 - [ ] Speed keyframes and easing (`TimeMapKeyframes`, `MotionRun`), Time
       and Shutter, and Optical Flow land on the frames the Motion
       Designer shows ([motion-designer.md](motion-designer.md)).
@@ -570,13 +679,22 @@ checks, and of work that is correct but in the wrong place.
       track and converted exactly once, and that the color tags written
       on ProRes match the pixels. A wrong range or matrix shows up on
       anime as crushed outlines and shifted skin and sky colors.
-- [ ] **Viewer against export.** In SDR, the viewer at Full quality shows
-      the same pixels as the export at the same frame, within a small
-      tolerance. Check HDR on an EDR display against the documented
-      intent.
+- [ ] **Viewer against export.** In SDR, the viewer at Full quality
+      renders the same picture as the export at the same frame. Say what
+      is compared before comparing: the compositor's output buffers (not
+      what the display shows after its own color management), in a
+      stated color space and transfer function, with alpha straight or
+      premultiplied, and a tolerance that allows for the export codec
+      (ProRes 422 is lossy; 4444 nearly lossless) rather than a single
+      "small" one. Check HDR on an EDR display against the documented
+      intent separately.
 - [ ] **Precision.** Find the working pixel format through the
       compositor and the effect kernels; flat anime gradients must not
-      band, and 8-bit intermediates are findings.
+      band. Unintended loss of precision on the path to the exported or
+      Full-quality picture is a finding; 8-bit is acceptable where it is
+      deliberate and only displayed, as in thumbnails, filmstrips and
+      display-only caches, and the SDR viewer's documented 8-bit decode
+      is checked against its stated limits.
 - [ ] **Preview quality.** At Half and Quarter (`PreviewQuality`),
       effects measured in pixels (blur radius, pixelate size, halftone
       dots, glow) scale so the picture matches Full in appearance.
@@ -612,6 +730,11 @@ checks, and of work that is correct but in the wrong place.
       reduced-quality segment can never be exported, and that viewer
       copies are never read by export.
 
+- [ ] **Real footage, by eye** (D7). On the licensed review projects,
+      look at line art, held drawings, flashes, gradients and subtitles
+      in the viewer and the export against their sources; the generated
+      fixtures stay the oracle for exact checks.
+
 **Goal:** the exported image matches what the person built.
 
 ## 8. Audio and export
@@ -628,8 +751,15 @@ checks, and of work that is correct but in the wrong place.
       correctly.
 - [ ] Loudness: `Loudness` measures as ITU-R BS.1770 does, and
       `LoudnessMastering` reaches the target with peaks held under the
-      stated ceiling (−1 dBFS for WAV Mix). Stems are not mastered and add
-      up to the mix.
+      stated ceiling. Say which peak: the ceiling is −1 dBFS of sample
+      peak for WAV Mix, which doesn't hold the true peak (inter-sample,
+      in dBTP, measured oversampled) under −1; check what the documents
+      promise against what the limiter measures, and measure true peak
+      too. Stems are not mastered: together they reproduce the mix
+      before mastering, within the limits routing and shared effects set
+      (a layer's sound through a nested timeline's effects, a compressor
+      reacting to the whole mix), not the mastered mix, which no simple
+      sum of stems can equal.
 - [ ] Recording (`AudioRecorder`, `AudioCapture`, `TakeWriter`,
       `AudioApps`): a take lands where the playhead was when recording
       started, allowing for input latency; changing devices, refusing
@@ -662,6 +792,10 @@ checks, and of work that is correct but in the wrong place.
 - [ ] Editing while an export runs: the export uses the project as it was
       when it started, or the person is told.
 - [ ] Missing media and fonts are found before export starts, not halfway.
+
+- [ ] **Real music, by ear** (D7). On the licensed review projects,
+      listen to the mix and an export against the source song: beat
+      sync, clicks, level jumps and resampling.
 
 **Goal:** export is reliable, not merely successful according to the
 export API.
@@ -796,7 +930,13 @@ across the whole workflow.
       bundled Python (`Contents/Resources/Python`), and add the
       entitlements the hardened runtime needs for the microphone and for
       recording other apps' sound. Check the confined helper still starts
-      under `sandbox-exec` once signed.
+      under `sandbox-exec` once signed. These, with notarization, are
+      release gates for public distribution while the App Sandbox is
+      deferred (D6), together with: confined expressions fail closed
+      where confinement is unavailable; the release-blocking parser,
+      file-system, approval and helper-protocol findings are closed; and
+      the documentation says approved unrestricted scripts run with the
+      person's permissions.
 - [ ] **Notarization.** Submit with `notarytool`, staple the ticket, and
       check Gatekeeper accepts the downloaded app.
 - [ ] **Packaging.** `CFBundleShortVersionString` (0.1 today) and the
@@ -838,6 +978,13 @@ across the whole workflow.
 4. Performance: scrubbing, playback, saving, export speed.
 5. Usability and accessibility.
 6. Cosmetic issues.
+
+The order ranks impact, and a finding takes the rank of what it does,
+not of its category: an accessibility failure that blocks a core
+workflow (no keyboard path to trim a clip) ranks with the workflow it
+blocks, and a test-harness defect that lets failures pass (a run that
+ends early and reports success) ranks with the defects it could hide.
+Category is recorded apart (see "Recording findings").
 
 ## Coverage map
 

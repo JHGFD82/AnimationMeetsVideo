@@ -65,6 +65,78 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: take.path))
     }
 
+    /// A take that can't be copied into the project is the only copy of
+    /// what was recorded: it is kept where an unsaved project's takes go,
+    /// and the error says where, never deleted.
+    @Test func aTakeThatCantBeCopiedInIsKeptElsewhere() async throws {
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "amv-keep-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        // A file where the package should be: nothing can be copied into it.
+        let package = scratch.appending(path: "Not a package.amv")
+        try Data().write(to: package)
+        let recordings = scratch.appending(path: "Recordings", directoryHint: .isDirectory)
+        let take = scratch.appending(path: "take.caf")
+        let writer = try TakeWriter(url: take, format: format) { _ in .zero }
+        try write(1, to: writer)
+        writer.finish()
+
+        do {
+            _ = try await AudioRecorder.keep(take, packageURL: package, recordings: recordings)
+            Issue.record("Keeping the take into a file should have failed")
+        } catch RecordingError.notCopiedIntoProject(let kept, _) {
+            #expect(kept.deletingLastPathComponent().standardizedFileURL == recordings.standardizedFileURL)
+            #expect(FileManager.default.fileExists(atPath: kept.path))
+            // The one 0.1 s buffer written, all of it.
+            let file = try AVAudioFile(forReading: kept)
+            #expect(file.length == 4_800)
+        }
+    }
+
+    /// Two takes kept in the same second, as in the hour that repeats when
+    /// clocks go back, are both kept, under two names: the second's move
+    /// had failed and left it in the temporary folder (F80).
+    @Test func twoTakesInOneSecondAreBothKept() async throws {
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "amv-keep-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let recordings = scratch.appending(path: "Recordings", directoryHint: .isDirectory)
+        let package = scratch.appending(path: "Project.amv", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        let date = Date(timeIntervalSince1970: 1_793_500_000)
+
+        func take(_ name: String) throws -> URL {
+            let folder = scratch.appending(path: name, directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = folder.appending(path: "take.caf")
+            let writer = try TakeWriter(url: url, format: format) { _ in .zero }
+            try write(1, to: writer)
+            writer.finish()
+            return url
+        }
+        // A take's temporary folder can hold one of that name already.
+        let first = try take("unsaved")
+        try Data().write(to: first.deletingLastPathComponent().appending(path: "Recording \(stamp(date)).caf"))
+        let unsaved = [
+            try await AudioRecorder.keep(first, packageURL: nil, recordedAt: date, recordings: recordings),
+            try await AudioRecorder.keep(try take("unsaved 2"), packageURL: nil, recordedAt: date, recordings: recordings),
+        ]
+        let saved = [
+            try await AudioRecorder.keep(try take("saved"), packageURL: package, recordedAt: date, recordings: recordings),
+            try await AudioRecorder.keep(try take("saved 2"), packageURL: package, recordedAt: date, recordings: recordings),
+        ]
+        for kept in [unsaved, saved] {
+            #expect(Set(kept.map(\.lastPathComponent)).count == 2)
+            for url in kept { #expect(try AVAudioFile(forReading: url).length == 4_800) }
+        }
+    }
+
+    private func stamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return formatter.string(from: date)
+    }
+
     @Test func aRecordingGoesOnANewSoundLayer() throws {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID

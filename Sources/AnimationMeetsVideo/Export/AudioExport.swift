@@ -79,6 +79,7 @@ enum AudioExport {
         project: EditingProject, timelineID: UUID, loudness: LoudnessTarget, to url: URL,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> LoudnessMastering.Report? {
+        try ExportDestinations.refuseMediaFile(at: url, in: project)
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: timelineID)
         guard !composed.audioTracks.isEmpty else { throw CompositionError.exportFailed("The timeline has no sound.") }
         let curves = MixCurves(MixCurves.of(project))
@@ -93,16 +94,19 @@ enum AudioExport {
             }
         }
         let share = loudness.lufs == nil ? 1.0 : 0.5
-        // Replacing it was confirmed, and no other export saves here (see CompositionExporter.export).
-        try? FileManager.default.removeItem(at: url)
+        // Replacing it was confirmed, and no other export saves here (see
+        // CompositionExporter.export); what is there stays until this has
+        // finished beside it.
+        let partial = ExportFile.partial(for: url)
         do {
             let rendered = try await LoudnessMastering.render(
-                composed, curves: curves, gain: gain, limiting: limiting, to: url, fileSettings: fileSettings,
+                composed, curves: curves, gain: gain, limiting: limiting, to: partial, fileSettings: fileSettings,
                 progress: { progress(1 - share + $0 * share) }
             )
+            try ExportFile.finish(partial, at: url)
             return limiting ? LoudnessMastering.Report(measured: measured, gain: gain, rendered: rendered) : nil
         } catch {
-            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: partial)
             throw error
         }
     }
@@ -111,9 +115,10 @@ enum AudioExport {
     /// each with only that layer playing: its clips, its volume and pan,
     /// and everything in the timelines nested on it. Not mastered, so the
     /// stems add up to the mix. Named for the export and the layer; returns
-    /// the files in layer order. On an error or a stop, the stems it wrote
-    /// are deleted, and the folder too if it made it and nothing else is
-    /// in it.
+    /// the files in layer order. Each is written beside its place and put
+    /// there once every stem is done, so on an error or a stop the stems
+    /// already in the folder stay as they were; what it wrote is deleted,
+    /// and the folder too if it made it and nothing else is in it.
     @discardableResult
     static func exportStems(
         project: EditingProject, timelineID: UUID, named name: String, in folder: URL, asWAV: Bool = true,
@@ -128,7 +133,7 @@ enum AudioExport {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var used: Set<String> = []
         var files: [URL] = []
-        var writing: URL?
+        var partials: [URL] = []
         do {
             for (number, layer) in layers.enumerated() {
                 var solo = project
@@ -140,20 +145,22 @@ enum AudioExport {
                 if used.contains(file) { file += " \(number + 1)" }
                 used.insert(file)
                 let url = folder.appending(path: file + (asWAV ? ".wav" : ".caf"))
-                try? FileManager.default.removeItem(at: url)
+                try ExportDestinations.refuseMediaFile(at: url, in: project)
+                let partial = ExportFile.partial(for: url)
                 let done = Double(number), count = Double(layers.count)
-                writing = url
+                partials.append(partial)
                 try await LoudnessMastering.render(
-                    composed, curves: MixCurves(MixCurves.of(solo)), limiting: false, to: url, fileSettings: asWAV ? fileSettings : nil,
+                    composed, curves: MixCurves(MixCurves.of(solo)), limiting: false, to: partial, fileSettings: asWAV ? fileSettings : nil,
                     progress: { progress((done + $0) / count) }
                 )
                 files.append(url)
-                writing = nil
             }
+            for (partial, url) in zip(partials, files) { try ExportFile.finish(partial, at: url) }
         } catch {
             // Only what this export wrote: the folder may be one the person
-            // picked, with other files in it.
-            for url in files + [writing].compactMap(\.self) { try? FileManager.default.removeItem(at: url) }
+            // picked, with other files in it. A stem already put in place is
+            // whole, and stays.
+            for partial in partials { try? FileManager.default.removeItem(at: partial) }
             if madeFolder, (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == true {
                 try? FileManager.default.removeItem(at: folder)
             }

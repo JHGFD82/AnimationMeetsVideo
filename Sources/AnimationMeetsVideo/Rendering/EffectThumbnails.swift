@@ -36,7 +36,7 @@ enum EffectThumbnails {
             // Shapes start from transparency; there is no picture to read.
             content = .graphic
         } else {
-            guard let picture = await sourcePicture(of: clip, at: clip.sourceTime(atTimelineTime: at), in: project),
+            guard let picture = await sourcePicture(of: clip, at: clip.shownSourceTime(atTimelineTime: at, frame: timeline.frameDuration), in: project),
                   let read = pixelBuffer(from: picture)
             else {
                 return [:]

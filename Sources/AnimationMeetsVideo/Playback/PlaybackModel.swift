@@ -608,6 +608,8 @@ final class PlaybackModel {
     /// Whether the moves of the playhead and the skimmer go fast enough to
     /// seek roughly.
     @ObservationIgnored private var pacing = ScrubPacing()
+    /// What the moves are paced by and their rests waited on.
+    @ObservationIgnored var paceClock = PaceClock(ContinuousClock())
     /// Where the last move sent the player, for landing there exactly.
     @ObservationIgnored private var lastTarget: CMTime?
     /// Whether the player was sent somewhere roughly and hasn't yet landed
@@ -689,14 +691,14 @@ final class PlaybackModel {
     /// Seeks the player to `time`, after any seek under way: roughly while
     /// the moves go fast, then exactly once they rest, unless `exact`.
     private func show(_ time: CMTime, exact: Bool = false) {
-        let tolerance = exact ? 0 : pacing.tolerance(forMoveTo: time.seconds, at: CACurrentMediaTime())
+        let tolerance = exact ? 0 : pacing.tolerance(forMoveTo: time.seconds, at: paceClock.now())
         lastTarget = time
         landing?.cancel()
         landing = nil
         if tolerance > 0 {
             playerIsRough = true
-            landing = Task { [weak self] in
-                try? await Task.sleep(for: ScrubPacing.rest)
+            landing = Task { [weak self, paceClock] in
+                try? await paceClock.sleep(ScrubPacing.rest)
                 guard !Task.isCancelled, let self else { return }
                 self.landing = nil
                 self.land()
@@ -769,8 +771,8 @@ final class PlaybackModel {
         // Settled: the frame is drawn at full size if it was drawn smaller.
         if !isPlaying, level != .full { redrawPausedFrame() }
         restingPreroll?.cancel()
-        restingPreroll = Task { [weak self] in
-            try? await Task.sleep(for: Self.prerollRest)
+        restingPreroll = Task { [weak self, paceClock] in
+            try? await paceClock.sleep(Self.prerollRest)
             guard !Task.isCancelled, let self else { return }
             self.restingPreroll = nil
             self.prerollIfPaused()
@@ -947,8 +949,7 @@ final class PlaybackModel {
         while !Task.isCancelled {
             let time = CMTime(seconds: tapeScrub.position, preferredTimescale: 600_000)
             if !isHoldingTape, tapeScrub.isStopped {
-                let seconds = frameRate > 0 ? (time.seconds * frameRate + 1e-6).rounded(.down) / frameRate : time.seconds
-                let frame = CMTime(seconds: seconds, preferredTimescale: 600_000)
+                let frame = Self.tapeRest(atSeconds: tapeScrub.position, frameRate: frameRate)
                 tapeScrub.cue(frame.seconds)
                 move(to: frame, playsGrain: false, exact: true)
                 tapeFollower = nil
@@ -958,6 +959,19 @@ final class PlaybackModel {
             if CMTimeCompare(time, currentTime) != 0 { move(to: time, playsGrain: false) }
             try? await Task.sleep(for: .milliseconds(15))
         }
+    }
+
+    /// The start of the frame the tape came to rest in, exactly on the
+    /// timeline's frames: worked out in seconds and then cut to a tick, it
+    /// fell just before every frame at 23.976 fps, so the exact seek showed
+    /// the frame before the one the timecode named. A moment within a
+    /// millionth of a frame of the next one is taken for it.
+    nonisolated static func tapeRest(atSeconds seconds: Double, frameRate: Double) -> CMTime {
+        guard frameRate > 0, seconds.isFinite else { return CMTime(seconds: seconds.isFinite ? seconds : 0, preferredTimescale: 600_000) }
+        let frame = Timeline.frameDuration(for: frameRate)
+        let index = (seconds / frame.seconds + 1e-6).rounded(.down)
+        guard abs(index) < Double(Int32.max) else { return CMTime(seconds: seconds, preferredTimescale: 600_000) }
+        return CMTimeMultiply(frame, multiplier: Int32(index))
     }
 
     /// Stops the tape where it is, at once, for another move of the

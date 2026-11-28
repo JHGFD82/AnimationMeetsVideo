@@ -44,7 +44,16 @@ Follow Google's change-description conventions for every commit.
   and so takes the focus; they are skipped when the variable isn't set.
   A new suite of them takes `.eventsOneAtATime` beside `.serialized`,
   so its tests don't run alongside another suite's and fight over the
-  key window; with it, `UI_EVENTS=1 swift test` runs them all at once.
+  key window; with it, `UI_EVENTS=1 swift test` runs them all at once,
+  though a whole-suite run has hung once (`docs/code-review-notes.md`,
+  F4), so prefer the event suites by filter.
+- To trust a run's result, run it through `scripts/run-tests.sh` (the
+  same arguments as `swift test`; none runs the suite as CI does). It
+  passes the run only on Swift Testing's own summary, with
+  `MIN_TESTS` tests at least and every suite in `REQUIRED_SUITES`
+  having run, rather than on the exit status, which once said 0 for a
+  run that ended early; a run with no test finishing for
+  `STALL_SECONDS` is sampled and stopped. Logs go to `build/test-logs`.
 - New UI follows the rules in `docs/accessibility.md`: drawn or gesture-
   driven views need an accessibility element with actions, icon-only
   buttons need labels, and anything a drag does needs a keyboard path.
@@ -73,10 +82,13 @@ Follow Google's change-description conventions for every commit.
   `--filter "Script|Python|Confinement|Expression|CodeApproval|ProjectBridge|BetweenFrames"`; the helper's Python tests also run alone with
   `python3 -B -m unittest discover -s Tests/AnimationMeetsVideoTests/Scripting/Python`.
   `scripts/build-app.sh` bundles the CPython that `scripts/fetch-python.sh`
-  fetches by a pinned release and SHA-256, and builds without one while
-  none is pinned; `scripts/fetch-python.sh --pin` looks up the latest
-  release and writes the pins to `scripts/python-pin`, which git ignores. Run with no
-  arguments it puts the pinned Python into the built app, always at
-  `Contents/Resources/Python`.
+  fetches by the release and SHA-256 committed in `scripts/python-pin`,
+  and fails without it (`ALLOW_NO_PYTHON=1` builds one without, for
+  development only); `scripts/fetch-python.sh --pin` looks up the latest
+  release and rewrites the pin, to be committed on its own once the
+  helper's suites pass on the bundled Python
+  (`AMV_PYTHON=build/AnimationMeetsVideo.app/Contents/Resources/Python/bin/python3`).
+  Run with no arguments it puts the pinned Python into the built app,
+  always at `Contents/Resources/Python`.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the
   standalone Command Line Tools).

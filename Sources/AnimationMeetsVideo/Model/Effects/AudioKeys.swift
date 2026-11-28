@@ -58,7 +58,7 @@ extension EditingProject {
             }
             return layer.clips.compactMap { clip in
                 if case .clip(let id) = source, clip.id != id { return nil }
-                guard playsAudio(clip), case .media(let assetID) = clip.source, let asset = mediaClip(id: assetID),
+                guard soundIsHeard(clip), case .media(let assetID) = clip.source, let asset = mediaClip(id: assetID),
                       let url = asset.url
                 else { return nil }
                 return HeardClip(clip: clip, layer: layer, asset: asset, url: url)

@@ -349,6 +349,20 @@ extension WaveformTests {
         return WaveformAudio.shared.level(sound, at: 1, channel: nil, floor: -80)
     }
 
+    /// A song the mix leaves silent, muted or turned off, is silent here
+    /// too, not drawn as though it played.
+    @Test func itDoesntHearASongThatIsntPlayed() throws {
+        for silence: (inout TimelineClip) -> Void in [{ $0.soundMuted = true }, { $0.enabled = false }] {
+            var f = try Fixture(frame: frame)
+            f.toneInBothChannels()
+            #expect(try level(f) > 0.5)
+            let songClip = try #require(f.timeline.layers.flatMap(\.clips).first { $0.source == .media(f.songID) })
+            f.project.editClip(songClip.id, in: f.project.rootTimelineID, silence)
+            let heard = f.sound.map { WaveformAudio.shared.level($0, at: 1, channel: nil, floor: -80) } ?? 0
+            #expect(heard < 0.01)
+        }
+    }
+
     @Test func itHearsTheSongsEQ() throws {
         var f = try Fixture(frame: frame)
         f.toneInBothChannels()

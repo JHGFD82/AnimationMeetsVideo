@@ -7,10 +7,13 @@ settings, styled runs, kerning by hand and optical kerning, hyphenation,
 variable axes, animators and text on a path, set in the inspector);
 free paths (the Path effect, drawn and edited with the pen of
 [pen-tool.md](pen-tool.md)) are **built** too, also not yet tried in
-the running app; gradients, path operations, text on a path of its own,
-[editing in the viewer](#editing-in-the-viewer) (handles, typing text
-in place, ink turned into a shape) and stills as effect inputs are
-**planned** (see [Building it](#building-it)).
+the running app; so are handles in the viewer for shapes, a text block's
+wrap width and a path's points (step 4), and gradients for the fills and
+strokes of shapes, text and the Stroke effect (step 2c, see
+[gradients.md](gradients.md)). Path operations, text on a path of its
+own, typing text in place and ink turned into a shape
+([editing in the viewer](#editing-in-the-viewer)), and stills as effect
+inputs are **planned** (see [Building it](#building-it)).
 Pictures that don't come from footage:
 still images imported from files, and shapes and text made in the app,
 drawn as vectors.

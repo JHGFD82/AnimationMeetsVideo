@@ -504,7 +504,10 @@ is being edited.
   (`slipClip` / `resolvedSlip`). Video slips by whole frames. When the
   footage runs out at the file's start or end, it stops there and the clip
   gets shorter from its end instead (never below a frame), and every later
-  clip on its layer moves in by as much, so no gap opens. Those clips
+  clip on its layer moves in by as much, so no gap opens. A slip stops
+  where it would take footage a joint at either end of the clip plays:
+  its lead before a cut the clip comes in at, the rest of it after a cut
+  it goes out at (`jointSlipLimits`). Those clips
   follow on screen during the drag, and the viewer shows the clip's first
   and last frames side by side with their source timecodes (a nested
   timeline's from the timeline itself, timed in its own frames). The
@@ -733,7 +736,14 @@ in the inspector) splits them: the clips keep only their picture
 only the sound (`streams = .audio`), go onto a new sound layer. From
 then on the two are ordinary clips: the sound is colored as audio, moves
 freely off the frame grid, carries the beats, and takes only the Audio
-transitions (see [transitions.md](transitions.md#sound)).
+transitions (see [transitions.md](transitions.md#sound)). The fades it
+had under the picture's transitions come along as Audio transitions:
+copies of two clips joined at a cut join as the pictures did; elsewhere
+a copy fades over the span its sound faded over, lengthened by any
+sound it played past its end into a joint that stays with the picture.
+At an open end a picture transition's sound follows its curve, which an
+Audio transition hasn't, so there the copy fades at equal power over the
+same span: the same fade when the curve was linear.
 
 A **nested timeline's** clip detaches the same way, from its menu, the
 layer header or the inspector, when anything in it makes sound
@@ -772,7 +782,8 @@ taking it out to) whatever is underneath: lower layers, or black.
 
 ### Transitions joining two clips
 
-Where two clips with pictures (media or nested timelines) meet on a layer (within
+Where two clips with pictures (media or nested timelines), or two of sound
+alone (audio files, detached sound), both enabled, meet on a layer (within
 `Timeline.abutmentTolerance`, as clips meet everywhere else, so edges a
 sliver apart from rounding still count), a transition dropped at the cut,
 on either clip, **joins** them: it becomes the incoming clip's
@@ -801,7 +812,13 @@ sound to fade it on its own.
 
 - Drag the transition to move it across the cut, and either edge to change
   its length about its center (the other edge moves as much the other
-  way). It can't need more footage than there is.
+  way). It can't need more footage than there is, nor reach into the
+  clips' other transitions: the outgoing clip's way in and the incoming
+  clip's way out, or the lead of a joint at its far end, so two joints
+  on a short clip never overlap.
+- Disabling either clip parts them: a disabled clip plays as a gap, so
+  the transition is drawn and plays at an open end inside the incoming
+  clip, as the export plays it. Enabled again, they join as before.
 - Drag the cut to roll it: the outgoing clip's out point and the incoming
   clip's in point move together, so the clips still meet, nothing else
   moves, and the transition draws on different footage

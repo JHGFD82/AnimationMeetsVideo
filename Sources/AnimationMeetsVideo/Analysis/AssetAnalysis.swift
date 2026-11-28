@@ -560,7 +560,7 @@ final class AssetAnalysis {
                 // stays unchecked, and is read again after a growing wait for
                 // the first few failures, then only when asked.
                 guard generation == expectedGeneration, loading[id] == token else { return }
-                NSLog("Couldn't read saved analysis: \(error.localizedDescription)")
+                NSLog("%@", "Couldn't read saved analysis: \(error.localizedDescription)")
                 loading[id] = nil
                 readFailures[id] = AnalysisFailure(stage: .scenes, error: error, file: nil, kind: .unreadableProject)
                 let attempt = readAttempts[id, default: 0] + 1
@@ -1279,7 +1279,7 @@ final class AssetAnalysis {
             try await backend.perform(package, body)
             return nil
         } catch {
-            NSLog("Couldn't change the project package: \(error.localizedDescription)")
+            NSLog("%@", "Couldn't change the project package: \(error.localizedDescription)")
             return error
         }
     }

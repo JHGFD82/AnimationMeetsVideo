@@ -20,14 +20,20 @@ enum PackageKernels {
 
     /// The package's kernel, compiled the first time it is asked for; nil
     /// when it doesn't compile, and its look leaves the picture as it is.
+    /// Nil, and nothing compiled, for a package from outside the app the
+    /// person hasn't approved as it is (`EffectApproval`, decision D8):
+    /// its kernel is code for the GPU.
     static func kernel(for package: EffectPackage) -> CIKernel? {
+        guard EffectApproval.shared.allows(package) else { return nil }
         if case .compiled(let kernel) = outcome(for: package) { return kernel }
         return nil
     }
 
     /// Why the package's kernel doesn't compile, or nil when it does,
-    /// compiling it the first time it is asked for.
+    /// compiling it the first time it is asked for; nil, and nothing
+    /// compiled, for one not approved.
     static func problem(for package: EffectPackage) -> String? {
+        guard EffectApproval.shared.allows(package) else { return nil }
         if case .failed(let message) = outcome(for: package) { return message }
         return nil
     }
@@ -47,7 +53,7 @@ enum PackageKernels {
         let outcome = compile(package)
         outcomes.withLock { $0[key] = outcome }
         if case .failed(let message) = outcome {
-            NSLog("The kernel of effect package \(package.id) couldn't be compiled: \(message)")
+            NSLog("%@", "The kernel of effect package \(package.id) couldn't be compiled: \(message)")
         }
         return outcome
     }
@@ -113,6 +119,9 @@ enum PackageKernels {
 /// Draws a look whose kind comes from an effect package: its arguments
 /// evaluated from the step, then its kernel, then its filters.
 enum PackageLookRenderer {
+    /// The most passes a package's repeat may draw.
+    static let mostPasses = 256
+
     /// Where a look reading other moments of the footage gets them.
     struct Moments {
         /// The picture reaching the step this long before; nil where the
@@ -158,7 +167,9 @@ enum PackageLookRenderer {
                 }
                 guard wanted.source == .moment, let delay = wanted.delay else { return pictures[wanted.id].map(read) ?? CIImage(color: .clear) }
                 let frames = (delay.number(values) / frameDuration.seconds).rounded()
-                guard frames > 0 else { return picture }
+                // A package's delay is an expression: one far beyond any
+                // moment kept (or not a number) trapped turning into Int32.
+                guard frames > 0, frames < Double(Int32.max) else { return picture }
                 let earlier = moments?.earlier(CMTimeMultiply(frameDuration, multiplier: Int32(frames)))
                 return earlier.map(read) ?? (wanted.missingIsPicture ? picture : CIImage(color: .clear))
             }
@@ -169,7 +180,10 @@ enum PackageLookRenderer {
         let playing = moments?.isPlaying ?? false
         let countExpression = playing ? repeats.countWhilePlaying ?? repeats.count : repeats.count
         let indexExpression = playing ? repeats.indexWhilePlaying ?? repeats.index : repeats.index
-        let count = max(0, Int(countExpression.number(values)))
+        // An expression too: infinity trapped in Int(), and 10^8 passes hung
+        // the drawing. The packages that ship repeat a few dozen at most.
+        let wantedCount = countExpression.number(values)
+        let count = wantedCount.isFinite ? Int(min(max(wantedCount, 0), Double(Self.mostPasses))) : 0
         var result = repeats.startsClear ? CIImage(color: .clear).cropped(to: canvas) : picture
         for n in 0..<count {
             values.extra["pass"] = Double(n)

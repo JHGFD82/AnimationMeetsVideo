@@ -161,14 +161,18 @@ enum CompositionExporter {
                     // the original's less its offset (`ViewerCopies`);
                     // export never has one.
                     var copyOffset = CMTime.zero
+                    var nudge = info.videoReadNudge, readable = info.videoRange
                     if forPreview, let viewerCopies, !viewerCopies.isEmpty {
                         let used = placement.pieces.compactMap { $0.within(info.videoRange)?.file }
                         if let first = used.first {
                             let span = used.dropFirst().reduce(first) { $0.union($1) }
                             if let copy = viewerCopies.copy(of: info.url, covering: span),
-                               let copied = try? await MediaTrackCache.shared.info(for: copy.url).video {
+                               let copiedInfo = try? await MediaTrackCache.shared.info(for: copy.url),
+                               let copied = copiedInfo.video {
                                 sourceVideo = copied
                                 copyOffset = copy.offset
+                                nudge = copiedInfo.videoReadNudge
+                                readable = copiedInfo.videoRange
                             }
                         }
                     }
@@ -178,8 +182,25 @@ enum CompositionExporter {
                         if videoTrack == nil {
                             videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                        let read = CMTimeRange(start: CMTimeSubtract(file.start, copyOffset), duration: file.duration)
-                        try videoTrack?.insertTimeRange(read, of: sourceVideo, at: at)
+                        // A tick late, so a frame stamped a hair after its
+                        // time is still the one shown (`videoReadNudge`). A
+                        // piece that ends with the file can't be read past
+                        // its end: it is read to the end, and the file's
+                        // last tick, inside its last frame, fills the tick
+                        // left over. Stretching it back instead would undo
+                        // the tick by the end.
+                        let read = CMTimeRange(start: CMTimeAdd(CMTimeSubtract(file.start, copyOffset), nudge), duration: file.duration)
+                        if readable.isValid, read.end > readable.end, readable.end > read.start,
+                           case let excess = CMTimeSubtract(read.end, readable.end), CMTimeCompare(excess, nudge) <= 0 {
+                            let main = CMTimeRange(start: read.start, end: readable.end)
+                            try videoTrack?.insertTimeRange(main, of: sourceVideo, at: at)
+                            try videoTrack?.insertTimeRange(
+                                CMTimeRange(start: CMTimeSubtract(readable.end, excess), duration: excess),
+                                of: sourceVideo, at: CMTimeAdd(at, main.duration)
+                            )
+                        } else {
+                            try videoTrack?.insertTimeRange(read, of: sourceVideo, at: at)
+                        }
                         // Retimed footage plays faster or slower than it was
                         // shot.
                         if length != file.duration {
@@ -199,6 +220,9 @@ enum CompositionExporter {
                     for piece in placement.pieces {
                         guard let placed = piece.within(audioInfo.audioRange) else { continue }
                         soundEnd = CMTimeMaximum(soundEnd, CMTimeAdd(placed.at, placed.length))
+                        // Sound played slower than 1/32 or faster than 32
+                        // times is silent (`ClipTime.soundSpeeds`).
+                        guard ClipTime.playsSound(file: placed.file.duration, over: placed.length) else { continue }
                         guard let (file, at, length) = Self.moved(placed, earlierBy: ahead) else { continue }
                         if audioTrack == nil {
                             audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
@@ -409,6 +433,7 @@ enum CompositionExporter {
         progress: @escaping @Sendable (Double) -> Void = { _ in },
         onMastered: @escaping @Sendable (LoudnessMastering.Report) -> Void = { _ in }
     ) async throws -> Int {
+        try ExportDestinations.refuseMediaFile(at: url, in: project)
         let composed = try await buildComposedTimeline(
             for: project, timelineID: timelineID, cache: preset.reusesRenders ? cache : nil
         )
@@ -449,9 +474,9 @@ enum CompositionExporter {
 
         // The save panel confirmed replacing a file already there, and the
         // Export window refuses a place another export under way or queued
-        // saves to (`ExportDestinations`); AVAssetExportSession refuses to
-        // write over a file, so what is there goes.
-        try? FileManager.default.removeItem(at: url)
+        // saves to (`ExportDestinations`). What is there stays until the
+        // export has finished beside it (`ExportFile`).
+        let partial = ExportFile.partial(for: url)
 
         let states = exportSession.states(updateInterval: 0.2)
         let progressTask = Task {
@@ -464,9 +489,10 @@ enum CompositionExporter {
         defer { progressTask.cancel() }
 
         do {
-            try await exportSession.export(to: url, as: .mov)
+            try await exportSession.export(to: partial, as: .mov)
+            try ExportFile.finish(partial, at: url)
         } catch {
-            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: partial)
             if error is CancellationError || Task.isCancelled {
                 throw CancellationError()
             }

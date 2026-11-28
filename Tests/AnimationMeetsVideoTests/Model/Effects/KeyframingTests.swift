@@ -119,6 +119,23 @@ private struct KeyframingFixture {
         #expect(keyframes.count < 97)
     }
 
+    /// A component no control has, as a hand-edited project.json can give,
+    /// changes no value: -1 passed the bound and indexed before the
+    /// samples, a trap.
+    @Test func aComponentOutOfRangeChangesNothing() {
+        for component in [-1, 2, Int.min] {
+            var f = KeyframingFixture()
+            f.keyframe(.position, [(0, 0), (4, 100)])
+            let times = [0.25, 1, 2.5]
+            let before = times.map { (f.value(.position, at: $0), f.value(.position, at: $0, component: 1)) }
+            let id = f.add(.oscillator)
+            f.point(id, at: .position, component: component)
+            for (time, (x, y)) in zip(times, before) {
+                #expect(abs(f.value(.position, at: time) - x) < 0.6 && f.value(.position, at: time, component: 1) == y)
+            }
+        }
+    }
+
     @Test func addRidesOnTheHandMadeMoveAndKeepsItsBase() {
         var f = KeyframingFixture()
         f.keyframe(.position, [(0, 0), (4, 100)])
@@ -314,14 +331,15 @@ private struct KeyframingFixture {
 /// Beat Keys on a song whose beat map has a beat every half second, four to
 /// a measure, on a Music layer of the same timeline.
 @Suite struct BeatKeysTests {
-    private func fixture() -> (KeyframingFixture, layerID: UUID) {
+    /// `shift` moves every beat later by that many seconds, off the frames.
+    private func fixture(shift: Double = 0) -> (KeyframingFixture, layerID: UUID) {
         var f = KeyframingFixture()
         var song = MediaClip(
             name: "Song.wav", kind: .audio, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
             colorSpace: .rec709, codecName: "PCM"
         )
         song.hasAudio = true
-        let beats = (1...30).map { MappedBeat(time: seconds(Double($0) * 0.5), position: ($0 - 1) % 4 + 1) }
+        let beats = (1...30).map { MappedBeat(time: seconds(Double($0) * 0.5 + shift), position: ($0 - 1) % 4 + 1) }
         song.beatMap = BeatMap(sections: [BeatSection(kind: .consistent, start: .zero, end: seconds(20), isConfirmed: true, beats: beats)])
         f.project.clips.append(song)
         f.project.putOnMusicLayer([song.id])
@@ -341,6 +359,57 @@ private struct KeyframingFixture {
         #expect(abs(f.value(.rotation, at: 0.5 + 0.25 + 1.0 / 24)) < 0.1)
         let times = Set(f.control(.rotation).number.keyframes.map(\.time.seconds))
         #expect([0.5, 1.0, 1.5, 2.0].allSatisfy { times.contains($0) })
+    }
+
+    // F111: a pulse went on the first frame at or after its beat, already
+    // decayed by the time since; at no decay a beat between frames, as
+    // nearly every detected or confirmed beat is, was never seen. A cut
+    // snapped to the same beat goes to the nearest frame.
+    @Test(arguments: [0.24, 0.6])
+    func aBeatBetweenFramesPulsesInFullOnTheNearestFrame(phase: Double) {
+        let frame = 1.0 / 24
+        for decay in [250.0, 0] {
+            var (f, layerID) = fixture(shift: phase * frame)
+            let id = f.add(.beatKeys)
+            f.point(id, at: .rotation)
+            f.edit(id) { $0.keyframing?.beatLayer = layerID }
+            f.set(id, .decay, to: decay)
+            // The beat after 1 s (not a downbeat), and its nearest frame.
+            let nearest = (1.0 / frame + (phase < 0.5 ? 0 : 1)) * frame
+            #expect(abs(f.value(.rotation, at: nearest) - 10) < 0.1, "phase \(phase), decay \(decay)")
+            if decay == 0 { #expect(abs(f.value(.rotation, at: nearest + frame)) < 0.1) }
+        }
+    }
+
+    // F108: Beat Keys was made again from the beats there were, so an edit
+    // made before a project's detected beats loaded flattened it, into
+    // the undo step and the autosave, and for good if they never came.
+    @Test func beatKeysWaitsForDetectedBeatsRatherThanFlattening() throws {
+        var f = KeyframingFixture()
+        var song = MediaClip(
+            name: "Song.wav", kind: .audio, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        f.project.clips.append(song)
+        f.project.putOnMusicLayer([song.id])
+        let layerID = f.project.timeline(id: f.timelineID)!.layers.last!.id
+        let id = f.add(.beatKeys)
+        f.point(id, at: .rotation)
+        f.edit(id) { $0.keyframing?.beatLayer = layerID }
+        func rotation() -> [Keyframe<ComponentValue>] { f.control(.rotation).number.keyframes }
+
+        let detected = try BeatTrack(timescale: 1000, times: (1...7).map { Int64($0) * 500 }, beatsPerMinute: 120)
+        f.project.regenerateKeyframes(ofEffect: id, onClip: f.clipID, in: f.timelineID, tracks: [song.id: detected])
+        let written = rotation()
+        #expect(written.count > 4)
+        // The beats not in yet: what was written stays.
+        f.project.regenerateKeyframes(ofEffect: id, onClip: f.clipID, in: f.timelineID, tracks: [:])
+        #expect(rotation() == written)
+        #expect(f.project.keyframingFreshness(of: f.effect(id), in: f.clip, of: f.project.timeline(id: f.timelineID)!, tracks: [song.id: detected]) != .outOfDateWithEdits)
+        // Found to have none, it has nothing to pulse to.
+        f.project.regenerateKeyframes(ofEffect: id, onClip: f.clipID, in: f.timelineID, tracks: [song.id: .none(timescale: 1000)])
+        #expect(rotation().allSatisfy { abs($0.value.values[0]) < 1e-9 })
     }
 
     @Test func everyOtherDownbeatSkipsTheRest() {
@@ -615,6 +684,84 @@ private struct KeyframingFixture {
         // Detected beats have no measures, so no accent: each pulses to 10.
         #expect(abs(f.value(.rotation, at: 0.5) - 10) < 0.1)
         #expect(abs(f.value(.rotation, at: 1) - 10) < 0.1)
+    }
+}
+
+/// Undo across beats that arrived after the step was taken
+/// (code-review-notes.md, F81).
+@MainActor
+@Suite(.serialized) struct KeyframingUndoTests {
+    private func closeEventGroup() {
+        let turn = Timer(timeInterval: 0, repeats: false) { _ in }
+        RunLoop.current.add(turn, forMode: .default)
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    }
+
+    /// Beats arriving are taken into the baseline, not recorded, but older
+    /// undo steps hold the keyframes made without them. Restoring one, the
+    /// editor made them again and that write was recorded as a new step,
+    /// outside the undo: the redo stack went, and undoing again only
+    /// restored the same step. Restoring makes them from what has arrived.
+    @Test func undoingPastArrivedBeatsKeepsRedoAndGoesBack() throws {
+        var f = KeyframingFixture()
+        var song = MediaClip(
+            name: "Song.wav", kind: .audio, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        f.project.clips.append(song)
+        f.project.putOnMusicLayer([song.id])
+        let layerID = try #require(f.project.timeline(id: f.timelineID)?.layers.last?.id)
+        let id = f.add(.beatKeys)
+        f.point(id, at: .rotation)
+        f.edit(id) { $0.keyframing?.beatLayer = layerID }
+        let owner = ObjectIdentifier(KeyframingUndoTests.self)
+        defer { DetectedBeats.shared.remove(owner: owner) }
+
+        var project = f.project
+        let history = ProjectHistory(project: project)
+        let undo = UndoManager()
+        history.undoManager = undo
+        history.restore = { project = $0 }
+        var clock = Date(timeIntervalSince1970: 1_000)
+        func edit(_ change: (inout EditingProject) -> Void) {
+            clock = clock.addingTimeInterval(10)
+            change(&project)
+            history.projectDidChange(project, now: clock)
+            closeEventGroup()
+        }
+        /// As the editor does after any change, an undo's included.
+        func followUp(from old: EditingProject) {
+            var refreshed = project
+            if refreshed.refreshKeyframing(after: old) {
+                project = refreshed
+                history.projectDidChange(project, now: clock)
+            }
+        }
+        func undoOnce() {
+            let old = project
+            undo.undo()
+            closeEventGroup()
+            history.projectDidChange(project, now: clock)
+            followUp(from: old)
+            closeEventGroup()
+        }
+
+        edit { $0.timelines[0].name = "X" }
+        // The beats arrive: made in the project and the baseline alike.
+        let track = try BeatTrack(timescale: 600, times: (1...30).map { Int64($0) * 300 }, beatsPerMinute: 120)
+        DetectedBeats.shared.update([song.id: track], owner: owner)
+        let made = project.refreshKeyframing()
+        #expect(made)
+        history.adopt { _ = $0.refreshKeyframing() }
+        edit { $0.timelines[0].name = "Y" }
+
+        undoOnce()
+        #expect(project.timelines[0].name == "X")
+        #expect(undo.canRedo)
+        undoOnce()
+        #expect(project.timelines[0].name != "X")
+        #expect(undo.canRedo)
     }
 }
 

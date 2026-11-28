@@ -100,6 +100,14 @@ over it, so nothing can show through, be handed over to, or differ from
 it. A picture stays until a newer one replaces it: a new player item, an
 emptied timeline or a slow frame never shows black in between.
 
+- **Which source frame is shown.** A frame is shown from its time stamp
+  on, and many files stamp their frames on a coarse timescale (1 ms in an
+  MP4 remuxed from Matroska, 90 kHz from MPEG-TS, QuickTime's 600), so a
+  frame can begin a hair after its frame time. The composition reads each
+  file's pictures one tick of its track's timescale late, at most a
+  quarter of a frame (`MediaTrackInfo.videoReadNudge`), so each frame time
+  falls inside its own frame, in the viewer and the export alike; sound,
+  and the source time effects are evaluated at, are not moved.
 - **Where frames come from.** Every player item gets an
   `AVPlayerItemVideoOutput` asking for the compositor's own pixel format
   (8-bit BGRA for SDR timelines, half floats otherwise,
@@ -261,7 +269,7 @@ H.264 and HEVC footage from ProRes copies, which decode frame by frame
   422 HQ for footage deeper than 8 bits or HDR, with its color tags and
   orientation. Kept in `Cache/ViewerCopies/`, listed in its
   `index.json` with the original's path, size and date and the stretch
-  each holds. A wider trim makes a new copy of the wider stretch, which
+  each holds, its ends exactly as times (value and timescale each). A wider trim makes a new copy of the wider stretch, which
   replaces the ones it holds.
 - **Exact timing**: the writer starts a copy's movie at its first frame,
   so a frame's time in the copy is its time in the original less the

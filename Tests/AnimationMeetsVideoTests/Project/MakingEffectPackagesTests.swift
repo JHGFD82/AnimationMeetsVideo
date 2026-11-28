@@ -140,6 +140,14 @@ import Testing
         // Replacing removes the old folder and copies the new one.
         try EffectPackageStore.copyIn(glow, into: effects, replacing: [copied])
         #expect(FileManager.default.fileExists(atPath: copied.appending(path: "effect.json").path))
+
+        // A replacement that can't be copied leaves what was installed
+        // (code-review-notes.md, F79): the old one was removed first.
+        let gone = folder.appending(path: "Gone/Glow.amveffect", directoryHint: .isDirectory)
+        #expect(throws: (any Error).self) { try EffectPackageStore.copyIn(gone, into: effects, replacing: [copied]) }
+        #expect(try EffectPackageStore.read(copied).id == "user.glow")
+        let left = try FileManager.default.contentsOfDirectory(atPath: effects.path)
+        #expect(!left.contains { $0.hasSuffix(".partial") })
     }
 
     @Test func aCopysManifestIsEditedOnlyWhereItIsSure() throws {

@@ -1,6 +1,6 @@
 # Loop region
 
-Status: **built, not yet run**. Built: the model and its rules
+Status: **built and tested, not yet tried on screen by hand**. Built: the model and its rules
 (`Model/LoopRegion.swift`), the loop in the player
 (`Playback/PlaybackLoop.swift`, `PlaybackModel.jump(to:)` and the play
 rule), saving it in the view state, its suspension while a take
@@ -701,9 +701,11 @@ build starts.
 ## Building it
 
 Every step is built, the region's color included, and the region
-is the same in every window ([In every window](#in-every-window)). None of it has
-been compiled or run yet: it was written where there is no Xcode, so
-build it, run the tests and look at the snapshot before going on.
+is the same in every window ([In every window](#in-every-window)). It
+was written where there is no Xcode; the code review's baseline built
+it and ran its tests, which found the region's end edge out of reach
+(fixed: the bar's content shape now covers the edge handles). Trying
+it on screen by hand remains.
 
 1. Built: `BarColor` from [bar-colors.md](bar-colors.md), and `color`
    on `LoopRegion`, through `PlaybackLoop.adjust`, and in the view

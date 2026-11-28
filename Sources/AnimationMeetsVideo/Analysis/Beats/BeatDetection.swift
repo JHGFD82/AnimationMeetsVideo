@@ -198,8 +198,8 @@ enum BeatDetector {
             report(1)
             return .none(timescale: Int32(sampleRate))
         }
-        let times = try beats.frames.map { frame -> Int64 in
-            let (time, overflow) = origin.addingReportingOverflow(OnsetAnalyzer.centerSample(ofFrame: frame))
+        let times = try OnsetAnalyzer.hitSamples(ofFrames: beats.frames, in: analyzer.envelope).map { sample -> Int64 in
+            let (time, overflow) = origin.addingReportingOverflow(sample)
             guard !overflow else { throw DetectionError.malformedAudio("the audio's timestamps are out of range") }
             return time
         }

@@ -172,6 +172,13 @@ final class ProjectHistory {
         // Taken before a package changed while the app ran, perhaps.
         var snapshot = relocated(snapshot)
         snapshot.fitPackageEffects()
+        // Made from the analysis and expression results that have arrived
+        // since the step was taken, as arriving made them in the baseline
+        // (`adopt`): restored with keyframes made without them, the editor
+        // made them again after the undo, and that write was recorded as a
+        // new step, which cleared the redo stack and left undo restoring
+        // the same step again (code-review-notes.md, F81).
+        _ = snapshot.refreshKeyframing()
         if let canRestore, !canRestore(snapshot) { return refuse(snapshot, name: name) }
         let current = baseline
         baseline = snapshot

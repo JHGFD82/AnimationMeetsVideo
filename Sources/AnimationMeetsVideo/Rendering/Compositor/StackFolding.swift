@@ -123,8 +123,9 @@ struct LookStep: Equatable, Sendable {
         let numbers = self.numbers.sorted { $0.key.rawValue < $1.key.rawValue }
             .map { "\($0.key.rawValue)=" + $0.value.map(format).joined(separator: ",") }
         let choices = self.choices.sorted { $0.key.rawValue < $1.key.rawValue }.map { "\($0.key.rawValue)=\($0.value)" }
-        // A package's look draws what its version and files say.
-        let name = kind.definition.package.map { "\(kind.rawValue)@\($0.version)#\($0.contentHash)" } ?? kind.rawValue
+        // A package's look draws what its version and files say, and
+        // nothing until it is approved.
+        let name = kind.definition.package.map { "\(kind.rawValue)@\($0.version)#\($0.renderIdentity)" } ?? kind.rawValue
         return ([name, format(seconds), format(amount), against?.uuidString ?? "-"] + numbers + choices).joined(separator: " ")
     }
 

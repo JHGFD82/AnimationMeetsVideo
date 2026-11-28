@@ -1,0 +1,11 @@
+# Proposes updates to the GitHub Actions the workflows use, which are
+# pinned by full commit (docs/code-review-notes.md, decision D4): each
+# update arrives as a pull request naming the new release, to be read and
+# merged like any change. A pinned commit says which revision runs; it
+# doesn't say that revision is safe.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

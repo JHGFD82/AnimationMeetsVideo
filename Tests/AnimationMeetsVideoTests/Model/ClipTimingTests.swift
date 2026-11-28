@@ -347,4 +347,31 @@ import Testing
         print("speed-ramp inverse: new \(newer), bisection \(older)")
         #expect(newer < older)
     }
+
+    // F104: a ramp's times were cut down to the 1/240000 tick below, and
+    // 13/24 s is 129999.99… ticks in a Double, so a ramp's first frame was
+    // a tick before its trim: on a scene cut, the previous scene's frame.
+    @Test(arguments: [CMTime(value: 1, timescale: 24), CMTime(value: 1001, timescale: 30_000)])
+    func aRampStartsExactlyOnItsTrimAndKeepsWholeFramesWhole(frame: CMTime) {
+        for index in 1...200 {
+            let trim = CMTimeMultiply(frame, multiplier: Int32(index))
+            var ramped = TimelineClip(
+                source: .media(UUID()), startOffset: CMTimeMultiply(frame, multiplier: 7),
+                trimStart: trim, trimEnd: CMTimeAdd(trim, CMTime(value: 4, timescale: 1))
+            )
+            // The Motion Designer's ramp, keyed at the trim.
+            ramped.time.speed.setAnimated(true, at: trim)
+            ramped.time.speed.set(400, at: CMTimeAdd(trim, CMTime(value: 2, timescale: 1)))
+            #expect(ramped.sourceTime(atTimelineTime: ramped.startOffset) == trim, "trim at frame \(index)")
+
+            // A "ramp" holding 100% plays its source straight, so whole
+            // frames stay whole, to the tick.
+            var steady = ramped
+            steady.time.speed = AnimatedValue(100.0)
+            steady.time.speed.setAnimated(true, at: .zero)
+            steady.time.speed.set(100, at: CMTime(value: 60, timescale: 1))
+            let later = CMTimeAdd(steady.startOffset, CMTimeMultiply(frame, multiplier: 5))
+            #expect(CMTimeCompare(steady.sourceTime(atTimelineTime: later), CMTimeAdd(trim, CMTimeMultiply(frame, multiplier: 5))) == 0)
+        }
+    }
 }

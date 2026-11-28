@@ -174,7 +174,11 @@ struct LoopBar: View {
                 edgeHandle(region, edge: .end, width: handle)
                     .offset(x: x(shown.end) - bounds.min - handle / 2)
             }
-            .contentShape(Rectangle())
+            // Wide enough for the outer halves of the edge handles, which
+            // straddle the chip's ends: a content shape limits where
+            // everything inside it can be hit, so the chip's own
+            // rectangle left the end edge itself out of reach.
+            .contentShape(Rectangle().size(width: width + handle, height: Self.height - 4).offset(x: -handle / 2))
             // The move is the chip's own gesture, so an edge handle's (on
             // a view inside it) takes precedence instead of both running.
             .gesture(regionGesture(region, grabbed: .move))

@@ -105,6 +105,23 @@ private struct AudioKeysFixture {
         #expect(value > 4.5 && value < 6)
     }
 
+    /// Only what the mix plays: a song turned off, muted, or reversed
+    /// is silent in playback and export, so the keys stay down.
+    @Test func aSongThatIsntHeardMovesNothing() {
+        let silencings: [(inout TimelineClip) -> Void] = [
+            { $0.enabled = false },
+            { $0.soundMuted = true },
+            { $0.time.speed = AnimatedValue(-100.0) },
+        ]
+        for silence in silencings {
+            var f = AudioKeysFixture()
+            _ = f.listen(from: 40, to: 120)
+            f.project.editClip(f.songClipID, in: f.timelineID, silence)
+            f.project.refreshKeyframing()
+            #expect(abs(f.value(at: 1.25)) < 0.1)
+        }
+    }
+
     @Test func listeningToALayerWithoutTheSongHearsNothing() throws {
         var f = AudioKeysFixture()
         let id = f.listen(from: 40, to: 120)

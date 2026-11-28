@@ -213,16 +213,153 @@ private struct Sandbox {
         #expect(loaded.project.timeline(id: timelineID)?.sections.first?.color == BarColor(0x05A7A7))
     }
 
+    /// A hand edit giving two things one ID is refused with a message: the
+    /// app takes an ID for one thing, and two media files, layers or
+    /// sections with one crashed it once open.
+    @Test(arguments: ["media files", "timelines", "layers", "sections"])
+    func aRepeatedIDIsRefused(what: String) async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        _ = project.addSection(named: "Chorus", in: project.rootTimelineID, from: .zero, to: CMTime(value: 2, timescale: 1))
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        var file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        func repeatFirst(_ list: Any?) throws -> [Any] {
+            let items = try #require(list as? [Any])
+            return [try #require(items.first)] + items
+        }
+        var timelines = try #require(file["timelines"] as? [[String: Any]])
+        switch what {
+        case "media files": file["assets"] = try repeatFirst(file["assets"])
+        case "timelines": timelines = try repeatFirst(timelines) as! [[String: Any]]
+        case "layers": timelines[0]["layers"] = try repeatFirst(timelines[0]["layers"])
+        default: timelines[0]["sections"] = try repeatFirst(timelines[0]["sections"])
+        }
+        file["timelines"] = timelines
+        try JSONSerialization.data(withJSONObject: file).write(to: sandbox.projectJSON)
+
+        do {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+            Issue.record("A file repeating an ID of its \(what) opened")
+        } catch ProjectStoreError.invalidFile(let detail) {
+            #expect(detail.hasPrefix("Two "), "\(detail)")
+        }
+    }
+
+    /// Numbers that are valid JSON but that no project has are refused
+    /// with a message: each crashed the app on opening or its first
+    /// redraw.
+    @Test(arguments: ["width", "frame rate", "trim", "beat"])
+    func numbersNoProjectHasAreRefused(what: String) async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        var file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        var timelines = try #require(file["timelines"] as? [[String: Any]])
+        switch what {
+        case "width": timelines[0]["width"] = 1e19
+        case "frame rate": timelines[0]["frameRate"] = 1e19
+        case "trim":
+            var layers = try #require(timelines[0]["layers"] as? [[String: Any]])
+            var clips = try #require(layers[0]["clips"] as? [[String: Any]])
+            clips[0]["trimEnd"] = "200000000000000000s"
+            layers[0]["clips"] = clips
+            timelines[0]["layers"] = layers
+        default:
+            var assets = try #require(file["assets"] as? [[String: Any]])
+            assets[0]["beatMap"] = ["sections": [[
+                "id": UUID().uuidString, "kind": "steady", "start": "0s", "end": "4s", "beatsPerMeasure": 4,
+                "steadiness": "steady", "confirmed": false,
+                "beats": [["time": "1s", "position": Int64.min]],
+            ]]]
+            file["assets"] = assets
+        }
+        file["timelines"] = timelines
+        try JSONSerialization.data(withJSONObject: file).write(to: sandbox.projectJSON)
+
+        await #expect(throws: ProjectStoreError.self) {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        }
+    }
+
+    /// A clip naming a media file or timeline the file doesn't have was
+    /// dropped at load and lost at the next save (code-review-notes.md,
+    /// F52); the file is refused, naming the timeline.
+    @Test(arguments: ["media", "timeline"])
+    func aClipWhoseSourceIsntThereIsRefused(kind: String) async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        var file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        var timelines = try #require(file["timelines"] as? [[String: Any]])
+        var layers = try #require(timelines[0]["layers"] as? [[String: Any]])
+        var clips = try #require(layers[0]["clips"] as? [[String: Any]])
+        clips[0]["source"] = ["kind": kind, "id": UUID().uuidString]
+        layers[0]["clips"] = clips
+        timelines[0]["layers"] = layers
+        file["timelines"] = timelines
+        try JSONSerialization.data(withJSONObject: file).write(to: sandbox.projectJSON)
+        do {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+            Issue.record("A clip whose \(kind) isn't there was dropped rather than refused")
+        } catch ProjectStoreError.invalidFile(let detail) {
+            #expect(detail.contains("doesn\u{2019}t have"), "\(detail)")
+        }
+    }
+
+    /// A timeline that holds itself, as only a hand edit makes, is refused
+    /// at load (code-review-notes.md, F50).
+    @Test func aTimelineHoldingItselfIsRefused() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        var file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        var timelines = try #require(file["timelines"] as? [[String: Any]])
+        let ownID = try #require(timelines[0]["id"] as? String)
+        var layers = try #require(timelines[0]["layers"] as? [[String: Any]])
+        var clips = try #require(layers[0]["clips"] as? [[String: Any]])
+        clips[0]["source"] = ["kind": "timeline", "id": ownID]
+        layers[0]["clips"] = clips
+        timelines[0]["layers"] = layers
+        file["timelines"] = timelines
+        try JSONSerialization.data(withJSONObject: file).write(to: sandbox.projectJSON)
+        do {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+            Issue.record("A timeline holding itself opened")
+        } catch ProjectStoreError.invalidFile(let detail) {
+            #expect(detail.contains("contains itself"), "\(detail)")
+        }
+    }
+
+    /// A styled run outside its text's words trapped at the first letter
+    /// typed; it is refused as it is read.
+    @Test func aTextRunOutsideItsWordsIsRefused() throws {
+        for run in [#"{"start":5,"length":1}"#, #"{"start":0,"length":-1}"#, #"{"start":9223372036854775807,"length":1}"#] {
+            let json = #"{"string":"Hi","font":"Helvetica","runs":["# + run + "]}"
+            #expect(throws: ProjectStoreError.self) { try JSONDecoder().decode(ProjectFile.TextEntry.self, from: Data(json.utf8)) }
+        }
+        let good = #"{"string":"Hi","font":"Helvetica","runs":[{"start":0,"length":2}]}"#
+        #expect(try JSONDecoder().decode(ProjectFile.TextEntry.self, from: Data(good.utf8)).content.runs.count == 1)
+    }
+
     @Test func roundTripKeepsAnEffectsInput() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
         var (project, clipID, assetID) = sandbox.makeProject()
         let timelineID = project.rootTimelineID
+        // Another timeline, as the app allows: its own would hold itself,
+        // which loading refuses.
+        let card = project.addTimeline(name: "Card", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
         var plain = Effect(kind: .matte)
         plain.input = EffectInput(source: .asset(assetID))
         var shifted = Effect(kind: .matte)
         shifted.controls[0].matteMode = .invertedAlpha
-        shifted.input = EffectInput(source: .timeline(timelineID), offset: CMTime(value: 1001, timescale: 24000), loops: true)
+        shifted.input = EffectInput(source: .timeline(card), offset: CMTime(value: 1001, timescale: 24000), loops: true)
         project.editClip(clipID, in: timelineID) { $0.effects = [plain, shifted] }
 
         try await ProjectStore.save(project, to: sandbox.packageURL)
@@ -952,6 +1089,7 @@ private struct Sandbox {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
+        formatter.timeZone = TimeZone(identifier: "UTC")
         let kept = (2..<5).map { "\(newest)\(formatter.string(from: Date(timeIntervalSince1970: 1_700_000_000 + Double($0)))).json" }
         #expect(names == kept)
     }

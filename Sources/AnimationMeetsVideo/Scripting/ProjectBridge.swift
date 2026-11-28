@@ -240,14 +240,16 @@ actor ProjectBridge {
 
     private func readSourceTime(_ call: HelperCall) throws -> JSONValue {
         let (timelineID, clip, _) = try self.clip(call)
-        let time = try ScriptTime.time(call["time"], in: working.timeline(id: timelineID))
-        return ScriptTime.json(clip.sourceTime(atTimelineTime: time))
+        let timeline = working.timeline(id: timelineID)
+        let time = try ScriptTime.time(call["time"], in: timeline)
+        return ScriptTime.json(clip.shownSourceTime(atTimelineTime: time, frame: timeline?.frameDuration ?? .zero))
     }
 
     private func readTimelineTime(_ call: HelperCall) throws -> JSONValue {
         let (timelineID, clip, _) = try self.clip(call)
-        let time = try ScriptTime.time(call["time"], in: working.timeline(id: timelineID))
-        return ScriptTime.json(clip.timelineTime(forSourceTime: time))
+        let timeline = working.timeline(id: timelineID)
+        let time = try ScriptTime.time(call["time"], in: timeline)
+        return ScriptTime.json(clip.timelineTime(forShownSourceTime: time, frame: timeline?.frameDuration ?? .zero))
     }
 
     private func readAsset(_ call: HelperCall) throws -> JSONValue {
@@ -281,7 +283,7 @@ actor ProjectBridge {
         var values: [JSONValue] = []
         var time = clip.startOffset
         while time <= clip.endOffset {
-            let source = CMTimeMinimum(CMTimeMaximum(clip.sourceTime(atTimelineTime: time), clip.trimStart), clip.trimEnd)
+            let source = CMTimeMinimum(CMTimeMaximum(clip.shownSourceTime(atTimelineTime: time, frame: frame), clip.trimStart), clip.trimEnd)
             if let base = context.ownBase, Self.read(of: target) == context.ownTarget {
                 values.append(ScriptValue.json(base.value(at: source)))
             } else {
@@ -507,8 +509,14 @@ enum ScriptTime {
         switch value {
         case .array(let parts)?:
             guard parts.count == 2, let numerator = parts[0].number, let denominator = parts[1].number,
-                  numerator.isFinite, denominator > 0
+                  numerator.isFinite, denominator.isFinite, denominator > 0
             else { throw ScriptCallError.type("A time is a number of seconds") }
+            // The same bound as seconds and a project file's times: [1e300,
+            // 3] overflowed into CMTime, and [9e15, 1] put a clip millions
+            // of years in (code-review-notes.md, F58).
+            guard abs(numerator / denominator) < 1e9 else {
+                throw ScriptCallError.value("A time must be within a billion seconds")
+            }
             if let n = parts[0].int, let d = parts[1].int, let timescale = Int32(exactly: d) {
                 return CMTime(value: Int64(n), timescale: timescale)
             }
