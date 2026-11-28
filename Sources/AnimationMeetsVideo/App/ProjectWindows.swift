@@ -71,6 +71,39 @@ final class ProjectWindows {
         sessions.first { $0.isOpen(url) }
     }
 
+    /// The project something acting on the window in front works on, such
+    /// as a Python Console line.
+    enum FrontProject {
+        case project(ProjectSession)
+        /// No project is open.
+        case none
+        /// Projects are open, but the window in front is none of theirs.
+        case unclear
+    }
+
+    /// The project whose window, its own or a timeline window, is
+    /// `mainWindow`; with one project open, that one whatever is in front.
+    /// Never another open project in place of the one in front
+    /// (code-review-notes.md, F35: with a timeline window in front, the
+    /// console ran on whichever project opened first).
+    static func frontProject(among sessions: [ProjectSession], mainWindow: NSWindow?) -> FrontProject {
+        let open = sessions.filter { !$0.isEmpty }
+        if let mainWindow, let session = open.first(where: { $0.owns(mainWindow) }) {
+            return .project(session)
+        }
+        switch open.count {
+        case 0: return .none
+        case 1: return .project(open[0])
+        default: return .unclear
+        }
+    }
+
+    /// `frontProject(among:mainWindow:)` for the open projects and the
+    /// app's main window.
+    var frontProject: FrontProject {
+        Self.frontProject(among: sessions, mainWindow: NSApp.mainWindow)
+    }
+
     // MARK: - Routing
 
     /// Opens the project at `url`: brings forward the window that has it,

@@ -3,8 +3,8 @@ import Foundation
 import Observation
 
 /// What a window shows, for `amv.timeline`, `amv.selection` and
-/// `amv.playhead`: kept up to date by the project window's editor, read
-/// when a run begins. Not observed: nothing redraws when it changes.
+/// `amv.playhead`: kept up to date by the editor of the project's window
+/// or a timeline window, each its own, read when a run begins. Not observed: nothing redraws when it changes.
 @MainActor
 final class ScriptWindowState {
     /// The timeline the editor shows.
@@ -57,7 +57,9 @@ struct ScriptTarget {
         history = session.history
         packageURL = session.projectURL
         sceneTracks = session.analysis.tracks
-        window = session.scriptWindow
+        // The window in front's, a timeline window's included, so a run
+        // acts on the clips selected where the person is looking.
+        window = session.frontScriptWindow
     }
 }
 

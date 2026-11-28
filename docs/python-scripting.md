@@ -123,7 +123,10 @@ for clip in amv.selection:
     blur["blurRadius"].keyframes = [(start, 40), (start + 1, 0)]
 ```
 
-- Choosing one runs it on the project in the front window. Everything it
+- Choosing one runs it on the project in the front window, its own or a
+  timeline window, and `amv.timeline`, `amv.selection` and `amv.playhead`
+  are that window's: a timeline window's own timeline, selected clips
+  and playhead, not the project window's. Everything it
   changed is **one undo step**, "Run “Stagger Selected Clips”".
 - **All or nothing**: a script that raises changes nothing. Its
   traceback opens in the console.
@@ -146,6 +149,15 @@ below, with history on the up and down arrows. `amv` is already
 imported. Each line entered is a run of its own, so each is an undo step
 when it changed something. Names set on one line are there on the next.
 What scripts print, and their tracebacks, go here too.
+
+A line runs on the project whose window is in front, its own or a
+timeline window, with that window's selection, as a script chosen from
+the menu does; the console's title names the project, and a line on a
+different project from the last one is preceded by "On “Name”". With one
+project open, that is the one. With several open and the window in
+front none of theirs, the line doesn't run, and stays in the input to
+run again once a project's window is clicked: it never runs on another
+open project instead (code-review-notes.md, F35).
 
 ### Allowing code
 
@@ -698,7 +710,15 @@ rules, in order of weight:
      own.
    - Not bounded, and the question says so: modules from outside the
      folder (the standard library, installed packages, the interpreter's
-     `site`), and files a script opens and runs itself.
+     `site`), and files a script opens and runs itself. Not bounded, and
+     the question doesn't say so: the user's site-packages and their
+     `.pth` files, which run as the helper starts (it isn't started
+     with `-s`), and what earlier runs left in the scripts helper, which
+     every script and console line of every open project shares until
+     the app quits. A builtin, a module or `amv` one of them changes,
+     or a thread it leaves, is there for the next script, which then
+     doesn't run exactly as approved (code-review-notes.md, F124 and
+     D10).
    - A file picked with **Run Script File…** runs: picking it is the
      person's act, as opening a file is.
 2. **Expressions are confined.** Their helper runs under a sandbox
@@ -714,7 +734,8 @@ rules, in order of weight:
    output (1 MB a run; the rest is dropped with a note).
 
 What this doesn't do: confine scripts, which run with the person's own
-permissions, limit memory, or vet what an allowed expression computes. Allowing code means trusting it, the way
+permissions, keep one script's run from the next's (see above), limit
+memory, or vet what an allowed expression computes. Allowing code means trusting it, the way
 installing an effect package does
 ([effect-packages.md](effect-packages.md#safety)).
 

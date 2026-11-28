@@ -25,6 +25,9 @@ struct TimelineWindow: View {
     /// The timeline the editor has open, once another than the one it
     /// opened on, for the title.
     @State private var shownTimelineID: UUID?
+    /// What this window shows, for a script or console line run with it
+    /// in front: its own timeline, selection and playhead.
+    @State private var scriptWindow = ScriptWindowState()
 
     var body: some View {
         if let ref, let session = ProjectWindows.shared.session(showing: ref.projectURL) {
@@ -37,10 +40,12 @@ struct TimelineWindow: View {
             .equatable()
             .environment(session.projectState)
             .environment(session.autosaveStatus)
+            .environment(\.scriptWindow, scriptWindow)
             .projectDialogs(session: session, window: windowID)
             .frame(minWidth: 1_100, minHeight: 700)
             .focusedSceneValue(\.projectSession, session)
             .background(SharedUndoWindow(source: { session.editorWindow }))
+            .background(WindowReader { [scriptWindow] in session.addTimelineWindow($0, showing: scriptWindow) })
             .background(WindowCloseGuard { window in
                 let exports = ExportWindow.running(in: window)
                 guard ExportWindow.confirmStopping(exports, because: "Closing the window") else { return false }

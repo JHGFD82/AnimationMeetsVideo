@@ -75,7 +75,11 @@ changed; phase 1 checks each one.
     the code path), *code-verified* (read again and confirmed before
     acting), or *reproduced* (a test, probe or run shows it);
   - **resolution**: *open*, *fixed*, *accepted risk* (with the reason
-    and who accepted it) or *decision* (waiting on the owner);
+    and who accepted it) or *decision* (waiting on the owner). *Fixed*
+    means the expected behavior holds, not that the next action was
+    done; a finding split in two says which part of its expected
+    behavior is closed and which each successor carries. A risk only
+    proposed for acceptance is a decision;
   - **fix verification**: the fix commit, the regression test and
     whether it was shown to fail without the fix, and the commit at
     which the suite passed;
@@ -428,7 +432,10 @@ are of the same kind; phases 5 onward wait for A to C.
       stacks. Real anime footage stays for a later qualitative check.
 
 **Goal:** no known open path to lost work, and test results that can be
-trusted, before measuring the rest.
+trusted, before measuring the rest. A part is done when none of its
+findings is open, not when most are fixed; a phase started before then
+is recorded as an exception, with why its evidence doesn't depend on
+what is still open.
 
 ## 4. Project model and persistence
 
@@ -818,6 +825,13 @@ fast one, plugged in and on battery.
 - [ ] Profile with Time Profiler, Hangs, Allocations, Metal System Trace,
       Energy Log and File Activity. Look for picture copies between GPU
       and CPU, re-decoding, and work repeated every frame.
+- [ ] Limits together: each budget holds alone (frame size, effect
+      passes, durations, levels, helper messages), but their product
+      may not. From generated projects at several limits at once (a
+      largest frame through a deep stack of many-pass effects, nested
+      timelines, an export beside background renders), measure peak
+      memory and time, and check each is refused or drawn smaller
+      before it is allocated, and says so.
 - [ ] Check the caches are bounded in memory and on disk:
       `Cache/Renders/` and `Cache/ViewerCopies/` growth over a long
       session, and what happens under memory pressure.
