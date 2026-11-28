@@ -67,6 +67,13 @@ final class ExportQueueHarness {
         Issue.record("A save panel was not expected")
         return nil
     }
+    /// The files each Replace question about stems named, in order.
+    private(set) var askedToReplace: [[URL]] = []
+    /// What the Replace question about stems answers; true is Replace.
+    var answerReplace: ([URL]) -> Bool = { _ in
+        Issue.record("A question about replacing stems was not expected")
+        return false
+    }
 
     init() {
         // Its own, so `ExportWindow.running(packageURL:)` finds only it.
@@ -78,6 +85,11 @@ final class ExportQueueHarness {
             guard let self else { return nil }
             suggestedNames.append(name)
             return answerSavePanel(name)
+        }
+        export.confirmReplacing = { [weak self] files, _ in
+            guard let self else { return false }
+            askedToReplace.append(files)
+            return answerReplace(files)
         }
     }
 

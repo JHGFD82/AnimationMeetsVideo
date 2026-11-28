@@ -475,4 +475,62 @@ import Testing
             == [ObjectIdentifier(h.export)])
         try await h.stopAll()
     }
+
+    /// Stems saved into a folder holding files of their names would
+    /// replace them unasked (code-review-notes.md, F72): Export… names
+    /// them and asks, Cancel queues nothing, and Replace queues the job
+    /// with those files and no others agreed to.
+    @Test func stemsAskBeforeReplacingFilesOfTheirNames() async throws {
+        let tone = try AudioMixSupport.tone(seconds: 1)
+        defer { try? FileManager.default.removeItem(at: tone) }
+        let (project, _, _) = try AudioMixSupport.project(playing: tone)
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-stems-ask-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let stem = try #require(AudioExport.stemFiles(project: project, timelineID: project.rootTimelineID, named: project.name, in: folder).first).url
+        try Data("An earlier stem".utf8).write(to: stem)
+
+        let h = ExportQueueHarness()
+        h.export.format = .wavStems
+        h.answerSavePanel = { _ in folder }
+        h.answerReplace = { _ in false }
+        h.run(project)
+        #expect(h.askedToReplace.map { $0.map(\.lastPathComponent) } == [[stem.lastPathComponent]])
+        #expect(!h.export.isRunning)
+
+        h.answerReplace = { _ in true }
+        h.run(project)
+        try await h.settle { !h.exports.started.isEmpty }
+        let job = try #require(h.exports.started.first)
+        #expect(job.replacing.map(\.lastPathComponent) == [stem.lastPathComponent])
+        try await h.stopAll()
+    }
+
+    /// With no file of their names in the folder, stems ask nothing.
+    @Test func stemsIntoANewFolderAskNothing() async throws {
+        let tone = try AudioMixSupport.tone(seconds: 1)
+        defer { try? FileManager.default.removeItem(at: tone) }
+        let (project, _, _) = try AudioMixSupport.project(playing: tone)
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-stems-new-\(UUID().uuidString)", directoryHint: .isDirectory)
+
+        let h = ExportQueueHarness()
+        h.export.format = .wavStems
+        h.answerSavePanel = { _ in folder }
+        h.run(project)
+        try await h.settle { !h.exports.started.isEmpty }
+        #expect(h.askedToReplace.isEmpty)
+        #expect(h.exports.started.first?.replacing == [])
+        try await h.stopAll()
+    }
+
+    @Test func theReplaceQuestionNamesTheFilesAndTheFolder() {
+        let folder = URL(filePath: "/tmp/Cut Stems", directoryHint: .isDirectory)
+        let one = ExportWindow.replaceStemsText([folder.appending(path: "Cut - Music 1.wav")], in: folder)
+        #expect(one.message == "Replace \u{201C}Cut - Music 1.wav\u{201D} in \u{201C}Cut Stems\u{201D}?")
+        let files = (1...7).map { folder.appending(path: "Cut - Sound \($0).wav") }
+        let many = ExportWindow.replaceStemsText(files, in: folder)
+        #expect(many.message == "Replace 7 files in \u{201C}Cut Stems\u{201D}?")
+        #expect(many.information.contains("\u{201C}Cut - Sound 5.wav\u{201D}, and 2 more"))
+        #expect(!many.information.contains("Sound 6"))
+    }
 }

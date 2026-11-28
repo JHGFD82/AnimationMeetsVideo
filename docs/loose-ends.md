@@ -41,8 +41,10 @@ documents they belong to; delete this file when it is empty.
   `ExportDestinations.conflict` refuses a destination only when it is
   the same path as one under way or waiting. A WAV Stems export's
   destination is its folder, so a WAV Mix saved inside that folder
-  under the name of one of its stems ("Name - Layer.wav") is still
-  written over. Paths are compared without case, so on a case-sensitive
+  under the name of one of its stems ("Name - Layer.wav"), while the
+  stems export runs or waits ahead of it, is still written over by
+  the mix. A mix that lands there first isn't: the stems export stops
+  with a message rather than replace a file nobody agreed to. Paths are compared without case, so on a case-sensitive
   volume "a.mov" is refused while "A.mov" is in use; chosen when the
   check was added, since the Mac's volumes ignore case by default.
 

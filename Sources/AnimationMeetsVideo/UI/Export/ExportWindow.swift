@@ -67,6 +67,12 @@ final class ExportWindow {
     @ObservationIgnored var chooseDestination: @MainActor (_ suggestedName: String, _ format: ExportFormat) -> URL? = { name, format in
         ExportWindow.askWhereToSave(suggesting: name, format: format)
     }
+    /// Asks whether a stems export may replace `files`, already in
+    /// `folder` under the names its stems take; true on Replace. An
+    /// alert (`askToReplaceStems`), which a test answers.
+    @ObservationIgnored var confirmReplacing: @MainActor (_ files: [URL], _ folder: URL) -> Bool = { files, folder in
+        ExportWindow.askToReplaceStems(files, in: folder)
+    }
     /// Tells the person why Export… did nothing: an alert, which a test reads.
     @ObservationIgnored var tell: @MainActor (_ title: String, _ message: String) -> Void = {
         ProjectSession.showAlert(title: $0, message: $1)
@@ -157,6 +163,32 @@ final class ExportWindow {
         return alert.runModal() == .alertSecondButtonReturn
     }
 
+    /// Asks whether to replace `files` in `folder` with stems of the same
+    /// names; true on Replace. Return cancels.
+    static func askToReplaceStems(_ files: [URL], in folder: URL) -> Bool {
+        let text = replaceStemsText(files, in: folder)
+        let alert = NSAlert()
+        alert.messageText = text.message
+        alert.informativeText = text.information
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Replace").hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    /// The question `askToReplaceStems` asks, naming up to five of the
+    /// files.
+    static func replaceStemsText(_ files: [URL], in folder: URL) -> (message: String, information: String) {
+        let place = "\u{201C}\(folder.lastPathComponent)\u{201D}"
+        let message = files.count == 1
+            ? "Replace \u{201C}\(files[0].lastPathComponent)\u{201D} in \(place)?"
+            : "Replace \(files.count) files in \(place)?"
+        let shown = files.prefix(5).map { "\u{201C}\($0.lastPathComponent)\u{201D}" }
+        let more = files.count > shown.count ? ", and \(files.count - shown.count) more" : ""
+        let named = files.count == 1 ? "" : " (\(shown.joined(separator: ", "))\(more))"
+        let information = "The stems take the names of files already in the folder\(named). Replacing them can't be undone; the folder's other files stay."
+        return (message, information)
+    }
+
     /// Asks whether to stop `jobs`; true on yes.
     static func askToStop(_ jobs: [Job], because reason: String) -> Bool {
         let alert = NSAlert()
@@ -226,6 +258,9 @@ final class ExportWindow {
         let loudness: LoudnessTarget
         let audioTracks: ExportAudioTracks
         let destination: URL
+        /// For stems, the files already in the destination folder that the
+        /// person agreed to replace; the export replaces no others.
+        var replacing: [URL] = []
 
         /// The project to export: as it was asked for, its package effects
         /// fitted to their packages as they are now
@@ -361,6 +396,19 @@ final class ExportWindow {
             )
             return
         }
+        // Stems go into a folder that may hold files of their names: ask
+        // before replacing any (code-review-notes.md, F72). The exporter
+        // refuses to replace any other, such as one arriving while the job
+        // waits.
+        var replacing: [URL] = []
+        if format == .wavStems {
+            let stems = AudioExport.stemFiles(project: project, timelineID: timelineID, named: project.name, in: url)
+            let existing = AudioExport.existingFiles(among: stems.map(\.url))
+            if !existing.isEmpty {
+                guard confirmReplacing(existing, url) else { return }
+                replacing = existing
+            }
+        }
 
         // As the window's menus (`ExportView`) keep them.
         let defaults = UserDefaults.standard
@@ -371,7 +419,8 @@ final class ExportWindow {
             format: format,
             loudness: defaults.string(forKey: Preferences.exportLoudness).flatMap { LoudnessTarget(rawValue: $0) } ?? .asMixed,
             audioTracks: defaults.string(forKey: Preferences.exportAudioTracks).flatMap { ExportAudioTracks(rawValue: $0) } ?? .mix,
-            destination: url
+            destination: url,
+            replacing: replacing
         )
         // What runs now decides start or queue (`add`); what ran when
         // Export… was clicked decides whether earlier outcomes clear.
@@ -453,7 +502,7 @@ final class ExportWindow {
         case .wavStems:
             try await AudioExport.exportStems(
                 project: project, timelineID: job.timelineID, named: project.name, in: url,
-                progress: progress
+                replacing: job.replacing, progress: progress
             )
         }
         return report.value?.summary

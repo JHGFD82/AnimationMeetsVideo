@@ -111,43 +111,90 @@ enum AudioExport {
         }
     }
 
+    /// The file each layer of the timeline with sound would be exported
+    /// to in `folder` by `exportStems`, in layer order: named for the
+    /// export and the layer, with a number after a name another layer has
+    /// taken, told apart without case as the Mac's volumes are by default.
+    /// A layer whose sound comes to nothing when exported has a name here
+    /// but no file.
+    static func stemFiles(
+        project: EditingProject, timelineID: UUID, named name: String, in folder: URL, asWAV: Bool = true
+    ) -> [(layer: TimelineLayer, url: URL)] {
+        guard let timeline = project.timeline(id: timelineID) else { return [] }
+        let layers = timeline.layers.filter { project.layerPlaysAudio($0) }
+        var used: Set<String> = []
+        return layers.enumerated().map { number, layer in
+            let base = "\(name) - \(project.displayName(of: layer, in: timeline))"
+                .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            var file = base
+            var suffix = number + 1
+            while used.contains(file.lowercased()) {
+                file = "\(base) \(suffix)"
+                suffix += 1
+            }
+            used.insert(file.lowercased())
+            return (layer, folder.appending(path: file + (asWAV ? ".wav" : ".caf")))
+        }
+    }
+
+    /// The files of `stems` already there, which exporting them would
+    /// replace.
+    static func existingFiles(among stems: [URL]) -> [URL] {
+        stems.filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Throws unless every file of `urls` already there is one of
+    /// `replacing`, those the person agreed to replace: otherwise a stem
+    /// replaces a file of the same name in the folder unasked
+    /// (code-review-notes.md, F72).
+    private static func refuseUnconfirmedReplacements(of urls: [URL], in folder: URL, replacing: [URL]) throws {
+        let agreed = Set(replacing.map { $0.standardizedFileURL.path.lowercased() })
+        let unasked = existingFiles(among: urls).filter { !agreed.contains($0.standardizedFileURL.path.lowercased()) }
+        guard let first = unasked.first else { return }
+        let what = unasked.count == 1
+            ? "\u{201C}\(first.lastPathComponent)\u{201D} is"
+            : "\u{201C}\(first.lastPathComponent)\u{201D} and \(unasked.count - 1) more of the stems' files are"
+        throw CompositionError.exportFailed(
+            "\(what) already in \u{201C}\(folder.lastPathComponent)\u{201D}, and nobody agreed to replace them. Export the stems again to be asked, or into another folder."
+        )
+    }
+
     /// One file per layer of the timeline that has sound, in `folder`,
     /// each with only that layer playing: its clips, its volume and pan,
     /// and everything in the timelines nested on it. Not mastered, so the
-    /// stems add up to the mix. Named for the export and the layer; returns
-    /// the files in layer order. Each is written beside its place and put
-    /// there once every stem is done, so on an error or a stop the stems
-    /// already in the folder stay as they were; what it wrote is deleted,
-    /// and the folder too if it made it and nothing else is in it.
+    /// stems add up to the mix. Named as `stemFiles` names them; returns
+    /// the files in layer order. A file already in the folder is replaced
+    /// only if it is one of `replacing`, which Export… asks about; any
+    /// other is refused, before anything is rendered and again before the
+    /// stems are put in place, since files can arrive meanwhile. Each is
+    /// written beside its place and put there once every stem is done, so
+    /// on an error or a stop the stems already in the folder stay as they
+    /// were; what it wrote is deleted, and the folder too if it made it
+    /// and nothing else is in it.
     @discardableResult
     static func exportStems(
         project: EditingProject, timelineID: UUID, named name: String, in folder: URL, asWAV: Bool = true,
+        replacing: [URL] = [],
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> [URL] {
-        guard let timeline = project.timeline(id: timelineID),
-              let index = project.timelines.firstIndex(id: timelineID)
-        else { return [] }
-        let layers = timeline.layers.filter { project.layerPlaysAudio($0) }
-        guard !layers.isEmpty else { throw CompositionError.exportFailed("The timeline has no sound.") }
+        guard let index = project.timelines.firstIndex(id: timelineID) else { return [] }
+        let stems = stemFiles(project: project, timelineID: timelineID, named: name, in: folder, asWAV: asWAV)
+        guard !stems.isEmpty else { throw CompositionError.exportFailed("The timeline has no sound.") }
+        try refuseUnconfirmedReplacements(of: stems.map(\.url), in: folder, replacing: replacing)
         let madeFolder = !FileManager.default.fileExists(atPath: folder.path)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        var used: Set<String> = []
         var files: [URL] = []
         var partials: [URL] = []
         do {
-            for (number, layer) in layers.enumerated() {
+            for (number, stem) in stems.enumerated() {
                 var solo = project
-                solo.timelines[index].layers = [layer]
+                solo.timelines[index].layers = [stem.layer]
                 let composed = try await CompositionExporter.buildComposedTimeline(for: solo, timelineID: timelineID)
                 guard !composed.audioTracks.isEmpty else { continue }
-                var file = "\(name) - \(project.displayName(of: layer, in: timeline))"
-                    .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-                if used.contains(file) { file += " \(number + 1)" }
-                used.insert(file)
-                let url = folder.appending(path: file + (asWAV ? ".wav" : ".caf"))
+                let url = stem.url
                 try ExportDestinations.refuseMediaFile(at: url, in: project)
                 let partial = ExportFile.partial(for: url)
-                let done = Double(number), count = Double(layers.count)
+                let done = Double(number), count = Double(stems.count)
                 partials.append(partial)
                 try await LoudnessMastering.render(
                     composed, curves: MixCurves(MixCurves.of(solo)), limiting: false, to: partial, fileSettings: asWAV ? fileSettings : nil,
@@ -155,6 +202,8 @@ enum AudioExport {
                 )
                 files.append(url)
             }
+            // Files can have arrived in the folder while the stems rendered.
+            try refuseUnconfirmedReplacements(of: files, in: folder, replacing: replacing)
             for (partial, url) in zip(partials, files) { try ExportFile.finish(partial, at: url) }
         } catch {
             // Only what this export wrote: the folder may be one the person

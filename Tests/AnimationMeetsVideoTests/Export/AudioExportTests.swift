@@ -82,11 +82,11 @@ import Testing
     }
 
     /// Exports stems into `folder` and stops halfway, in the second stem.
-    private func stopStemsHalfway(of project: EditingProject, in folder: URL) async {
+    private func stopStemsHalfway(of project: EditingProject, in folder: URL, replacing: [URL] = []) async {
         let box = TaskBox()
         box.task = Task {
             try await AudioExport.exportStems(
-                project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder,
+                project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder, replacing: replacing,
                 progress: { if $0 >= 0.5 { box.task?.cancel() } }
             )
         }
@@ -166,10 +166,55 @@ import Testing
         defer { try? FileManager.default.removeItem(at: folder) }
         let earlier = try await AudioExport.exportStems(project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder)
         let before = try earlier.map { try Data(contentsOf: $0) }
-        await stopStemsHalfway(of: project, in: folder)
+        await stopStemsHalfway(of: project, in: folder, replacing: earlier)
         #expect(try earlier.map { try Data(contentsOf: $0) } == before)
         let left = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
         #expect(left == earlier.map(\.lastPathComponent).sorted())
+    }
+
+    /// A file in the folder under a stem's name is replaced only when the
+    /// person agreed to (code-review-notes.md, F72): unasked, the export
+    /// is refused before it writes, and the file and folder are as they
+    /// were; agreed to, the stem takes its place.
+    @Test func stemsReplaceOnlyFilesAgreedTo() async throws {
+        let (project, tones) = try twoLayerProject(seconds: 1)
+        defer { for tone in tones { try? FileManager.default.removeItem(at: tone) } }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-stems-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let stems = AudioExport.stemFiles(project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder).map(\.url)
+        #expect(stems.count == 2)
+        let theirs = Data("The person's own file".utf8)
+        try theirs.write(to: stems[1])
+
+        await #expect(throws: CompositionError.self) {
+            try await AudioExport.exportStems(project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder)
+        }
+        #expect(try Data(contentsOf: stems[1]) == theirs)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == [stems[1].lastPathComponent])
+
+        let files = try await AudioExport.exportStems(
+            project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder, replacing: [stems[1]]
+        )
+        #expect(files == stems)
+        #expect(abs(try read(stems[1]).seconds - 1) < 0.01)
+    }
+
+    /// Two layers whose names differ only in case would share a file on
+    /// a volume that ignores case, and the second stem would replace the
+    /// first: the second gets a number.
+    @Test func layersNamedAlikeButForCaseGetFilesOfTheirOwn() throws {
+        var (project, tones) = try twoLayerProject(seconds: 1)
+        defer { for tone in tones { try? FileManager.default.removeItem(at: tone) } }
+        let index = try #require(project.timelines.firstIndex(id: project.rootTimelineID))
+        let sounding = project.timelines[index].layers.indices.filter { project.layerPlaysAudio(project.timelines[index].layers[$0]) }
+        try #require(sounding.count == 2)
+        project.timelines[index].layers[sounding[0]].customName = "Voice"
+        project.timelines[index].layers[sounding[1]].customName = "voice"
+        let folder = URL(filePath: "/tmp/Stems", directoryHint: .isDirectory)
+        let names = AudioExport.stemFiles(project: project, timelineID: project.rootTimelineID, named: "Cut", in: folder)
+            .map(\.url.lastPathComponent)
+        #expect(names == ["Cut - Voice.wav", "Cut - voice 2.wav"])
     }
 
     /// An export over a media file the project plays would read it while
