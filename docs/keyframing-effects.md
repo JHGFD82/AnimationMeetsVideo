@@ -149,7 +149,7 @@ as heard, not as stored.
 | Kind | What it makes | Settings |
 | --- | --- | --- |
 | **Audio Keys** | Follows how loud a range of frequencies is in a sound: kicks, hi-hats, a vocal. | Source, frequency range, amplitude range, attack and release, output range, see below |
-| **Beat Keys** | A pulse on each beat of a beat map: up at the beat, back over a decay. | Beat map (from a Sound or Music layer), every N beats (1), offset, downbeats only, accent on the one (+50%), shape: pulse, step, ramp or alternate; peak; decay |
+| **Beat Keys** | A pulse on each beat of a beat map: up at the beat, back over a decay. Each pulse is on the frame nearest its beat, as a cut snapped to the beat is, at its full height there; a decay under a frame is over by the next frame. | Beat map (from a Sound or Music layer), every N beats (1), offset, downbeats only, accent on the one (+50%), shape: pulse, step, ramp or alternate; peak; decay |
 | **Strobe Keys** | A repeating pulse with a full envelope, from Min to Max and back: a strobe on an opacity, a flash on a Glow, a gate on a volume. | Timing: beats (divided down to 1/8 or triplets), every N frames or per second; offset; an attack, decay, sustain and release, as a share of the interval or in frames, each linear, eased or exponential; overlap; Min and Max; swing, skip chance, a pattern, seed and fade. See below |
 | **Wiggler** | Random, organic movement around the current value. | Frequency (wiggles per second, 2), magnitude, type: smooth (Perlin) or jagged, octaves (1), dimensions: independent or together, seed |
 | **Oscillator** | A regular wave. | Wave: sine, triangle, square or sawtooth; frequency (Hz, 1); amplitude; phase; fade, in seconds, at each end of the range |

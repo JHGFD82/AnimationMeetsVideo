@@ -331,14 +331,15 @@ private struct KeyframingFixture {
 /// Beat Keys on a song whose beat map has a beat every half second, four to
 /// a measure, on a Music layer of the same timeline.
 @Suite struct BeatKeysTests {
-    private func fixture() -> (KeyframingFixture, layerID: UUID) {
+    /// `shift` moves every beat later by that many seconds, off the frames.
+    private func fixture(shift: Double = 0) -> (KeyframingFixture, layerID: UUID) {
         var f = KeyframingFixture()
         var song = MediaClip(
             name: "Song.wav", kind: .audio, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
             colorSpace: .rec709, codecName: "PCM"
         )
         song.hasAudio = true
-        let beats = (1...30).map { MappedBeat(time: seconds(Double($0) * 0.5), position: ($0 - 1) % 4 + 1) }
+        let beats = (1...30).map { MappedBeat(time: seconds(Double($0) * 0.5 + shift), position: ($0 - 1) % 4 + 1) }
         song.beatMap = BeatMap(sections: [BeatSection(kind: .consistent, start: .zero, end: seconds(20), isConfirmed: true, beats: beats)])
         f.project.clips.append(song)
         f.project.putOnMusicLayer([song.id])
@@ -358,6 +359,26 @@ private struct KeyframingFixture {
         #expect(abs(f.value(.rotation, at: 0.5 + 0.25 + 1.0 / 24)) < 0.1)
         let times = Set(f.control(.rotation).number.keyframes.map(\.time.seconds))
         #expect([0.5, 1.0, 1.5, 2.0].allSatisfy { times.contains($0) })
+    }
+
+    // F111: a pulse went on the first frame at or after its beat, already
+    // decayed by the time since; at no decay a beat between frames, as
+    // nearly every detected or confirmed beat is, was never seen. A cut
+    // snapped to the same beat goes to the nearest frame.
+    @Test(arguments: [0.24, 0.6])
+    func aBeatBetweenFramesPulsesInFullOnTheNearestFrame(phase: Double) {
+        let frame = 1.0 / 24
+        for decay in [250.0, 0] {
+            var (f, layerID) = fixture(shift: phase * frame)
+            let id = f.add(.beatKeys)
+            f.point(id, at: .rotation)
+            f.edit(id) { $0.keyframing?.beatLayer = layerID }
+            f.set(id, .decay, to: decay)
+            // The beat after 1 s (not a downbeat), and its nearest frame.
+            let nearest = (1.0 / frame + (phase < 0.5 ? 0 : 1)) * frame
+            #expect(abs(f.value(.rotation, at: nearest) - 10) < 0.1, "phase \(phase), decay \(decay)")
+            if decay == 0 { #expect(abs(f.value(.rotation, at: nearest + frame)) < 0.1) }
+        }
     }
 
     @Test func everyOtherDownbeatSkipsTheRest() {

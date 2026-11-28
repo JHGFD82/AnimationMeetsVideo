@@ -857,6 +857,8 @@ struct KeyframeSampling {
     var before: CMTime?
     var after: CMTime?
     var frameSeconds: Double
+    /// The timeline's frame, the step between samples on frames.
+    var frame: CMTime
 
     /// One sample per timeline frame of `range`, and, with `between`, one
     /// more at each of those offsets in seconds from each frame, inside the
@@ -868,6 +870,7 @@ struct KeyframeSampling {
         start = CMTimeMinimum(a, b)
         let end = CMTimeMaximum(a, b)
         frameSeconds = frame.seconds
+        self.frame = frame
         var times: [CMTime] = []
         let frames = CMTimeSubtract(end, start).seconds / frame.seconds
         if frames.isFinite, frames >= 0, frames < Double(Int32.max) { times.reserveCapacity(Int(frames) + 2) }
@@ -1198,7 +1201,13 @@ private struct KeyframeSignal {
         for beat in beats where beat.time >= start && (!downbeatsOnly || beat.isDownbeat) {
             defer { index += 1 }
             guard index >= offset, (index - offset) % every == 0 else { continue }
-            let elapsed = CMTimeSubtract(beat.time, start).seconds
+            // On the frame nearest the beat, by the rounding cuts snapped
+            // to it use, and to the sample's own time there: the first
+            // frame at or after it came a fraction of a frame late, already
+            // decaying, and at no decay a beat between frames, as nearly
+            // all are, was never seen.
+            let onFrame = Timeline.frameAligned(CMTimeSubtract(beat.time, start), toFramesOf: sampling.frame, .nearest)
+            let elapsed = CMTimeSubtract(CMTimeAdd(start, onFrame), start).seconds
             let k = min(sampling.elapsed.lowerBound(of: elapsed) { $0 }, sampling.elapsed.count - 1)
             let height = peak.at(max(k, 0), default: 10)
             pulses.append(KeyframeGenerators.Pulse(time: elapsed, height: beat.isDownbeat && !downbeatsOnly ? height * (1 + accent) : height))
@@ -1269,7 +1278,7 @@ private struct KeyframeSignal {
                 }
             }
         case .beatKeys:
-            // The sample at or after each beat.
+            // The sample at each beat, which is on a frame.
             let starts = pulses.map { pulse in sampling.elapsed.lowerBound(of: pulse.time) { $0 } }
             for (n, pulse) in pulses.enumerated() {
                 let at = starts[n]
@@ -1282,7 +1291,9 @@ private struct KeyframeSignal {
                     add(next - 1)
                 case .pulse, .step, .alternate:
                     add(at, out: .easy)
-                    let settled = sampling.elapsed.lowerBound(of: pulse.time + decays[at]) { $0 }
+                    // At least the next sample: a decay under a frame is
+                    // over by then, where it glided down to the next beat.
+                    let settled = max(sampling.elapsed.lowerBound(of: pulse.time + decays[at]) { $0 }, at + 1)
                     if settled < next - 1 { add(settled, in: .easy) }
                 }
             }
