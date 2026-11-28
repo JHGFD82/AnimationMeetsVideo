@@ -2,11 +2,11 @@
 
 Status: **review notes** for the first pass of
 [code-review-plan.md](code-review-plan.md). Phases 1 to 3 have been
-reviewed (phase 1 only in part), phase 4 is being reviewed, and the
-plan's stabilization checkpoint is done but for F4's hang, which hasn't
-recurred to be captured; the owner's decisions D3 to D8 are recorded
-and built (F89, F90), but for release gates that wait for phase 12;
-phases 5 to 12 haven't started. Many findings
+reviewed (phase 1 only in part), phases 4 and 5 are being reviewed, and
+the plan's stabilization checkpoint is done but for F4's hang, which
+hasn't recurred to be captured; the owner's decisions D3 to D8 are
+recorded and built (F89, F90), but for release gates that wait for
+phase 12; phases 6 to 12 haven't started. Many findings
 are still open: being reviewed is not being resolved. Where each phase
 stands is under "Where each phase stands"; every finding is in the
 ledger.
@@ -49,7 +49,8 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F94–F99, F101–F103, F105–F110, F112 |
+| 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
 
@@ -116,7 +117,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F27 | No lock where `flock` is missing, only a log | 2 | data safety | 1 | code-verified | fixed | `f683cb3d` · no test (no lockless volume here) | blocking |
 | F28 | Provenance rewritten after a failed read | 2 | data safety | 1 | code-verified | fixed | `eeb7eb61` · test | blocking |
 | F29 | Backups ordered by name across a clock change | 2 | data safety | 1 | code-verified | fixed | `27f199a6` · test (rename case) | blocking |
-| F30 | Keyframes drift on speed-ramped clips | 2 | timing | 3 | code-verified | open | | blocking |
+| F30 | Keyframes drift on speed-ramped clips | 2 | timing | 3 | reproduced | fixed | `f42d3664` · fails without | blocking |
 | F31 | The Waveform builds its own mix | 2 | sound | 3 | reported | open | | nonblocking |
 | F32 | Typed value edit leaves rendered stretches stale | 2 | rendering | 3 | reported | open | | nonblocking |
 | F33 | Mono clip's pan dropped silently | 2 | export | 3 | reported | open | | blocking |
@@ -163,7 +164,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F74 | Opening a folder marks and locks it first | 4 | data safety | 1 | code-verified | fixed | `82160372` · test | blocking |
 | F75 | A file gone while open isn't offline | 4 | export | 3 | reported | open | | nonblocking |
 | F76 | An MKV offline at open stays unreadable | 4 | export | 3 | suspected | open | | nonblocking |
-| F77 | Sound-found offsets not snapped to frames | 4 | timing | 3 | suspected | open | | blocking |
+| F77 | Sound-found offsets not snapped to frames | 4 | timing | 3 | reproduced | fixed | `d049d6d2` · fails without | blocking |
 | F78 | Replacement against stale used ranges | 4 | correctness | 3 | suspected | open | | nonblocking |
 | F79 | Replacing a package deletes it first | 4 | data safety | 1 | code-verified | fixed | `f31e5d6b` · test | blocking |
 | F80 | A take moved to a name already taken | 4 | data safety | 5 | reported | open | | nonblocking |
@@ -177,6 +178,28 @@ From the plan's checkpoint, with the findings each part covers.
 | F88 | Fields not saved or reset on reopen | 4 | correctness | 6 | reported | open | | nonblocking |
 | F89 | Remembered script approval trusts a project's ID and path | D5 | security | 1 | code-verified | fixed | `5ab4864e` · test (`AMV_PYTHON` run) | blocking |
 | F90 | External effect kernels compile without the person's approval | D8 | security | 1 | code-verified | fixed | `4c7ab74c` · test, snapshot | blocking |
+| F91 | Rounded frame stamps show frames twice and skip others | 5 | timing | 3 | reproduced | fixed | `620c1ad1` · fails without | blocking |
+| F92 | Tape scrub rests a tick before its frame | 5 | timing | 3 | reproduced | fixed | `909eb1d6` · fails without | blocking |
+| F93 | Whole rates of 10 fps and under taken for NTSC | 5 | timing | 3 | reproduced | fixed | `59ba4470` · test | nonblocking |
+| F94 | Pasted keyframes can land a tick before their frame | 5 | timing | 3 | reported | open | | nonblocking |
+| F95 | A script's split at a fraction is off the frames | 5 | timing | 3 | reported | open | | nonblocking |
+| F96 | A viewer copy can be made again and again | 5 | performance | 4 | reported | open | | nonblocking |
+| F97 | Fast scrub shows the next frame at a typed 23.976 | 5 | rendering | 5 | reported | open | | nonblocking |
+| F98 | Sound-only clips never join, so crossfades dip | 5 | sound | 3 | code-verified | open | | nonblocking |
+| F99 | Detach Audio drops the fades under transitions | 5 | sound | 3 | code-verified | open | | nonblocking |
+| F100 | Scene-following splits land between frames | 5 | timing | 3 | reproduced | fixed | `49fe216a` · fails without | blocking |
+| F101 | Two joints can overlap inside a short clip | 5 | rendering | 3 | code-verified | open | | nonblocking |
+| F102 | A joint slip can leave a transition without footage | 5 | rendering | 3 | code-verified | open | | nonblocking |
+| F103 | A joint drawn beside a disabled clip | 5 | usability | 5 | code-verified | open | | nonblocking |
+| F104 | Ramped clips' times cut down a tick | 5 | timing | 3 | reproduced | fixed | `50e32741` · fails without | blocking |
+| F105 | Blend on slowed clips mixes in the next scene | 5 | rendering | 3 | code-verified | open | | nonblocking |
+| F106 | Reversed clips show the frame before | 5 | timing | 3 | code-verified | open | | blocking |
+| F107 | Export doesn't wait for running expressions | 5 | export | 3 | code-verified | open | | blocking |
+| F108 | Beat Keys rewritten flat before beats load | 5 | correctness | 3 | suspected | open | | nonblocking |
+| F109 | Speeds outside the time-pitch range untried | 5 | sound | 3 | suspected | open | | nonblocking |
+| F110 | Detected beats about 10 ms early | 5 | timing | 3 | reproduced | open | | blocking |
+| F111 | Beat Keys pulses late or missing between frames | 5 | timing | 3 | reproduced | fixed | `41f74dc5` · fails without | blocking |
+| F112 | Held drawings and two-frame flashes cut | 5 | correctness | 3 | reproduced | open | | nonblocking |
 
 ## Open findings: detail and next action
 
@@ -252,12 +275,15 @@ and refuse trashing without a lock.
 the new kind, dropping `.originalScores` for good. *Next (A):* refuse
 to write when the file exists but can't be read.
 
-**F30 — Volume and effect keyframes drift on speed-ramped clips.**
+**F30 — *(fixed in `f42d3664`)* Volume and effect keyframes drift on speed-ramped clips.**
 *Observed (code-verified):* `CompositionFlattening.swift:76–83` gives a
 clip's mix stage the speed at its in point, so on a ramp keyframes are
 heard late in playback and export alike, while the volume line shows
-them in place. *Next:* the mix following the clip's time map; a test
-that keys a step on a ramped clip and finds it in `MixReading`.
+them in place. *Fixed:* a ramped clip's mix stage carries the
+root-to-source map of the pieces its sound is placed in (`MixTimeMap`),
+searched without allocating on the tap thread; a volume step keyed at
+source 2 s on a 50%→200% ramp was never heard (it fell past the clip's
+end) and now is, at 2.44 s.
 
 **F31 — The Waveform builds its own mix.** Leaves out pan, fades and
 crossfades, the dynamics effects and Keep Pitch, and indexes a
@@ -436,12 +462,14 @@ reference movie was removed at load and nothing remakes it until a save
 (`ProjectStore+Load.swift:187`, `MatroskaMedia.swift:44–48`). *Next:*
 make it when the file returns.
 
-**F77 — Offsets found from sound aren't snapped to frames:** in
+**F77 — *(fixed in `d049d6d2`)* Offsets found from sound aren't snapped to frames:** in
 hundredths of a second, a one-frame shift at 24 fps (41.7 ms) comes back
 as 40 ms, and every cut then shows the frame before
-(`MediaAlignment.swift:79–81`, `MediaReplacer.swift:146`). *Next:* a
-test with a candidate delayed exactly one frame; snap to the candidate's
-frame grid.
+(`MediaAlignment.swift:79–81`, `MediaReplacer.swift:146`). Worse, the
+in-sync check allowed a whole frame, so that file was taken for aligned
+at no offset and replaced without asking. *Fixed:* the suggestion goes
+to the new file's nearest frame, and in sync means within half a frame
+(an envelope step for sound alone).
 
 **F78 — Replacement against stale used ranges:** `used` is taken before
 a slow analysis and not taken again; spare frames under dissolves aren't
@@ -494,6 +522,117 @@ keystroke (`ProjectChange.step` before the merge check,
 (intended); clip, effect and control IDs not checked for repeats at
 load. *Next:* decide which matter; a round-trip test over generated
 projects (phase 11).
+
+### Phase 5
+
+Fixed this pass, each with a test that fails without it: **F91** (rounded
+frame stamps: footage is read a tick of its track's timescale late, at
+most a quarter frame; at 90 kHz a 23.976 file had shown every fourth
+frame twice), **F92** (the tape scrubber rests on its frame's exact
+start), **F93** (8 and 10 fps had NTSC frame lengths; test only),
+**F100** (scene-following splits on the timeline's frames, as the blade
+does, and joins what it split), **F104** (ramp times rounded to the
+nearest tick, the trim itself when no time has passed), **F111** (Beat
+Keys pulses on the beat's nearest frame, at full height, and a decay
+under a frame over by the next one).
+
+**F94 — Pasted keyframes can land a tick before their frame.**
+`KeyframeCopying.swift:13,73` keeps offsets as `Double` and `:107` makes
+them with truncating `CMTime(seconds:)`; at 23.976, 234 of 995 offsets
+came out 1/240000 s early, and later edits at that frame, matched by
+exact time (`AnimatedValue.swift:191`), add a second keyframe beside it.
+*Next:* keep offsets as `CMTime`, snapped to the frame; a paste test at
+23.976.
+
+**F95 — A script's split at a `Fraction` leaves a picture clip off the
+frames** (`ProjectBridge.swift:518–519`, `EditingProject.swift:284`).
+*Next:* round through `placementTime(.nearest, frameLocked:)`.
+
+**F96 — A viewer copy can be made again and again.** Its record's range
+is rebuilt from `Double` seconds (`ViewerCopies.swift:161–165`), and with
+edges whose timescales' common multiple overflows 32 bits it comes back
+a little smaller, so `missing` (`:266–270`) never finds it covered and
+the copy is made again (reported: arithmetic reproduced, loop not run).
+*Next:* store value and timescale; a round-trip test with mixed
+timescales.
+
+**F97 — Fast scrubbing shows the next frame at a typed 23.976**
+(`ScrubCache.swift:66–68`, `floor(t·rate)`); the exact landing corrects
+it. *Next:* index by the exact frame duration, as F92.
+
+**F98 — Sound-only clips never join** (`ClipTransition.swift:516–519`
+needs `playsVideo`), so a Crossfade dropped between two sound clips
+fades one out to silence and cuts the next in, against
+transitions.md:162–165. *Next:* joinable sound clips; a loudness test at
+the cut.
+
+**F99 — Detach Audio drops the fades under picture transitions**
+(`LinkedAudio.swift:100–101`), against its own comment that the sound
+plays as before. *Next:* give the sound the matching Audio transition,
+after F98.
+
+**F101 — Two joints can overlap inside a short middle clip:**
+`fittedJoint` (`ClipTransition.swift:575–577`) subtracts only the clip's
+own way out, not the next joint's lead. *Next:* subtract both
+neighbors' shares; a widening test.
+
+**F102 — A joint slip can leave the transition without footage**
+(`ClipTransition.swift:649`, `slipClip` bounded only by the file).
+*Next:* refit after the slip, as `rollCut` does.
+
+**F103 — A joint is drawn beside a disabled clip** that export plays as
+a gap (`LayerClipRow.swift:293,402`). *Next:* leave disabled clips out
+of the drawn joint.
+
+**F105 — Blend and Optical Flow on slowed clips mix in the frame after
+the trim** (`CompositionFlattening.swift:263–264`,
+`LayeredCompositor.swift:759–781`): at 50% the last frame is half the
+next shot's first. *Next:* no blend past the trim's last frame; a
+colored next-frame test.
+
+**F106 — Reversed clips show the frame before the one their source time
+names:** a reversed piece reads from `sourceTime(b)`, effects are
+evaluated at `sourceTime(a)` (`CompositionFlattening.swift:503–510`,
+`ClipStack.swift:95–96`), so keyframes sit a frame off after Reverse and
+Blend steps back and forth. No rule is written for which timeline frame
+a repeated source frame maps back to; forward clips give the first.
+*Next:* decide and document one convention, evaluate at the frame shown;
+scene-following splits of reversed clips (F100) follow it.
+
+**F107 — Export doesn't wait for running expressions** or Audio Keys
+still reading: nothing in `Export/` checks `waitingExpressions()` or
+`keyframingFreshness`, so an export started at once has the old values.
+*Next:* wait, or refuse with a note.
+
+**F108 — Beat Keys is rewritten flat before beats load**
+(`Keyframing.swift:465–470,610,637`; Audio Keys has the guard,
+`:621–631`), into the undo step and the autosave (suspected). With F37,
+which open project's detected beats win is arbitrary. *Next:* treat
+beats not yet loaded as Audio Keys treats sound not yet read.
+
+**F109 — Speeds below 3.125% or above 3200%** are outside the documented
+time-pitch range (1/32 to 32) and untried in playback and export
+(`CompositionFlattening.swift:244`). *Next:* try 1%, 2%, 5000% and
+10,000%; mute or clamp outside, and document it.
+
+**F110 — Detected beats are about 10 ms early:** reported at the
+analysis window's center (`BeatDetection.swift:201–202`,
+`OnsetAnalyzer.swift:14–16`) while spectral flux peaks before the hit;
+on a copy of the analyzer, clicks came 3.4 to 14.2 ms early (median
+10.3). Rounded to frames, about a quarter of beats land a frame early at
+24 fps and over half at 60. `BeatFitting` already corrects its own lead
+(`onsetLead`); `BeatDetectorTests` allows 50 ms. *Next:* measure the lead
+at hop 256 as `onsetLead` was, correct it, and test a click file to
+under 3 ms.
+
+**F112 — Held drawings and two-frame flashes give false cuts**
+(`SceneDetection.swift:261–271,280–290`): on twos the background median
+is half a drawing's change, so each drawing is a peak, a cut every 0.42 s
+from a change of 60; a two-frame white flash cuts, since `isFlash`
+covers one frame. Shown on the detector's algorithm with made scores,
+not on episodes. *Next:* `SceneReviewTests` cases from
+`ReviewFixtures`' held and flash pictures; a background over non-zero
+scores, and flashes up to three frames.
 
 ### From the owner's decisions
 
@@ -795,6 +934,25 @@ value drags 0.2 to 3.1 / under 7; step-frame 4.2 / 15.3; nudge-clip
 46.7 / 57.3; zoom 15.9 / 19.4; busy-zoom 61.8 / 66.5; busy zoomed-in
 zoom 100.8 / 153.1; busy zoomed-in step-frame 5.4 / 72.0 (a stall every
 twelfth step). The zooms and nudges are phase 9's first suspects.
+
+### Phase 5 (at `49447f74`)
+
+Four read-only reviews side by side: the frame grid and seeking; edits
+and transitions; retiming, keyframes and expressions; and scenes, beats
+and sync. Probes were copies of the code's arithmetic and small
+AVFoundation programs outside the repository. What held: frame rounding
+in placement (`frameAligned`, exact at NTSC rates); Matroska timing
+(B-frames, timestamp scales, AAC priming); the rough-then-exact seek
+and viewer copies' frame times; beat maps computed from anchors, not
+summed; song time to timeline time through retiming; Keyframing's
+determinism and its refusal of hand edits; transitions' spare footage
+for picture and sound alike; and scene detection's fixed defects
+(`swift test --filter Scene`, 214 tests, and `BeatFittingGoldenTests`
+at 0 samples' error on all four goldens). Not done: the end-to-end
+white-frame-and-click export at 24, 29.97 and 60 fps and after ten
+minutes; the review sketched it from `ReviewFixtures`'
+`writeMovie(.flashes)`, `writeClicks` and an export read back by
+`AVAssetReader`, gated behind a variable since it is slow.
 
 ### Phases 2 to 4
 

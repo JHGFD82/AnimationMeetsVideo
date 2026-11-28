@@ -2,8 +2,8 @@
 
 Status: **planned**. A plan for a full review of the app, not a record
 of one. The first pass is under way: phases 1 to 3 have been reviewed
-(phase 1 only in part, without representative projects) and phase 4 is
-being reviewed, with many of their findings still open; where each phase
+(phase 1 only in part, without representative projects) and phases 4
+and 5 are being reviewed, with many of their findings still open; where each phase
 and finding stands is in [code-review-notes.md](code-review-notes.md),
 as "Recording findings" says. A phase being reviewed is not a phase whose
 defects are resolved. This document changes only when the plan does.
