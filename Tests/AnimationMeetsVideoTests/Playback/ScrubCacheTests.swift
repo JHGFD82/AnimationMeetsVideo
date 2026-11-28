@@ -97,4 +97,16 @@ import Testing
         let scaled = try await fixture.build(forPreview: true)
         #expect(ScrubStandIn.plainFile(at: time, of: try #require(scaled.videoComposition)) == nil)
     }
+
+    // F97: at a typed 23.976 the frame at time k was kept under k - 1, so a
+    // look-up partway into a frame found the one after it.
+    @Test func framesAreCountedInTheTimelinesExactFrames() {
+        let frame = CMTime(value: 1001, timescale: 24_000).seconds
+        for rate in [23.976, 24_000.0 / 1001, Double(Float(24_000.0 / 1001))] {
+            for k in [0, 1, 24, 1000, 1999] {
+                #expect(ScrubCache.index(of: Double(k) * frame, frameRate: rate) == k, "\(rate), frame \(k)")
+                #expect(ScrubCache.index(of: (Double(k) + 0.5) * frame, frameRate: rate) == k, "\(rate), within \(k)")
+            }
+        }
+    }
 }
