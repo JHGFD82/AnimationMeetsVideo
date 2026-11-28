@@ -336,6 +336,7 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
     @Test func evictionDropsTheLeastRecentlyUsedFirstAndSparesKeptKeys() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "amv-evict-\(UUID().uuidString)", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let cache = RenderCache(packageURL: root)
         for (index, key) in ["old", "kept", "new"].enumerated() {
             let partial = try cache.partialURL(for: key)
@@ -357,6 +358,7 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
     @Test func leftoverPartialsAreRemoved() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "amv-partial-\(UUID().uuidString)", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let cache = RenderCache(packageURL: root)
         try Data(count: 10).write(to: try cache.partialURL(for: "abandoned"))
 

@@ -12,7 +12,7 @@ extension ProjectStore {
 
     static func writeChangeScores(_ track: ChangeScoreTrack, for assetID: UUID, in packageURL: URL) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try makeFolder(folder, inPackage: packageURL)
         try track.encoded().write(to: folder.appending(path: changeScoreFileName), options: .atomic)
     }
 
@@ -35,7 +35,7 @@ extension ProjectStore {
 
     static func writeReference(_ reference: AssetReference, for assetID: UUID, in packageURL: URL) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try makeFolder(folder, inPackage: packageURL)
         try JSONFile.encode(reference.metadata).write(to: folder.appending(path: referenceMetadataFileName), options: .atomic)
         if let envelope = reference.audioEnvelope {
             try envelope.encoded().write(to: folder.appending(path: audioEnvelopeFileName), options: .atomic)
@@ -74,7 +74,7 @@ extension ProjectStore {
 
     static func writeBeats(_ track: BeatTrack, for assetID: UUID, in packageURL: URL) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try makeFolder(folder, inPackage: packageURL)
         try track.encoded().write(to: folder.appending(path: beatFileName), options: .atomic)
     }
 
@@ -93,13 +93,13 @@ extension ProjectStore {
     static func writeThumbnails(_ thumbnails: ReferenceThumbnails, for assetID: UUID, in packageURL: URL) throws {
         let fileManager = FileManager.default
         let folder = referenceFolder(for: assetID, in: packageURL)
-        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        try makeFolder(folder, inPackage: packageURL)
         let final = folder.appending(path: thumbnailFolderName, directoryHint: .isDirectory)
         guard !fileManager.fileExists(atPath: final.path) else { return }
 
         let scratch = folder.appending(path: "\(thumbnailFolderName).partial", directoryHint: .isDirectory)
         try? fileManager.removeItem(at: scratch)
-        try fileManager.createDirectory(at: scratch, withIntermediateDirectories: true)
+        try makeFolder(scratch, inPackage: packageURL)
         for frame in thumbnails.frames {
             try frame.jpeg.write(to: scratch.appending(path: thumbnailFileName(for: frame.time)))
         }
@@ -152,7 +152,7 @@ extension ProjectStore {
             let from = referenceFolder(for: id, in: source)
             guard let names = try? fileManager.contentsOfDirectory(atPath: from.path) else { continue }
             let to = referenceFolder(for: id, in: destination)
-            try fileManager.createDirectory(at: to, withIntermediateDirectories: true)
+            try makeFolder(to, inPackage: destination)
             for name in names where !name.hasSuffix(".partial") {
                 let target = to.appending(path: name)
                 guard !fileManager.fileExists(atPath: target.path) else { continue }

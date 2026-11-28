@@ -36,7 +36,8 @@ extension TimelineView {
             failRecording(error)
             return
         }
-        let packageURL = renderer?.packageURL
+        // Where the package is now, followed if it was moved (F123).
+        let packageURL = ProjectSession.packageNow(renderer?.packageURL)
         isSavingTake = true
         Task {
             defer { isSavingTake = false }

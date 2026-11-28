@@ -27,7 +27,7 @@ extension ProjectStore {
 
     private static func writeProvenance(_ records: [AnalysisKind: AnalysisProvenance], for assetID: UUID, in packageURL: URL) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try makeFolder(folder, inPackage: packageURL)
         let raw = Dictionary(uniqueKeysWithValues: records.map { ($0.key.rawValue, $0.value) })
         try JSONFile.encode(raw).write(to: folder.appending(path: provenanceFileName), options: .atomic)
     }
@@ -131,7 +131,7 @@ extension ProjectStore {
     /// the original.
     static func writeOriginalScores(_ track: ChangeScoreTrack, for assetID: UUID, in packageURL: URL, source: FileStamp?) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try makeFolder(folder, inPackage: packageURL)
         try track.encoded().write(to: folder.appending(path: originalScoresFileName), options: .atomic)
         try recordProvenance(.originalScores, resultData: track.encoded(), source: source, for: assetID, in: packageURL)
     }

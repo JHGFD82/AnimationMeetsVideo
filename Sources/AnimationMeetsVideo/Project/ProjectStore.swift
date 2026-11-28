@@ -83,28 +83,36 @@ enum ProjectStore {
     /// every question about the save: nothing on disk changes before it
     /// returns, so a cancel (nil) leaves the destination exactly as it
     /// was. Then an existing package being replaced goes to the Trash and
-    /// the package is prepared. Returns `ask`'s answer.
+    /// the package is prepared. Returns `ask`'s answer. `creatingPackage`
+    /// is false for a save into the package already open, which mustn't
+    /// be made again where it was if it has just been moved (F123).
     @MainActor
     static func prepareSaveDestination<Answer: Sendable>(
-        at packageURL: URL, replacingExisting: Bool, after ask: () -> Answer?
+        at packageURL: URL, replacingExisting: Bool, creatingPackage: Bool = true, after ask: () -> Answer?
     ) async throws -> Answer? {
         guard let answer = ask() else { return nil }
         if replacingExisting {
             try await trashPackage(at: packageURL, checkingLock: true)
         }
-        try preparePackage(at: packageURL)
+        try preparePackage(at: packageURL, creating: creatingPackage)
         return answer
     }
 
     /// Creates the package directory and its standard subfolders. Safe to
-    /// call on an existing package.
-    static func preparePackage(at packageURL: URL) throws {
+    /// call on an existing package. Not `creating`, the package must be
+    /// there already, and `PackageNotFound` is thrown when it isn't:
+    /// for a save into the package open, which made the package again
+    /// where it had been when it was moved between the save's check and
+    /// its write (code-review-notes.md, F123).
+    static func preparePackage(at packageURL: URL, creating: Bool = true) throws {
         let fileManager = FileManager.default
         for folder in [mediaFolderName, referenceFolderName, cacheFolderName, backupsFolderName] {
-            try fileManager.createDirectory(
-                at: packageURL.appending(path: folder, directoryHint: .isDirectory),
-                withIntermediateDirectories: true
-            )
+            let url = packageURL.appending(path: folder, directoryHint: .isDirectory)
+            if creating {
+                try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+            } else {
+                try makeFolder(url, inPackage: packageURL)
+            }
         }
 
         // The cache is disposable and shouldn't be backed up or synced.

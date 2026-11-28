@@ -16,7 +16,7 @@ extension ProjectStore {
         keeping limit: Int = 20
     ) throws -> URL {
         let folder = packageURL.appending(path: backupsFolderName, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try makeFolder(folder, inPackage: packageURL)
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

@@ -233,6 +233,23 @@ final class ProjectSession {
         setProjectURL(url)
         viewMemory.move(to: url)
         ProjectWindows.shared.remember(url)
+        // Results whose write failed while the move went unnoticed are
+        // held, and go to the package where it is now (F123).
+        Task { await analysis.writeHeldResults() }
+    }
+
+    /// Where the package open at `url` is now, following it first if it
+    /// was moved, for a write into it that starts outside a session, such
+    /// as an import or a take, whose caller learned the package's place
+    /// earlier (code-review-notes.md, F123). `url` itself when no open
+    /// project is at it, or nil for nil. A move after this returns makes
+    /// the write fail rather than make the package again where it was
+    /// (`ProjectStore.makeFolder`).
+    static func packageNow(_ url: URL?) -> URL? {
+        guard let url else { return nil }
+        guard let session = ProjectWindows.shared.session(showing: url) else { return url }
+        session.followPackageIfMoved()
+        return session.projectURL ?? url
     }
 
     /// Why nothing was written to the open package, when it is in the Trash
@@ -532,7 +549,7 @@ final class ProjectSession {
             // cache would be mixed into this one.
             let isNewLocation = projectURL.map { !Self.isSamePackage($0, url) } ?? true
             guard var copying = try await ProjectStore.prepareSaveDestination(
-                at: url, replacingExisting: replacesExisting,
+                at: url, replacingExisting: replacesExisting, creatingPackage: isNewLocation,
                 after: { isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] }
             ) else { return false }
             let lock = try lockForProject(at: url)

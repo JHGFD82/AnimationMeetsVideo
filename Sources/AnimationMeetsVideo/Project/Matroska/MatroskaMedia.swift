@@ -58,7 +58,14 @@ enum MatroskaMedia {
         }
         let movie = folder.appending(path: name)
         if !FileManager.default.fileExists(atPath: movie.path) {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            if folder.standardizedFileURL == unsavedFolder.standardizedFileURL {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            } else {
+                // `<package>/Cache/References` (`folder(in:)`): a package
+                // moved meanwhile isn't made again where it was (F123).
+                let package = folder.deletingLastPathComponent().deletingLastPathComponent()
+                try ProjectStore.makeFolder(folder, inPackage: package)
+            }
             // Written beside it and moved into place, so a movie half made
             // is never used.
             let partial = folder.appending(path: "\(UUID().uuidString).partial.mov")

@@ -53,9 +53,20 @@ enum MediaImportFlow {
         var imported: [MediaClip] = []
         var failures: [String] = []
         let importIDs = imports?.begin(urls) ?? []
+        var package = packageURL
         for (position, url) in urls.enumerated() {
             let importID = importIDs.isEmpty ? nil : importIDs[position]
             defer { if let importID { imports?.end(importID) } }
+            // Where the package is now: one moved before the move was
+            // noticed had the copy made at the old place, and the clip
+            // then named a file outside the package (code-review-notes.md,
+            // F123). Following it relocates the project's media too.
+            let now = ProjectSession.packageNow(package)
+            if now != package {
+                package = now
+                usedPaths = Set(project.wrappedValue.clips.compactMap { $0.url?.standardizedFileURL.resolvingSymlinksInPath().path })
+            }
+            let packageURL = package
             var madeCopy: URL?
             do {
                 var source = url

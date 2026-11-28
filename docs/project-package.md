@@ -153,9 +153,22 @@ second package where it had been, unlocked, its media paths leading
 nowhere (code-review-notes.md, F67). Into a package put in the Trash, or
 deleted, nothing is written: a save says why, an automatic one in the
 toolbar, and Save As stays open to keep the edits (from the Trash, with
-the media still there). What is written in the two seconds or less
-before a move is noticed, such as an analysis result arriving, can still
-make a folder at the old place.
+the media still there). An import or a recorded take follows a move
+first too, so its file is copied into the package where it is now.
+
+No write into an open package makes the package itself: its folders
+are made one level at a time below it (`ProjectStore.makeFolder`), and a
+save into the package already open requires it to be there. So a write
+in the two seconds or less before a move is noticed (an analysis
+result, a render, a viewer copy), or a save the package moves under
+between its check and its write, fails rather than make a second
+package at the old place; before, such writes made one there, and an
+import's file landed in it, outside the project (F123). Analysis results
+whose writes failed are kept and written again once the move is
+followed; renders are made again in the new place; a viewer copy whose
+making failed is tried again once the project's use of its footage
+changes, and the viewer plays the original meanwhile; a save says why
+it failed.
 
 The ten projects opened or saved last (`RecentProjects`, in the app's
 defaults) are listed in File > Open Recent, with Clear Menu, and up to six

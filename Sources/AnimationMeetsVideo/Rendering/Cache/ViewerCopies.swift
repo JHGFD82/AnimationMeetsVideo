@@ -292,17 +292,17 @@ final class ViewerCopies {
     }
 
     private func startIfNeeded() {
-        guard job == nil, isOn, !isPlaying, isOwner, packageURL != nil, let next = missing.first,
+        guard job == nil, isOn, !isPlaying, isOwner, let package = packageURL, let next = missing.first,
               !waitsForFreeMachine || Self.machineIsFree
         else { return }
-        let folder = Self.folder(in: packageURL!)
+        let folder = Self.folder(in: package)
         let name = "\(UUID().uuidString).mov"
         making = (next.name, 0)
         job = Task { [weak self] in
             let made: Record?
             do {
                 guard let stamp = FileStamp(url: next.original) else { throw CancellationError() }
-                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try ProjectStore.makeFolder(folder, inPackage: package)
                 let destination = folder.appending(path: name)
                 let offset = try await Self.copy(next.original, range: next.range, to: destination) { fraction in
                     Task { @MainActor in self?.making?.progress = fraction }
@@ -531,7 +531,7 @@ final class ViewerCopies {
 
     nonisolated private static func writeRecords(_ records: [Record], in packageURL: URL) {
         let folder = folder(in: packageURL)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? ProjectStore.makeFolder(folder, inPackage: packageURL)
         if let data = try? JSONEncoder().encode(records) { try? data.write(to: indexFile(in: packageURL), options: .atomic) }
     }
 

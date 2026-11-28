@@ -1070,6 +1070,7 @@ private struct Sandbox {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
         let (project, _, _) = sandbox.makeProject()
+        try ProjectStore.preparePackage(at: sandbox.packageURL)
 
         for second in 0..<5 {
             try ProjectStore.writeBackup(

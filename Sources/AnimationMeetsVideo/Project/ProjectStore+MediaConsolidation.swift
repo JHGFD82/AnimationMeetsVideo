@@ -78,7 +78,7 @@ extension ProjectStore {
     static func copyIntoPackage(_ url: URL, packageURL: URL) throws -> URL {
         guard !isInside(url, package: packageURL) else { return url }
         let mediaFolder = packageURL.appending(path: mediaFolderName, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: mediaFolder, withIntermediateDirectories: true)
+        try makeFolder(mediaFolder, inPackage: packageURL)
         let destination = uniqueDestination(for: url.lastPathComponent, in: mediaFolder)
         try FileManager.default.copyItem(at: url, to: destination)
         return destination

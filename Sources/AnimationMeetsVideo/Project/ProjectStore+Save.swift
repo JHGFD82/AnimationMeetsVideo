@@ -54,7 +54,14 @@ extension ProjectStore {
         invalidatingScores invalidatedScores: Set<UUID>,
         previousPackageURL: URL?
     ) throws -> EditingProject {
-        try preparePackage(at: packageURL)
+        // Saved where it already was, the package must still be there: one
+        // moved since the save looked is not made again at the old place
+        // (code-review-notes.md, F123), and nothing below makes folders
+        // above the package either.
+        let inPlace = previousPackageURL.map {
+            $0.standardizedFileURL.resolvingSymlinksInPath() == packageURL.standardizedFileURL.resolvingSymlinksInPath()
+        } ?? false
+        try preparePackage(at: packageURL, creating: !inPlace)
         if let previousPackageURL {
             try copyReferenceData(
                 for: project.clips.filter { !$0.referenceForgotten }.map(\.id),
@@ -125,7 +132,7 @@ extension ProjectStore {
         let from = source.appending(path: scriptsFolderName, directoryHint: .isDirectory)
         guard let names = try? fileManager.contentsOfDirectory(atPath: from.path), !names.isEmpty else { return }
         let to = destination.appending(path: scriptsFolderName, directoryHint: .isDirectory)
-        try fileManager.createDirectory(at: to, withIntermediateDirectories: true)
+        try makeFolder(to, inPackage: destination)
         for name in names where !name.hasPrefix(".") {
             let target = to.appending(path: name)
             guard !fileManager.fileExists(atPath: target.path) else { continue }

@@ -60,7 +60,7 @@ struct RenderCache: Sendable {
     /// Where a render in progress is written; renamed into place when done,
     /// so a file under its key is always complete.
     func partialURL(for key: String) throws -> URL {
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try ProjectStore.makeFolder(folder, inPackage: packageURL)
         return folder.appending(path: "\(key).partial.mov")
     }
 
