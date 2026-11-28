@@ -49,7 +49,7 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F106, F112 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F106 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
@@ -199,7 +199,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F109 | Speeds outside the time-pitch range untried | 5 | export | 3 | reproduced | fixed | `51523f38` · fails without | blocking |
 | F110 | Detected beats about 10 ms early | 5 | timing | 3 | reproduced | fixed | `8d7f131a`, `10bba6bd` · fails without | blocking |
 | F111 | Beat Keys pulses late or missing between frames | 5 | timing | 3 | reproduced | fixed | `41f74dc5` · fails without | blocking |
-| F112 | Held drawings and two-frame flashes cut | 5 | correctness | 3 | reproduced | open | | nonblocking |
+| F112 | Held drawings and two-frame flashes cut | 5 | correctness | 3 | reproduced | fixed | `73a71e57` · fails without | nonblocking |
 
 ## Open findings: detail and next action
 
@@ -560,7 +560,10 @@ render format version goes to 5, retiring renders made before F91, F104
 and F105), **F108** (Beat Keys waits while a layer's beats aren't in
 yet), **F109** (sound outside 3.125% to 3,200% is left out and silent;
 tried first: such sound came back empty, and a WAV Mix of only a 2%
-clip was written with no frames and reported done).
+clip was written with no frames and reported done), **F112** (the usual
+change is taken over frames that change, so drawings held on twos and
+threes aren't cuts; the scorer records the change across two frames, so
+a two-frame flash isn't either).
 
 **F94 — *(fixed in `fac2eb3f`)* Pasted keyframes can land a tick before their frame.**
 `KeyframeCopying.swift:13,73` keeps offsets as `Double` and `:107` makes
@@ -672,14 +675,23 @@ check detected beats against the music by ear, and measure the lead on
 softer generated attacks, before cuts snapped to detected beats are
 trusted.
 
-**F112 — Held drawings and two-frame flashes give false cuts**
+**F112 — *(fixed in `73a71e57`)* Held drawings and two-frame flashes give false cuts**
 (`SceneDetection.swift:261–271,280–290`): on twos the background median
 is half a drawing's change, so each drawing is a peak, a cut every 0.42 s
 from a change of 60; a two-frame white flash cuts, since `isFlash`
 covers one frame. Shown on the detector's algorithm with made scores,
 not on episodes. *Next:* `SceneReviewTests` cases from
 `ReviewFixtures`' held and flash pictures; a background over non-zero
-scores, and flashes up to three frames.
+scores, and flashes up to three frames. *Fixed:* a background over the
+frames that change when at least two nearby do (one, at either end of
+the track), and long skip scores (format version 4, scores' algorithm
+4), so a two-frame flash is told as a one-frame one is. *Left:* tested on
+made-up scores and generated footage, not episodes (D7); a flash of
+three frames or more still cuts; current files are scored again, so a
+project's automatic scenes can change (its timeline doesn't: only the
+person's scene edits split or join clips, though scene-bounded trims
+follow the new scenes); original scores made before keep working,
+without the two-frame case.
 
 ### From the owner's decisions
 
