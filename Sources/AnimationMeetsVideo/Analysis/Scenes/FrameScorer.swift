@@ -70,6 +70,8 @@ enum FrameScorer {
             var times: [Int64] = []
             var scores: [UInt8] = []
             var skipScores: [UInt8] = []
+            var longSkipScores: [UInt8] = []
+            var threeBack: [UInt8] = []
             var beforePrevious: [UInt8] = []
             var previous: [UInt8] = []
             var current: [UInt8] = []
@@ -101,11 +103,14 @@ enum FrameScorer {
                 if empty.separates(lastPresentation, presentation) {
                     previous = []
                     beforePrevious = []
+                    threeBack = []
                 }
                 lastPresentation = presentation
                 scores.append(previous.isEmpty ? 0 : meanAbsoluteDifference(previous, current))
                 skipScores.append(beforePrevious.isEmpty ? 0 : meanAbsoluteDifference(beforePrevious, current))
+                longSkipScores.append(threeBack.isEmpty ? 0 : meanAbsoluteDifference(threeBack, current))
                 times.append(time.value)
+                threeBack = beforePrevious
                 beforePrevious = previous
                 swap(&previous, &current)
 
@@ -123,7 +128,7 @@ enum FrameScorer {
             }
             progress(1)
             return ChangeScoreTrack(
-                timescale: timescale, times: times, scores: scores, skipScores: skipScores,
+                timescale: timescale, times: times, scores: scores, skipScores: skipScores, longSkipScores: longSkipScores,
                 emptySpans: empty.spans(timescale: timescale)
             )
         }

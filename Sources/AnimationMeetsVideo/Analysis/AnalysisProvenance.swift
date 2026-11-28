@@ -84,8 +84,9 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
             // 2: footage in an empty edit is no longer scored as a frame, so
             // a late-start file no longer reads as cut at its first picture.
             // 3: skip scores (the change across each frame) are recorded, so
-            // a one-frame flash is no longer a cut.
-            return ("sample=\(FrameScorer.sampleWidth)x\(FrameScorer.sampleHeight)", 3)
+            // a one-frame flash is no longer a cut. 4: long skip scores
+            // (across two frames) too, so a two-frame flash isn't either.
+            return ("sample=\(FrameScorer.sampleWidth)x\(FrameScorer.sampleHeight)", 4)
         case .beats:
             let settings = [
                 "rate=\(BeatDetector.sampleRate)", "window=\(OnsetAnalyzer.windowSize)", "hop=\(OnsetAnalyzer.hopSize)",

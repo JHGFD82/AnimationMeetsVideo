@@ -66,12 +66,21 @@ Notes and limits:
   the frame before) does not, so the shot goes on. A hard cut through one
   blended frame also changes twice in a row, but its skip score is large,
   so it stays a cut. The skip score is measured against one frame's usual
-  change, so a flash during a camera move may still cut.
+  change, so a flash during a camera move may still cut. A **two-frame
+  flash**, the usual impact flash, is told the same way by the long skip
+  score (the frame after it against the frame before it, across both);
+  two frames of something else and then a new shot are still a cut. A
+  flash of three frames or more is a cut.
 - **Footage with no cuts** (a single static shot) yields one scene.
 - **Variable frame rate** files use their real timestamps, not an assumed rate.
 - A cut is a frame whose change **rises over the change around it** (the
   median of up to four frames on each side) by at least the threshold, and
-  is a local peak. A steady change, a fade or a camera move, never rises
+  is a local peak. The median is of the frames that change at all (more
+  than 3 of 255), when at least two nearby do: animation **held on twos
+  or threes** changes only at each new drawing, and against all its
+  frames the usual change was half a drawing's or none, so every drawing
+  was a cut. A cut in held animation needs to stand out from its
+  drawings' changes. A steady change, a fade or a camera move, never rises
   over itself, so it is not split at any sensitivity, and a track does not
   end in a cut just because the picture is still changing at its end. A
   hard cut during a camera move is measured against the move, so it needs
@@ -177,7 +186,7 @@ In the package's `Reference/<asset id>/` folder:
 
 | Item | Status |
 | --- | --- |
-| `signature.bin`: the per-frame change scores (magic `AMVS`, version 3, little endian: timescale, frame count, an Int64 time per frame, one score byte per frame, one skip score byte per frame, then the empty stretches; about 10 bytes per frame). Versions 1 and 2 have no skip scores and still load; version 1 has no empty stretches. | Implemented. A damaged file, or one whose `provenance.json` record doesn't fit the current file, reads as "not analyzed" and is recomputed. |
+| `signature.bin`: the per-frame change scores (magic `AMVS`, version 4, little endian: timescale, frame count, an Int64 time per frame, one score byte per frame, one skip score byte per frame, one long skip score byte per frame, then the empty stretches; about 11 bytes per frame). Version 3 has no long skip scores and versions 1 and 2 no skip scores; they still load; version 1 has no empty stretches. | Implemented. A damaged file, or one whose `provenance.json` record doesn't fit the current file, reads as "not analyzed" and is recomputed. |
 | `original-signature.bin`: the scores of the **original** footage, same format as `signature.bin`, with its own record in `provenance.json` naming the original file. | Implemented. Set aside when the asset's first file is scored, kept through replacement and re-detecting, used only to align a replacement (see [media-replacement.md](media-replacement.md)), deleted by Forget Original, and never made from a replacement file. A record that is missing, or names a different file than the saved reference does, makes it unavailable. |
 | `thumbs/<value>_<timescale>.jpg`: pictures of the original (256x144 JPEG, quality 0.7) at the first and last frame, just before and at each cut found at a loose sensitivity (strongest 600 cuts at most), and every 10 seconds. | Implemented. Captured once, after scoring, into a scratch folder that is renamed into place, so a `thumbs/` folder that exists is complete. |
 | Dense frames near used ranges | Not implemented. The sync dialog will have to match by cuts and intervals. |

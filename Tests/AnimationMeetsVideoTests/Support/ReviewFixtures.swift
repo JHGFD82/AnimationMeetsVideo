@@ -28,8 +28,9 @@ enum ReviewFixtures {
         /// A drawing held for `hold` frames (2 for "on twos"), as a disc
         /// that moves only when the drawing changes, over a flat field.
         case held(hold: Int)
-        /// White every `every` frames, else the held drawing.
-        case flashes(every: Int, hold: Int)
+        /// White for `length` frames every `every` frames, else the held
+        /// drawing: a one-frame flash, or the two-frame impact flash.
+        case flashes(every: Int, hold: Int, length: Int = 1)
         /// From black to white and back over `length` frames.
         case fade(length: Int)
         /// A shallow horizontal gradient across 20 levels, which bands at 8
@@ -75,8 +76,8 @@ enum ReviewFixtures {
         switch picture {
         case .held(let hold):
             return disc(drawing: index / max(hold, 1), x: x, y: y)
-        case .flashes(let every, let hold):
-            if index % max(every, 1) == 0 { return (255, 255, 255) }
+        case .flashes(let every, let hold, let length):
+            if index % max(every, 1) < max(length, 1) { return (255, 255, 255) }
             return disc(drawing: index / max(hold, 1), x: x, y: y)
         case .fade(let length):
             let phase = Double(index % max(length, 1)) / Double(max(length, 1))

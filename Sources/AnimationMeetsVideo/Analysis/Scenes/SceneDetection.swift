@@ -17,6 +17,12 @@ struct ChangeScoreTrack: Equatable, Sendable {
     /// changes a lot into and out of itself, changes little across. 0 where
     /// there is no frame two back. Nil for tracks saved before they existed.
     var skipScores: [UInt8]?
+    /// `longSkipScores[i]` is the change from frame `i - 3` to frame `i`,
+    /// across the two frames before it, so a two-frame flash (the usual
+    /// impact flash in anime) changes little across too. 0 where there is
+    /// no frame three back. Nil for tracks saved before they existed, and
+    /// for those without skip scores.
+    var longSkipScores: [UInt8]?
     /// Stretches of the file's time that hold no footage (empty edits, such
     /// as the second before a late first picture), in `timescale` units,
     /// ascending and apart. No frame lies in one, and no change is scored
@@ -39,24 +45,29 @@ struct ChangeScoreTrack: Equatable, Sendable {
     private static let magic: [UInt8] = Array("AMVS".utf8)
     /// 2 adds the empty spans after the scores. Version 1 files have none.
     /// 3 adds the skip scores between the scores and the spans; a track
-    /// without them is still written as version 2.
-    private static let version: UInt32 = 3
+    /// without them is still written as version 2. 4 adds the long skip
+    /// scores after the skip scores; a track without them is written as 3.
+    private static let version: UInt32 = 4
 
     /// Compact binary form: a header, then every frame time, then the scores
-    /// (one byte per frame), then (version 3) the skip scores, one byte per
-    /// frame, then the empty spans: a count and a start and end each. All
-    /// integers are little endian.
+    /// (one byte per frame), then (version 3) the skip scores and (version
+    /// 4) the long skip scores, one byte per frame each, then the empty
+    /// spans: a count and a start and end each. All integers are little
+    /// endian.
     func encoded() -> Data {
         var data = Data(Self.magic)
         func append<T: FixedWidthInteger>(_ value: T) {
             withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
         }
-        append(skipScores == nil ? 2 : Self.version)
+        append(skipScores == nil ? 2 : longSkipScores == nil ? 3 : Self.version)
         append(timescale)
         append(UInt32(times.count))
         for time in times { append(time) }
         data.append(contentsOf: scores)
-        if let skipScores { data.append(contentsOf: skipScores) }
+        if let skipScores {
+            data.append(contentsOf: skipScores)
+            if let longSkipScores { data.append(contentsOf: longSkipScores) }
+        }
         append(UInt32(emptySpans.count))
         for span in emptySpans {
             append(span.start)
@@ -65,13 +76,18 @@ struct ChangeScoreTrack: Equatable, Sendable {
         return data
     }
 
-    init(timescale: Int32, times: [Int64], scores: [UInt8], skipScores: [UInt8]? = nil, emptySpans: [EmptySpan] = []) {
+    init(
+        timescale: Int32, times: [Int64], scores: [UInt8], skipScores: [UInt8]? = nil, longSkipScores: [UInt8]? = nil,
+        emptySpans: [EmptySpan] = []
+    ) {
         precondition(times.count == scores.count, "one score per frame")
         precondition(skipScores.map { $0.count == times.count } ?? true, "one skip score per frame")
+        precondition(longSkipScores.map { $0.count == times.count && skipScores != nil } ?? true, "one long skip score per frame")
         self.timescale = timescale
         self.times = times
         self.scores = scores
         self.skipScores = skipScores
+        self.longSkipScores = longSkipScores
         self.emptySpans = emptySpans
     }
 
@@ -94,7 +110,7 @@ struct ChangeScoreTrack: Equatable, Sendable {
         guard (1...Self.version).contains(version) else { throw ChangeScoreTrackError.unsupportedVersion(version) }
         let timescale = try read(Int32.self)
         let count = Int(try read(UInt32.self))
-        let bytesPerFrame = version >= 3 ? 10 : 9
+        let bytesPerFrame = version >= 4 ? 11 : version >= 3 ? 10 : 9
         guard timescale > 0, data.count - offset >= count * bytesPerFrame else { throw ChangeScoreTrackError.truncated }
 
         var times: [Int64] = []
@@ -107,6 +123,11 @@ struct ChangeScoreTrack: Equatable, Sendable {
             skipScores = [UInt8](data[(data.startIndex + offset)..<(data.startIndex + offset + count)])
             offset += count
         }
+        var longSkipScores: [UInt8]?
+        if version >= 4 {
+            longSkipScores = [UInt8](data[(data.startIndex + offset)..<(data.startIndex + offset + count)])
+            offset += count
+        }
         var spans: [EmptySpan] = []
         if version == 1 {
             guard offset == data.count else { throw ChangeScoreTrackError.truncated }
@@ -115,7 +136,7 @@ struct ChangeScoreTrack: Equatable, Sendable {
             guard data.count - offset == spanCount * 16 else { throw ChangeScoreTrackError.truncated }
             for _ in 0..<spanCount { spans.append(EmptySpan(start: try read(Int64.self), end: try read(Int64.self))) }
         }
-        self.init(timescale: timescale, times: times, scores: scores, skipScores: skipScores, emptySpans: spans)
+        self.init(timescale: timescale, times: times, scores: scores, skipScores: skipScores, longSkipScores: longSkipScores, emptySpans: spans)
         try validate()
     }
 
@@ -148,6 +169,12 @@ struct ChangeScoreTrack: Equatable, Sendable {
             guard skipScores.count == times.count else { throw ChangeScoreTrackError.invalid("Frames and skip scores don't match.") }
             guard skipScores.prefix(2).allSatisfy({ $0 == 0 }) else {
                 throw ChangeScoreTrackError.invalid("One of the first two frames has a skip score.")
+            }
+        }
+        if let longSkipScores {
+            guard longSkipScores.count == times.count else { throw ChangeScoreTrackError.invalid("Frames and long skip scores don't match.") }
+            guard longSkipScores.prefix(3).allSatisfy({ $0 == 0 }) else {
+                throw ChangeScoreTrackError.invalid("One of the first three frames has a long skip score.")
             }
         }
     }
@@ -255,14 +282,30 @@ enum SceneDetector {
     /// How many frames on each side of a frame make up the change around it.
     static let backgroundRadius = 4
 
+    /// A change at or under this (of 255) is a held frame, the same
+    /// drawing again give or take the codec's noise.
+    static let heldScore: UInt8 = 3
+
     /// The usual change around frame `i`: the median of up to
     /// `backgroundRadius` scores on each side, leaving `i` itself out. A
     /// spike or two nearby doesn't move it, but a steady change does.
+    ///
+    /// Taken over the frames that change, when at least two nearby do:
+    /// animation held on twos or threes changes only every second or third
+    /// frame, and over every frame the usual change was half a drawing's,
+    /// or none, so each new drawing rose to a cut, one every 0.4 s through
+    /// a shot (F112). A still shot, or one blip in it, keeps the median of
+    /// all, but for one at either end, where the window is cut short.
     private static func background(around i: Int, in scores: [UInt8]) -> Double {
         // The first frame scores 0 by definition, not by being still.
         let before = scores[max(1, i - backgroundRadius)..<i]
         let after = scores[min(i + 1, scores.count)..<min(i + 1 + backgroundRadius, scores.count)]
-        let around = (Array(before) + Array(after)).sorted()
+        let all = Array(before) + Array(after)
+        let moving = all.filter { $0 > heldScore }
+        // Near either end the window is cut short, and on threes one other
+        // drawing may be all it holds.
+        let clipped = all.count < 2 * backgroundRadius
+        let around = (moving.count >= 2 || (clipped && !moving.isEmpty) ? moving : all).sorted()
         guard !around.isEmpty else { return 0 }
         let middle = around.count / 2
         return around.count.isMultiple(of: 2)
@@ -277,6 +320,10 @@ enum SceneDetector {
     /// blended frame also changes twice in a row, but a lot across, so it
     /// stays a cut. Measured against one frame's usual change, a flash during
     /// a camera move may still cut. A track without skip scores can't tell.
+    ///
+    /// A flash of two frames, the usual impact flash, is told the same way
+    /// by the long skip scores: into it and out of it rise, across both
+    /// frames it doesn't. Without them a two-frame flash cut (F112).
     private static func isFlash(_ i: Int, in track: ChangeScoreTrack, limit: Double) -> Bool {
         guard let skips = track.skipScores else { return false }
         let scores = track.scores
@@ -286,7 +333,13 @@ enum SceneDetector {
                 && rise(f) >= limit && rise(f + 1) >= limit
                 && Double(skips[f + 1]) - background(around: f, in: scores) < limit
         }
-        return flash(at: i) || flash(at: i - 1)
+        /// Frames `f` and `f + 1` flash.
+        func twoFrameFlash(at f: Int) -> Bool {
+            guard let long = track.longSkipScores, f >= 1, f + 2 < scores.count else { return false }
+            return rise(f) >= limit && rise(f + 2) >= limit
+                && Double(long[f + 2]) - background(around: f, in: scores) < limit
+        }
+        return flash(at: i) || flash(at: i - 1) || twoFrameFlash(at: i) || twoFrameFlash(at: i - 2)
     }
 
     /// Cuts found by applying a sensitivity to the saved change scores.
