@@ -296,6 +296,19 @@ starts, so `print` and stray writes from C never land in a frame.
 | helper | `output` | Text printed, with its stream |
 | helper | `result`, `error` | The samples, or nothing for a script; or the exception with its line and traceback |
 
+The app holds the helper to what it asked for, since code it runs can
+write to the pipe itself (`HelperLimits`). Only an expression's
+`result` carries a payload, of exactly its count of samples times their
+width in `float64`s; a header claiming any other is a broken stream as
+soon as it is read, before its payload is waited for. Frames no run has
+read yet may hold 8 MiB in all for the expressions helper, whose headers
+are at most 1 MiB, and 256 MiB for scripts, whose headers are at most
+64 MiB; and 10,000 frames. A `call` or `output` tagged with a run other
+than the one under way is from a thread an earlier run left and is never
+answered. Each of these ends the helper, and the next run starts a new
+one. The expressions helper is still shared by every open project and
+between runs (code-review-notes.md, F55).
+
 **Stop** and the time limit send `SIGINT`, which Python raises as
 `KeyboardInterrupt`, and after a second end the process. The next run
 starts a new one.
