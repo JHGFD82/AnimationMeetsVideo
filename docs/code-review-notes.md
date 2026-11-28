@@ -5,9 +5,11 @@ Status: **review notes** for the first pass of
 reviewed (phase 1 only in part), phases 4 and 5 are being reviewed, and
 the plan's stabilization checkpoint is partial: B and D are done, C is
 done but for F4's hang, which hasn't recurred to be captured, and A has
-open paths to lost work (F72's stems, F73, F123; F35 since fixed); the owner's
+no open path to lost work left but waits on the owner for F73, what a
+backup off APFS promises (D12; F72's stems, F123 and F127 since fixed);
+the owner's
 decisions D3 to D9 are recorded and built (F55, F89, F90), but for
-release gates that wait for phase 12, and D10 and D11 wait on the owner;
+release gates that wait for phase 12, and D10 to D12 wait on the owner;
 phases 6 to 12 haven't started. Many findings
 are still open: being reviewed is not being resolved. Where each phase
 stands is under "Where each phase stands"; every finding is in the
@@ -44,6 +46,15 @@ not that its next action was done; F60's reads are a decision (D11),
 not an accepted risk, until the owner accepts them; F119 separates
 presentation from a fitted frame grid; and limits that each hold alone
 are to be tried together (F125).
+
+Checkpoint A's open paths were then taken up (2026-11-28, branch
+`worktree-review-checkpoint-a`), each fix with a test shown to fail
+without it: F72's stems now ask before replacing files of their names
+and replace no others; F123's writes make no package where a moved one
+was, and imports and takes follow the move first; and F127, found
+measuring F73, deletes what a backup cut off left. F73 was measured
+(`BackupCostBenchmark`) and put to the owner as D12, since what a
+backup promises off APFS is theirs to decide.
 
 ## Reading this ledger
 
@@ -87,11 +98,11 @@ reviewers. Nothing here has been checked by anyone outside it.
 | 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F24, F126 |
 | 2. Architecture and maintainability | Complete | | F30–F34, F36–F47; its severity-1 findings are fixed, F35 (raised to 1 by the third review) included |
 | 3. Security, privacy and dependencies | Complete | | F54, F59–F62, F124, F125 (F53 accepted under D8; F57's budgets redone; F55 fixed under D9; F60 waits on D11) |
-| Owner's decisions D3–D11 | D3–D9 done but for release gates; D10 and D11 open | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8; D10 (the scripts helper shared between runs) and D11 (confined code reading metadata) wait on the owner | F60, F121, F124 |
-| Stabilization checkpoint | Partial | A: open paths to lost work (F72's stems, F73, F123). C: F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs. B and D done | F4, F72, F73, F123 |
-| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt; F72, F73 and F123 block a release | F69, F70, F72, F73, F75–F78, F82–F88, F122, F123 |
+| Owner's decisions D3–D12 | D3–D9 done but for release gates; D10 to D12 open | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8; D10 (the scripts helper shared between runs), D11 (confined code reading metadata) and D12 (what a backup promises off APFS) wait on the owner | F60, F73, F121, F124 |
+| Stabilization checkpoint | Partial | A: no open path to lost work; F73 waits on D12, and A isn't done until it is settled. C: F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs. B and D done | F4, F73 |
+| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed; F73 blocks a release until D12 is decided and built | F69, F70, F73, F75–F78, F82–F88, F122 |
 | 5. Timeline, timing and music sync | Partial | Four reviews made and recorded, and the end-to-end sync export test built (`9207e570`); the beat tick and MIDI taps read, not tried on hardware; detection quality and beat timing judged on generated material, not episodes and songs (D7); no frame-identity check over mixed rates, VFR, ramps and reverse (F119) | F114–F120 |
-| 6 to 12 | Not started | Phase 6 may start as an exception to the plan's order, not because its prerequisite is met: checkpoint A is open (F72, F73, F123) and C is open for F4. Phase 6 reads concurrency and lifetimes, which A's open findings don't make unsafe to review, and runs event suites by filter while F4 is open. Phase 5 also started before A was closed, unrecorded until now. The plan has the rest wait for A to C | F113 |
+| 6 to 12 | Not started | Phase 6 may start as an exception to the plan's order, not because its prerequisite is met: checkpoint A is open for F73 (D12) and C is open for F4. Phase 6 reads concurrency and lifetimes, which A's open findings don't make unsafe to review, and runs event suites by filter while F4 is open. Phase 5 also started before A was closed, unrecorded until now. The plan has the rest wait for A to C | F113 |
 
 ## Stabilization checkpoint
 
@@ -103,20 +114,18 @@ From the plan's checkpoint, with the findings each part covers.
   (clips dropped at load), F71 (failed import), F74 (folder marked
   before load), F79 (package replaced), F81 (undo past arrived
   analysis, reproduced first), F80 (a take left in the temporary
-  folder); F67 (a moved package split in two) but for F123; F72's
-  export over a source; F35 (a console line edited another open project
-  with a Timeline window in front). *Open, each a path to lost work, so
-  A isn't done:*
-  - F72's stems: exporting stems into a folder replaces files of the
-    same names there without asking, and those files are gone.
+  folder); F67 (a moved package split in two); F72 (an export over a
+  source, and stems over files of their names); F35 (a console line
+  edited another open project with a Timeline window in front); F123
+  (writes in the moments after a move); F127 (backups cut off left
+  hidden copies of the media). *Open, so A isn't done:*
   - F73: not a loss by itself. Off APFS, backups copy all of `Media/`
-    every 15 minutes and saves wait behind the copy (for how long, and
-    what quitting then does, isn't measured). Its risk is in the fix:
-    until what a backup promises is settled, leaving the media out to
-    save time would make backups that can't be restored.
-  - F123: an import, a take or a save in the moments after the package
-    is moved writes at the old place, and the project then names media
-    that aren't in the package.
+    every 15 minutes and saves wait behind the copy (a save waited
+    1.7 s behind a backup of 1 GB, on the best case for such a disk),
+    and quitting
+    doesn't wait (the cut-off copy is F127, fixed). Its risk is in the
+    fix: until what a backup promises is settled (D12), leaving the
+    media out to save time would make backups that can't be restored.
 - **B. Untrusted input. Done.** Fixed: F48 and F49 (numbers, text
   runs), F50 (timeline cycles), F56 (non-finite samples), F57 (helper
   budgets: a payload only on an expression's result and only of its
@@ -219,8 +228,8 @@ From the plan's checkpoint, with the findings each part covers.
 | F69 | Forget Original deletes before saving | 4 | data safety | 5 | code-verified | open | | nonblocking |
 | F70 | Errors don't name the project | 4 | usability | 5 | code-verified | open (part fixed) | `667aaad6`, `82160372` name the reload's and the open's | nonblocking |
 | F71 | A failed import deletes a file in the package | 4 | data safety | 1 | reproduced | fixed | `76e74035` · fails without | blocking |
-| F72 | An export can replace a source media file | 4 | data safety | 1 | code-verified | open (part fixed) | `2142ee55` · test; stems' prompt open | blocking |
-| F73 | Backups copy all media off APFS | 4 | performance | 2 | reported | open | | blocking |
+| F72 | An export can replace a source media file | 4 | data safety | 1 | reproduced | fixed | `2142ee55` · test; `cb9bea9d` (stems) · fails without | blocking |
+| F73 | Backups copy all media off APFS | 4 | performance | 2 | reproduced | decision (D12) | `9cd7129e` · measured (`BackupCostBenchmark`) | blocking |
 | F74 | Opening a folder marks and locks it first | 4 | data safety | 1 | code-verified | fixed | `82160372` · test | blocking |
 | F75 | A file gone while open isn't offline | 4 | export | 3 | reported | open | | nonblocking |
 | F76 | An MKV offline at open stays unreadable | 4 | export | 3 | suspected | open | | nonblocking |
@@ -270,10 +279,11 @@ From the plan's checkpoint, with the findings each part covers.
 | F120 | An export reads effect approvals frame by frame | 5 | export | 3 | code-verified | open | | nonblocking |
 | F121 | No way to forget approved effect packages | D8 | usability | 5 | code-verified | open | | nonblocking |
 | F122 | Timeline windows lose their project after Save As or a move | 4 | usability | 5 | reported | open | | nonblocking |
-| F123 | Writes in the moments after a move land at the old place | 4 | data safety | 3 | code-verified | open | | blocking |
+| F123 | Writes in the moments after a move land at the old place | 4 | data safety | 3 | reproduced | fixed | `8a7cb332` · fails without | blocking |
 | F124 | Scripts and the console share one interpreter for the app's life | 3 | security | 3 | code-verified | decision (D10) | | blocking |
 | F125 | Limits that hold alone aren't tried together | 3 | performance | 2 | suspected | open | | nonblocking |
 | F126 | A beat timing test failed once under load | 1 | test harness | 5 | reproduced | open | | nonblocking |
+| F127 | A backup cut off leaves a hidden copy of the media | 4 | performance | 4 | reproduced | fixed | `34b7fcab` · fails without | nonblocking |
 
 ## Open findings: detail and next action
 
@@ -623,12 +633,24 @@ a file in a subfolder of `Media/`, one already used, or one through a
 linked folder is deleted for good on any import error. *Next (A):*
 verify with a test, then delete only a file the import made.
 
-**F72 — *(part fixed in `2142ee55`)* An export can replace a source media file.** Only other
+**F72 — *(fixed in `2142ee55`, `cb9bea9d`)* An export can replace a source media file.** Only other
 exports' destinations are checked (`ExportDestinations.conflict`), so
 exporting over `clip.mov` that the timeline plays reads it while
 rendering and then replaces it; stems overwrite same-named files in a
 chosen folder unasked. *Next (A):* refuse a destination any clip, effect
-input or matte uses, and ask before replacing stems.
+input or matte uses, and ask before replacing stems. *Stems fixed
+(`cb9bea9d`):* Export… works out the stems' files
+(`AudioExport.stemFiles`) and, when any are in the folder already,
+names them and asks, Cancel queuing nothing; the job carries the files
+agreed to, and the exporter replaces those and no others, refusing
+before it renders and again before it puts the stems in place, since a
+job waits in the queue and files can arrive while it renders. Layers
+named alike but for case get a number, as they shared a file on a
+volume that ignores case. *Tested:* the exporter's test fails three
+ways with the check off (the person's file replaced); queue tests for
+the question, Cancel and Replace. *Left, in loose-ends.md:* a WAV Mix
+saved into a stems folder under a stem's name while the stems export
+runs or waits ahead of it is still written over by the mix.
 
 **F73 — Backups copy all of `Media/` off APFS** every 15 minutes, up to
 ten kept, holding saves behind them (`ProjectBackups.swift:145–166`).
@@ -638,7 +660,18 @@ needs nothing else. Leaving media out off APFS would make it a backup of
 the edit only, restorable while the media it names are still in the
 package. Either both kinds exist and say which they are (in
 `backup.json` and in Restore), or off APFS backups stay whole and are
-made less often; not media left out silently.
+made less often; not media left out silently. *Measured (`9cd7129e`,
+`BackupCostBenchmark`, 1 GB of generated media):* on an HFS+ disk image
+on the internal SSD, the first backup took 0.84 s, a second with
+nothing changed 1.71 s (it copies everything again), and a save asked
+for during a backup 1.65 s, all of it waiting; on APFS each was under
+10 ms. The image is the best case for a volume without clones; an
+external hard disk or a share is slower, not measured here. *Quitting,
+read:* with nothing unsaved the app quits at once
+(`ProjectWindows.shouldTerminate`), cutting a backup off; that left a
+hidden copy of the media (F127, fixed). With unsaved edits, quitting
+saves, and that save waits behind the backup's copy with nothing on
+screen to say so. *Next:* the owner decides D12.
 
 **F74 — *(fixed in `82160372`)* Opening any folder with a `project.json` marks it a package and
 writes `.lock` into it before the format is checked**
@@ -1089,7 +1122,7 @@ the persistence work before phase 6 goes far. F69 and F84 are above.
 
 Three gaps the third review found, read in the code before recording, and a test that failed once while recording them (F126).
 
-**F123 — Writes in the moments after a move land at the old place**
+**F123 — *(fixed in `8a7cb332`)* Writes in the moments after a move land at the old place**
 (from F67). *Expected:* once the package has moved, nothing is written
 where it was. *Observed (read, not tried):* only saves, autosaves,
 backups and the two-second check follow a move
@@ -1113,7 +1146,33 @@ follows a move first; for writes off the main thread, the package found
 from the lock's descriptor when the write is made, not when it was
 queued. Tests: an import during a move, and a move made between a
 save's check and its write (a hook in the store), each leaving nothing
-at the old path and every clip's media in the package.
+at the old path and every clip's media in the package. *Fixed:* rather
+than find the package at every write, no write into an open package
+makes the package itself. `ProjectStore.makeFolder` makes the folders
+below it one level at a time, so a write whose package has gone fails
+with `PackageNotFound`, however late the move comes; reference data,
+provenance, imports, takes, autosaves, renders, viewer copies and
+Matroska reference movies use it, and a save into the package already
+open prepares it without creating it (`preparePackage(creating:)`).
+Imports and takes, told the package's place by their views, first ask
+`ProjectSession.packageNow`, which follows the move, so their files go
+into the package where it is. A failed analysis write is kept and
+written again once the move is followed (`writeHeldResults` on
+following); renders clear their failures when the package changes; a
+viewer copy that failed is tried again only once the project's use of
+its footage changes. *Tested* (`MovedPackageTests`): with the package
+renamed, an import, a change-score write, an autosave and a render's
+partial file each make nothing at the old path; a save into the old
+path fails and makes nothing there, while Save As elsewhere still makes
+its package; an import handed the old path copies into the renamed
+package and the existing media follow. With intermediate directories
+put back the first two fail (the package made again); without the
+follow the import is refused. *Not covered:* a move between a save's
+check and the store's write is shown by calling the store with the old
+path after the move, not by a hook inside the session's save; and
+outside backups, which go beside the package, still go beside where it
+was until the move is followed, outside the package, as a backup of
+its own.
 
 **F124 — Scripts and the console share one interpreter for the app's
 life** (from F20 and F89; F20's residual pointed at F55, which is fixed
@@ -1169,6 +1228,26 @@ failure's line, not the range of errors it printed. *Next:* run it
 repeatedly beside a loaded suite, keeping the message, and look for
 state shared with other suites, before calling it one of F5's
 load-sensitive tests.
+
+### From checkpoint A's fixes
+
+**F127 — *(fixed in `34b7fcab`)* A backup cut off leaves a hidden copy
+of the media** (found measuring F73). *Expected:* a backup that doesn't
+finish leaves nothing behind. *Observed (read, then shown by a test):*
+a backup is written into `.<UUID>.partial` beside the package and
+renamed once whole (`ProjectBackups.write`); quitting with nothing
+unsaved doesn't wait for it, nor does a crash or a power cut, and
+nothing lists or deletes the partial folder afterwards. Off APFS it
+holds a real copy of the media, so each one cut off could leave
+gigabytes, hidden. Severity 4: disk space, not the person's work,
+though a full disk then fails saves. *Fixed:* the next backup of the
+project deletes the partial folders in its backups folder first; the
+folder is that project's alone, and its backups are written one at a
+time, so none of them is under way. *Tested:* a partial folder left
+beside a backup is gone after the next, and the whole backups stay;
+it fails without the deletion. Quitting still doesn't wait for a
+backup, which off APFS would hold the app open for the whole copy
+(D12).
 
 ## Fixed findings: detail
 
@@ -1419,6 +1498,29 @@ review, not claims that the code meets them; each says what is done.
   interpreter and the helper's code), if Python starts and imports
   under it. *Recommended:* try (b) first, since an expression needs no
   metadata; (a) if Python can't run under it.
+- **D12. What a backup promises where files can't be cloned** (F73).
+  *Waiting on the owner.* Every backup beside a project is a whole copy
+  that opens on its own, media included. On APFS unchanged files are
+  clones and cost nothing; elsewhere (HFS+, ExFAT, most network
+  shares) every backup copies all of `Media/` again, up to ten kept,
+  and saves wait behind it: a save waited 1.7 s behind a backup of
+  1 GB on the best case for such a disk (`BackupCostBenchmark`), longer
+  on a real external disk. Options: **(a)** hard-link unchanged files
+  to the previous backup where the volume has links but no clones
+  (HFS+), which costs no space or time and keeps every backup whole,
+  since backups are never written into after they are made; and for
+  volumes with neither (ExFAT, FAT, many shares), (b) or (c); **(b)**
+  there, back up the edit only (`project.json`, `Reference/`,
+  `Scripts/`), marked as such in `backup.json` and in Open Backup…,
+  which restores it only while the media it names are still where they
+  were, and says so; **(c)** there, keep whole backups but fewer and
+  less often (one an hour, three kept), and say why in Settings.
+  Separately, whether a save may go ahead of a backup's copying, which
+  needs the backup to copy only files a save never writes into in
+  place. *Recommended:* (a) with (b) for volumes without links, since
+  each keeps backups cheap without a backup silently becoming less
+  than it says; a test on an HFS+ disk image that a second backup
+  takes no space and restores whole.
 
 ## Phase records
 
