@@ -49,7 +49,7 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | none; residuals under F98, F99, F110, F112 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded, and the end-to-end sync export test built (`9207e570`); the beat tick and MIDI taps read, not tried on hardware; detection quality and beat timing judged on generated material, not episodes and songs (D7) | none; residuals under F98, F99, F110, F112 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
@@ -1030,11 +1030,18 @@ summed; song time to timeline time through retiming; Keyframing's
 determinism and its refusal of hand edits; transitions' spare footage
 for picture and sound alike; and scene detection's fixed defects
 (`swift test --filter Scene`, 214 tests, and `BeatFittingGoldenTests`
-at 0 samples' error on all four goldens). Not done: the end-to-end
-white-frame-and-click export at 24, 29.97 and 60 fps and after ten
-minutes; the review sketched it from `ReviewFixtures`'
-`writeMovie(.flashes)`, `writeClicks` and an export read back by
-`AVAssetReader`, gated behind a variable since it is slow.
+at 0 samples' error on all four goldens). The end-to-end sync export
+(`EndToEndSyncTests`, `9207e570`): numbered footage flashing white
+every twelve frames and a WAV with a click on each flash's first
+sample, placed at three whole-frame offsets on 24, 29.97 and 60 fps
+timelines, exported as ProRes 422 and read back. Every white frame is
+the numbered frame meant on the timeline frame meant, and the worst
+click is 0.0 ms from its white frame at 24 and 60 fps and 0.0125 ms at
+29.97 (the click's rounding to a sample), against a bound of half a
+frame and 2 ms. Near the end of ten minutes (598 s, `REVIEW_SYNC_LONG=1`)
+it is 0.0 ms. With the sound a frame late it fails 72 ways. Read back
+with AVFoundation only: no independent prober (ffprobe) is installed on
+the reviewing Mac. Run after F30, F91, F104, F106 and F110 were fixed.
 
 ### Phases 2 to 4
 
