@@ -49,7 +49,7 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F98, F99, F101–F103, F105, F106, F108–F110, F112 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F98, F99, F101–F103, F105, F106, F108, F109, F112 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
@@ -197,7 +197,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F107 | Export doesn't wait for running expressions | 5 | export | 3 | code-verified | fixed | `a7a486de` · test (the check; the alert by hand) | blocking |
 | F108 | Beat Keys rewritten flat before beats load | 5 | correctness | 3 | suspected | open | | nonblocking |
 | F109 | Speeds outside the time-pitch range untried | 5 | sound | 3 | suspected | open | | nonblocking |
-| F110 | Detected beats about 10 ms early | 5 | timing | 3 | reproduced | open | | blocking |
+| F110 | Detected beats about 10 ms early | 5 | timing | 3 | reproduced | fixed | `8d7f131a`, `10bba6bd` · fails without | blocking |
 | F111 | Beat Keys pulses late or missing between frames | 5 | timing | 3 | reproduced | fixed | `41f74dc5` · fails without | blocking |
 | F112 | Held drawings and two-frame flashes cut | 5 | correctness | 3 | reproduced | open | | nonblocking |
 
@@ -230,7 +230,11 @@ every full run at load 6 (fixed, `c23427a8`: pacing on a clock the test
 drives); still open: `ViewerFramingRedrawTests.thePictureFollowsAScrollAtOnce`
 (66), `ClipBlockInteractionTests.aClickSelectsWithTheArrowAndCutsWithTheBlade`
 (99, 107) once under `UI_EVENTS`, and three `PlaybackSkimTests` that
-pace on real time. *Next:* the same clock for skimming's preroll waits.
+pace on real time. In phase 5's full runs at load 8 to 14, once each and
+passing on the rerun: `AssetAnalysisTests.aReadThatFailsIsTriedAgainRatherThanAnalyzedOver`
+(a 50 ms sleep) and `TapeScrubTests.theTapeRunsAtTheSpeedAskedAndComesToRest`
+(a real audio engine against sleeps). *Next:* the same clock for
+skimming's preroll waits, and for these two.
 
 **F7 — A clean checkout builds with no Python.** *(fixed in
 `96409e50`)* The pin is committed (D3) and `build-app.sh` fails unless
@@ -541,7 +545,8 @@ older index reads by seconds and is remade once), **F97** (the scrub
 cache counts frames in the exact frame duration), **F107** (Export…
 asks, Wait or Export Anyway, while expressions or Keyframing effects are
 still being written; never refuses, since an expression can wait for
-good without Python).
+good without Python), **F110** (detected beats refined between frames
+and moved by a measured 180-sample lead; saved beats detected again).
 
 **F94 — *(fixed in `fac2eb3f`)* Pasted keyframes can land a tick before their frame.**
 `KeyframeCopying.swift:13,73` keeps offsets as `Double` and `:107` makes
@@ -622,7 +627,7 @@ time-pitch range (1/32 to 32) and untried in playback and export
 (`CompositionFlattening.swift:244`). *Next:* try 1%, 2%, 5000% and
 10,000%; mute or clamp outside, and document it.
 
-**F110 — Detected beats are about 10 ms early:** reported at the
+**F110 — *(fixed in `8d7f131a`, `10bba6bd`)* Detected beats are about 10 ms early:** reported at the
 analysis window's center (`BeatDetection.swift:201–202`,
 `OnsetAnalyzer.swift:14–16`) while spectral flux peaks before the hit;
 on a copy of the analyzer, clicks came 3.4 to 14.2 ms early (median
@@ -630,7 +635,13 @@ on a copy of the analyzer, clicks came 3.4 to 14.2 ms early (median
 24 fps and over half at 60. `BeatFitting` already corrects its own lead
 (`onsetLead`); `BeatDetectorTests` allows 50 ms. *Next:* measure the lead
 at hop 256 as `onsetLead` was, correct it, and test a click file to
-under 3 ms.
+under 3 ms. *Fixed:* measured on the detector itself first (median
+9.0 ms early, 3 to 14.7); each beat is now the onset curve's peak by
+parabola between frames, moved 180 samples later, which leaves click
+tracks at 100, 120 and 150 BPM within ±2 ms (the lead was set on the 120
+BPM ones). The tracker's tempo, from whole frames, is unchanged. The
+beat analysis's algorithm version is 6, so saved beats are detected
+again; confirmed beat maps aren't touched.
 
 **F112 — Held drawings and two-frame flashes give false cuts**
 (`SceneDetection.swift:261–271,280–290`): on twos the background median
