@@ -570,7 +570,9 @@ Names follow `project.json`'s keys, in Python's snake case. Effects and
 controls are looked up by the `kind` they are saved under
 (`"gaussianBlur"`, `"blurRadius"`) or by name. Times are
 `fractions.Fraction` seconds, exact as in the file; a float is taken and
-rounded to a frame of the timeline.
+rounded to a frame of the timeline. The editor call then places it as an
+edit by hand would: `split` of a clip with pictures goes to the nearest
+frame, whatever the time's form.
 
 | Object | Reads | Changes, and the `EditingProject` call behind each |
 | --- | --- | --- |
