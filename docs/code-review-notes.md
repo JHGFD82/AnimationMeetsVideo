@@ -49,7 +49,7 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F98, F99, F101–F103, F105, F106, F108, F109, F112 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F101–F103, F105, F106, F108, F109, F112 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
@@ -185,8 +185,8 @@ From the plan's checkpoint, with the findings each part covers.
 | F95 | A script's split at a fraction is off the frames | 5 | timing | 3 | reproduced | fixed | `416ab9d4` · fails without | nonblocking |
 | F96 | A viewer copy can be made again and again | 5 | performance | 4 | reproduced | fixed | `6c66b2ad` · test (old form shown short) | nonblocking |
 | F97 | Fast scrub shows the next frame at a typed 23.976 | 5 | rendering | 5 | reproduced | fixed | `cc3c6a42` · fails without | nonblocking |
-| F98 | Sound-only clips never join, so crossfades dip | 5 | sound | 3 | code-verified | open | | nonblocking |
-| F99 | Detach Audio drops the fades under transitions | 5 | sound | 3 | code-verified | open | | nonblocking |
+| F98 | Sound-only clips never join, so crossfades dip | 5 | sound | 3 | reproduced | fixed | `9a23eccb` · fails without | nonblocking |
+| F99 | Detach Audio drops the fades under transitions | 5 | sound | 3 | reproduced | fixed | `6fc17175` · fails without | nonblocking |
 | F100 | Scene-following splits land between frames | 5 | timing | 3 | reproduced | fixed | `49fe216a` · fails without | blocking |
 | F101 | Two joints can overlap inside a short clip | 5 | rendering | 3 | code-verified | open | | nonblocking |
 | F102 | A joint slip can leave a transition without footage | 5 | rendering | 3 | code-verified | open | | nonblocking |
@@ -546,7 +546,11 @@ cache counts frames in the exact frame duration), **F107** (Export…
 asks, Wait or Export Anyway, while expressions or Keyframing effects are
 still being written; never refuses, since an expression can wait for
 good without Python), **F110** (detected beats refined between frames
-and moved by a measured 180-sample lead; saved beats detected again).
+and moved by a measured 180-sample lead; saved beats detected again),
+**F98** (sound clips join one another at a cut and crossfade over their
+spare sound), **F99** (detached sound takes the fades it had under the
+picture's transitions: copies of joined clips join, others fade over the
+same span, lengthened into a joint that stays).
 
 **F94 — *(fixed in `fac2eb3f`)* Pasted keyframes can land a tick before their frame.**
 `KeyframeCopying.swift:13,73` keeps offsets as `Double` and `:107` makes
@@ -572,16 +576,18 @@ timescales.
 (`ScrubCache.swift:66–68`, `floor(t·rate)`); the exact landing corrects
 it. *Next:* index by the exact frame duration, as F92.
 
-**F98 — Sound-only clips never join** (`ClipTransition.swift:516–519`
+**F98 — *(fixed in `9a23eccb`)* Sound-only clips never join** (`ClipTransition.swift:516–519`
 needs `playsVideo`), so a Crossfade dropped between two sound clips
 fades one out to silence and cuts the next in, against
 transitions.md:162–165. *Next:* joinable sound clips; a loudness test at
 the cut.
 
-**F99 — Detach Audio drops the fades under picture transitions**
+**F99 — *(fixed in `6fc17175`)* Detach Audio drops the fades under picture transitions**
 (`LinkedAudio.swift:100–101`), against its own comment that the sound
 plays as before. *Next:* give the sound the matching Audio transition,
-after F98.
+after F98. *Left:* at an open end a picture transition's sound follows
+its curve, which an Audio transition hasn't; the copy fades at equal
+power over the same span, the same fade only where the curve was linear.
 
 **F101 — Two joints can overlap inside a short middle clip:**
 `fittedJoint` (`ClipTransition.swift:575–577`) subtracts only the clip's
@@ -641,7 +647,14 @@ parabola between frames, moved 180 samples later, which leaves click
 tracks at 100, 120 and 150 BPM within ±2 ms (the lead was set on the 120
 BPM ones). The tracker's tempo, from whole frames, is unchanged. The
 beat analysis's algorithm version is 6, so saved beats are detected
-again; confirmed beat maps aren't touched.
+again; confirmed beat maps aren't touched. *Left:* the lead was measured
+on sharp synthetic clicks only, and every project's saved beats are
+detected again with it. Softer attacks (pads, bass, vocals) may peak
+later relative to the hit, so on real songs some beats could now land
+slightly late rather than on time. *Next:* with the licensed songs (D7),
+check detected beats against the music by ear, and measure the lead on
+softer generated attacks, before cuts snapped to detected beats are
+trusted.
 
 **F112 — Held drawings and two-frame flashes give false cuts**
 (`SceneDetection.swift:261–271,280–290`): on twos the background median
