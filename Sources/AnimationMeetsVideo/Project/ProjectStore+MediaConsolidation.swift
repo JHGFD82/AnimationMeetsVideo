@@ -101,6 +101,36 @@ extension ProjectStore {
         return path.hasPrefix(packagePath + "/")
     }
 
+    /// `url` at the same place inside `newPackage` as it had inside
+    /// `oldPackage`, for a package that was moved; nil for a file outside
+    /// it. The old place no longer exists, so links are resolved through the
+    /// nearest folder above it that does.
+    static func relocated(_ url: URL, from oldPackage: URL, to newPackage: URL) -> URL? {
+        let old = resolvedPath(oldPackage)
+        let path = resolvedPath(url)
+        guard path.hasPrefix(old + "/") else { return nil }
+        return newPackage.appending(path: String(path.dropFirst(old.count + 1)))
+    }
+
+    /// The path of `url` with links resolved as far as it exists.
+    private static func resolvedPath(_ url: URL) -> String {
+        var existing = url.standardizedFileURL
+        var rest: [String] = []
+        while !FileManager.default.fileExists(atPath: existing.path), existing.pathComponents.count > 1 {
+            rest.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        return rest.reduce(existing.resolvingSymlinksInPath().path) { ($0 as NSString).appendingPathComponent($1) }
+    }
+
+    /// Whether `url` is in a Trash, the person's or a volume's.
+    static func isInTrash(_ url: URL) -> Bool {
+        var relationship = FileManager.URLRelationship.other
+        guard (try? FileManager.default.getRelationship(&relationship, of: .trashDirectory, in: .allDomainsMask, toItemAt: url)) != nil
+        else { return false }
+        return relationship == .contains
+    }
+
     static func uniqueDestination(for name: String, in folder: URL) -> URL {
         let fileManager = FileManager.default
         var candidate = folder.appending(path: name)

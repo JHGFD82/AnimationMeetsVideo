@@ -142,6 +142,21 @@ while its start sheet is up, and a new window otherwise; a project
 already open brings its window forward, since the window group keeps one
 window per package.
 
+An open project's package can be renamed or moved in the Finder. The
+window finds where it went from its `.lock`, which it holds open and
+which moves with the package, at the next check for an outside change
+(every two seconds) and before every save, autosave and backup, and
+follows it as Save As does: the window, its lock, the file watch,
+analysis and renders, and the paths of media inside the package, in
+the project and its undo history alike. Before, the next save made a
+second package where it had been, unlocked, its media paths leading
+nowhere (code-review-notes.md, F67). Into a package put in the Trash, or
+deleted, nothing is written: a save says why, an automatic one in the
+toolbar, and Save As stays open to keep the edits (from the Trash, with
+the media still there). What is written in the two seconds or less
+before a move is noticed, such as an analysis result arriving, can still
+make a folder at the old place.
+
 The ten projects opened or saved last (`RecentProjects`, in the app's
 defaults) are listed in File > Open Recent, with Clear Menu, and up to six
 of those still on disk on the start sheet, each with its folder. A recent

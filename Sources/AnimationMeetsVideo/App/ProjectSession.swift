@@ -131,6 +131,84 @@ final class ProjectSession {
         ProjectWindows.shared.openProjectsChanged()
     }
 
+    // MARK: - A package moved while open
+
+    /// Where the open package is now (code-review-notes.md, F67).
+    enum PackagePlace: Equatable {
+        case inPlace
+        /// Renamed or moved, to here.
+        case moved(URL)
+        /// Put in the Trash, here: nothing is saved into it.
+        case trashed(URL)
+        /// Deleted, or found no more.
+        case gone
+    }
+
+    /// Found from the project's `.lock`, held open, which moves with the
+    /// package. Nothing noticed a move before: the next save made a second
+    /// package where it had been, unlocked, its media paths into nothing.
+    func packagePlace() -> PackagePlace {
+        guard let projectURL, let lock = projectLock else { return .inPlace }
+        guard let now = lock.currentPackageURL() else { return .gone }
+        if ProjectStore.isInTrash(now) { return .trashed(now) }
+        let here = projectURL.standardizedFileURL.resolvingSymlinksInPath().path
+        return now.standardizedFileURL.resolvingSymlinksInPath().path == here ? .inPlace : .moved(now)
+    }
+
+    /// Follows the open package to where it was moved, if it was: the
+    /// project, its history and what was saved name the media in it there,
+    /// and the lock, the file watch, analysis, the window and the view
+    /// state go with it, as after Save As. True unless the package is in
+    /// the Trash or gone, where nothing may be written.
+    @discardableResult
+    func followPackageIfMoved() -> Bool {
+        switch packagePlace() {
+        case .inPlace: return true
+        case .moved(let url):
+            followPackage(to: url)
+            return true
+        case .trashed, .gone: return false
+        }
+    }
+
+    private func followPackage(to url: URL) {
+        guard let old = projectURL else { return }
+        func relocating(_ project: EditingProject) -> EditingProject {
+            var moved = project
+            for index in moved.clips.indices {
+                if let file = moved.clips[index].url, let there = ProjectStore.relocated(file, from: old, to: url) {
+                    moved.clips[index].url = there
+                }
+            }
+            return moved
+        }
+        let moved = relocating(project)
+        history.adoptMediaLocations(of: project, from: moved)
+        project.applyMediaLocations(from: moved)
+        savedProject = relocating(savedProject)
+        lastAutosaved = lastAutosaved.map(relocating)
+        lastBackedUp = lastBackedUp.map(relocating)
+        projectLock?.moved(to: url)
+        fileMonitor.move(toPackage: url)
+        analysis.packageURL = url
+        setProjectURL(url)
+        viewMemory.move(to: url)
+        ProjectWindows.shared.remember(url)
+    }
+
+    /// Why nothing was written to the open package, when it is in the Trash
+    /// or gone; nil when it can be.
+    private func packageUnwritableReason() -> String? {
+        let name = projectURL.map { "\u{201C}\($0.deletingPathExtension().lastPathComponent)\u{201D}" } ?? "The project"
+        switch packagePlace() {
+        case .inPlace, .moved: return nil
+        case .trashed:
+            return "\(name) is in the Trash, so it wasn\u{2019}t saved there. Put it back, or choose Save As\u{2026} to keep these changes elsewhere."
+        case .gone:
+            return "\(name) was deleted or can\u{2019}t be found, so it wasn\u{2019}t saved. Choose Save As\u{2026} to keep these changes."
+        }
+    }
+
     // MARK: - Creating and opening
 
     /// Asks where to save a new project and makes its package at once, so
@@ -336,6 +414,24 @@ final class ProjectSession {
     }
 
     private func performSave(forcePanel: Bool, quietly: Bool) async -> Bool {
+        // The package may have been renamed or moved while open: the save
+        // goes where it is now, not where it was (F67). Into the Trash
+        // nothing is saved; Save As from there takes its media along.
+        switch packagePlace() {
+        case .inPlace: break
+        case .moved(let url): followPackage(to: url)
+        case .trashed(let url) where forcePanel: followPackage(to: url)
+        case .gone where forcePanel: break
+        case .trashed, .gone:
+            let reason = packageUnwritableReason() ?? ""
+            if quietly {
+                automaticSaveFailed = true
+                autosaveStatus.failed(reason, kind: .save)
+            } else {
+                Self.showAlert(title: "Couldn't Save Project", message: reason)
+            }
+            return false
+        }
         var destination = forcePanel ? nil : projectURL
         if destination == nil {
             let panel = NSSavePanel()
@@ -468,6 +564,12 @@ final class ProjectSession {
     /// only when saving after every change won't write it anyway
     /// (`autosaveIsNeeded`).
     func autosave() async {
+        // Written to where the package is now, and not into the Trash or a
+        // folder made again where it was (F67).
+        guard followPackageIfMoved() else {
+            if hasUnsavedChanges, let reason = packageUnwritableReason() { autosaveStatus.failed(reason) }
+            return
+        }
         // Where things are left is saved on its own, edits or not.
         viewMemory.save(for: project)
         guard let url = projectURL, hasUnsavedChanges, project != lastAutosaved,
@@ -514,6 +616,7 @@ final class ProjectSession {
     /// has passed. The copying runs off the main thread, queued with the
     /// package's other writes, so the editor doesn't wait for it.
     func backUpIfDue() async {
+        guard followPackageIfMoved() else { return }
         guard let interval = Preferences.backupSpacing, let url = projectURL, !isBackingUp,
               project != lastBackedUp, ContinuousClock.now - lastBackupAt >= interval
         else { return }
@@ -557,6 +660,10 @@ final class ProjectSession {
             return
         }
         guard replacement.session == nil else { return }
+        // Followed within a check of a move in the Finder, so the window,
+        // analysis and renders take the new place before they write to the
+        // old one (F67).
+        followPackageIfMoved()
         await reloadOutsideChange()
     }
 
