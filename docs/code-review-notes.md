@@ -5,7 +5,7 @@ Status: **review notes** for the first pass of
 reviewed (phase 1 only in part), phases 4 and 5 are being reviewed, and
 the plan's stabilization checkpoint is partial: B and D are done, C is
 done but for F4's hang, which hasn't recurred to be captured, and A has
-open paths to lost work (F35, F72's stems, F73, F123); the owner's
+open paths to lost work (F72's stems, F73, F123; F35 since fixed); the owner's
 decisions D3 to D9 are recorded and built (F55, F89, F90), but for
 release gates that wait for phase 12, and D10 and D11 wait on the owner;
 phases 6 to 12 haven't started. Many findings
@@ -84,14 +84,14 @@ reviewers. Nothing here has been checked by anyone outside it.
 
 | Phase | Coverage | What keeps it from complete | Open findings |
 | --- | --- | --- | --- |
-| 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F24 |
-| 2. Architecture and maintainability | Complete | | F30–F47; its severity-1 findings are fixed but F35, raised to 1 by the third review |
+| 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F24, F126 |
+| 2. Architecture and maintainability | Complete | | F30–F34, F36–F47; its severity-1 findings are fixed, F35 (raised to 1 by the third review) included |
 | 3. Security, privacy and dependencies | Complete | | F54, F59–F62, F124, F125 (F53 accepted under D8; F57's budgets redone; F55 fixed under D9; F60 waits on D11) |
 | Owner's decisions D3–D11 | D3–D9 done but for release gates; D10 and D11 open | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8; D10 (the scripts helper shared between runs) and D11 (confined code reading metadata) wait on the owner | F60, F121, F124 |
-| Stabilization checkpoint | Partial | A: open paths to lost work (F35, F72's stems, F73, F123). C: F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs. B and D done | F4, F35, F72, F73, F123 |
-| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt; F72, F73 and F123 block a release, with F35 from phase 2 | F69, F70, F72, F73, F75–F78, F82–F88, F122, F123 |
+| Stabilization checkpoint | Partial | A: open paths to lost work (F72's stems, F73, F123). C: F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs. B and D done | F4, F72, F73, F123 |
+| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt; F72, F73 and F123 block a release | F69, F70, F72, F73, F75–F78, F82–F88, F122, F123 |
 | 5. Timeline, timing and music sync | Partial | Four reviews made and recorded, and the end-to-end sync export test built (`9207e570`); the beat tick and MIDI taps read, not tried on hardware; detection quality and beat timing judged on generated material, not episodes and songs (D7); no frame-identity check over mixed rates, VFR, ramps and reverse (F119) | F114–F120 |
-| 6 to 12 | Not started | Phase 6 may start as an exception to the plan's order, not because its prerequisite is met: checkpoint A is open (F35, F72, F73, F123) and C is open for F4. Phase 6 reads concurrency and lifetimes, which A's open findings don't make unsafe to review, and runs event suites by filter while F4 is open. Phase 5 also started before A was closed, unrecorded until now. The plan has the rest wait for A to C | F113 |
+| 6 to 12 | Not started | Phase 6 may start as an exception to the plan's order, not because its prerequisite is met: checkpoint A is open (F72, F73, F123) and C is open for F4. Phase 6 reads concurrency and lifetimes, which A's open findings don't make unsafe to review, and runs event suites by filter while F4 is open. Phase 5 also started before A was closed, unrecorded until now. The plan has the rest wait for A to C | F113 |
 
 ## Stabilization checkpoint
 
@@ -104,10 +104,9 @@ From the plan's checkpoint, with the findings each part covers.
   before load), F79 (package replaced), F81 (undo past arrived
   analysis, reproduced first), F80 (a take left in the temporary
   folder); F67 (a moved package split in two) but for F123; F72's
-  export over a source. *Open, each a path to lost work, so A isn't
-  done:*
-  - F35: with a Timeline window in front, a console line can edit
-    another open project, which autosave then saves, with nothing saying which project it was.
+  export over a source; F35 (a console line edited another open project
+  with a Timeline window in front). *Open, each a path to lost work, so
+  A isn't done:*
   - F72's stems: exporting stems into a folder replaces files of the
     same names there without asking, and those files are gone.
   - F73: not a loss by itself. Off APFS, backups copy all of `Media/`
@@ -183,7 +182,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F32 | Typed value edit leaves rendered stretches stale | 2 | rendering | 3 | reported | open | | nonblocking |
 | F33 | Mono clip's pan dropped silently | 2 | export | 3 | reported | open | | blocking |
 | F34 | Stale Matroska reference movie used | 2 | export | 3 | suspected | open | | nonblocking |
-| F35 | Python console edits the wrong project | 2 | data safety | 1 | code-verified | open | | blocking |
+| F35 | Python console edits the wrong project | 2 | data safety | 1 | code-verified | fixed | `a1edb8c8` · fails without | blocking |
 | F36 | Render stretch may start between frames | 2 | timing | 3 | suspected | open | | nonblocking |
 | F37 | Open projects can share IDs in app-wide tables | 2 | correctness | 3 | reported | open | | nonblocking |
 | F38 | `TimelinePreviews.shared` serves every project | 2 | performance | 4 | reported | open | | nonblocking |
@@ -274,6 +273,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F123 | Writes in the moments after a move land at the old place | 4 | data safety | 3 | code-verified | open | | blocking |
 | F124 | Scripts and the console share one interpreter for the app's life | 3 | security | 3 | code-verified | decision (D10) | | blocking |
 | F125 | Limits that hold alone aren't tried together | 3 | performance | 2 | suspected | open | | nonblocking |
+| F126 | A beat timing test failed once under load | 1 | test harness | 5 | reproduced | open | | nonblocking |
 
 ## Open findings: detail and next action
 
@@ -387,7 +387,7 @@ can't be made (`CompositionExporter.swift:150–156`,
 fails (`MatroskaMedia.swift:48`). *Next:* verify; refuse rather than
 read moved bytes.
 
-**F35 — The Python console edits the wrong project** with a Timeline
+**F35 — *(fixed in `a1edb8c8`)* The Python console edits the wrong project** with a Timeline
 window in front (`ScriptConsole.swift:67–72`). *Read again (third
 review):* `frontSession()` takes the session whose editor window is the
 main window, and otherwise the first open project, so with a Timeline
@@ -401,7 +401,19 @@ and closing outlast as safe. *Next:* route by the session of the
 window in front, Timeline windows included (with F122's keying), refuse
 when there is none rather than take the first, and name the project in
 the console's title; an event test with two projects and a Timeline
-window in front.
+window in front. *Fixed:* a session records its timeline windows, and
+the line runs on the project that owns the main window, its own or a
+timeline window (`ProjectWindows.frontProject`); with one project open,
+that one; with several and none of theirs in front, the line is refused
+and stays in the input. The title names the project, and a line on a
+different one from the last is preceded by a note. Each timeline
+window keeps its own timeline, selection and playhead for scripts, so
+"the selected clips" are the ones selected where the line was typed;
+before, a run read the project window's (a side reading of this fix),
+and menu scripts get the same. *Tested:* `FrontProjectTests`; three of
+its checks fail with the old rule put back. Chosen from given windows,
+not with real windows made main (no event test): `NSApp.mainWindow` is
+read as before.
 
 **F36 — A render stretch may start between frames**
 (`SegmentRenderer.swift:26`). *Next:* compare exported frames of an
@@ -1075,7 +1087,7 @@ the persistence work before phase 6 goes far. F69 and F84 are above.
 
 ### From the third review of the ledger
 
-Three gaps the third review found, read in the code before recording.
+Three gaps the third review found, read in the code before recording, and a test that failed once while recording them (F126).
 
 **F123 — Writes in the moments after a move land at the old place**
 (from F67). *Expected:* once the package has moved, nothing is written
@@ -1142,6 +1154,21 @@ Severity 2: a project file could exhaust memory or hang the app.
 peak memory and time for a frame, an export and a load; then, for each
 resource, a refusal or a lower-resolution draw that happens before
 allocation and says so, with a test that it does.
+
+**F126 — A beat timing test failed once under load.**
+`BeatDetectorTests.beatsAreReportedOnTheirHitsNotBeforeThem` failed in
+the pre-commit hook's whole-suite run (2026-11-28, load average about
+11, the test taking 19.6 s against its usual second): a beat outside
+half a hop (`BeatDetectorTests.swift:122`). It passed in a whole-suite
+run through `run-tests.sh` three minutes before, on the same code,
+three times alone after, and in the next hook run. The test is
+arithmetic on a generated click track, and nothing in `Analysis/Beats/`
+reads the clock or chooses at random, so timing shouldn't change its
+result; why it did is not known, and the hook's summary kept only the
+failure's line, not the range of errors it printed. *Next:* run it
+repeatedly beside a loaded suite, keeping the message, and look for
+state shared with other suites, before calling it one of F5's
+load-sensitive tests.
 
 ## Fixed findings: detail
 
