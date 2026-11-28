@@ -29,10 +29,10 @@ struct HelperFrame: Equatable, Sendable {
 
     /// Past this a header is taken to be a broken stream, not a message.
     static let largestHeader = 64 * 1024 * 1024
-    /// Past this a payload is too: an expression's tables for an hour of
-    /// samples are a fraction of it. Without it a header could claim 9×10^15
-    /// bytes and have the app buffer all it was sent waiting for them
-    /// (code-review-notes.md, F57).
+    /// Past this a payload is too, whatever a run allows: an expression's
+    /// tables for an hour of samples are a fraction of it. Without it a
+    /// header could claim 9×10^15 bytes and have the app buffer all it was
+    /// sent waiting for them (code-review-notes.md, F57).
     static let largestPayload = 1024 * 1024 * 1024
 
     /// Reads frames from bytes as they arrive, which can cut a frame
@@ -43,11 +43,30 @@ struct HelperFrame: Equatable, Sendable {
         /// before it go once per `take`, not per frame, which copied what
         /// was left after every one.
         private var consumed = 0
+        /// The header of the frame whose payload is still arriving, read
+        /// once rather than again for every read of its payload.
+        private var pending: (header: JSONValue, length: Int, size: Int)?
+        /// The longest header taken; a longer one is a broken stream, found
+        /// from its length before its bytes are waited for.
+        var largestHeader = HelperFrame.largestHeader
+        /// The largest payload taken; a header claiming more is a broken
+        /// stream at once, before its payload is waited for. The reader
+        /// sets it for each run to what that run's result may hold.
+        var largestPayload = HelperFrame.largestPayload
+
+        /// Bytes taken in that no frame given yet holds: the frame still
+        /// arriving.
+        var buffered: Int { buffer.count - consumed }
 
         /// Takes in bytes read and gives every frame they complete.
         mutating func take(_ bytes: Data) throws -> [HelperFrame] {
+            try takeSized(bytes).map(\.frame)
+        }
+
+        /// The same, with each frame's size as it was sent.
+        mutating func takeSized(_ bytes: Data) throws -> [(frame: HelperFrame, size: Int)] {
             buffer.append(bytes)
-            var frames: [HelperFrame] = []
+            var frames: [(frame: HelperFrame, size: Int)] = []
             while let frame = try nextFrame() { frames.append(frame) }
             if consumed > 0 {
                 buffer.removeSubrange(buffer.startIndex..<buffer.startIndex + consumed)
@@ -56,20 +75,26 @@ struct HelperFrame: Equatable, Sendable {
             return frames
         }
 
-        private mutating func nextFrame() throws -> HelperFrame? {
+        private mutating func nextFrame() throws -> (frame: HelperFrame, size: Int)? {
             let left = buffer.count - consumed
-            guard left >= 4 else { return nil }
             let start = buffer.startIndex + consumed
-            let length = buffer[start..<start + 4].enumerated().reduce(0) { $0 | Int($1.element) << (8 * $1.offset) }
-            guard length <= HelperFrame.largestHeader else { throw ScriptHelperError.brokenStream("a header of \(length) bytes") }
-            guard left >= 4 + length else { return nil }
-            let header = try JSONDecoder().decode(JSONValue.self, from: buffer[start + 4..<start + 4 + length])
-            let size = header["bytes"]?.int ?? 0
-            guard (0...HelperFrame.largestPayload).contains(size) else { throw ScriptHelperError.brokenStream("a payload of \(size) bytes") }
-            guard left >= 4 + length + size else { return nil }
+            if pending == nil {
+                guard left >= 4 else { return nil }
+                let length = buffer[start..<start + 4].enumerated().reduce(0) { $0 | Int($1.element) << (8 * $1.offset) }
+                guard length <= largestHeader else { throw ScriptHelperError.brokenStream("a header of \(length) bytes") }
+                guard left >= 4 + length else { return nil }
+                let header = try JSONDecoder().decode(JSONValue.self, from: buffer[start + 4..<start + 4 + length])
+                let size = header["bytes"]?.int ?? 0
+                guard (0...min(largestPayload, HelperFrame.largestPayload)).contains(size) else {
+                    throw ScriptHelperError.brokenStream("a payload of \(size) bytes")
+                }
+                pending = (header, length, size)
+            }
+            guard let (header, length, size) = pending, left >= 4 + length + size else { return nil }
             let payload = Data(buffer[start + 4 + length..<start + 4 + length + size])
             consumed += 4 + length + size
-            return HelperFrame(header: header, payload: payload)
+            pending = nil
+            return (HelperFrame(header: header, payload: payload), 4 + length + size)
         }
     }
 }
@@ -107,6 +132,17 @@ struct HelperRequest: Sendable {
     var fields: [String: JSONValue] = [:]
     /// Raw little-endian float64s after the header: an expression's tables.
     var payload = Data()
+    /// The most bytes its result's payload may hold: for an expression,
+    /// its `count` samples of `width` numbers, as the helper makes it;
+    /// nothing else has one. A frame claiming more ends the helper before
+    /// its payload is read (code-review-notes.md, F57).
+    var largestResult: Int {
+        guard kind == .expression, let count = fields["count"]?.int, let width = fields["width"]?.int,
+              count >= 0, width >= 0 else { return 0 }
+        let (numbers, over) = count.multipliedReportingOverflow(by: width)
+        let (bytes, overAgain) = numbers.multipliedReportingOverflow(by: 8)
+        return over || overAgain ? 0 : bytes
+    }
 
     func header(id: Int) -> JSONValue {
         var header: [String: JSONValue] = fields.merging([
