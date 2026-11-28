@@ -123,7 +123,10 @@ for clip in amv.selection:
     blur["blurRadius"].keyframes = [(start, 40), (start + 1, 0)]
 ```
 
-- Choosing one runs it on the project in the front window. Everything it
+- Choosing one runs it on the project in the front window, its own or a
+  timeline window, and `amv.timeline`, `amv.selection` and `amv.playhead`
+  are that window's: a timeline window's own timeline, selected clips
+  and playhead, not the project window's. Everything it
   changed is **one undo step**, "Run “Stagger Selected Clips”".
 - **All or nothing**: a script that raises changes nothing. Its
   traceback opens in the console.
@@ -146,6 +149,15 @@ below, with history on the up and down arrows. `amv` is already
 imported. Each line entered is a run of its own, so each is an undo step
 when it changed something. Names set on one line are there on the next.
 What scripts print, and their tracebacks, go here too.
+
+A line runs on the project whose window is in front, its own or a
+timeline window, with that window's selection, as a script chosen from
+the menu does; the console's title names the project, and a line on a
+different project from the last one is preceded by "On “Name”". With one
+project open, that is the one. With several open and the window in
+front none of theirs, the line doesn't run, and stays in the input to
+run again once a project's window is clicked: it never runs on another
+open project instead (code-review-notes.md, F35).
 
 ### Allowing code
 

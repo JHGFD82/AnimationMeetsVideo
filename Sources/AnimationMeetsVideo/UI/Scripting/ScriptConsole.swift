@@ -3,22 +3,26 @@ import Observation
 import SwiftUI
 
 extension EnvironmentValues {
-    /// Where scripts read what a project's window shows (see
-    /// `ScriptWindowState`); set only in the project's own window.
+    /// Where scripts read what a window shows (see `ScriptWindowState`):
+    /// the project's own window's, or a timeline window's own.
     @Entry var scriptWindow: ScriptWindowState?
 }
 
 /// The Python Console's floating panel (Scripts > Python Console): output
 /// above, one input line below. Each line entered is a run of its own on
-/// the project in the front window, so each is an undo step when it
-/// changed something; names set on one line are there on the next. What
-/// scripts print, and their tracebacks, come here too.
+/// the project in the front window, its own or a timeline window, so each
+/// is an undo step when it changed something; names set on one line are
+/// there on the next. The title names that project. What scripts print,
+/// and their tracebacks, come here too.
 @MainActor
 final class ScriptConsoleWindow {
     static let shared = ScriptConsoleWindow()
 
     private var panel: NSPanel?
     private var closeWatcher: ConsoleCloseWatcher?
+    private var mainWindowObservers: [NSObjectProtocol] = []
+    /// The project the last line ran on, so a line on another says so.
+    weak var lastProject: ProjectSession?
 
     var isOpen: Bool { panel != nil }
 
@@ -35,7 +39,7 @@ final class ScriptConsoleWindow {
             backing: .buffered,
             defer: false
         )
-        panel.title = "Python Console"
+        panel.title = Self.title(for: ProjectWindows.shared.frontProject)
         panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = false
         panel.hidesOnDeactivate = true
@@ -49,7 +53,24 @@ final class ScriptConsoleWindow {
         panel.setFrameAutosaveName("PythonConsole")
         self.panel = panel
         closeWatcher = watcher
+        // The title follows the window in front, so it always names the
+        // project a line would run on.
+        mainWindowObservers = [NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateTitle() }
+            }
+        }
         panel.makeKeyAndOrderFront(nil)
+    }
+
+    /// Names the project in front in the title.
+    func updateTitle() {
+        panel?.title = Self.title(for: ProjectWindows.shared.frontProject)
+    }
+
+    static func title(for front: ProjectWindows.FrontProject) -> String {
+        guard case .project(let session) = front, let name = session.displayName else { return "Python Console" }
+        return "Python Console \u{2014} \(name)"
     }
 
     func close() {
@@ -60,16 +81,19 @@ final class ScriptConsoleWindow {
         UserDefaults.standard.set(false, forKey: Preferences.showsScriptConsole)
         panel = nil
         closeWatcher = nil
+        for observer in mainWindowObservers { NotificationCenter.default.removeObserver(observer) }
+        mainWindowObservers = []
     }
 
-    /// The project a line runs on: the one in the front editor window,
-    /// which stays the main window while the console has the keyboard.
-    static func frontSession() -> ProjectSession? {
-        let sessions = ProjectWindows.shared.sessions.filter { !$0.isEmpty }
-        if let main = NSApp.mainWindow, let session = sessions.first(where: { $0.editorWindow === main }) {
-            return session
+    /// Why a line can't run on any project, or nil with the project it runs
+    /// on: the one whose window, its own or a timeline window, is the main
+    /// window, which it stays while the console has the keyboard.
+    static func problem(with front: ProjectWindows.FrontProject) -> String? {
+        switch front {
+        case .project: nil
+        case .none: "Open a project to run Python on it."
+        case .unclear: "More than one project is open and the window in front is none of theirs. Click a window of the project to run it on, then press Return again."
         }
-        return sessions.first
     }
 }
 
@@ -117,7 +141,7 @@ struct ScriptConsole: View {
                     .onKeyPress(.upArrow) { step(-1) }
                     .onKeyPress(.downArrow) { step(1) }
                     .accessibilityLabel("Python line")
-                    .accessibilityHint("Return runs it on the project in the front window. Up and down arrows step through earlier lines. Escape or Command-Period stops a line that is running.")
+                    .accessibilityHint("Return runs it on the project in the front window, which the console's title names. Up and down arrows step through earlier lines. Escape or Command-Period stops a line that is running.")
                     // Kept enabled while a line runs, so it keeps the
                     // keyboard and Escape reaches it; submit() waits.
                     .onExitCommand { if runner.isRunning { runner.stop() } }
@@ -144,13 +168,24 @@ struct ScriptConsole: View {
     private func submit() {
         let code = line
         guard !code.trimmingCharacters(in: .whitespaces).isEmpty, !runner.isRunning else { return }
+        // Never another project in place of the one in front (F35): with
+        // none to tell, the line stays to run again once one is chosen.
+        let front = ProjectWindows.shared.frontProject
+        guard case .project(let session) = front else {
+            let problem = ScriptConsoleWindow.problem(with: front) ?? ""
+            transcript.append(.problem(problem))
+            AccessibilityNotification.Announcement(problem).post()
+            return
+        }
+        let console = ScriptConsoleWindow.shared
+        if console.lastProject !== session, let name = session.displayName {
+            transcript.append(.note("On \u{201C}\(name)\u{201D}"))
+        }
+        console.lastProject = session
+        console.updateTitle()
         transcript.append(.input(code))
         line = ""
         historyIndex = nil
-        guard let session = ScriptConsoleWindow.frontSession() else {
-            transcript.append(.problem("Open a project to run Python on it."))
-            return
-        }
         let request = HelperRequest(kind: .line, code: code, freshConsole: fresh)
         fresh = false
         Task {

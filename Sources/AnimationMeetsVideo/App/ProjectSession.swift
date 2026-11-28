@@ -25,8 +25,9 @@ final class ProjectSession {
     /// Where each timeline was left in the window, saved in the package
     /// beside the project (`ViewStateFile`), never as an edit.
     @ObservationIgnored let viewMemory = TimelineViewMemory()
-    /// What the project's window shows, for scripts' `amv.timeline`,
-    /// `amv.selection` and `amv.playhead`.
+    /// What the project's own window shows, for scripts' `amv.timeline`,
+    /// `amv.selection` and `amv.playhead`; each timeline window keeps its
+    /// own (`scriptWindow(in:)`).
     @ObservationIgnored let scriptWindow = ScriptWindowState()
     /// The project's scripts, in its package's `Scripts/`, for the
     /// Scripts menu.
@@ -34,6 +35,12 @@ final class ProjectSession {
     /// The project's own window, whose undo its timeline windows share
     /// (see `TimelineWindow`).
     @ObservationIgnored weak var editorWindow: NSWindow?
+    /// The project's timeline windows (`TimelineWindow`), held weakly, with
+    /// what each shows, so what acts on the window in front, such as the
+    /// Python Console, can tell which project one shows without going by
+    /// its package URL, and reads that window's selection, not the
+    /// project window's.
+    @ObservationIgnored private var timelineWindows: [WeakWindow] = []
     /// Set once the project's window has closed, which closes its timeline
     /// windows too.
     private(set) var isClosed = false
@@ -115,6 +122,38 @@ final class ProjectSession {
 
     /// No project yet: the window shows the start sheet.
     var isEmpty: Bool { projectURL == nil }
+
+    /// The project's name, as its windows' titles show it.
+    var displayName: String? { projectURL?.deletingPathExtension().lastPathComponent }
+
+    /// Records a window showing one of the project's timelines, and what
+    /// it shows.
+    func addTimelineWindow(_ window: NSWindow?, showing state: ScriptWindowState) {
+        guard let window else { return }
+        timelineWindows.removeAll { $0.window == nil || $0.window === window }
+        timelineWindows.append(WeakWindow(window: window, state: state))
+    }
+
+    /// What `window` shows, for a run: a timeline window's own timeline,
+    /// selection and playhead, or the project window's for any other.
+    func scriptWindow(in window: NSWindow?) -> ScriptWindowState {
+        guard let window, let entry = timelineWindows.first(where: { $0.window === window }) else { return scriptWindow }
+        return entry.state
+    }
+
+    /// What the window in front shows, when it is one of the project's.
+    var frontScriptWindow: ScriptWindowState { scriptWindow(in: NSApp.mainWindow) }
+
+    /// Whether `window` is the project's own window or one of its timeline
+    /// windows.
+    func owns(_ window: NSWindow) -> Bool {
+        editorWindow === window || timelineWindows.contains { $0.window === window }
+    }
+
+    private struct WeakWindow {
+        weak var window: NSWindow?
+        let state: ScriptWindowState
+    }
 
     func isOpen(_ url: URL) -> Bool {
         projectURL.map { Self.isSamePackage($0, url) } ?? false
