@@ -87,6 +87,23 @@ struct ClipTime: Equatable, Sendable {
     /// How fast a clip may play, in either direction.
     static let speedRange = 1.0...10_000.0
 
+    /// The speeds, as percentages, retimed sound is heard at: AVFoundation's
+    /// time-pitch algorithms are documented for 1/32 to 32 times. Outside,
+    /// a reader handed back no sound for the piece, and an export of a
+    /// timeline whose only sound was a clip at 2% wrote an empty WAV and
+    /// called it done (F109); so sound outside is left out, silent alike
+    /// in playback and export. A ramp through a near-stop goes quiet over
+    /// it and plays on either side.
+    static let soundSpeeds = 3.125...3200.0
+
+    /// Whether `file` of sound played over `length` of the timeline is
+    /// within `soundSpeeds`, give or take rounding.
+    static func playsSound(file: CMTime, over length: CMTime) -> Bool {
+        guard length > .zero, file > .zero else { return false }
+        let speed = 100 * file.seconds / length.seconds
+        return speed >= soundSpeeds.lowerBound * 0.999 && speed <= soundSpeeds.upperBound * 1.001
+    }
+
     /// `speed` held to `speedRange` in size, keeping its sign (zero counts
     /// as forwards).
     static func clampedSpeed(_ speed: Double) -> Double {

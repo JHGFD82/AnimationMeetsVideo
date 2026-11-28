@@ -220,6 +220,9 @@ enum CompositionExporter {
                     for piece in placement.pieces {
                         guard let placed = piece.within(audioInfo.audioRange) else { continue }
                         soundEnd = CMTimeMaximum(soundEnd, CMTimeAdd(placed.at, placed.length))
+                        // Sound played slower than 1/32 or faster than 32
+                        // times is silent (`ClipTime.soundSpeeds`).
+                        guard ClipTime.playsSound(file: placed.file.duration, over: placed.length) else { continue }
                         guard let (file, at, length) = Self.moved(placed, earlierBy: ahead) else { continue }
                         if audioTrack == nil {
                             audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
