@@ -103,6 +103,14 @@ actor PythonHelper: ScriptHelper {
             try connection.send(HelperFrame(header: request.header(id: id), payload: request.payload))
             while true {
                 let frame = try await connection.reader.next()
+                // The helper tags calls and output with the run under way,
+                // or none between runs. Any other is from a thread an earlier
+                // run left, or code writing to the pipe itself; answered, it
+                // would read this run's project, which may be another's
+                // (code-review-notes.md, F55). The helper is ended instead.
+                if frame.type == "call" || frame.type == "output", frame.header["run"]?.int != id {
+                    throw ScriptHelperError.brokenStream("a \(frame.type) from outside the run under way")
+                }
                 switch frame.type {
                 case "call":
                     guard let callID = frame.header["id"]?.int, let call = HelperCall(frame.header) else {
