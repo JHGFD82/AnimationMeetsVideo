@@ -185,4 +185,21 @@ struct TapeScrubEngineTests {
         try await Task.sleep(for: .milliseconds(100))
         #expect(tape.position == rest)
     }
+
+    // F92: the tape came to rest a tick before its frame at 23.976 fps, as
+    // a timeline conformed to its media has it (a Float's rate), so the
+    // exact seek showed the frame before the timecode's.
+    @Test func theTapeRestsExactlyOnTheStartOfItsFrame() {
+        let rate = Double(Float(24_000.0 / 1001))
+        let frame = CMTime(value: 1001, timescale: 24_000)
+        for index in [1, 2, 24, 25, 1000, 2999] {
+            let start = CMTimeMultiply(frame, multiplier: Int32(index))
+            // Anywhere in the frame, its very start included.
+            for into in [0.0, 0.3, 0.999] {
+                let rest = PlaybackModel.tapeRest(atSeconds: start.seconds + into * frame.seconds, frameRate: rate)
+                #expect(CMTimeCompare(rest, start) == 0, "frame \(index), \(into) in: \(rest.value)/\(rest.timescale)")
+            }
+        }
+        #expect(CMTimeCompare(PlaybackModel.tapeRest(atSeconds: 1.99, frameRate: 30), CMTime(value: 59, timescale: 30)) == 0)
+    }
 }
