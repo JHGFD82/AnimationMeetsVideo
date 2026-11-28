@@ -148,6 +148,31 @@ struct ConfinementTests {
         #expect(end == .finished(display: "True"))
     }
 
+    /// Confined code can't write preferences through `cfprefsd`, a way
+    /// out the profile's file rules wouldn't cover: no Mach service is
+    /// allowed, so the write goes nowhere. The same calls unconfined do
+    /// write (tried by hand, code-review-notes.md, F60).
+    @Test func preferencesCantBeWrittenThroughCfprefsd() async throws {
+        let domain = "com.example.amv-confinement-\(UUID().uuidString)"
+        let synchronized = try await run("""
+        import ctypes
+        cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+        cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+        cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+        cf.CFPreferencesSetAppValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        cf.CFPreferencesAppSynchronize.argtypes = [ctypes.c_void_p]
+        cf.CFPreferencesAppSynchronize.restype = ctypes.c_bool
+        text = lambda t: cf.CFStringCreateWithCString(None, t.encode(), 0x08000100)
+        app = text("\(domain)")
+        cf.CFPreferencesSetAppValue(text("written"), text("yes"), app)
+        cf.CFPreferencesAppSynchronize(app)
+        """)
+        #expect(synchronized == "False")
+        CFPreferencesAppSynchronize(domain as CFString)
+        #expect(CFPreferencesCopyAppValue("written" as CFString, domain as CFString) == nil)
+        let plist = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Preferences/\(domain).plist")
+        #expect(!FileManager.default.fileExists(atPath: plist.path))
+    }
 }
 
 /// The profile itself, which needs no Mac to read.
