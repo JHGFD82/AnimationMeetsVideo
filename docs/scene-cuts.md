@@ -402,7 +402,12 @@ its own is left whole: it has no picture edge to keep to.
 
 - **An added cut** inside a clip splits it there, as the blade does. Effects
   and keyframes are in the clip's source time and both halves keep them,
-  so nothing about how the clip plays changes.
+  so nothing about how the clip plays changes. The split is on the
+  timeline's frames: where the source's rate differs from the timeline's,
+  the cut plays between two frames, and the clip is split at the first
+  frame after it, both halves meeting at the moment the whole clip played
+  there (so the new scene's first source frame can be passed over, as it
+  was before). A backwards clip is still split at the cut itself.
 - **Animation across an added cut.** If any keyframed value on the clip
   (anchor point, volume, pan, speed, or a control of one of its effects)
   has keyframes on both sides of the cut, splitting would leave one
@@ -415,7 +420,7 @@ its own is left whole: it has no picture edge to keep to.
   timeline.
 - **A removed cut** joins two clips that meet there: next to each other on
   the layer (within `Timeline.abutmentTolerance`) and on either side of the
-  cut in the footage. Keyframed values that are the same on both stay as
+  cut in the footage, or split on the first frame after it. Keyframed values that are the same on both stay as
   they are. Otherwise they are joined: the first clip's keyframes before
   its last frame, a **hold keyframe** on its last frame with its value
   there, a keyframe at the cut with the second clip's value there, then
