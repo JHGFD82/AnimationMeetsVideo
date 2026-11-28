@@ -505,10 +505,14 @@ extension CompositionExporter {
 
         func piece(from a: CMTime, to b: CMTime) -> Placement.Piece {
             let first = clip.sourceTime(atTimelineTime: a), last = clip.sourceTime(atTimelineTime: b)
-            // Backwards, a piece is a frame's worth of footage starting at
-            // where the piece starts, so it shows that moment.
+            // A piece plays its span of the source from its lower end, which
+            // is what the clip shows at `a` (`shownSourceTime`): forwards its
+            // start, backwards a frame's worth below it. Backwards it played
+            // from its edge time instead, the exclusive out point at the
+            // clip's start, so a backwards clip began on the next shot's
+            // first frame and never showed its own first (F106).
             return Placement.Piece(
-                file: CMTimeRange(start: media.fileTime(forSourceTime: first), duration: CMTimeSubtract(max(first, last), min(first, last))),
+                file: CMTimeRange(start: media.fileTime(forSourceTime: CMTimeMinimum(first, last)), duration: CMTimeSubtract(max(first, last), min(first, last))),
                 at: CMTimeAdd(a, offset), duration: CMTimeSubtract(b, a)
             )
         }

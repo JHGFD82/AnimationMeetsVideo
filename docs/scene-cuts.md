@@ -416,7 +416,9 @@ its own is left whole: it has no picture edge to keep to.
   the cut plays between two frames, and the clip is split at the first
   frame after it, both halves meeting at the moment the whole clip played
   there (so the new scene's first source frame can be passed over, as it
-  was before). A backwards clip is still split at the cut itself.
+  was before). A backwards clip is split by the same rule: at the first
+  frame whose picture is the scene before the cut, which it plays second;
+  with matching rates that is the cut's own time.
 - **Animation across an added cut.** If any keyframed value on the clip
   (anchor point, volume, pan, speed, or a control of one of its effects)
   has keyframes on both sides of the cut, splitting would leave one

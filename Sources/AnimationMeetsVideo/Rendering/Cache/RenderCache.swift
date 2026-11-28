@@ -20,8 +20,9 @@ struct RenderSegment: Equatable, @unchecked Sendable {
     /// Bumped when drawing changes in a way the key doesn't capture, so old
     /// renders stop matching. 5: footage is read a tick late (F91), ramped
     /// times round to the nearest tick (F104), and Blend mixes in nothing
-    /// past the trim (F105).
-    static let formatVersion = 5
+    /// past the trim (F105). 6: a backwards clip shows its own frames,
+    /// from its last included one, not the next shot's (F106).
+    static let formatVersion = 6
 }
 
 /// Rendered segments in a package's `Cache/Renders/` folder, one ProRes

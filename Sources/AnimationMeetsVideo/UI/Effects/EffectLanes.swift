@@ -15,14 +15,14 @@ struct ClipLaneGeometry {
     var pixelsPerSecond: CGFloat { width / CGFloat(duration) }
 
     /// A source time as a time in the lane (0 at the clip's start), where it
-    /// plays, which differs from its distance from the trim start when the
-    /// clip is retimed.
+    /// is shown, which differs from its distance from the trim start when
+    /// the clip is retimed (`TimelineClip.shownSourceTime`).
     func lane(fromSource time: CMTime) -> CMTime {
-        CMTimeSubtract(clip.timelineTime(forSourceTime: time), clip.startOffset)
+        CMTimeSubtract(clip.timelineTime(forShownSourceTime: time, frame: timeline.frameDuration), clip.startOffset)
     }
 
     func source(fromLane time: CMTime) -> CMTime {
-        clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, time))
+        clip.shownSourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, time), frame: timeline.frameDuration)
     }
 
     /// A timeline time as a time in the lane.
@@ -49,10 +49,13 @@ struct ClipLaneGeometry {
         return CMTimeMinimum(CMTimeMaximum(timeline.snappedToFrame(raw), clip.startOffset), clip.endOffset)
     }
 
-    /// The clip's source time at `time` in the timeline, held inside the
-    /// clip so edits made with the playhead elsewhere land on its edge.
+    /// The clip's source time shown at `time` in the timeline, held inside
+    /// the clip so edits made with the playhead elsewhere land on its edge.
     func clampedSource(atTimeline time: CMTime) -> CMTime {
-        clip.sourceTime(atTimelineTime: CMTimeMinimum(CMTimeMaximum(time, clip.startOffset), clip.endOffset))
+        let shown = clip.shownSourceTime(
+            atTimelineTime: CMTimeMinimum(CMTimeMaximum(time, clip.startOffset), clip.endOffset), frame: timeline.frameDuration
+        )
+        return CMTimeMinimum(CMTimeMaximum(shown, clip.trimStart), clip.trimEnd)
     }
 }
 

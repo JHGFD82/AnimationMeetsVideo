@@ -489,7 +489,7 @@ struct PenOverlay: View {
         guard let timeline = project.timeline(id: source.timelineID),
               let clip = project.clipAndLayer(target.clipID, in: source.timelineID)?.clip
         else { return nil }
-        let sourceTime = clip.sourceTime(atTimelineTime: time)
+        let sourceTime = clip.shownSourceTime(atTimelineTime: time, frame: timeline.frameDuration)
         return HandleContext(
             clip: clip, sourceTime: sourceTime, frameSize: timeline.frameSize, pictureRect: .zero,
             selectedEffectID: target.effectID, shownUpTo: source.effectsState.showUpTo?.effectID,

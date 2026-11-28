@@ -239,12 +239,16 @@ extension EditingProject {
         guard first.isReversed == second.isReversed,
               CMTimeAbsoluteValue(CMTimeSubtract(second.startOffset, first.endOffset)) < Timeline.abutmentTolerance
         else { return false }
+        let played = first.timelineTime(forSourceTime: cut)
         if first.isReversed {
-            return CMTimeCompare(first.trimStart, cut) == 0 && CMTimeCompare(second.trimEnd, cut) == 0
+            // Split backwards (`pieces(splitAt:on:)`): at the first frame
+            // after the cut's time less a frame, so the cut plays within
+            // the frame from there.
+            guard CMTimeCompare(first.trimStart, second.trimEnd) == 0, CMTimeCompare(first.trimStart, cut) >= 0 else { return false }
+            return CMTimeCompare(played, first.endOffset) >= 0 && CMTimeCompare(CMTimeSubtract(played, first.endOffset), frame) < 0
         }
         guard CMTimeCompare(first.trimEnd, second.trimStart) == 0, CMTimeCompare(first.trimEnd, cut) >= 0 else { return false }
         // The cut plays within the first's last frame (or at its end).
-        let played = first.timelineTime(forSourceTime: cut)
         return CMTimeCompare(played, first.endOffset) <= 0 && CMTimeCompare(CMTimeSubtract(first.endOffset, played), frame) < 0
     }
 
@@ -366,21 +370,32 @@ extension TimelineClip {
         var pieces = [self]
         for cut in cuts.sorted(by: { CMTimeCompare($0, $1) < 0 }) {
             guard let piece = pieces.first(where: { $0.plays(cut) }) else { continue }
-            guard !piece.isReversed else {
-                pieces.splitClip(piece.id, at: cut)
-                continue
-            }
             // On the timeline's frames, as the blade splits: at the first
-            // frame showing the new scene. Where the source's rate differs
-            // from the timeline's, the cut plays between two frames, and a
-            // half starting there was trimmed to whole frames on reopening,
-            // leaving a frame of nothing. Both halves meet at the moment the
-            // whole clip played at that frame, so it plays as before; the
-            // new scene's first source frame may be passed over, as the
+            // frame whose picture (`shownSourceTime`) is the second half's
+            // scene, the new one forwards, the earlier one backwards. Where
+            // the source's rate differs from the timeline's, the cut plays
+            // between two frames, and a half starting there was trimmed to
+            // whole frames on reopening, leaving a frame of nothing. Both
+            // halves meet at the clip's edge mapping there, so each keeps
+            // the whole clip's mapping and every frame shows and reads what
+            // it did; a source frame by the cut may be passed over, as the
             // whole clip passed over it.
-            let frame = timeline.frameAligned(piece.timelineTime(forSourceTime: cut), .up)
+            //
+            // Forwards the frame at `t` shows the cut's side from the cut's
+            // own time on; backwards a frame shows the source below its
+            // edge time, so it shows the earlier side once its next frame's
+            // edge time is past the cut: from the first frame after the
+            // cut's time less a frame. With matching rates both are the
+            // cut's own time, where they always split.
+            let frameLength = timeline.frameDuration
+            let played = piece.timelineTime(forSourceTime: cut)
+            let frame = piece.isReversed
+                ? CMTimeAdd(timeline.frameAligned(CMTimeSubtract(played, frameLength), .down), frameLength)
+                : timeline.frameAligned(played, .up)
             let split = piece.sourceTime(atTimelineTime: frame)
-            guard CMTimeCompare(split, piece.trimEnd) < 0, CMTimeCompare(split, cut) >= 0 else { continue }
+            guard frame > piece.startOffset, frame < piece.endOffset, piece.plays(split) || split == cut,
+                  CMTimeCompare(split, cut) >= 0
+            else { continue }
             pieces.splitClip(piece.id, at: split, startingSecondAt: frame)
         }
         return pieces

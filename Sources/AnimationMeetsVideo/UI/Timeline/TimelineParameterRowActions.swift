@@ -41,7 +41,7 @@ extension TimelineView {
             ParameterRowLanes(
                 groups: block.parameterGroups,
                 isClosed: { parameterRows.isClosed($0, on: layer.id) },
-                lane: { row in ParameterLaneMarks(row.key, of: layer.clips.filter { row.clips.contains($0.id) }) },
+                lane: { row in ParameterLaneMarks(row.key, of: layer.clips.filter { row.clips.contains($0.id) }, frame: timeline.frameDuration) },
                 currentTime: timeline.snappedToFrame(parked),
                 pixelsPerSecond: pixelsPerSecond,
                 width: width,
@@ -71,10 +71,10 @@ extension TimelineView {
         let clips = layer.clips.filter { row.clips.contains($0.id) }
         let kind = clips.lazy.compactMap { $0.parameter(row.key)?.control.kind }.first
         return ParameterRowState(
-            values: acting.isEmpty ? nil : project.parameterValue(row.key, of: acting, at: time),
+            values: acting.isEmpty ? nil : project.parameterValue(row.key, of: acting, at: time, frame: project.timeline(id: timelineID)?.frameDuration ?? .zero),
             actingClipCount: acting.count,
             isAnimated: acting.contains { $0.parameter(row.key)?.control.isAnimated == true },
-            keyframeTimes: ParameterLaneMarks(row.key, of: clips).marks.map(\.time),
+            keyframeTimes: ParameterLaneMarks(row.key, of: clips, frame: project.timeline(id: timelineID)?.frameDuration ?? .zero).marks.map(\.time),
             unit: kind?.unit ?? "",
             dragStep: kind?.dragStep ?? 1,
             range: kind?.range,

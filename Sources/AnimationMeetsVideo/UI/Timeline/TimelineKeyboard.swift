@@ -336,7 +336,7 @@ extension TimelineView {
         if showsEffects, let selection, selection.timelineID == timelineID,
            let clip = project.clipAndLayer(selection.timelineClipID, in: timelineID)?.clip {
             var copy = clip
-            if copy.easeKeyframes(atTimelineTime: time, preset) {
+            if copy.easeKeyframes(atTimelineTime: time, frame: timeline.frameDuration, preset) {
                 host.dispatch(.editProject { $0.editClip(clip.id, in: timelineID) { $0 = copy } })
                 eased = true
             }

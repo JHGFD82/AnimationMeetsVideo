@@ -266,11 +266,11 @@ struct ParameterTimeAxis {
     static let timescale: CMTimeScale = 240_000
 
     func keyTime(atTimeline time: CMTime) -> CMTime {
-        clip?.sourceTime(atTimelineTime: time) ?? time
+        clip?.shownSourceTime(atTimelineTime: time, frame: frameDuration) ?? time
     }
 
     func timelineTime(atKey time: CMTime) -> CMTime {
-        clip?.timelineTime(forSourceTime: time) ?? time
+        clip?.timelineTime(forShownSourceTime: time, frame: frameDuration) ?? time
     }
 
     /// The parameter's time nearest `seconds` that plays on a frame of the

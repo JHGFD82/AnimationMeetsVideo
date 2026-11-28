@@ -106,7 +106,7 @@ struct KeyframeDesigner: View {
 
     /// The clip's source time at the parked playhead, held inside the clip.
     private func sourceTime(_ clip: TimelineClip, _ timeline: Timeline) -> CMTime {
-        let time = clip.sourceTime(atTimelineTime: timeline.snappedToFrame(hud.playhead))
+        let time = clip.shownSourceTime(atTimelineTime: timeline.snappedToFrame(hud.playhead), frame: timeline.frameDuration)
         return CMTimeMinimum(CMTimeMaximum(time, clip.trimStart), clip.trimEnd)
     }
 
@@ -393,7 +393,7 @@ private struct KeyframeDesignerSidebar: View {
 
     /// The clip's source time at the parked playhead, held inside the clip.
     private var sourceTime: CMTime {
-        let time = clip.sourceTime(atTimelineTime: timeline.snappedToFrame(hud.playhead))
+        let time = clip.shownSourceTime(atTimelineTime: timeline.snappedToFrame(hud.playhead), frame: timeline.frameDuration)
         return CMTimeMinimum(CMTimeMaximum(time, clip.trimStart), clip.trimEnd)
     }
 
@@ -502,10 +502,10 @@ private struct KeyframeDesignerSidebar: View {
     private func rangeMenu(_ setup: KeyframingSetup) -> some View {
         let label: String = {
             guard let range = setup.range else { return "Whole Clip" }
-            let start = clip.timelineTime(forSourceTime: range.start), end = clip.timelineTime(forSourceTime: range.end)
+            let start = clip.timelineTime(forShownSourceTime: range.start, frame: timeline.frameDuration), end = clip.timelineTime(forShownSourceTime: range.end, frame: timeline.frameDuration)
             return "\(CMTimeMinimum(start, end).timecode(frameRate: timeline.frameRate)) – \(CMTimeMaximum(start, end).timecode(frameRate: timeline.frameRate))"
         }()
-        let now = clip.sourceTime(atTimelineTime: timeline.snappedToFrame(hud.playhead))
+        let now = clip.shownSourceTime(atTimelineTime: timeline.snappedToFrame(hud.playhead), frame: timeline.frameDuration)
         let inClip = now >= clip.trimStart && now <= clip.trimEnd
         return Menu(label) {
             Button("Start at Playhead") { editSetup { $0.setRange(start: now, in: clip) } }

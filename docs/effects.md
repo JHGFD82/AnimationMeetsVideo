@@ -381,6 +381,18 @@ works on frames already chosen:
   exporter builds a backwards clip from a piece for every frame, and its
   sound is silent.
 
+  One mapping says what a clip shows at each timeline frame, and its
+  picture, its source-relative keyframes, expressions and Blend all read
+  it (`TimelineClip.shownSourceTime`); controls that count in timeline
+  time keep doing so. A clip's source range is end-exclusive, so a
+  backwards clip begins on its last included frame and ends on its first:
+  each timeline frame plays a span of the source downwards and shows the
+  frame at the span's lower end. At 50% it shows each frame twice, last
+  first, as forwards shows them first first. Trims and splits keep the
+  clip's edges (`sourceTime(atTimelineTime:)`), where the out point is
+  the clip's start. A backwards clip used to begin on the frame after its
+  out point, the next shot's first, and never showed its own first.
+
   How long a ramp lasts is the integral of 100 / speed over the source
   time it plays, taken from the curve itself (its eases included, speed
   clamped to 1%...10000% in the clip's direction: an ease that overshoots

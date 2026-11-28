@@ -52,6 +52,7 @@ extension EditingProject {
     /// can be a row.
     func copiedKeyframes(_ picked: [UUID: [UUID: [CMTime]]], ofClip clipID: UUID, in timelineID: UUID) -> CopiedKeyframes? {
         guard let clip = clipAndLayer(clipID, in: timelineID)?.clip else { return nil }
+        let frame = timeline(id: timelineID)?.frameDuration ?? .zero
         var found: [(key: ParameterRowKey, keyframes: [(time: Double, frame: AnimationMeetsVideo.Keyframe<ComponentValue>)])] = []
         for (effectID, controls) in picked {
             for (controlID, times) in controls {
@@ -60,7 +61,7 @@ extension EditingProject {
                 else { continue }
                 let wanted = Set(times)
                 let keyframes = control.number.keyframes.filter { wanted.contains($0.time) }.map {
-                    (time: clip.timelineTime(forSourceTime: $0.time).seconds, frame: $0)
+                    (time: clip.timelineTime(forShownSourceTime: $0.time, frame: frame).seconds, frame: $0)
                 }
                 if !keyframes.isEmpty { found.append((key, keyframes)) }
             }
@@ -112,7 +113,7 @@ extension EditingProject {
                 let offset = CMTimeAdd(time, CMTime(seconds: frame.offset, preferredTimescale: ParameterTimeAxis.timescale))
                 let at = timeline?.snappedToFrame(offset) ?? offset
                 return AnimationMeetsVideo.Keyframe(
-                    time: clip.sourceTime(atTimelineTime: at), value: ComponentValue(values: frame.values),
+                    time: clip.shownSourceTime(atTimelineTime: at, frame: timeline?.frameDuration ?? .zero), value: ComponentValue(values: frame.values),
                     easeIn: ease(frame.easeIn), easeOut: ease(frame.easeOut), hold: frame.hold ?? false
                 )
             }

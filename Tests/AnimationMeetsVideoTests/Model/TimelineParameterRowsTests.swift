@@ -102,19 +102,19 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(f.project.parameterActingClips(row, on: f.layer, selected: [], at: seconds(5)).map(\.id) == [f.second])
         let both = f.project.parameterActingClips(row, on: f.layer, selected: [f.first, f.second], at: seconds(5))
         #expect(both.count == 2)
-        #expect(f.project.parameterValue(opacity, of: both, at: seconds(5)) == [100])
+        #expect(f.project.parameterValue(opacity, of: both, at: seconds(5), frame: CMTime(value: 1, timescale: 24)) == [100])
         // Set on both at once, as one edit.
         let timelineID = f.timelineID
         f.project.editParameter(opacity, of: both.map(\.id), in: timelineID, { control, source in
             control.setComponent(0, to: 40, at: source)
         }, at: seconds(5))
         let after = [f.clip(f.first), f.clip(f.second)]
-        #expect(f.project.parameterValue(opacity, of: after, at: seconds(1)) == [40])
+        #expect(f.project.parameterValue(opacity, of: after, at: seconds(1), frame: CMTime(value: 1, timescale: 24)) == [40])
         // They differ once one is changed alone.
         f.project.editParameter(opacity, of: [f.second], in: timelineID, { control, source in
             control.setComponent(0, to: 70, at: source)
         }, at: seconds(5))
-        #expect(f.project.parameterValue(opacity, of: [f.clip(f.first), f.clip(f.second)], at: seconds(1)) == nil)
+        #expect(f.project.parameterValue(opacity, of: [f.clip(f.first), f.clip(f.second)], at: seconds(1), frame: CMTime(value: 1, timescale: 24)) == nil)
     }
 
     @Test func uShowsTheAnimatedAndUUTheChangedWhateverIsPicked() {

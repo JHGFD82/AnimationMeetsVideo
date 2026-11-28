@@ -74,7 +74,7 @@ enum PenTool {
               clip.enabled, setting.time >= clip.startOffset, setting.time < clip.endOffset
         else { return nil }
         let context = HandleContext(
-            clip: clip, sourceTime: clip.sourceTime(atTimelineTime: setting.time), frameSize: timeline.frameSize,
+            clip: clip, sourceTime: clip.shownSourceTime(atTimelineTime: setting.time, frame: timeline.frameDuration), frameSize: timeline.frameSize,
             pictureRect: .zero, selectedEffectID: target.effectID, shownUpTo: setting.shownUpTo
         )
         return PathHandles.locate(target.effectID, context)

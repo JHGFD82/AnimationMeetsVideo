@@ -91,14 +91,16 @@ struct ClipStack: @unchecked Sendable {
         edges?.transitionFrame(at: localTime(atRoot: time))
     }
 
-    /// The clip's source time at `local` in its timeline.
+    /// The moment of the clip's source shown at `local` in its timeline,
+    /// which its picture, its keyframes and Blend all take
+    /// (`TimelineClip.shownSourceTime(atTimelineTime:frame:)`).
     func sourceTime(atLocal local: CMTime) -> CMTime {
-        retimed?.sourceTime(atTimelineTime: local) ?? CMTimeSubtract(local, sourceShift)
+        retimed?.shownSourceTime(atTimelineTime: local, frame: frameDuration) ?? CMTimeSubtract(local, sourceShift)
     }
 
-    /// The timeline time a moment of the clip's source plays at.
+    /// The timeline time a moment of the clip's source is shown at.
     func timelineTime(forSource source: CMTime) -> CMTime {
-        retimed?.timelineTime(forSourceTime: source) ?? CMTimeAdd(source, sourceShift)
+        retimed?.timelineTime(forShownSourceTime: source, frame: frameDuration) ?? CMTimeAdd(source, sourceShift)
     }
 
     var hasTransitions: Bool { edges != nil }

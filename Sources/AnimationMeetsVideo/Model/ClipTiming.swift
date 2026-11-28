@@ -262,6 +262,34 @@ extension TimelineClip {
         return CMTime(value: Int64((seconds * 240_000).rounded()), timescale: 240_000)
     }
 
+    /// The moment of the source shown at timeline `time`, `frame` being the
+    /// timeline's frame: what the picture is, and what source-relative
+    /// keyframes, expressions and Blend are read at. One mapping for all of
+    /// them, where reading them at `sourceTime(atTimelineTime:)` read a
+    /// backwards clip a frame off its picture (F106).
+    ///
+    /// A clip's source range is end-exclusive, `[trimStart, trimEnd)`.
+    /// Forwards, the frame at `time` shows the source from
+    /// `sourceTime(atTimelineTime: time)` on, so the two are one. Backwards,
+    /// a timeline frame `[time, time + frame)` plays the source span below
+    /// `sourceTime(atTimelineTime: time)` down to
+    /// `sourceTime(atTimelineTime: time + frame)`, and its picture is the
+    /// frame that span starts at in the file: the lower end. So a backwards
+    /// clip begins on its last included frame, `trimEnd` less a frame's
+    /// worth, not at the exclusive out point, and ends exactly on
+    /// `trimStart`. At 50% it shows each frame twice, last first, as
+    /// forwards does first first. `sourceTime(atTimelineTime:)` stays the
+    /// clip's edges' mapping, for trims and splits.
+    func shownSourceTime(atTimelineTime time: CMTime, frame: CMTime) -> CMTime {
+        isReversed ? sourceTime(atTimelineTime: CMTimeAdd(time, frame)) : sourceTime(atTimelineTime: time)
+    }
+
+    /// The timeline time at which `shownSourceTime(atTimelineTime:frame:)`
+    /// is `source`: where a keyframe set on that moment of the source is.
+    func timelineTime(forShownSourceTime source: CMTime, frame: CMTime) -> CMTime {
+        isReversed ? CMTimeSubtract(timelineTime(forSourceTime: source), frame) : timelineTime(forSourceTime: source)
+    }
+
     /// How much source plays in `length` of timeline time from the clip's
     /// start (what trimming the end to that length leaves).
     func sourceDuration(forPlaced length: CMTime) -> CMTime {

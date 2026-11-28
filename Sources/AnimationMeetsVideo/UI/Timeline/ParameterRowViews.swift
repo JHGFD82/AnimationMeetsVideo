@@ -172,7 +172,7 @@ struct ParameterRowLanes: View {
                             onSeek: onSeek,
                             onMove: { from, to, copy in
                                 guard let at = marks.places[from] else { return }
-                                let target = at.clip.sourceTime(atTimelineTime: to)
+                                let target = at.clip.shownSourceTime(atTimelineTime: to, frame: marks.frame)
                                 onEdit(row, at.clip.id) { $0.moveKeyframe(at: at.source, to: target, copying: copy) }
                             },
                             onDelete: { time in
@@ -196,15 +196,18 @@ struct ParameterRowLanes: View {
 struct ParameterLaneMarks {
     var marks: [KeyframeMark] = []
     var places: [CMTime: (clip: TimelineClip, source: CMTime)] = [:]
+    /// The timeline's frame, for where a source time is shown.
+    var frame: CMTime
 
     /// Those of `clips` for `key`, each where it plays, only those inside
     /// the clip's trim. Where two clips' keyframes fall at one time, the
     /// first's is kept.
-    init(_ key: ParameterRowKey, of clips: [TimelineClip]) {
+    init(_ key: ParameterRowKey, of clips: [TimelineClip], frame: CMTime) {
+        self.frame = frame
         for clip in clips {
             guard let parameter = clip.parameter(key) else { continue }
             for mark in parameter.control.number.marks where mark.time >= clip.trimStart && mark.time <= clip.trimEnd {
-                let time = clip.timelineTime(forSourceTime: mark.time)
+                let time = clip.timelineTime(forShownSourceTime: mark.time, frame: frame)
                 guard places[time] == nil else { continue }
                 var placed = mark
                 placed.time = time

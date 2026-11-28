@@ -240,14 +240,16 @@ actor ProjectBridge {
 
     private func readSourceTime(_ call: HelperCall) throws -> JSONValue {
         let (timelineID, clip, _) = try self.clip(call)
-        let time = try ScriptTime.time(call["time"], in: working.timeline(id: timelineID))
-        return ScriptTime.json(clip.sourceTime(atTimelineTime: time))
+        let timeline = working.timeline(id: timelineID)
+        let time = try ScriptTime.time(call["time"], in: timeline)
+        return ScriptTime.json(clip.shownSourceTime(atTimelineTime: time, frame: timeline?.frameDuration ?? .zero))
     }
 
     private func readTimelineTime(_ call: HelperCall) throws -> JSONValue {
         let (timelineID, clip, _) = try self.clip(call)
-        let time = try ScriptTime.time(call["time"], in: working.timeline(id: timelineID))
-        return ScriptTime.json(clip.timelineTime(forSourceTime: time))
+        let timeline = working.timeline(id: timelineID)
+        let time = try ScriptTime.time(call["time"], in: timeline)
+        return ScriptTime.json(clip.timelineTime(forShownSourceTime: time, frame: timeline?.frameDuration ?? .zero))
     }
 
     private func readAsset(_ call: HelperCall) throws -> JSONValue {
@@ -281,7 +283,7 @@ actor ProjectBridge {
         var values: [JSONValue] = []
         var time = clip.startOffset
         while time <= clip.endOffset {
-            let source = CMTimeMinimum(CMTimeMaximum(clip.sourceTime(atTimelineTime: time), clip.trimStart), clip.trimEnd)
+            let source = CMTimeMinimum(CMTimeMaximum(clip.shownSourceTime(atTimelineTime: time, frame: frame), clip.trimStart), clip.trimEnd)
             if let base = context.ownBase, Self.read(of: target) == context.ownTarget {
                 values.append(ScriptValue.json(base.value(at: source)))
             } else {

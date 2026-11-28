@@ -150,7 +150,7 @@ struct ViewerHandlesOverlay: View {
         // viewer's picture follows too.
         let held = projectState?.held
         let drawn = Self.drawnClip(original, drag: source.state.drag, held: held, timelineID: source.timelineID)
-        let sourceTime = original.sourceTime(atTimelineTime: time)
+        let sourceTime = original.shownSourceTime(atTimelineTime: time, frame: timeline.frameDuration)
         var pictureSize: CGSize?
         if case .media(let id) = original.source {
             // Until the picture's size is read the box would be the

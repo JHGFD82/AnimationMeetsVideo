@@ -998,7 +998,7 @@ struct UISnapshots {
             .frame(width: 300)
             ParameterRowLanes(
                 groups: groups, isClosed: { rows.isClosed($0, on: layer.id) },
-                lane: { row in ParameterLaneMarks(row.key, of: layer.clips) }, currentTime: time, pixelsPerSecond: 80, width: 500,
+                lane: { row in ParameterLaneMarks(row.key, of: layer.clips, frame: CMTime(value: 1, timescale: 24)) }, currentTime: time, pixelsPerSecond: 80, width: 500,
                 snap: { $0 }, onSeek: { _ in }, onEdit: { _, _, _ in }
             )
         }
