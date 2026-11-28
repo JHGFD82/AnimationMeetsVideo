@@ -90,6 +90,36 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         }
     }
 
+    // F110: beats were reported at the analysis window's center, while
+    // spectral flux peaks as soon as a hit enters the window, about 10 ms
+    // before it: rounded to frames, a quarter of beats landed a frame early
+    // at 24 fps. Signed error of each beat against its click, as a median
+    // over clicks at several phases against the hop.
+    @Test func beatsAreReportedOnTheirHitsNotBeforeThem() throws {
+        let rate = BeatDetector.sampleRate
+        var errors: [Double] = []
+        // 120 BPM at phases across a hop, which the lead was measured on,
+        // and 100 and 150 BPM, which it wasn't.
+        let tracks = [0.1, 0.1013, 0.1027, 0.104, 0.1053].map { (interval: 0.5, first: $0) } + [(0.6, 0.117), (0.4, 0.131)]
+        for (interval, first) in tracks {
+            // As detection reads them (`BeatDetector.analyze`).
+            let analyzer = OnsetAnalyzer()
+            clickTrack(seconds: 12, interval: interval, first: first, sampleRate: rate).withUnsafeBufferPointer { analyzer.append($0) }
+            let result = try #require(try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
+            let beats = OnsetAnalyzer.hitSamples(ofFrames: result.frames, in: analyzer.envelope).map { Double($0) / rate }
+            for beat in beats where beat > 2 && beat < 10 {
+                let nearest = ((beat - first) / interval).rounded() * interval + first
+                errors.append(beat - nearest)
+            }
+        }
+        errors.sort()
+        let median = errors[errors.count / 2]
+        #expect(errors.count > 90)
+        // Each beat within 4 ms; the median within 3.
+        #expect(errors.allSatisfy { abs($0) < 0.004 }, "from \(errors.first! * 1000) to \(errors.last! * 1000) ms")
+        #expect(abs(median) < 0.003, "median error \(median * 1000) ms over \(errors.count) beats, from \(errors.first! * 1000) to \(errors.last! * 1000) ms")
+    }
+
     @Test func slowerClicksGiveTheirOwnTempo() throws {
         let rate = BeatDetector.sampleRate
         let samples = clickTrack(seconds: 16, interval: 60.0 / 90.0, first: 0.3, sampleRate: rate)
