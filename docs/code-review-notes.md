@@ -11,6 +11,21 @@ are still open: being reviewed is not being resolved. Where each phase
 stands is under "Where each phase stands"; every finding is in the
 ledger.
 
+A second review of this ledger (2026-11-28, from the document, not the
+code) asked that *fixed* mean the original guarantee is met, that
+budgets be safe in operation and that residuals be visible rather than
+left in a finding's paragraph. Its points were checked against the code
+before acting, under "From the second review of the ledger": F57's
+budgets were per frame and are now per run and in bytes; residuals of
+F6, F90, F91, F98, F99, F106, F107, F110 and F112 have their own IDs
+(F113 to F121); F80 was a lost take, not a usability nit, and is fixed;
+F60's two questions are kept apart; and F55's isolation is put to the
+owner (D9).
+Two of its readings didn't hold in the code: F106's mapping already
+follows the clip's time map, ramps and holds included, and F107's
+export already works on one copy of the project, but for the effect
+approvals it reads as it draws (F120).
+
 ## Reading this ledger
 
 The fields follow the plan's "Recording findings":
@@ -35,7 +50,8 @@ The fields follow the plan's "Recording findings":
   6 cosmetic), kept apart from the category.
 
 The evidence is this pass's: the runs, probes and tests were made on the
-branch `worktree-code-review-phase1`, on the Mac described under
+branches `worktree-code-review-phase1` and, from phase 5,
+`code-review-phase5`, on the Mac described under
 "Phase 1 baseline", and the reviews' readings were by this pass's
 reviewers. Nothing here has been checked by anyone outside it.
 
@@ -45,12 +61,12 @@ reviewers. Nothing here has been checked by anyone outside it.
 | --- | --- | --- | --- |
 | 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F24 |
 | 2. Architecture and maintainability | Complete | | F30–F47; its severity-1 findings are fixed |
-| 3. Security, privacy and dependencies | Complete | | F54, F55, F59–F62 (F53 accepted under D8) |
-| Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
-| Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
-| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded, and the end-to-end sync export test built (`9207e570`); the beat tick and MIDI taps read, not tried on hardware; detection quality and beat timing judged on generated material, not episodes and songs (D7) | none; residuals under F98, F99, F110, F112 |
-| 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
+| 3. Security, privacy and dependencies | Complete | | F54, F55, F59–F62 (F53 accepted under D8; F57's budgets redone) |
+| Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8; D9 proposed | F121 |
+| Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs; not to be called complete until it is | F4 |
+| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt; F67, F72, F35 and F73 block a release | F67, F69, F70, F72, F73, F75–F78, F82–F88 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded, and the end-to-end sync export test built (`9207e570`); the beat tick and MIDI taps read, not tried on hardware; detection quality and beat timing judged on generated material, not episodes and songs (D7); no frame-identity check over mixed rates, VFR, ramps and reverse (F119) | F114–F120 |
+| 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4, and phase 6 needn't wait for it | F113 |
 
 ## Stabilization checkpoint
 
@@ -61,12 +77,16 @@ From the plan's checkpoint, with the findings each part covers.
   F29 (backups across a clock change), F51 (names made into paths), F52
   (clips dropped at load), F71 (failed import), F74 (folder marked
   before load), F79 (package replaced), F81 (undo past arrived
-  analysis, reproduced first); F72 (export over a source) fixed but for
-  asking before stems replace same-named files.
+  analysis, reproduced first), F80 (a take left in the temporary
+  folder); F72 (export over a source) fixed but for asking before stems
+  replace same-named files. Still open and blocking: F67, F35, F73.
 - **B. Untrusted input. Done.** Fixed: F48 and F49 (numbers, text
   runs), F50 (timeline cycles), F56 (non-finite samples), F57 (helper
-  budgets: payloads at most 1 GiB, 10,000 unread frames, no per-frame
-  copies), F58 (script rational times). Defensive checks stay at the
+  budgets: a payload only on an expression's result and only of its
+  samples' size, frames not yet read held to 8 MiB for expressions and
+  256 MiB for scripts, headers to 1 MiB and 64 MiB; first done per frame,
+  redone after the second review), F58 (script rational times). F55,
+  the helper shared between projects and runs, is open (D9). Defensive checks stay at the
   operations too (F16, F17, F23).
 - **C. Trust in the test harness. Done but for F4.**
   `scripts/run-tests.sh` (`c55c39b0`, `9bd1b800`, `4bc6cf20`) passes a
@@ -76,7 +96,8 @@ From the plan's checkpoint, with the findings each part covers.
   a run below `MIN_TESTS`, one whose required suite was skipped, and a
   stand-in hang beside a decoy test process (only the run's own was
   sampled and stopped). F4 didn't recur in two whole-suite `UI_EVENTS`
-  runs through it at `ccdb6ea7`; it stays open until captured.
+  runs through it at `ccdb6ea7`; it stays open until captured, and the
+  checkpoint isn't complete while it is.
 - **D. Representative fixtures. Done** (`683801be`). `ReviewFixtures`
   makes numbered long-GOP movies at five rates and a variable one, held
   drawings, flashes, fades, a gradient and outlines, click tracks on
@@ -93,7 +114,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F3 | Convert to Path's refusal said "nil" | 1 | usability | 5 | code-verified | fixed | `98a9a862` · no test | nonblocking |
 | F4 | Whole suite under `UI_EVENTS` can hang | 1 | test harness | 2 | reproduced | open | | blocking |
 | F5 | Tests that fail when the Mac is busy | 1 | test harness | 5 | reproduced | open (part fixed) | `c23427a8` for `ScrubCacheTests` · reproduced at load 14 | nonblocking |
-| F6 | Binaries recorded SDK 15.0 | 1 | packaging | 5 | reproduced | fixed | `193d3e4c` (minimum 26.0) · `otool` | nonblocking |
+| F6 | Binaries recorded SDK 15.0 | 1 | packaging | 5 | reproduced | fixed (residual F113) | `193d3e4c` (minimum 26.0) · `otool` | nonblocking |
 | F7 | A clean checkout builds with no Python | 1 | packaging | 3 | reproduced | fixed | `96409e50` · tried both ways | blocking |
 | F8 | A failed export lost the file it replaced | 2 | data safety | 1 | code-verified | fixed | `35d82288` · test | blocking |
 | F9 | A take that couldn't be copied in was deleted | 2 | data safety | 1 | code-verified | fixed | `f2de65a3` · test | blocking |
@@ -142,12 +163,12 @@ From the plan's checkpoint, with the findings each part covers.
 | F52 | Clips with a missing source dropped at load | 3 | data safety | 1 | code-verified | fixed | `361b2418` · test | blocking |
 | F53 | A kernel that never ends stalls the GPU | 3 | security | 4 | code-verified | accepted risk (D8) | `4c7ab74c` · approval and recovery launch | nonblocking |
 | F54 | `audio.bin` with billions of levels | 3 | performance | 4 | reported | open | | nonblocking |
-| F55 | One expressions helper for every project | 3 | security | 3 | reported | open | | blocking |
+| F55 | One expressions helper for every project | 3 | security | 3 | reproduced | open (part fixed; D9) | `6eb772dd` (calls between runs) · fails without (`AMV_PYTHON`) | blocking |
 | F56 | Non-finite expression samples | 3 | data safety | 3 | code-verified | fixed | `5996cf1a` · test | blocking |
-| F57 | Helper messages buffered without limit | 3 | security | 2 | code-verified | fixed | `2d03725a` · test (`AMV_PYTHON` run) | blocking |
+| F57 | Helper messages buffered without limit | 3 | security | 2 | code-verified | fixed | `2d03725a`, `ee6beea1` (per run, in bytes) · test (`AMV_PYTHON` run) | blocking |
 | F58 | A script's rational time has no bound | 3 | crash | 3 | code-verified | fixed | `958abd9b` · test | nonblocking |
 | F59 | Recording an app with permission refused | 3 | usability | 3 | suspected | open | | nonblocking |
-| F60 | Confined code can stat any path | 3 | security | 5 | reported | accepted risk (proposed) | | nonblocking |
+| F60 | Confined code can stat any path | 3 | security | 5 | reproduced | accepted risk (proposed, reads only) | `ab33f3e3` · test: no write through `cfprefsd` (`AMV_PYTHON`) | nonblocking |
 | F61 | Python's licenses not shipped | 3 | release | 1 | code-verified | open (part fixed) | `96409e50` · CPython's own license required | blocking |
 | F62 | `--pin` trusts the first download | 3 | security | 5 | code-verified | open | | nonblocking |
 | F63 | A save wrote over an outside edit not yet seen | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
@@ -156,7 +177,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F66 | A renamed project's new backups deleted | 4 | data safety | 1 | code-verified | fixed | `27f199a6` · test | blocking |
 | F67 | Moving the open package splits the project | 4 | data safety | 3 | reported | open | | blocking |
 | F68 | A failed Restore says nothing | 4 | data safety | 3 | code-verified | fixed | `82160372` · no test (modal alert) | blocking |
-| F69 | Forget Original deletes before saving | 4 | data safety | 3 | reported | open | | nonblocking |
+| F69 | Forget Original deletes before saving | 4 | data safety | 5 | code-verified | open | | nonblocking |
 | F70 | Errors don't name the project | 4 | usability | 5 | code-verified | open (part fixed) | `667aaad6`, `82160372` name the reload's and the open's | nonblocking |
 | F71 | A failed import deletes a file in the package | 4 | data safety | 1 | reproduced | fixed | `76e74035` · fails without | blocking |
 | F72 | An export can replace a source media file | 4 | data safety | 1 | code-verified | open (part fixed) | `2142ee55` · test; stems' prompt open | blocking |
@@ -167,39 +188,48 @@ From the plan's checkpoint, with the findings each part covers.
 | F77 | Sound-found offsets not snapped to frames | 4 | timing | 3 | reproduced | fixed | `d049d6d2` · fails without | blocking |
 | F78 | Replacement against stale used ranges | 4 | correctness | 3 | suspected | open | | nonblocking |
 | F79 | Replacing a package deletes it first | 4 | data safety | 1 | code-verified | fixed | `f31e5d6b` · test | blocking |
-| F80 | A take moved to a name already taken | 4 | data safety | 5 | reported | open | | nonblocking |
+| F80 | A take moved to a name already taken | 4 | data safety | 1 | reproduced | fixed | `77cbb811` · fails without | blocking |
 | F81 | Undo past arrived analysis drops redo and loops | 4 | data safety | 1 | reproduced | fixed | `bed9243e` · fails without | blocking |
 | F82 | Copied Keyframing effects look hand-edited | 4 | correctness | 3 | reported | open | | nonblocking |
 | F83 | Duplicate Timeline keeps old layer references | 4 | correctness | 3 | reported | open | | nonblocking |
-| F84 | Matte-wipe media not counted as used | 4 | correctness | 3 | reported | open | | nonblocking |
+| F84 | Matte-wipe media not counted as used | 4 | correctness | 3 | code-verified | open | | nonblocking |
 | F85 | A refused script result reported as kept | 4 | data safety | 3 | reported | open | | nonblocking |
 | F86 | Damaged approval store emptied silently | 4 | usability | 5 | reported | open | | nonblocking |
 | F87 | Naming an edit costs a scene scan | 4 | performance | 4 | suspected | open | | nonblocking |
 | F88 | Fields not saved or reset on reopen | 4 | correctness | 6 | reported | open | | nonblocking |
 | F89 | Remembered script approval trusts a project's ID and path | D5 | security | 1 | code-verified | fixed | `5ab4864e` · test (`AMV_PYTHON` run) | blocking |
-| F90 | External effect kernels compile without the person's approval | D8 | security | 1 | code-verified | fixed | `4c7ab74c` · test, snapshot | blocking |
-| F91 | Rounded frame stamps show frames twice and skip others | 5 | timing | 3 | reproduced | fixed | `620c1ad1` · fails without | blocking |
+| F90 | External effect kernels compile without the person's approval | D8 | security | 1 | code-verified | fixed (residual F121) | `4c7ab74c` · test, snapshot | blocking |
+| F91 | Rounded frame stamps show frames twice and skip others | 5 | timing | 3 | reproduced | fixed (residual F119) | `620c1ad1` · fails without | blocking |
 | F92 | Tape scrub rests a tick before its frame | 5 | timing | 3 | reproduced | fixed | `909eb1d6` · fails without | blocking |
 | F93 | Whole rates of 10 fps and under taken for NTSC | 5 | timing | 3 | reproduced | fixed | `59ba4470` · test | nonblocking |
 | F94 | Pasted keyframes can land a tick before their frame | 5 | timing | 3 | reproduced | fixed | `fac2eb3f` · fails without | nonblocking |
 | F95 | A script's split at a fraction is off the frames | 5 | timing | 3 | reproduced | fixed | `416ab9d4` · fails without | nonblocking |
 | F96 | A viewer copy can be made again and again | 5 | performance | 4 | reproduced | fixed | `6c66b2ad` · test (old form shown short) | nonblocking |
 | F97 | Fast scrub shows the next frame at a typed 23.976 | 5 | rendering | 5 | reproduced | fixed | `cc3c6a42` · fails without | nonblocking |
-| F98 | Sound-only clips never join, so crossfades dip | 5 | sound | 3 | reproduced | fixed | `9a23eccb` · fails without | nonblocking |
-| F99 | Detach Audio drops the fades under transitions | 5 | sound | 3 | reproduced | fixed | `6fc17175` · fails without | nonblocking |
+| F98 | Sound-only clips never join, so crossfades dip | 5 | sound | 3 | reproduced | fixed (residual F118) | `9a23eccb` · fails without | nonblocking |
+| F99 | Detach Audio drops the fades under transitions | 5 | sound | 3 | reproduced | fixed (residual F114) | `6fc17175` · fails without | nonblocking |
 | F100 | Scene-following splits land between frames | 5 | timing | 3 | reproduced | fixed | `49fe216a` · fails without | blocking |
 | F101 | Two joints can overlap inside a short clip | 5 | rendering | 3 | reproduced | fixed | `61f0cf09` · fails without | nonblocking |
 | F102 | A joint slip can leave a transition without footage | 5 | rendering | 3 | reproduced | fixed | `8b6ab67d` · fails without | nonblocking |
 | F103 | A joint drawn beside a disabled clip | 5 | usability | 5 | reproduced | fixed | `5d8e870a` · fails without | nonblocking |
 | F104 | Ramped clips' times cut down a tick | 5 | timing | 3 | reproduced | fixed | `50e32741` · fails without | blocking |
 | F105 | Blend on slowed clips mixes in the next scene | 5 | rendering | 3 | reproduced | fixed | `769adb5e` · fails without | nonblocking |
-| F106 | Reversed clips begin on the next shot's frame | 5 | timing | 3 | reproduced | fixed | `f5d438cd` · fails without | blocking |
-| F107 | Export doesn't wait for running expressions | 5 | export | 3 | code-verified | fixed | `a7a486de` · test (the check; the alert by hand) | blocking |
+| F106 | Reversed clips begin on the next shot's frame | 5 | timing | 3 | reproduced | fixed (residuals F115, F119) | `f5d438cd` · fails without | blocking |
+| F107 | Export doesn't wait for running expressions | 5 | export | 3 | code-verified | fixed (residual F120) | `a7a486de` · test (the check; the alert by hand) | blocking |
 | F108 | Beat Keys rewritten flat before beats load | 5 | correctness | 3 | reproduced | fixed | `ea7b1981` · fails without | nonblocking |
 | F109 | Speeds outside the time-pitch range untried | 5 | export | 3 | reproduced | fixed | `51523f38` · fails without | blocking |
-| F110 | Detected beats about 10 ms early | 5 | timing | 3 | reproduced | fixed | `8d7f131a`, `10bba6bd` · fails without | blocking |
+| F110 | Detected beats about 10 ms early | 5 | timing | 3 | reproduced | fixed (residual F116) | `8d7f131a`, `10bba6bd` · fails without | blocking |
 | F111 | Beat Keys pulses late or missing between frames | 5 | timing | 3 | reproduced | fixed | `41f74dc5` · fails without | blocking |
-| F112 | Held drawings and two-frame flashes cut | 5 | correctness | 3 | reproduced | fixed | `73a71e57` · fails without | nonblocking |
+| F112 | Held drawings and two-frame flashes cut | 5 | correctness | 3 | reproduced | fixed (residual F117) | `73a71e57` · fails without | nonblocking |
+| F113 | Binaries record SDK 26.0, built with the 27.2 SDK | 1 | packaging | 5 | reproduced | open | | nonblocking |
+| F114 | Detached sound fades at equal power, not the transition's curve | 5 | sound | 3 | code-verified | open | | nonblocking |
+| F115 | Backwards clips' keyframe marks and handles unchecked on screen | 5 | usability | 5 | suspected | open | | nonblocking |
+| F116 | Beat lead set on sharp clicks only | 5 | timing | 3 | suspected | open | | blocking |
+| F117 | Rescored scenes move saved projects' scene-bounded trims | 5 | correctness | 3 | reported | open | | nonblocking |
+| F118 | Saved projects' cuts between sound clips now crossfade | 5 | sound | 3 | reported | open | | nonblocking |
+| F119 | No frame-identity check over rates, VFR, ramps and reverse | 5 | test harness | 3 | suspected | open | | blocking |
+| F120 | An export reads effect approvals frame by frame | 5 | export | 3 | code-verified | open | | nonblocking |
+| F121 | No way to forget approved effect packages | D8 | usability | 5 | code-verified | open | | nonblocking |
 
 ## Open findings: detail and next action
 
@@ -222,7 +252,13 @@ by fixes since (F5's pacing among them). *Next:* run whole-suite event
 runs through the runner (`STALL_SECONDS=60`) until it recurs; its
 samples and unfinished list are the diagnosis to take before any change
 to `WaveformAudio`. Until then run event suites by filter, as AGENTS.md
-now says.
+now says. *Not a gate on other work:* phase 6 and F24's move to `load(_:)`
+go ahead. Runs are bounded and recorded: each batch of whole-suite
+`UI_EVENTS` runs names its commit, its count of runs, the Mac's load
+during them (`uptime` before and after) and keeps `build/test-logs`.
+Before F24 changes `WaveformAudio`, a checkout of the commit before it
+is kept to try for the hang; F24's change isn't to be said to fix F4
+without a capture showing why.
 
 **F5 — Tests that fail when the Mac is busy.** *Expected:* results
 independent of load. *Observed:* `ScrubCacheTests`' fast drag failed in
@@ -247,8 +283,8 @@ the minimum became 26 (`ComposedTimeline`, `CompositionPlanning`,
 `PlayheadPrerenderer`), synchronous `tracks(withMediaType:)` and
 `formatDescriptions` in `WaveformAudio.swift:80–81`, and
 `BrowserPanel.swift:118`'s drop result now unused. *Next:* move to
-`AVVideoComposition.Configuration` and `load(_:)`, the latter after
-F4's capture.
+`AVVideoComposition.Configuration` and `load(_:)`, the latter without
+waiting on F4's capture, which may never come (see F4).
 
 ### Phase 2
 
@@ -371,20 +407,49 @@ packages out.
 proportion (its count must equal its length). *Next:* cap the levels.
 
 **F55 — One expressions helper serves every project,** with real
-builtins: approved code in one can patch the helper's caches or leave a
-thread answering later runs (`expressions.py:311,340`). A helper per
-project limits it across projects, not between runs of one. *Next:*
-restart the helper after a run that leaves threads, and per project.
+builtins: approved code in one can patch the helper's caches, its
+builtins and modules, or leave a thread answering later runs
+(`expressions.py:311,340`). *Reproduced:* a thread a run left, holding
+the bridge's connection, called the app after that run ended, and the
+next run answered it with its own project's name; the helper tags calls
+with the run under way and the app answered any. *Part fixed in
+`6eb772dd`:* a call or output tagged with another run, or none, ends the
+helper. *Left:* a left thread calling during a later run is tagged with
+that run and can't be told apart; a changed builtin, module or cache
+leaves no thread at all. Restarting after a run that leaves threads,
+the earlier next action, can't see those, and code with real builtins
+can hide a thread from the count. A helper per project bounds it across
+projects, not between unrelated runs of one. *Next:* the owner decides
+D9; until then the boundary is the helper process, shared.
 
 **F56 — *(fixed in `5996cf1a`)* Non-finite expression samples** are counted, not checked, in the
 app (`PythonHelper.swift:167–176`); NaN keyframes would fail saving.
 *Next (B):* refuse non-finite samples.
 
-**F57 — *(fixed in `2d03725a`)* Helper messages are buffered without limit:** payload sizes up
+**F57 — *(fixed in `2d03725a`, `ee6beea1`)* Helper messages are buffered without limit:** payload sizes up
 to 9×10^15 (`ScriptMessages.swift:53–57`), frames queued while no run
 reads, the buffer copied per frame (`PythonHelper.swift:352`). *Next
 (B):* budgets: payload at most what the request asked for, frames
-dropped outside a run, a read offset instead of copies.
+dropped outside a run, a read offset instead of copies. *First fix
+(`2d03725a`):* per frame only, a payload of at most 1 GiB, a header of
+64 MiB and 10,000 unread frames, which together let a helper make the
+app hold terabytes, and a 1 GiB payload was held twice; the plan's
+"what the request asked for" wasn't met. *Fixed (`ee6beea1`):* a
+payload only on an expression's result, of its count times its width
+in float64s exactly (`HelperRequest.largestResult`), set on the reader
+for the run and 0 outside it; a header claiming more is refused when it
+is read, before its payload is waited for. Frames not yet read, with
+the one still arriving, have a byte budget besides the count
+(`HelperLimits`): 8 MiB and 1 MiB headers for the confined expressions
+helper, 256 MiB and 64 MiB for scripts, which are approved code whose
+calls can carry many edits. Past either the frames held are let go of
+and the helper ended. A header waiting for its payload is decoded once.
+Tested: an unsolicited payload refused from its header alone, a result
+a byte over refused, repeated longest headers ending the stream by
+bytes before count, a header nested 100,000 deep refused (JSONDecoder
+stops at 512) and the scripting suites with a real Python. *Left:* a
+script's 64 MiB header can decode to several times its size; scripts
+run unconfined with the person's permissions anyway.
 
 **F58 — *(fixed in `958abd9b`)* A script's time as `[n, d]` has no bound**
 (`ProjectBridge.swift:506–515`), unlike one in seconds. *Next (B):* the
@@ -395,9 +460,17 @@ gives a silent take with no message (`AudioCapture.swift:79–116`).
 *Next:* try with `tccutil reset`.
 
 **F60 — Confined code can stat any path** (`file-read-metadata`), and
-whether `cfprefsd` refuses it a write is untested. Proposed as accepted
-risk: an expression learns a file exists and its size, and can send out
-only numbers.
+whether `cfprefsd` refuses it a write was untested. Two questions, kept
+apart. *Writes, tested (`ab33f3e3`):* confined, `CFPreferencesSetAppValue`
+and a synchronize through `ctypes` fail and no value or plist appears;
+the profile allows no Mach lookup. The same calls unconfined wrote (by
+hand, then removed). *Reads, proposed as accepted risk:* an expression
+can learn whether any path exists, its size, dates and owner. Numbers
+are enough to carry that out: its results become keyframes in the
+project, which is saved and may be shared, so metadata can leave in
+them. What is accepted, if the owner agrees, is that metadata (not
+contents) of the person's files is visible to approved expression code,
+as it is to every app they run.
 
 **F61 — Python's licenses aren't shipped:** *(part fixed in
 `96409e50`)* the CPython license (`lib/python3.14/LICENSE.txt`) is now
@@ -427,7 +500,12 @@ offering it.
 
 **F69 — Forget Original deletes `Reference/<id>` before `project.json`
 is written** (`ProjectStore+Save.swift:91–94` against `:105`); a failed
-write leaves the file saying the original is kept. *Next:* delete after.
+write leaves the file saying the original is kept. *Consequence, read
+again:* the data deleted is what the person asked to forget, and a
+reference that can't be read loads as none
+(`ProjectStore.readReference`); the session still holds it, so an undo
+and a save that succeeds write it back. Severity 5, not 3. *Next:* delete
+after.
 
 **F70 — *(part fixed in `667aaad6`, `82160372` name the reload's and the open's)* Errors don't name the project** (`ProjectSession.swift:259`);
 the reload's alert now does (`667aaad6`).
@@ -449,7 +527,13 @@ input or matte uses, and ask before replacing stems.
 
 **F73 — Backups copy all of `Media/` off APFS** every 15 minutes, up to
 ten kept, holding saves behind them (`ProjectBackups.swift:145–166`).
-*Next:* skip media, or warn, where `volumeSupportsFileCloning` is false.
+*Next:* first say what a backup promises. Today every backup is a
+self-contained copy of the project, media included, and restoring one
+needs nothing else. Leaving media out off APFS would make it a backup of
+the edit only, restorable while the media it names are still in the
+package. Either both kinds exist and say which they are (in
+`backup.json` and in Restore), or off APFS backups stay whole and are
+made less often; not media left out silently.
 
 **F74 — *(fixed in `82160372`)* Opening any folder with a `project.json` marks it a package and
 writes `.lock` into it before the format is checked**
@@ -485,9 +569,14 @@ copying the new** (`EffectPackageStore.swift:482–484`), losing a
 package the person wrote if the copy fails. *Next (A):* copy beside,
 then swap in.
 
-**F80 — A take is moved to a fixed name** (`AudioRecorder.swift:138`);
+**F80 — *(fixed in `77cbb811`)* A take is moved to a fixed name** (`AudioRecorder.swift:138`);
 two in one second throw and leave it in `/tmp` without saying.
-*Next:* a unique name.
+*Next:* a unique name. *Reclassified:* severity 1 and blocking, as F9: a
+take left in the temporary folder is a lost recording. Names are local
+time to the second, so the hour that repeats when clocks go back does
+it too, for an unsaved project's Recordings folder. *Fixed:* both moves
+number a taken name (`ProjectStore.uniqueDestination`); without it the
+test's second move fails.
 
 **F81 — *(fixed in `bed9243e`)* An undo past newly arrived analysis records a new step, drops
 the redo stack and can't go further back.** *Observed (suspected,
@@ -507,7 +596,12 @@ is.
 `reads` (`TimelineTree.swift:99–124`). *Next:* remap as `reach` is.
 
 **F84 — Matte-wipe media isn't counted as used** by paste or removal
-(`PasteSources.swift:32–45`, `ItemUses.swift:37–100`). *Next:* count it.
+(`PasteSources.swift:32–45`, `ItemUses.swift:37–100`). *Consequence,
+read again:* removing a clip used only as a matte isn't asked about
+(`ClipsTab.removeFromProject` asks only when `uses(of:)` has some); the
+transition loses its matte, which undo restores. Saving deletes no file
+from `Media/`, so the footage isn't lost. Severity 3 stands. *Next:*
+count it.
 
 **F85 — A script result refused at the end is reported as kept,** and
 its step name sticks to the next edit (`ScriptRunner.swift:153–161`).
@@ -532,7 +626,8 @@ projects (phase 11).
 Fixed this pass, each with a test that fails without it: **F91** (rounded
 frame stamps: footage is read a tick of its track's timescale late, at
 most a quarter frame; at 90 kHz a 23.976 file had shown every fourth
-frame twice), **F92** (the tape scrubber rests on its frame's exact
+frame twice; a stamp rounded by more than the quarter frame isn't
+covered, F119), **F92** (the tape scrubber rests on its frame's exact
 start), **F93** (8 and 10 fps had NTSC frame lengths; test only),
 **F100** (scene-following splits on the timeline's frames, as the blade
 does, and joins what it split), **F104** (ramp times rounded to the
@@ -599,8 +694,7 @@ first clip's way out, and a way out at a cut now also fades the next
 clip in under it, from before its in point where its file has spare
 sound: what was a dip at those cuts becomes a crossfade, with no saved
 setting changed. That is the documented behavior, but it changes how
-existing edits sound. *Next:* listen to a project with fades between
-song pieces or sound clips.
+existing edits sound: F118.
 
 **F99 — *(fixed in `6fc17175`)* Detach Audio drops the fades under picture transitions**
 (`LinkedAudio.swift:100–101`), against its own comment that the sound
@@ -608,6 +702,7 @@ plays as before. *Next:* give the sound the matching Audio transition,
 after F98. *Left:* at an open end a picture transition's sound follows
 its curve, which an Audio transition hasn't; the copy fades at equal
 power over the same span, the same fade only where the curve was linear.
+So "plays as before" holds only for linear curves: F114.
 
 **F101 — *(fixed in `61f0cf09`)* Two joints can overlap inside a short middle clip:**
 `fittedJoint` (`ClipTransition.swift:575–577`) subtracts only the clip's
@@ -646,7 +741,10 @@ a clip trimmed to frames 24–71 began on frame 72 (its exclusive out
 point, the next shot's first) and never showed 24; keyframes read the
 same edge time, so they agreed with that picture. *Fixed:*
 `TimelineClip.shownSourceTime` is the mapping (forwards the edge time;
-backwards the lower end of the span a frame plays, `T − (e + f)·s`), and
+backwards the lower end of the span a frame plays,
+`sourceTime(atTimelineTime: time + frame)`, through the clip's own time
+map, so ramps and holds included; `T − (e + f)·s` is that map at a
+constant speed only), and
 the picture, keyframing samples, the compositor's evaluation, Blend, the
 scrub stand-in, thumbnails, the effects panel, inspector shapes, viewer
 handles, pen, keyframe paste and the script bridge take it; trims,
@@ -657,12 +755,24 @@ the cut is gone). Render format version 6. *Left:* the filmstrip, which
 has no timeline frame, holds a backwards clip's tiles a footage frame
 under the out point, exact where the rates match; the UI's keyframe
 markers and handles on backwards clips haven't been looked at on
-screen.
+screen (F115). Its tests and F91's check chosen frames, not a sequence
+of source frames over every kind of mapping (F119).
 
 **F107 — *(fixed in `a7a486de`)* Export doesn't wait for running expressions** or Audio Keys
 still reading: nothing in `Export/` checks `waitingExpressions()` or
 `keyframingFreshness`, so an export started at once has the old values.
-*Next:* wait, or refuse with a note.
+*Next:* wait, or refuse with a note. *Fixed:* Export… asks, Wait or
+Export Anyway. *The rule under it, read again:* an export is of one
+copy of the project (`ExportWindow.Job.project`, a value taken when it
+is asked for), and expression results are written into the project's
+keyframes, so results landing during an export change no frame of it,
+early or late. Wait exports nothing, and the next Export… takes the
+project as it is then. Export Anyway exports the values the project
+holds at that moment, which are the last ones written, or none for an
+expression that never ran or failed. *Left:* effect approvals are read
+as each frame draws, so they aren't part of that copy (F120); and an
+export made with Export Anyway isn't marked as such anywhere but the
+alert.
 
 **F108 — *(fixed in `ea7b1981`)* Beat Keys is rewritten flat before beats load**
 (`Keyframing.swift:465–470,610,637`; Audio Keys has the guard,
@@ -693,10 +803,7 @@ again; confirmed beat maps aren't touched. *Left:* the lead was measured
 on sharp synthetic clicks only, and every project's saved beats are
 detected again with it. Softer attacks (pads, bass, vocals) may peak
 later relative to the hit, so on real songs some beats could now land
-slightly late rather than on time. *Next:* with the licensed songs (D7),
-check detected beats against the music by ear, and measure the lead on
-softer generated attacks, before cuts snapped to detected beats are
-trusted.
+slightly late rather than on time. That is F116.
 
 **F112 — *(fixed in `73a71e57`)* Held drawings and two-frame flashes give false cuts**
 (`SceneDetection.swift:261–271,280–290`): on twos the background median
@@ -714,7 +821,7 @@ three frames or more still cuts; current files are scored again, so a
 project's automatic scenes can change (its timeline doesn't: only the
 person's scene edits split or join clips, though scene-bounded trims
 follow the new scenes); original scores made before keep working,
-without the two-frame case.
+without the two-frame case. The change to saved projects is F117.
 
 ### From the owner's decisions
 
@@ -756,7 +863,98 @@ from the Finder and adding a waiting effect ask; Shift at launch (or
 `disableExternalEffects`) leaves every outside package out. Shown by
 a test that a broken kernel reports nothing until approved (it was
 never compiled) and something after. *Left:* no Settings button yet to
-forget approved packages, as Forget Allowed Code does for Python.
+forget approved packages, as Forget Allowed Code does for Python (F121).
+
+### From the second review of the ledger
+
+Residuals that can be acted on alone, taken out of the findings they
+were left under, and what reading the code again found. A finding
+marked *fixed (residual F1nn)* met its own next action; the residual is
+what it didn't promise.
+
+**F113 — The binaries record SDK 26.0, built with the 27.2 SDK** (from
+F6). *Expected:* `LC_BUILD_VERSION`'s `sdk` is the SDK linked against.
+*Observed:* `otool -l` on this branch's test bundle gives `minos 26.0`,
+`sdk 26.0`, with `xcrun --show-sdk-version` 27.2, so frameworks treat
+the app as linked on 26 and hold back behavior new in 27. *Next:* find
+which of SwiftPM's link flags sets `-platform_version`'s SDK, check the
+app `build-app.sh` makes as well, and either correct it or record why
+26 is wanted.
+
+**F114 — Detached sound fades at equal power, not the picture
+transition's curve** (from F99). *Expected:* Detach Audio leaves the
+sound as it was heard (`LinkedAudio.swift`'s own comment). *Observed
+(read):* at an open end the sound followed the picture transition's
+curve; the Audio transition it now gets fades at equal power over the
+same span, the same only where that curve was linear. *Next:* keep the
+gain envelope the sound had, giving Audio transitions a curve if
+needed, or the owner accepts the difference and the doc says so; a
+loudness test over an eased dissolve either way.
+
+**F115 — Backwards clips' keyframe marks and handles are unchecked on
+screen** (from F106). The mapping moved for picture and evaluation;
+the lanes' keyframe marks, the viewer's handles and the filmstrip (held
+a footage frame under the out point) weren't looked at on a reversed
+clip. *Next:* a `UISnapshots` case of a reversed, trimmed clip with
+keyframes, and an event test that a dragged keyframe lands on the frame
+it is shown on.
+
+**F116 — The beat lead was set on sharp clicks only** (from F110). The
+180-sample correction leaves click tracks within ±2 ms, but softer
+attacks (pads, bass, vocals) may peak later relative to the hit, and
+every project's saved beats were detected again with it. *Next:*
+generated attacks of 5, 20 and 50 ms rise and a bass-heavy track,
+measured as the clicks were, and the licensed songs by ear (D7), before
+cuts snapped to detected beats are trusted. Gate: blocking, as F110 was.
+
+**F117 — Rescored scenes move saved projects' scene-bounded trims**
+(from F112). Files are scored again (scores' algorithm 4), so a saved
+project's automatic scenes can change; clips don't, but trims
+bounded by a scene follow the new bounds. *Next:* say so in
+scene-cuts.md, and check whether an open project's trims change without
+the person doing anything, or only at their next trim.
+
+**F118 — Saved projects' cuts between sound clips now crossfade**
+(from F98). A transition saved as the first clip's way out at a cut now
+also fades the next clip in, from its spare sound: a dip becomes a
+crossfade with no saved setting changed. *Next:* a note in audio.md and
+transitions.md that projects made before sound differently there, and a
+listening test of such a project, saved before `9a23eccb`, opened after.
+
+**F119 — No frame-identity check over every kind of mapping** (from
+F91 and F106). *Expected:* each timeline frame shows the source frame
+its presentation time names, never the next one. *Observed:* the tests
+check chosen frames. F91 reads footage one track tick late, at most a
+quarter frame; a file whose stamps are rounded by more than that (a
+timescale that doesn't divide the rate, such as 30 for 23.976, rounds by
+up to 16.7 ms against a 10.4 ms cap) isn't covered (suspected). F106's
+mapping goes through the time map, but no test walks ramps and holds
+backwards. *Next:* from `ReviewFixtures`' numbered movies, the expected
+sequence of source frame numbers worked out from their presentation
+times alone, compared with what export and the viewer show, for: equal
+and differing rates; forwards and backwards; fractional speeds, ramps
+and holds; VFR with short and long frames; a coarse timescale; split
+and joined again; and Blend's and temporal effects' samples. Gate:
+blocking, as F91 and F106 were.
+
+**F120 — An export reads effect approvals frame by frame** (from F107).
+*Expected:* an export is of one fixed state, as its copy of the project
+is. *Observed (read):* `PackageLooks` asks `EffectApproval.shared` as
+each frame draws (`PackageLooks.swift:27,36`), so forgetting a package's
+approval, or approving it, during an export changes only the frames
+after. Whether a live reload of a package's kernel can reach an export
+under way wasn't followed. *Next:* take the approvals, and the kernels,
+with the job; a test that changes an approval mid-export.
+
+**F121 — No way to forget approved effect packages** (from F90):
+Forget Allowed Code covers Python only. *Next:* the same button for
+packages in Settings.
+
+*Classifications kept, consequences read again:* F67 (a moved package's
+next save makes a second, unlocked one at the old path), F72 (stems
+replace same-named files unasked) and F35 (the console edits the
+project behind a Timeline window) stay blocking, and with F73 are the
+persistence work before phase 6 goes far. F69 and F84 are above.
 
 ## Fixed findings: detail
 
@@ -783,7 +981,8 @@ it uses `displayName`.
 **F6 — The binaries recorded SDK 15.0** (`LC_BUILD_VERSION`), the
 deployment target, though built with the 27.2 SDK. With the minimum at
 26.0 they record 26.0: behavior "linked on or after 26" is had, behavior
-new in 27 isn't. Residual, nonblocking.
+new in 27 isn't. That works round the symptom; the recorded SDK is
+still not the one built with, F113.
 
 **F8 — A failed export lost the file it was replacing.** Movie, WAV Mix
 and stems exports deleted the destination before writing. Each writes
@@ -954,7 +1153,25 @@ review, not claims that the code meets them; each says what is done.
   external effects off. The warning supplements validation and resource
   limits, and no GPU time limit is promised that the code can't enforce
   (F53). *Done* (`4c7ab74c`, F90), but for a Settings button to forget
-  approved packages.
+  approved packages (F121).
+- **D9. How far one expression's code is kept from another's.**
+  *Proposed, for the owner.* F55: the confined helper serves every
+  open project and every run, keeping state between runs on purpose (the
+  last run's samples for each effect, `_last_runs`, so an edit reruns
+  only the samples it changed; compiled code, `_compiled`). Code with
+  real builtins can change any of it, or the builtins and modules, for
+  the runs after. Options: **(a)** a new helper for each run, or for one
+  approved batch of runs (an export's, one effect's reruns), reusing
+  nothing else: clean, at the cost of starting Python in its sandbox
+  each time (to be measured) and of the incremental reruns, unless the
+  app keeps the last samples and sends them; **(b)** a helper per
+  project, kept between runs: bounds it across projects, not between a
+  project's own expressions, and says so; **(c)** as now, documented:
+  approved expressions trust one another across every open project.
+  *Recommended:* (a) per batch, if the start-up cost measures small
+  against a rerun; otherwise (b), with the weaker boundary written in
+  python-scripting.md's Safety and a test that one project's run can't
+  see another's state.
 
 ## Phase records
 
