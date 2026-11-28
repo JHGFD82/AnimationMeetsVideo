@@ -189,7 +189,7 @@ extension TimelineClip {
         let span = CMTimeSubtract(b, a)
         guard !time.speed.isAnimated else {
             let integral = SpeedIntegral.of(time.speed)
-            return CMTime(seconds: integral.length(from: a.seconds, to: b.seconds), preferredTimescale: 240_000)
+            return Self.nearestTick(integral.length(from: a.seconds, to: b.seconds))
         }
         let speed = abs(speed(atSource: a))
         if speed == 100 { return span }
@@ -229,9 +229,20 @@ extension TimelineClip {
         }
         // Playing the source takes more time the more of it has played, so
         // find where the time that has passed is used up.
+        // No time passed is the anchor itself, not the integral's round trip.
+        guard elapsed != .zero else { return anchor }
         let integral = SpeedIntegral.of(self.time.speed)
         let passed = reversed ? -elapsed.seconds : elapsed.seconds
-        return CMTime(seconds: integral.source(atIntegral: integral.at(anchor.seconds) + passed), preferredTimescale: 240_000)
+        return Self.nearestTick(integral.source(atIntegral: integral.at(anchor.seconds) + passed))
+    }
+
+    /// `seconds` on the 1/240000 s grid a ramp's times are placed on, to
+    /// the nearest tick. `CMTime(seconds:)` cuts down instead, and 13/24 s
+    /// is 129999.99… ticks in a Double, so a ramp's first frame came out a
+    /// tick before its trim: on a scene cut, the previous scene's frame.
+    static func nearestTick(_ seconds: Double) -> CMTime {
+        guard seconds.isFinite, abs(seconds) < 1e12 else { return CMTime(seconds: seconds, preferredTimescale: 240_000) }
+        return CMTime(value: Int64((seconds * 240_000).rounded()), timescale: 240_000)
     }
 
     /// How much source plays in `length` of timeline time from the clip's
