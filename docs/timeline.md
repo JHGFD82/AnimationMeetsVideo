@@ -783,7 +783,7 @@ taking it out to) whatever is underneath: lower layers, or black.
 ### Transitions joining two clips
 
 Where two clips with pictures (media or nested timelines), or two of sound
-alone (audio files, detached sound), meet on a layer (within
+alone (audio files, detached sound), both enabled, meet on a layer (within
 `Timeline.abutmentTolerance`, as clips meet everywhere else, so edges a
 sliver apart from rounding still count), a transition dropped at the cut,
 on either clip, **joins** them: it becomes the incoming clip's
@@ -816,6 +816,9 @@ sound to fade it on its own.
   clips' other transitions: the outgoing clip's way in and the incoming
   clip's way out, or the lead of a joint at its far end, so two joints
   on a short clip never overlap.
+- Disabling either clip parts them: a disabled clip plays as a gap, so
+  the transition is drawn and plays at an open end inside the incoming
+  clip, as the export plays it. Enabled again, they join as before.
 - Drag the cut to roll it: the outgoing clip's out point and the incoming
   clip's in point move together, so the clips still meet, nothing else
   moves, and the transition draws on different footage

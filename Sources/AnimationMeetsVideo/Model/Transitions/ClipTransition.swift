@@ -525,9 +525,12 @@ extension EditingProject {
     /// crossfaded over their spare sound (transitions.md, "Sound"). Sound
     /// clips never joined, so a Crossfade between two faded one out to
     /// silence and cut the next in (F98). A picture and a sound don't join:
-    /// they take transitions of different kinds.
+    /// they take transitions of different kinds. A disabled clip joins
+    /// nothing: it plays as a gap, so the transition beside it plays at an
+    /// open end in the viewer and the export alike, as the timeline now
+    /// draws it too (F103). Enabled again, the joint is back.
     private func canJoin(_ a: TimelineClip, _ b: TimelineClip) -> Bool {
-        isJoinable(a) && isJoinable(b) && playsVideo(a) == playsVideo(b)
+        a.enabled && b.enabled && isJoinable(a) && isJoinable(b) && playsVideo(a) == playsVideo(b)
     }
 
     /// The clip just before `clip` on its layer when they meet at a cut and

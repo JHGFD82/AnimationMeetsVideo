@@ -198,6 +198,26 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(f.clipA.trimEnd == seconds(7.5))
     }
 
+    // F103: a joint beside a disabled clip was drawn across the cut, with
+    // its lead over the disabled clip, while the export, which plays a
+    // disabled clip as a gap, played the transition inside the incoming
+    // clip from the cut.
+    @Test func aDisabledClipJoinsNothing() throws {
+        var f = Fixture()
+        f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)
+        #expect(f.joint != nil)
+        f.project.editClip(f.a, in: f.t) { $0.enabled = false }
+        #expect(f.joint == nil)
+        let clips = try #require(f.project.timeline(id: f.t)?.layer(id: f.layer)?.clips)
+        let fades = f.project.audioFades(of: f.clipB, among: clips)
+        // The sound fades in from the cut over the clip, as at an open end.
+        #expect(fades.head == .zero)
+        #expect(fades.fades.first.map { $0.start == 4 && $0.rising } == true)
+        // Enabled again, it joins as before.
+        f.project.editClip(f.a, in: f.t) { $0.enabled = true }
+        #expect(f.joint?.lead == seconds(0.5))
+    }
+
     @Test func withoutSpareFootageTheTransitionStaysInTheClip() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID
