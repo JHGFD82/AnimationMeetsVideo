@@ -132,6 +132,36 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(f.joint?.transition.audioCrossfade == nil)
     }
 
+    // F101: a joint was fitted to its own clips' spare footage alone, so on
+    // a short middle clip, widening one joint ran it over the other's lead
+    // and three clips blended at once.
+    @Test func twoJointsOnAShortClipNeverOverlap() throws {
+        // A 0–4 s, B 4–5 s, C 5–8 s, with spare footage on every side.
+        var f = Fixture(bTrimStart: 5)
+        f.project.editClip(f.b, in: f.t) { $0.trimEnd = seconds(6) }
+        let source = f.clipA.source
+        let c = TimelineClip(source: source, startOffset: seconds(5), trimStart: seconds(7), trimEnd: seconds(10))
+        let tIndex = f.project.timelines.firstIndex { $0.id == f.t }!
+        f.project.timelines[tIndex].layers[0].clips.append(c)
+        f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)
+        f.project.setTransition(.crossDissolve, at: .leading, of: c.id, in: f.t, layer: f.layer)
+        func joints() throws -> (ab: TransitionJoint, bc: TransitionJoint) {
+            (try #require(f.joint), try #require(f.project.joint(at: c.id, in: f.t, layer: f.layer)))
+        }
+        var (ab, bc) = try joints()
+        #expect(ab.end <= bc.start)
+
+        // Widened a second each way, each stays clear of the other.
+        f.project.applyJointEdit(.widen(seconds(0.5)), at: f.b, in: f.t, layer: f.layer)
+        (ab, bc) = try joints()
+        #expect(ab.end <= bc.start, "A|B ends \(ab.end.seconds), B|C starts \(bc.start.seconds)")
+        #expect(ab.transition.duration > seconds(1))
+        f.project.applyJointEdit(.widen(seconds(0.5)), at: c.id, in: f.t, layer: f.layer)
+        (ab, bc) = try joints()
+        #expect(ab.end <= bc.start, "A|B ends \(ab.end.seconds), B|C starts \(bc.start.seconds)")
+        #expect(bc.transition.duration > seconds(1))
+    }
+
     @Test func slippingEitherClipAtACutKeepsTheCut() throws {
         var f = Fixture()
         f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)

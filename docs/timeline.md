@@ -809,7 +809,10 @@ sound to fade it on its own.
 
 - Drag the transition to move it across the cut, and either edge to change
   its length about its center (the other edge moves as much the other
-  way). It can't need more footage than there is.
+  way). It can't need more footage than there is, nor reach into the
+  clips' other transitions: the outgoing clip's way in and the incoming
+  clip's way out, or the lead of a joint at its far end, so two joints
+  on a short clip never overlap.
 - Drag the cut to roll it: the outgoing clip's out point and the incoming
   clip's in point move together, so the clips still meet, nothing else
   moves, and the transition draws on different footage

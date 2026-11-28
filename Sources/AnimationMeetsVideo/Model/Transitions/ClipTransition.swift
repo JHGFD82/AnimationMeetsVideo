@@ -570,10 +570,15 @@ extension EditingProject {
 
     /// The length and lead a joining transition can have. Before the cut
     /// the incoming clip plays its spare head, so the lead is at most that
-    /// (and no longer than the outgoing clip); after the cut the outgoing
-    /// clip plays its spare tail, so the rest is at most that (and leaves
-    /// room for the incoming clip's way out). Both land on frames. Nil when
-    /// there is less than a frame of spare footage.
+    /// (and leaves the outgoing clip room for its own way in); after the
+    /// cut the outgoing clip plays its spare tail, so the rest is at most
+    /// that (and leaves room for the incoming clip's way out, or the lead
+    /// of a joint at its end). Both land on frames. Nil when there is less
+    /// than a frame of spare footage.
+    ///
+    /// A joint at the far end of either clip counts: on a short middle
+    /// clip, a joint widened over the next one's lead blended three clips
+    /// at once, and the middle clip's sound faded twice (F101).
     func fittedJoint(
         duration: CMTime,
         lead: CMTime,
@@ -582,9 +587,17 @@ extension EditingProject {
         in timeline: Timeline
     ) -> (duration: CMTime, lead: CMTime)? {
         let spare = spareFootage(outgoing: outgoing, incoming: incoming)
-        let before = timeline.frameAligned(CMTimeMinimum(spare.head, outgoing.placedDuration), .down)
-        let insideRoom = CMTimeSubtract(incoming.placedDuration, incoming.transitionOut?.duration ?? .zero)
-        let after = timeline.frameAligned(CMTimeMinimum(spare.tail, insideRoom), .down)
+        let clips = timeline.layers.first { $0.clips.contains { $0.id == incoming.id } }?.clips ?? []
+        // The outgoing clip's own way in, the part of it inside the clip.
+        let outgoingWayIn = outgoing.transitionIn.map {
+            CMTimeMaximum(.zero, CMTimeSubtract($0.duration, joinedLead(of: outgoing, among: clips) ?? .zero))
+        } ?? .zero
+        let beforeRoom = CMTimeSubtract(CMTimeSubtract(outgoing.placedDuration, outgoingWayIn), outgoing.transitionOut?.duration ?? .zero)
+        let before = timeline.frameAligned(CMTimeMinimum(spare.head, CMTimeMaximum(.zero, beforeRoom)), .down)
+        // The incoming clip's way out, or the lead of the joint after it.
+        let nextLead = successor(joining: incoming, among: clips).flatMap { joinedLead(of: $0, among: clips) } ?? .zero
+        let insideRoom = CMTimeSubtract(CMTimeSubtract(incoming.placedDuration, incoming.transitionOut?.duration ?? .zero), nextLead)
+        let after = timeline.frameAligned(CMTimeMinimum(spare.tail, CMTimeMaximum(.zero, insideRoom)), .down)
         let longest = CMTimeAdd(CMTimeMaximum(.zero, before), CMTimeMaximum(.zero, after))
         let frame = timeline.frameDuration
         guard longest >= frame else { return nil }
