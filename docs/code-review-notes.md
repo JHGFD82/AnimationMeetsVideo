@@ -61,10 +61,10 @@ reviewers. Nothing here has been checked by anyone outside it.
 | --- | --- | --- | --- |
 | 1. Scope and build baseline | Partial | The performance baseline is of the benchmarks' own timelines; the generated dense edit (checkpoint D) is yet to be benchmarked; the whole suite under `UI_EVENTS` has hung once (F4) | F4, F5, F24 |
 | 2. Architecture and maintainability | Complete | | F30–F47; its severity-1 findings are fixed |
-| 3. Security, privacy and dependencies | Complete | | F54, F55, F59–F62 (F53 accepted under D8; F57's budgets redone) |
-| Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8; D9 proposed | F121 |
+| 3. Security, privacy and dependencies | Complete | | F54, F59–F62 (F53 accepted under D8; F57's budgets redone; F55 fixed under D9) |
+| Owner's decisions D3–D9 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | F121 |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs; not to be called complete until it is | F4 |
-| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt; F67, F72, F35 and F73 block a release | F67, F69, F70, F72, F73, F75–F78, F82–F88 |
+| 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt; F72, F35 and F73 block a release | F69, F70, F72, F73, F75–F78, F82–F88, F122 |
 | 5. Timeline, timing and music sync | Partial | Four reviews made and recorded, and the end-to-end sync export test built (`9207e570`); the beat tick and MIDI taps read, not tried on hardware; detection quality and beat timing judged on generated material, not episodes and songs (D7); no frame-identity check over mixed rates, VFR, ramps and reverse (F119) | F114–F120 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4, and phase 6 needn't wait for it | F113 |
 
@@ -79,14 +79,15 @@ From the plan's checkpoint, with the findings each part covers.
   before load), F79 (package replaced), F81 (undo past arrived
   analysis, reproduced first), F80 (a take left in the temporary
   folder); F72 (export over a source) fixed but for asking before stems
-  replace same-named files. Still open and blocking: F67, F35, F73.
+  replace same-named files; F67 (a moved package split in two). Still
+  open and blocking: F35, F73.
 - **B. Untrusted input. Done.** Fixed: F48 and F49 (numbers, text
   runs), F50 (timeline cycles), F56 (non-finite samples), F57 (helper
   budgets: a payload only on an expression's result and only of its
   samples' size, frames not yet read held to 8 MiB for expressions and
   256 MiB for scripts, headers to 1 MiB and 64 MiB; first done per frame,
-  redone after the second review), F58 (script rational times). F55,
-  the helper shared between projects and runs, is open (D9). Defensive checks stay at the
+  redone after the second review), F58 (script rational times), F55
+  (a helper process of its own for each expression run, D9). Defensive checks stay at the
   operations too (F16, F17, F23).
 - **C. Trust in the test harness. Done but for F4.**
   `scripts/run-tests.sh` (`c55c39b0`, `9bd1b800`, `4bc6cf20`) passes a
@@ -163,7 +164,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F52 | Clips with a missing source dropped at load | 3 | data safety | 1 | code-verified | fixed | `361b2418` · test | blocking |
 | F53 | A kernel that never ends stalls the GPU | 3 | security | 4 | code-verified | accepted risk (D8) | `4c7ab74c` · approval and recovery launch | nonblocking |
 | F54 | `audio.bin` with billions of levels | 3 | performance | 4 | reported | open | | nonblocking |
-| F55 | One expressions helper for every project | 3 | security | 3 | reproduced | open (part fixed; D9) | `6eb772dd` (calls between runs) · fails without (`AMV_PYTHON`) | blocking |
+| F55 | One expressions helper for every project | 3 | security | 3 | reproduced | fixed (D9) | `6eb772dd` (calls between runs), `14f8f554` (a process per run) · fails without (`AMV_PYTHON`) | blocking |
 | F56 | Non-finite expression samples | 3 | data safety | 3 | code-verified | fixed | `5996cf1a` · test | blocking |
 | F57 | Helper messages buffered without limit | 3 | security | 2 | code-verified | fixed | `2d03725a`, `ee6beea1` (per run, in bytes) · test (`AMV_PYTHON` run) | blocking |
 | F58 | A script's rational time has no bound | 3 | crash | 3 | code-verified | fixed | `958abd9b` · test | nonblocking |
@@ -175,7 +176,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F64 | Saves and reloads not kept in order | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
 | F65 | Unreadable reload marked seen, then saved over | 4 | data safety | 1 | code-verified | fixed | `667aaad6` · test | blocking |
 | F66 | A renamed project's new backups deleted | 4 | data safety | 1 | code-verified | fixed | `27f199a6` · test | blocking |
-| F67 | Moving the open package splits the project | 4 | data safety | 3 | reported | open | | blocking |
+| F67 | Moving the open package splits the project | 4 | data safety | 3 | reproduced | fixed | `d2999cb8` · test; the split shown on the code before | blocking |
 | F68 | A failed Restore says nothing | 4 | data safety | 3 | code-verified | fixed | `82160372` · no test (modal alert) | blocking |
 | F69 | Forget Original deletes before saving | 4 | data safety | 5 | code-verified | open | | nonblocking |
 | F70 | Errors don't name the project | 4 | usability | 5 | code-verified | open (part fixed) | `667aaad6`, `82160372` name the reload's and the open's | nonblocking |
@@ -230,6 +231,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F119 | No frame-identity check over rates, VFR, ramps and reverse | 5 | test harness | 3 | suspected | open | | blocking |
 | F120 | An export reads effect approvals frame by frame | 5 | export | 3 | code-verified | open | | nonblocking |
 | F121 | No way to forget approved effect packages | D8 | usability | 5 | code-verified | open | | nonblocking |
+| F122 | Timeline windows lose their project after Save As or a move | 4 | usability | 5 | reported | open | | nonblocking |
 
 ## Open findings: detail and next action
 
@@ -406,7 +408,7 @@ packages out.
 **F54 — `audio.bin` with billions of levels** asks for memory in
 proportion (its count must equal its length). *Next:* cap the levels.
 
-**F55 — One expressions helper serves every project,** with real
+**F55 — *(fixed in `6eb772dd`, `14f8f554`)* One expressions helper serves every project,** with real
 builtins: approved code in one can patch the helper's caches, its
 builtins and modules, or leave a thread answering later runs
 (`expressions.py:311,340`). *Reproduced:* a thread a run left, holding
@@ -420,7 +422,22 @@ leaves no thread at all. Restarting after a run that leaves threads,
 the earlier next action, can't see those, and code with real builtins
 can hide a thread from the count. A helper per project bounds it across
 projects, not between unrelated runs of one. *Next:* the owner decides
-D9; until then the boundary is the helper process, shared.
+D9; until then the boundary is the helper process, shared. *Fixed in
+`14f8f554`, as decided (D9, option a):* each confined run has a process
+no code has run in, ended when the run ends; the next is started at once,
+its modules imported, so it is ready when the next run comes. The helper
+keeps nothing between runs: the app keeps each run's tables
+(`ExpressionResult.input`) and, for a run of the same code, key, count,
+width and tables whose reads haven't changed, sends them and the last
+samples after the new tables, and the helper compares the two as it
+compared against its own memory. A confined test shows a builtin one run
+sets is gone in the next, which has another process ID; without the
+change it was still there. *Measured* (Homebrew's Python 3.13, M4 Pro,
+240 samples): 2.3 ms a run on a helper kept running, 3.4 ms on the one
+started ahead, 45 to 48 ms for a run straight after another, which waits
+for Python to start. *Left:* runs back to back (several queued effects,
+a fast drag an expression follows) come at about 20 a second; a pool of
+spares, about 12 MB each, would hide it if a drag shows the need.
 
 **F56 — *(fixed in `5996cf1a`)* Non-finite expression samples** are counted, not checked, in the
 app (`PythonHelper.swift:167–176`); NaN keyframes would fail saving.
@@ -487,11 +504,30 @@ release's signed attestation), or the owner accepts the risk.
 
 ### Phase 4
 
-**F67 — Moving or renaming the open package splits the project.**
+**F67 — *(fixed in `d2999cb8`)* Moving or renaming the open package splits the project.**
 Nothing notices the move; the next save's `preparePackage` recreates a
 package at the old path with `Media/` paths into nothing, unlocked
 (`ProjectStore.swift:101–108`, `ProjectSession.swift:305,387`). *Next:*
 refuse to save where the package was moved from, or follow it.
+*Reproduced* before the fix: renamed, then saved, a package was back at
+the old path. Autosave, backups and the view state wrote there too.
+*Fixed:* the window finds where the package is from its `.lock`, held
+open, which moves with it (`ProjectLock.currentPackageURL`, by
+`F_GETPATH`, checked against the descriptor's file so a file put in its
+place isn't taken for it). Before every save, autosave and backup, and
+at the two-second outside-change check, a moved package is followed as
+Save As follows a new place: window, lock (kept: taking another would be
+refused by the descriptor already held), file watch with its baseline,
+analysis, renders, view state, recent list, and the paths of media
+inside the package in the project, its undo history and the saved copy.
+Into a package in the Trash, or deleted, nothing is written: a save
+says why, and Save As stays possible, from the Trash with its media.
+Tested: renamed and saved, nothing is at the old path, the media path
+follows in the file and on screen, and the lock still holds; deleted,
+saves, autosaves, backups and the check write nothing. *Left:* a write
+in the two seconds or less before the move is noticed can still make a
+folder at the old place; the Trash case is tested by reading only, not
+by putting a package in the Trash; timeline windows (F122).
 
 **F68 — *(fixed in `82160372`)* A failed Restore says nothing** (`ProjectSession.swift:223`,
 `try?`): the saved version opens, and the first save makes the autosave
@@ -950,11 +986,19 @@ with the job; a test that changes an approval mid-export.
 Forget Allowed Code covers Python only. *Next:* the same button for
 packages in Settings.
 
+**F122 — Timeline windows lose their project after Save As or a move**
+(found fixing F67). A timeline window finds its project by the package
+URL it was opened with (`TimelineWindowRef.projectURL`,
+`ProjectWindows.session(showing:)`, which matches the session's URL as
+it is now), so one open across a Save As, or across a move F67 follows,
+no longer finds it (read, not tried). *Next:* key timeline windows by
+the session, or move their refs with it; an event test across Save As.
+
 *Classifications kept, consequences read again:* F67 (a moved package's
-next save makes a second, unlocked one at the old path), F72 (stems
-replace same-named files unasked) and F35 (the console edits the
-project behind a Timeline window) stay blocking, and with F73 are the
-persistence work before phase 6 goes far. F69 and F84 are above.
+next save makes a second, unlocked one at the old path; since fixed),
+F72 (stems replace same-named files unasked) and F35 (the console edits
+the project behind a Timeline window) stay blocking, and with F73 are
+the persistence work before phase 6 goes far. F69 and F84 are above.
 
 ## Fixed findings: detail
 
@@ -1155,7 +1199,11 @@ review, not claims that the code meets them; each says what is done.
   (F53). *Done* (`4c7ab74c`, F90), but for a Settings button to forget
   approved packages (F121).
 - **D9. How far one expression's code is kept from another's.**
-  *Proposed, for the owner.* F55: the confined helper serves every
+  *Decided by the owner (2026-11-28): (a), a process per run.* *Done*
+  (`14f8f554`, F55): measured at 47 ms to start against 2.3 ms for a
+  run, so per run, with the next process started ahead, rather than per
+  batch; the app keeps and sends the last run for incremental reruns.
+  As proposed: F55: the confined helper serves every
   open project and every run, keeping state between runs on purpose (the
   last run's samples for each effect, `_last_runs`, so an edit reruns
   only the samples it changed; compiled code, `_compiled`). Code with

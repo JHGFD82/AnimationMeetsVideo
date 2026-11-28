@@ -29,8 +29,9 @@ struct HelperPong: Equatable, Sendable {
 
 /// The app's two helpers (see docs/python-scripting.md, "A helper
 /// process"): one for scripts and the console, with the person's rights,
-/// and one for expressions. Each is started the first time something
-/// needs it, never at launch, and kept until the app quits.
+/// started the first time something needs it, never at launch, and kept
+/// until the app quits; and one for expressions, a process of its own for
+/// each run.
 enum PythonHelpers {
     static let scripts = PythonHelper()
     /// Confined (`HelperConfinement`): an expression is arithmetic.
@@ -45,12 +46,23 @@ enum PythonHelpers {
 /// Stop sends `SIGINT`, which Python raises as `KeyboardInterrupt`, and a
 /// second later, if the run hasn't ended, ends the process; the next run
 /// starts a new one. So does a run that outlasts its time limit.
+///
+/// Confined, each run has a process no code has run in, ended when the
+/// run ends, so nothing one expression changes (builtins, modules, the
+/// helper's own state, a thread) reaches another's run, of this project or
+/// another (code-review-notes.md, D9). The next process is started as soon
+/// as one ends, so Python has started by the time a run needs it: a fresh
+/// one costs about 45 ms more than a run on one already started.
 actor PythonHelper: ScriptHelper {
     private let findInterpreter: @Sendable () -> PythonInterpreter?
     private let host: URL?
-    /// Whether it runs in the sandbox, as the expressions' helper does.
+    /// Whether it runs in the sandbox, as the expressions' helper does,
+    /// and so a process of its own for each run.
     let confined: Bool
     private var connection: HelperConnection?
+    /// Whether to start a process for the next run once one ends: from a
+    /// confined run until `shutDown`.
+    private var keepsSpare = false
     private var nextID = 0
     /// The run under way, and the runs that ended by Stop or by the limit.
     private var activeRun: Int?
@@ -80,6 +92,9 @@ actor PythonHelper: ScriptHelper {
         await enter()
         defer { leave() }
         let connection = try connect()
+        // Confined, the process is this run's alone: ended when it ends,
+        // whatever the end, before the next run is let in.
+        defer { if confined { retire(connection) } }
         nextID += 1
         let id = nextID
         activeRun = id
@@ -199,6 +214,7 @@ actor PythonHelper: ScriptHelper {
 
     /// Ends the helper, if it is running; the next run starts a new one.
     func shutDown() {
+        keepsSpare = false
         if let connection { drop(connection) }
     }
 
@@ -219,6 +235,21 @@ actor PythonHelper: ScriptHelper {
     private func drop(_ dropped: HelperConnection) {
         dropped.terminate()
         if connection === dropped { connection = nil }
+    }
+
+    /// Ends a confined run's process, and starts the next run's off the
+    /// run's own time.
+    private func retire(_ used: HelperConnection) {
+        drop(used)
+        keepsSpare = true
+        Task { [weak self] in await self?.startSpare() }
+    }
+
+    /// A process for the next run, started now so Python is ready when it
+    /// comes; none once shut down, or when one is there already.
+    private func startSpare() {
+        guard keepsSpare, connection == nil else { return }
+        _ = try? connect()
     }
 
     private func timeOut(_ id: Int) {

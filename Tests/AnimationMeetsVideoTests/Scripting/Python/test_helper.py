@@ -407,7 +407,17 @@ class ExpressionTests(unittest.TestCase):
             "value": [x for v in value for x in v], "a": a or [2.0] * count, "b": [1.0] * count, "c": [0.0] * count, "d": [0.0] * count,
         }
         floats = [x for name, _ in tables for x in columns[name]]
-        payload = struct.pack("<%dd" % len(floats), *floats)
+        # As the app does: the helper keeps nothing between runs, so with
+        # `reuse` the last run's tables and samples are sent after these,
+        # when it was of the same code, settings and layout and worked.
+        shape = (extra.get("key"), code, count, width, tuple(tables))
+        last = getattr(self, "last_run", None)
+        sent = floats
+        if extra.get("reuse") and last is not None and last[0] == shape:
+            sent = floats + last[1] + last[2]
+        else:
+            extra["reuse"] = False
+        payload = struct.pack("<%dd" % len(sent), *sent)
         header = dict(
             count=count, width=width, tables=tables, fps=24.0, duration=count / 24, seed=1, effect="E9",
             context={"timeline": "T1", "clip": "C1", "layer": "L1"}, **extra
@@ -415,9 +425,12 @@ class ExpressionTests(unittest.TestCase):
         output, result = self.helper.run("expression", code, self.app, payload=payload, **header)
         if printed is not None:
             printed.append(output)
+        self.last_run = None
         if result["type"] == "result":
             data = result["payload"] if "payload" in result else b""
-            return list(struct.unpack("<%dd" % (len(data) // 8), data))
+            samples = list(struct.unpack("<%dd" % (len(data) // 8), data))
+            self.last_run = (shape, floats, samples)
+            return samples
         return result
 
     def test_each_sample_is_the_last_lines_value(self):

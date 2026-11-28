@@ -28,6 +28,13 @@ final class ProjectFileMonitor {
         knownDigest = (try? Data(contentsOf: file)).map(Self.digest)
     }
 
+    /// Goes on watching the same file where its package was moved, keeping
+    /// the baseline: a change not yet taken is still one.
+    func move(toPackage url: URL) {
+        guard fileURL != nil else { return }
+        fileURL = url.appending(path: ProjectStore.projectFileName)
+    }
+
     func stop() {
         fileURL = nil
         knownStamp = nil

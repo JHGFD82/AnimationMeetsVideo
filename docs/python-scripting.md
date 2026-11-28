@@ -244,10 +244,20 @@ a pipe (tens of microseconds). The protocol is shaped around that: an
 expression gets whole tables, not single values, and scripts read and
 write lists in one call.
 
-The helper is started the first time something needs it, never at
-launch, and kept until the app quits. There are two: one for
-expressions, confined, and one for scripts and the console, with the
-person's rights. Each runs one thing at a time.
+A helper is started the first time something needs it, never at
+launch. There are two: one for expressions, confined, and one for
+scripts and the console, with the person's rights. Each runs one thing
+at a time. The scripts helper is kept until the app quits. The
+expressions helper is a process of its own for each run, ended when the
+run ends, so nothing one expression's code changes (a builtin, a module,
+the helper's own state, a thread it leaves) reaches the next run, of
+the same project or another (code-review-notes.md, D9). The next run's
+process is started as soon as one ends, with the helper's modules
+imported, so it is ready when the run comes: measured with Homebrew's
+Python 3.13 on an M4 Pro, a run of 240 samples took 3.4 ms on it, 2.3 ms
+on a helper kept running, and 46 to 48 ms when it comes straight after
+another and waits for Python to start, as runs of several queued effects
+or a fast drag can.
 
 ### Which Python
 
@@ -306,8 +316,8 @@ are at most 1 MiB, and 256 MiB for scripts, whose headers are at most
 64 MiB; and 10,000 frames. A `call` or `output` tagged with a run other
 than the one under way is from a thread an earlier run left and is never
 answered. Each of these ends the helper, and the next run starts a new
-one. The expressions helper is still shared by every open project and
-between runs (code-review-notes.md, F55).
+one. The expressions helper is a new process for every run anyway (see
+above).
 
 **Stop** and the time limit send `SIGINT`, which Python raises as
 `KeyboardInterrupt`, and after a second end the process. The next run
@@ -488,32 +498,32 @@ another, with the tables already there. That is estimated at tens of
 milliseconds for the clip and hasn't been measured; Between Frames
 multiplies it by up to 8. What keeps runs few and short:
 
-- **The helper stays running** and keeps each expression's compiled
-  code by its hash, so a run starts with no launch and no compile.
+- **The helper is started ahead of the run**, so a run starts with no
+  launch to wait for (see "A helper process"). It keeps nothing between
+  runs.
 - **Results are kept by fingerprint** for the session
   (`ExpressionResults`), several for each effect. Undo, redo and a value
   set back to what it was find the result made before, and nothing
   runs.
-- **Only the samples that changed are run again.** The helper keeps
-  each expression's last tables and results. The app sends a table's
-  rows only where they differ from the last it sent, and the helper
-  calls the code for those samples alone. Moving one keyframe of an
+- **Only the samples that changed are run again.** The app keeps each
+  expression's last tables and results (`ExpressionResult.input`) and
+  sends them after the new tables, and the helper calls the code only
+  for the samples whose rows differ. Moving one keyframe of an
   input then costs the samples around it, not the clip. Two cases run
   more: code that used `prev` or `state` runs from the first changed
   sample to the end, since each sample follows from the one before, and
   code that read a control at another moment (`.at`) runs whole when
   that control changed.
 - **As built**, two things differ from the above. The app sends every
-  row each run, and the helper compares them with the rows it kept, so
-  a helper started afresh can never use rows it doesn't have; sending
-  is cheap, and the calls are what cost. And code that uses `state`
-  runs whole, rather than from the first changed sample, which would
-  need `state` kept as it was at every sample. The helper uses its last
-  run only when the app says nothing that run read has changed since,
-  and when the code, the tables' shape and a key of what else the
-  samples depend on (what `audio()` hears and `beats` follows, the
-  component, where the clip is, the frame rate) are the same; a partial
-  run's reads join the whole run's. `prev` is the sample before as a
+  row each run, the last run's beside them, and the helper compares the
+  two; sending is cheap, and the calls are what cost. And code that uses
+  `state` runs whole, rather than from the first changed sample, which
+  would need `state` kept as it was at every sample. The app sends the
+  last run only when nothing that run read has changed since, and when
+  the code, the tables' shape and a key of what else the samples depend
+  on (what `audio()` hears and `beats` follows, the component, where the
+  clip is, the frame rate) are the same; a partial run's reads join the
+  whole run's. `prev` is the sample before as a
   number or a Vector, the same in a whole run and a partial one.
 - **Measured** on the helper alone (Python 3.13 on Linux, with the app's
   answers stood in for), for `value + [a * sin(t * tau * b), 0]` on a

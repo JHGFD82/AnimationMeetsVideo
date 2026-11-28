@@ -194,7 +194,19 @@ import Testing
         let result = try #require(await ExpressionRunner(helper: helper).run(job, in: f.project))
         #expect(result.reads == [rotation])
         ExpressionResults.shared.store(result, for: id)
-        #expect(ExpressionRunner.request(for: job, in: f.project)?.request.fields["reuse"] == true)
+        let reusing = try #require(ExpressionRunner.request(for: job, in: f.project))
+        #expect(reusing.request.fields["reuse"] == true)
+        // The helper remembers no run (D9): the last run's tables and
+        // samples go after this run's.
+        let tables = PythonHelper.payload(reusing.input.tables)
+        #expect(reusing.request.payload == tables + tables + PythonHelper.payload(result.values))
+        // Other code is another shape, which the helper can no longer tell
+        // for itself: the whole run again, with nothing after the tables.
+        var recoded = f.project
+        recoded.editEffect(id, ofClip: f.clipID, in: f.timelineID) { $0.expression = "frame * 3" }
+        let whole = try #require(ExpressionRunner.request(for: job, in: recoded))
+        #expect(whole.request.fields["reuse"] == false)
+        #expect(whole.request.payload == PythonHelper.payload(whole.input.tables))
         // What it read changes: the whole run again.
         let rotationID = f.controlID(.rotation)
         f.project.editEffect(f.transformID, ofClip: f.clipID, in: f.timelineID) { effect in

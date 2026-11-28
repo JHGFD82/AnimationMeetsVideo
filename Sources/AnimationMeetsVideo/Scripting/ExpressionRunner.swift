@@ -119,7 +119,8 @@ final class ExpressionRunner {
         let print = project.expressionPrint(of: request.effect, in: request.clip, of: request.timeline, base: request.base, reads: reads)
         return ExpressionResult(
             times: failure == nil ? request.times : [], values: failure == nil ? values : [], width: request.width,
-            reads: reads, failure: failure, print: print, readsPrint: project.readsPrint(reads)
+            reads: reads, failure: failure, print: print, readsPrint: project.readsPrint(reads),
+            input: failure == nil ? request.input : nil
         )
     }
 
@@ -162,6 +163,8 @@ final class ExpressionRunner {
         var ownTarget: KeyframingRead
         /// The last result, when the helper may start from it.
         var reused: ExpressionResult?
+        /// What this run is sent, for the run after it.
+        var input: ExpressionInput
     }
 
     /// The request for an expression: its code, and a table for each name
@@ -201,9 +204,15 @@ final class ExpressionRunner {
             ("value", width, value),
             ("a", 1, input(.inputA)), ("b", 1, input(.inputB)), ("c", 1, input(.inputC)), ("d", 1, input(.inputD)),
         ]
-        var request = HelperRequest(kind: .expression, code: effect.expression ?? "")
+        let code = effect.expression ?? ""
+        let key = String(settingsKey(of: effect, setup: setup, timeline: timeline, clip: clip, layer: found.layer.id), radix: 16)
+        let input = ExpressionInput(
+            shape: ExpressionInput.Shape(key: key, code: code, count: count, width: width, tables: tables.map(\.0), sizes: tables.map(\.1)),
+            tables: tables.flatMap { $0.2 }
+        )
+        var request = HelperRequest(kind: .expression, code: code)
         request.timeLimit = timeLimit
-        request.payload = PythonHelper.payload(tables.flatMap { $0.2 })
+        request.payload = PythonHelper.payload(input.tables)
         request.fields = [
             "count": .number(Double(count)),
             "width": .number(Double(width)),
@@ -217,17 +226,25 @@ final class ExpressionRunner {
             "timeline": JSONValue(timeline.id), "clip": JSONValue(clip.id), "layer": JSONValue(found.layer.id),
         ]
         // Running only the samples that changed (see docs/python-scripting.md,
-        // "Doing less work"): the helper keeps each expression's last run,
-        // and may call the code only for the samples whose rows differ
-        // from it, when the last run worked and nothing it read has changed
-        // since. What else the samples depend on and the tables don't show
-        // is the key, which must match too.
+        // "Doing less work"): the helper may call the code only for the
+        // samples whose rows differ from the last run, when that run worked,
+        // nothing it read has changed since and it had this run's shape (the
+        // same code, key, count, width and tables; the key is what else the
+        // samples depend on). Each run is a helper of its own that remembers
+        // nothing, so the last run's tables and samples are sent after this
+        // run's (D9).
         let last = ExpressionResults.shared.results(for: effect.id).last
-        let reused = last.flatMap { last in
-            last.failure == nil && last.readsPrint == project.readsPrint(last.reads) ? last : nil
+        let reused = last.flatMap { last -> ExpressionResult? in
+            guard last.failure == nil, last.input?.shape == input.shape,
+                  last.values.count == count * width,
+                  last.readsPrint == project.readsPrint(last.reads) else { return nil }
+            return last
+        }
+        if let reused, let lastInput = reused.input {
+            request.payload.append(PythonHelper.payload(lastInput.tables + reused.values))
         }
         request.fields["reuse"] = .bool(reused != nil)
-        request.fields["key"] = .string(String(settingsKey(of: effect, setup: setup, timeline: timeline, clip: clip, layer: found.layer.id), radix: 16))
+        request.fields["key"] = .string(key)
         let ownTarget: KeyframingRead = switch target {
         case .volume: KeyframingRead(timeline: timeline.id, kind: .volume(clip: clip.id))
         case .control(let effectID, let controlID):
@@ -235,7 +252,7 @@ final class ExpressionRunner {
         }
         return Prepared(
             request: request, times: sampling.sources, timelineTimes: sampling.timelineTimes, width: width, effect: effect, clip: clip, timeline: timeline,
-            base: base, ownTarget: ownTarget, reused: reused
+            base: base, ownTarget: ownTarget, reused: reused, input: input
         )
     }
 }
