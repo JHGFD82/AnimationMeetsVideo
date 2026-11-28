@@ -49,7 +49,7 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F101–F103, F105, F106, F108, F109, F112 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F105, F106, F108, F109, F112 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
@@ -188,9 +188,9 @@ From the plan's checkpoint, with the findings each part covers.
 | F98 | Sound-only clips never join, so crossfades dip | 5 | sound | 3 | reproduced | fixed | `9a23eccb` · fails without | nonblocking |
 | F99 | Detach Audio drops the fades under transitions | 5 | sound | 3 | reproduced | fixed | `6fc17175` · fails without | nonblocking |
 | F100 | Scene-following splits land between frames | 5 | timing | 3 | reproduced | fixed | `49fe216a` · fails without | blocking |
-| F101 | Two joints can overlap inside a short clip | 5 | rendering | 3 | code-verified | open | | nonblocking |
-| F102 | A joint slip can leave a transition without footage | 5 | rendering | 3 | code-verified | open | | nonblocking |
-| F103 | A joint drawn beside a disabled clip | 5 | usability | 5 | code-verified | open | | nonblocking |
+| F101 | Two joints can overlap inside a short clip | 5 | rendering | 3 | reproduced | fixed | `61f0cf09` · fails without | nonblocking |
+| F102 | A joint slip can leave a transition without footage | 5 | rendering | 3 | reproduced | fixed | `8b6ab67d` · fails without | nonblocking |
+| F103 | A joint drawn beside a disabled clip | 5 | usability | 5 | reproduced | fixed | `5d8e870a` · fails without | nonblocking |
 | F104 | Ramped clips' times cut down a tick | 5 | timing | 3 | reproduced | fixed | `50e32741` · fails without | blocking |
 | F105 | Blend on slowed clips mixes in the next scene | 5 | rendering | 3 | code-verified | open | | nonblocking |
 | F106 | Reversed clips show the frame before | 5 | timing | 3 | code-verified | open | | blocking |
@@ -550,7 +550,11 @@ and moved by a measured 180-sample lead; saved beats detected again),
 **F98** (sound clips join one another at a cut and crossfade over their
 spare sound), **F99** (detached sound takes the fades it had under the
 picture's transitions: copies of joined clips join, others fade over the
-same span, lengthened into a joint that stays).
+same span, lengthened into a joint that stays), **F101** (a joint is
+fitted clear of the outgoing clip's way in and of the joint after the
+incoming clip), **F102** (a slip stops where a joint at either end would
+lose footage it plays), **F103** (a disabled clip joins nothing, so the
+timeline draws the transition at an open end as the export plays it).
 
 **F94 — *(fixed in `fac2eb3f`)* Pasted keyframes can land a tick before their frame.**
 `KeyframeCopying.swift:13,73` keeps offsets as `Double` and `:107` makes
@@ -580,7 +584,13 @@ it. *Next:* index by the exact frame duration, as F92.
 needs `playsVideo`), so a Crossfade dropped between two sound clips
 fades one out to silence and cuts the next in, against
 transitions.md:162–165. *Next:* joinable sound clips; a loudness test at
-the cut.
+the cut. *Left:* projects saved before keep such a transition as the
+first clip's way out, and a way out at a cut now also fades the next
+clip in under it, from before its in point where its file has spare
+sound: what was a dip at those cuts becomes a crossfade, with no saved
+setting changed. That is the documented behavior, but it changes how
+existing edits sound. *Next:* listen to a project with fades between
+song pieces or sound clips.
 
 **F99 — *(fixed in `6fc17175`)* Detach Audio drops the fades under picture transitions**
 (`LinkedAudio.swift:100–101`), against its own comment that the sound
@@ -589,16 +599,16 @@ after F98. *Left:* at an open end a picture transition's sound follows
 its curve, which an Audio transition hasn't; the copy fades at equal
 power over the same span, the same fade only where the curve was linear.
 
-**F101 — Two joints can overlap inside a short middle clip:**
+**F101 — *(fixed in `61f0cf09`)* Two joints can overlap inside a short middle clip:**
 `fittedJoint` (`ClipTransition.swift:575–577`) subtracts only the clip's
 own way out, not the next joint's lead. *Next:* subtract both
 neighbors' shares; a widening test.
 
-**F102 — A joint slip can leave the transition without footage**
+**F102 — *(fixed in `8b6ab67d`)* A joint slip can leave the transition without footage**
 (`ClipTransition.swift:649`, `slipClip` bounded only by the file).
 *Next:* refit after the slip, as `rollCut` does.
 
-**F103 — A joint is drawn beside a disabled clip** that export plays as
+**F103 — *(fixed in `5d8e870a`)* A joint is drawn beside a disabled clip** that export plays as
 a gap (`LayerClipRow.swift:293,402`). *Next:* leave disabled clips out
 of the drawn joint.
 
