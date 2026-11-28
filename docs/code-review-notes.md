@@ -49,7 +49,7 @@ reviewers. Nothing here has been checked by anyone outside it.
 | Owner's decisions D3–D8 | Done but for release gates | D6's signing, notarization and signed-app confinement wait for phase 12; D7's footage for phases 7 and 8 | |
 | Stabilization checkpoint | Done but for F4 | F4 not reproduced in two runs since, to be captured by `run-tests.sh` when it recurs | F4 |
 | 4. Project model and persistence | Partial | Three reviews made and recorded; its severity-1 findings fixed but F72's stems prompt | F67, F69, F70, F72, F73, F75–F80, F82–F88 |
-| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | F106 |
+| 5. Timeline, timing and music sync | Partial | Four reviews made and recorded; the end-to-end sync export test isn't built; the beat tick and MIDI taps read, not tried on hardware; detection quality judged on generated scores, not episodes (D7) | none; residuals under F98, F99, F110, F112 |
 | 6 to 12 | Not started | May start: checkpoint A to C are closed but for F4 | |
 
 ## Stabilization checkpoint
@@ -193,7 +193,7 @@ From the plan's checkpoint, with the findings each part covers.
 | F103 | A joint drawn beside a disabled clip | 5 | usability | 5 | reproduced | fixed | `5d8e870a` · fails without | nonblocking |
 | F104 | Ramped clips' times cut down a tick | 5 | timing | 3 | reproduced | fixed | `50e32741` · fails without | blocking |
 | F105 | Blend on slowed clips mixes in the next scene | 5 | rendering | 3 | reproduced | fixed | `769adb5e` · fails without | nonblocking |
-| F106 | Reversed clips show the frame before | 5 | timing | 3 | code-verified | open | | blocking |
+| F106 | Reversed clips begin on the next shot's frame | 5 | timing | 3 | reproduced | fixed | `f5d438cd` · fails without | blocking |
 | F107 | Export doesn't wait for running expressions | 5 | export | 3 | code-verified | fixed | `a7a486de` · test (the check; the alert by hand) | blocking |
 | F108 | Beat Keys rewritten flat before beats load | 5 | correctness | 3 | reproduced | fixed | `ea7b1981` · fails without | nonblocking |
 | F109 | Speeds outside the time-pitch range untried | 5 | export | 3 | reproduced | fixed | `51523f38` · fails without | blocking |
@@ -560,7 +560,8 @@ render format version goes to 5, retiring renders made before F91, F104
 and F105), **F108** (Beat Keys waits while a layer's beats aren't in
 yet), **F109** (sound outside 3.125% to 3,200% is left out and silent;
 tried first: such sound came back empty, and a WAV Mix of only a 2%
-clip was written with no frames and reported done), **F112** (the usual
+clip was written with no frames and reported done), **F106** (one mapping for a backwards clip's picture and evaluation,
+as decided; it now begins on its last included frame), **F112** (the usual
 change is taken over frames that change, so drawings held on twos and
 threes aren't cuts; the scorer records the change across two frames, so
 a two-frame flash isn't either).
@@ -627,14 +628,36 @@ the trim** (`CompositionFlattening.swift:263–264`,
 next shot's first. *Next:* no blend past the trim's last frame; a
 colored next-frame test.
 
-**F106 — Reversed clips show the frame before the one their source time
+**F106 — *(fixed in `f5d438cd`)* Reversed clips show the frame before the one their source time
 names:** a reversed piece reads from `sourceTime(b)`, effects are
 evaluated at `sourceTime(a)` (`CompositionFlattening.swift:503–510`,
 `ClipStack.swift:95–96`), so keyframes sit a frame off after Reverse and
 Blend steps back and forth. No rule is written for which timeline frame
 a repeated source frame maps back to; forward clips give the first.
 *Next:* decide and document one convention, evaluate at the frame shown;
-scene-following splits of reversed clips (F100) follow it.
+scene-following splits of reversed clips (F100) follow it. *Decided by
+the owner:* one timeline-to-source mapping per frame selects the picture
+and evaluates source-relative keyframes, expressions and Blend; controls
+in timeline time keep their behavior; source ranges are end-exclusive
+and reverse playback begins on the last included frame. *Found when
+tried:* the review had it the wrong way round. The picture, not the
+evaluation, was off: each reversed piece played from its edge time, so
+a clip trimmed to frames 24–71 began on frame 72 (its exclusive out
+point, the next shot's first) and never showed 24; keyframes read the
+same edge time, so they agreed with that picture. *Fixed:*
+`TimelineClip.shownSourceTime` is the mapping (forwards the edge time;
+backwards the lower end of the span a frame plays, `T − (e + f)·s`), and
+the picture, keyframing samples, the compositor's evaluation, Blend, the
+scrub stand-in, thumbnails, the effects panel, inspector shapes, viewer
+handles, pen, keyframe paste and the script bridge take it; trims,
+splits, sound, speed keyframes and the music attachment keep the edge
+mapping, consistently both ways. Scene following now splits backwards
+clips by the same rule as forwards ones (F100's reverse-only split at
+the cut is gone). Render format version 6. *Left:* the filmstrip, which
+has no timeline frame, holds a backwards clip's tiles a footage frame
+under the out point, exact where the rates match; the UI's keyframe
+markers and handles on backwards clips haven't been looked at on
+screen.
 
 **F107 — *(fixed in `a7a486de`)* Export doesn't wait for running expressions** or Audio Keys
 still reading: nothing in `Export/` checks `waitingExpressions()` or
