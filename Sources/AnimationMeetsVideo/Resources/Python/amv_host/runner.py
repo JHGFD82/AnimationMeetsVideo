@@ -282,6 +282,10 @@ def serve(channel, on_host=None):
         on_host(host)
     sys.stdout = Output(host, "stdout")
     sys.stderr = Output(host, "stderr")
+    # Imported before the first message, while the helper waits for it: a
+    # confined helper serves one run and is started ahead of it, so this
+    # comes off the run's own time.
+    from . import amv, expressions  # noqa: F401
     while True:
         try:
             header, payload = channel.read(discard_interrupts=True)

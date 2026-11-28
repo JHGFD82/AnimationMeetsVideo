@@ -127,6 +127,29 @@ struct ExpressionResult: Equatable, Sendable {
     /// (`readsPrint`): while they are unchanged, the next run calls the
     /// code only for the samples whose rows changed.
     var readsPrint: UInt64 = 0
+    /// What a run that worked was sent, for the next run of the same shape
+    /// to start from: each run is a helper process of its own, which
+    /// remembers nothing (code-review-notes.md, D9).
+    var input: ExpressionInput?
+}
+
+/// The tables a run was sent, and what they must match for a later run to
+/// reuse its samples.
+struct ExpressionInput: Equatable, Sendable {
+    struct Shape: Equatable, Sendable {
+        /// What the samples depend on besides the code and the tables.
+        var key: String
+        var code: String
+        var count: Int
+        var width: Int
+        /// Each table's name and numbers per sample, in the order sent.
+        var tables: [String]
+        var sizes: [Int]
+    }
+
+    var shape: Shape
+    /// Every table, one after another, as `tables` lays them out.
+    var tables: [Double]
 }
 
 /// An expression's error, as its note shows it.

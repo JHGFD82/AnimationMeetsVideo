@@ -209,13 +209,11 @@ def _numbers(value, width, time):
 
 # MARK: - Running only what changed
 
-# Each expression's last run, by its effect: what it was made from and the
-# samples it gave, so a run where only some samples' rows changed (one
-# keyframe of an input moved) calls the code for those alone. Kept for
-# the helper's life; the app says when nothing the run read has changed
-# since (`reuse`), the only time they can be used.
-_last_runs = {}
-_KEPT_RUNS = 64
+# A run where only some samples' rows changed (one keyframe of an input
+# moved) calls the code for those alone. The helper keeps nothing between
+# runs, since each is a process of its own: with `reuse`, the app sends the
+# last run's tables and samples after this run's, when it was made from the
+# same code, settings and table layout and nothing it read has changed.
 
 # Names that make a sample depend on the ones before it in ways a partial
 # run can't follow: `state` (kept from sample to sample), and the ways to
@@ -231,18 +229,15 @@ def _uses(code):
         return set()
 
 
-def _samples_to_run(effect, shape, tables, count, width, reuse, code):
+def _samples_to_run(sizes, tables, count, width, last, code):
     """Which samples to call the code for, in order, and the results to
-    start from: every sample, unless the last run of this expression was
-    made from the same code and settings and nothing it read has changed
-    (`reuse`). Then only the samples whose rows changed; with `prev`, from
-    the first of them to the end, since each follows from the one before;
-    with `state`, every sample."""
+    start from: every sample, unless the app sent the last run (`last`,
+    its tables and results). Then only the samples whose rows changed;
+    with `prev`, from the first of them to the end, since each follows
+    from the one before; with `state`, every sample."""
     every = list(range(count))
-    last = _last_runs.get(effect)
-    if not reuse or last is None or last["shape"] != shape:
+    if last is None:
         return every, [0.0] * (count * width)
-    sizes = {name: size for name, size in shape[4]}
     changed = [
         k for k in range(count)
         if any(tables[name][k * size:(k + 1) * size] != last["tables"][name][k * size:(k + 1) * size] for name, size in sizes.items())
@@ -273,17 +268,6 @@ def _previous(out, k, width):
     return numbers[0] if width == 1 else Vector(numbers)
 
 
-def _remember(effect, shape, tables, results):
-    _last_runs.pop(effect, None)
-    if len(_last_runs) >= _KEPT_RUNS:
-        _last_runs.pop(next(iter(_last_runs)))
-    _last_runs[effect] = {"shape": shape, "tables": tables, "results": list(results)}
-
-
-def _forget(effect):
-    _last_runs.pop(effect, None)
-
-
 def run(host, header, payload):
     """Runs an expression over its samples, sending its `result` or
     `error`."""
@@ -292,13 +276,23 @@ def run(host, header, payload):
     count = header["count"]
     width = header["width"]
     floats = protocol.unpack_floats(payload)
-    tables = {}
-    at = 0
-    for name, size in header["tables"]:
-        tables[name] = floats[at:at + count * size]
-        at += count * size
-
     sizes = dict(header["tables"])
+
+    def read_tables(at):
+        found = {}
+        for name, size in header["tables"]:
+            found[name] = floats[at:at + count * size]
+            at += count * size
+        return found, at
+
+    tables, at = read_tables(0)
+    # The last run, sent after this one's tables when it may be reused.
+    previous_run = None
+    if header.get("reuse", False):
+        last_tables, at = read_tables(at)
+        last_results = floats[at:at + count * width]
+        if len(last_results) == count * width:
+            previous_run = {"tables": last_tables, "results": last_results}
 
     def column(name, k):
         size = sizes[name]
@@ -322,8 +316,7 @@ def run(host, header, payload):
     time = 0.0
     try:
         statements, last = compiled(header["code"])
-        shape = (header.get("key"), header["code"], count, width, tuple(map(tuple, header["tables"])))
-        indices, out = _samples_to_run(effect, shape, tables, count, width, header.get("reuse", False), header["code"])
+        indices, out = _samples_to_run(sizes, tables, count, width, previous_run, header["code"])
         prev = _previous(out, indices[0] - 1, width) if indices else None
         for k in indices:
             time = tables["time"][k]
@@ -342,11 +335,9 @@ def run(host, header, payload):
             out[k * width:(k + 1) * width] = _numbers(value, width, time)
             prev = _previous(out, k, width)
             names["state"] = namespace["state"]
-        _remember(effect, shape, tables, out)
         message = {"type": "result", "ran": len(indices)}
         result_payload = protocol.pack_floats(out)
     except BaseException as error:  # noqa: B902 – everything is reported, KeyboardInterrupt too
-        _forget(effect)
         message = runner.error_message(error, "<expression>")
         message["time"] = time
         result_payload = b""

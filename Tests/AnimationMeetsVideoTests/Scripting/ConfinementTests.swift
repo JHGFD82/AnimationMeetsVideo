@@ -40,6 +40,23 @@ struct ConfinementTests {
         """)
     }
 
+    /// Each confined run is a process of its own: what one run changes, as
+    /// a builtin it sets, isn't there in the next, which may be another
+    /// project's (code-review-notes.md, D9 and F55).
+    @Test func eachRunHasAProcessOfItsOwn() async throws {
+        let helper = helper()
+        defer { Task { await helper.shutDown() } }
+        func line(_ code: String) async throws -> String? {
+            let end = try await helper.run(HelperRequest(kind: .line, code: code), output: { _ in }, answer: { _ in .error(.value("no calls")) })
+            guard case .finished(let display) = end else { return nil }
+            return display
+        }
+        let first = try #require(try await line("import builtins, os\nbuiltins.left_behind = os.getpid()\nos.getpid()"))
+        let second = try #require(try await line("import builtins, os\n(getattr(builtins, 'left_behind', None), os.getpid())"))
+        #expect(second.hasPrefix("(None, "))
+        #expect(second != "(None, \(first))")
+    }
+
     @Test func pythonStillRunsAndImportsTheStandardLibrary() async throws {
         #expect(try await run("import math, json, fractions, random\nmath.sqrt(16)") == "4.0")
     }
