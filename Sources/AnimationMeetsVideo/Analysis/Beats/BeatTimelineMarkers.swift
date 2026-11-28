@@ -67,6 +67,17 @@ extension EditingProject {
     /// The beat track a clip plays and its trimmed range in the track's
     /// file time, or nil when the clip plays no audio with detected beats.
     /// Shared by the markers and the picker so they never disagree.
+    /// Whether some of a layer's beats aren't in yet: a clip on it plays
+    /// sound from a file with no confirmed beats and no detected beats in
+    /// `tracks`, not even none found. Beat Keys waits for them rather than
+    /// writing from the beats there are (F108).
+    func beatsStillComing(in layer: TimelineLayer, tracks: [UUID: BeatTrack]) -> Bool {
+        layer.clips.contains { clip in
+            guard case .media(let assetID) = clip.source, playsAudio(clip), confirmedMap(of: clip) == nil else { return false }
+            return tracks[assetID] == nil
+        }
+    }
+
     private func playedBeats(
         of clip: TimelineClip, tracks: [UUID: BeatTrack]
     ) -> (track: BeatTrack, fileStart: CMTime, fileEnd: CMTime)? {

@@ -640,7 +640,11 @@ In order, each step usable on its own:
    while a file is still being read the effect keeps its keyframes (with
    a "Reading the sound…" note), and when it arrives the editor makes them
    in the undo baseline as well as the project, since the analysis
-   arriving isn't an edit.
+   arriving isn't an edit. Beat Keys, and Strobe Keys timed by beats,
+   wait the same way while a song on their layer has neither confirmed
+   beats nor detected ones yet (`beatsStillComing`), so an edit made
+   before the beats load doesn't flatten them; a song found to have no
+   beats has nothing to pulse to.
 5. **Keyframe Designer** (done), as described in
    [The Keyframe Designer](#the-keyframe-designer): the methods move out
    of the Effects Library into a panel opened from an effect's ⋯ menu,

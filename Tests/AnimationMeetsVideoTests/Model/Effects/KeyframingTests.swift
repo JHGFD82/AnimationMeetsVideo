@@ -381,6 +381,37 @@ private struct KeyframingFixture {
         }
     }
 
+    // F108: Beat Keys was made again from the beats there were, so an edit
+    // made before a project's detected beats loaded flattened it, into
+    // the undo step and the autosave, and for good if they never came.
+    @Test func beatKeysWaitsForDetectedBeatsRatherThanFlattening() throws {
+        var f = KeyframingFixture()
+        var song = MediaClip(
+            name: "Song.wav", kind: .audio, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        f.project.clips.append(song)
+        f.project.putOnMusicLayer([song.id])
+        let layerID = f.project.timeline(id: f.timelineID)!.layers.last!.id
+        let id = f.add(.beatKeys)
+        f.point(id, at: .rotation)
+        f.edit(id) { $0.keyframing?.beatLayer = layerID }
+        func rotation() -> [Keyframe<ComponentValue>] { f.control(.rotation).number.keyframes }
+
+        let detected = try BeatTrack(timescale: 1000, times: (1...7).map { Int64($0) * 500 }, beatsPerMinute: 120)
+        f.project.regenerateKeyframes(ofEffect: id, onClip: f.clipID, in: f.timelineID, tracks: [song.id: detected])
+        let written = rotation()
+        #expect(written.count > 4)
+        // The beats not in yet: what was written stays.
+        f.project.regenerateKeyframes(ofEffect: id, onClip: f.clipID, in: f.timelineID, tracks: [:])
+        #expect(rotation() == written)
+        #expect(f.project.keyframingFreshness(of: f.effect(id), in: f.clip, of: f.project.timeline(id: f.timelineID)!, tracks: [song.id: detected]) != .outOfDateWithEdits)
+        // Found to have none, it has nothing to pulse to.
+        f.project.regenerateKeyframes(ofEffect: id, onClip: f.clipID, in: f.timelineID, tracks: [song.id: .none(timescale: 1000)])
+        #expect(rotation().allSatisfy { abs($0.value.values[0]) < 1e-9 })
+    }
+
     @Test func everyOtherDownbeatSkipsTheRest() {
         var (f, layerID) = fixture()
         let id = f.add(.beatKeys)

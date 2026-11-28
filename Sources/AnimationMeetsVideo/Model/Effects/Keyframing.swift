@@ -615,6 +615,20 @@ extension EditingProject {
             return regenerateExpression(effect, setup: setup, base: base, target: target, clip: clip, timeline: timeline, current: current)
         }
         setup.readPrint = readPrint ?? keyframingReadPrint(of: effect, in: clip, of: timeline, tracks: tracks)
+        // Beats not in yet, as when a project has just opened: keep what is
+        // there, as Audio Keys does while reading the sound, so the beats
+        // arriving make the keyframes. Remade from the beats there were, an
+        // edit made first flattened them into its undo step and the
+        // autosave, and for good if the beats never came.
+        if effect.followsBeats, let layer = setup.beatLayer.flatMap({ timeline.layer(id: $0) }),
+           beatsStillComing(in: layer, tracks: tracks) {
+            setup.writtenPrint = Self.fingerprint(of: current)
+            guard setup != effect.keyframing else { return false }
+            editClip(clipID, in: timelineID) { clip in
+                if let index = clip.effects.index(of: effectID) { clip.effects[index].keyframing = setup }
+            }
+            return true
+        }
         var heard: [[Double]]?
         if effect.kind == .audioKeys {
             let range = Self.writtenRange(setup, of: clip)
