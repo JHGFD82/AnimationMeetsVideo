@@ -12,6 +12,36 @@ import Testing
 @Suite(.serialized) struct ViewerCopiesTests {
     private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600) }
 
+    // F96: a record's range was rebuilt from seconds on one timescale, and
+    // with ends whose timescales share no multiple that fits (13/24 s, and
+    // an end in nanoseconds from a retimed clip), it came back inside the
+    // stretch wanted, which then never counted as held and was copied
+    // again and again.
+    @Test func aRecordHoldsExactlyTheStretchItWasMadeFor() throws {
+        let wanted = CMTimeRange(
+            start: CMTime(value: 13_000, timescale: 24_000), end: CMTime(value: 25_145_288_549, timescale: 1_000_000_000)
+        )
+        func record(exact: Bool) throws -> ViewerCopies.Record {
+            var fields = """
+            "file": "a.mov", "original": "/a.mov", "stamp": {"byteCount": 1},
+            "start": \(wanted.start.seconds), "end": \(wanted.end.seconds), "timescale": 1000000000,
+            "offsetValue": 0, "offsetTimescale": 600
+            """
+            if exact {
+                fields += ", \"startValue\": 13000, \"startTimescale\": 24000, \"endValue\": 25145288549, \"endTimescale\": 1000000000"
+            }
+            return try JSONDecoder().decode(ViewerCopies.Record.self, from: Data("{\(fields)}".utf8))
+        }
+        let made = try record(exact: true)
+        #expect(made.isSound)
+        #expect(made.range.containsTimeRange(wanted))
+        // An index written before still reads, by its seconds, which is
+        // where the stretch came back short.
+        let older = try record(exact: false)
+        #expect(older.isSound)
+        #expect(!older.range.containsTimeRange(wanted))
+    }
+
     @Test func aCopyIsProResAtTheOriginalsFrameTimes() async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "amv-copies-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

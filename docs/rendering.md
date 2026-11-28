@@ -269,7 +269,7 @@ H.264 and HEVC footage from ProRes copies, which decode frame by frame
   422 HQ for footage deeper than 8 bits or HDR, with its color tags and
   orientation. Kept in `Cache/ViewerCopies/`, listed in its
   `index.json` with the original's path, size and date and the stretch
-  each holds. A wider trim makes a new copy of the wider stretch, which
+  each holds, its ends exactly as times (value and timescale each). A wider trim makes a new copy of the wider stretch, which
   replaces the ones it holds.
 - **Exact timing**: the writer starts a copy's movie at its first frame,
   so a frame's time in the copy is its time in the original less the
