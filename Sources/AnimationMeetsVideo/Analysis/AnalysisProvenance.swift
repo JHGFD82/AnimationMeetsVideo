@@ -96,12 +96,15 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
                 "periodicity=\(BeatTracker.Confidence.minimumPeriodicity)/\(BeatTracker.Confidence.clearPeriodicity)",
                 "agreement=\(BeatTracker.Confidence.minimumAgreement)",
                 "supported=\(BeatTracker.Confidence.minimumSupportedShare)x\(BeatTracker.Confidence.minimumSupportedIntervals)",
+                "lead=\(OnsetAnalyzer.detectionLead)",
             ]
             // 2: the FFT's packed DC and Nyquist values no longer count
             // toward onsets. 3: the tempo is the beats' median gap. 4: beats
             // without a steady pulse are rejected. 5: periodicity is a
-            // contrast with other lags, so real songs aren't rejected.
-            return (settings.joined(separator: ";"), 5)
+            // contrast with other lags, so real songs aren't rejected. 6:
+            // beats are on their hits, refined between frames and moved by
+            // the onset lead, not at frame centers about 9 ms early (F110).
+            return (settings.joined(separator: ";"), 6)
         }
     }
 

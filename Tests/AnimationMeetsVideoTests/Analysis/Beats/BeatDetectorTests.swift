@@ -115,8 +115,11 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         errors.sort()
         let median = errors[errors.count / 2]
         #expect(errors.count > 90)
-        // Each beat within 4 ms; the median within 3.
-        #expect(errors.allSatisfy { abs($0) < 0.004 }, "from \(errors.first! * 1000) to \(errors.last! * 1000) ms")
+        // The median within 3 ms (they run about ±2 ms), and every beat
+        // within half a hop, which one whose frame isn't the curve's peak
+        // there, and so isn't refined, can be off by.
+        let halfHop = Double(OnsetAnalyzer.hopSize) / 2 / rate
+        #expect(errors.allSatisfy { abs($0) < halfHop }, "from \(errors.first! * 1000) to \(errors.last! * 1000) ms")
         #expect(abs(median) < 0.003, "median error \(median * 1000) ms over \(errors.count) beats, from \(errors.first! * 1000) to \(errors.last! * 1000) ms")
     }
 
