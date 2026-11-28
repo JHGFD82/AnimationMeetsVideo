@@ -52,6 +52,16 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         #expect(x.f.project.keyframingNote(for: x.expression, in: x.clip)?.text == "Running\u{2026}")
     }
 
+    // F107: an export takes the project as it is, so one started while an
+    // expression waits for its run has the control as it was before it.
+    @Test func anExportIsToldOfAnExpressionStillRunning() {
+        var x = Fixture()
+        let pending = x.f.project.keyframesStillComing()
+        #expect(pending?.hasPrefix("An expression is still running.") == true)
+        x.land(x.result { [Double($0)] })
+        #expect(x.f.project.keyframesStillComing() == nil)
+    }
+
     @Test func codeFromElsewhereIsntRunUntilAllowed() {
         var x = Fixture()
         let code = "import os  # \(UUID())"

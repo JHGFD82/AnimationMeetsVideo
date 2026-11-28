@@ -424,6 +424,38 @@ extension EditingProject {
         return waiting
     }
 
+    /// What an export started now would miss, since it isn't written yet:
+    /// expressions waiting for a run, and Keyframing effects out of date
+    /// that will be made again; nil when everything is written. An export
+    /// takes the project as it is when it starts, so it would have their
+    /// values from before while the viewer goes on to show the new ones
+    /// (F107). Effects out of date with hand edits wait for the person, and
+    /// the viewer shows what the export would.
+    func keyframesStillComing() -> String? {
+        let waiting = Set(waitingExpressions().map(\.effectID))
+        var stale = Set<UUID>()
+        for timeline in timelines {
+            for layer in timeline.layers {
+                for clip in layer.clips where clip.hasKeyframingEffect {
+                    for effect in clip.effects where !waiting.contains(effect.id)
+                        && keyframingFreshness(of: effect, in: clip, of: timeline) == .outOfDate {
+                        stale.insert(effect.id)
+                    }
+                }
+            }
+        }
+        var parts: [String] = []
+        if !waiting.isEmpty {
+            parts.append(waiting.count == 1 ? "an expression is still running" : "\(waiting.count) expressions are still running")
+        }
+        if !stale.isEmpty {
+            parts.append(stale.count == 1 ? "a Keyframing effect is still being made again" : "\(stale.count) Keyframing effects are still being made again")
+        }
+        guard let first = parts.first else { return nil }
+        let sentence = ([first.prefix(1).uppercased() + first.dropFirst()] + parts.dropFirst()).joined(separator: ", and ")
+        return sentence + ". An export now would have the values from before them. Wait until they finish, or export anyway."
+    }
+
     /// Whether this Mac allows an expression's code to run (see
     /// docs/python-scripting.md, "Safety"). One that isn't plays exactly
     /// as saved: its keyframes are in the project. It just isn't run again.

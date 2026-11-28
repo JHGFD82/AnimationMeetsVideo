@@ -443,7 +443,11 @@ finished result in `ExpressionResults`, a store for the session like
 - **None that fits**: the control keeps its keyframes and its note says
   "Running…", exactly as Audio Keys does with "Reading the sound…"
   while a spectrogram is made. The editor sees the effect waiting and asks
-  `ExpressionRunner` to run it on the project as it is.
+  `ExpressionRunner` to run it on the project as it is. An export takes the
+  project as it is when it starts, so Export… started meanwhile says that
+  keyframes are still being written (`keyframesStillComing`) and offers
+  to wait or export anyway; it never refuses, since an expression can
+  wait for good where no Python runs.
 - **When the result lands**, the editor does what it does when analysis
   arrives (`EditorView.analysisArrived`): the keyframes are made in the
   project and in the undo baseline. Applying the code was the undo step;
