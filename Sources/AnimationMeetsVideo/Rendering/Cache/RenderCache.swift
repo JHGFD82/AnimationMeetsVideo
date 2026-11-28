@@ -18,8 +18,10 @@ struct RenderSegment: Equatable, @unchecked Sendable {
     /// loses little and finished parts play as soon as they're done.
     static let maxFrames = 96
     /// Bumped when drawing changes in a way the key doesn't capture, so old
-    /// renders stop matching.
-    static let formatVersion = 4
+    /// renders stop matching. 5: footage is read a tick late (F91), ramped
+    /// times round to the nearest tick (F104), and Blend mixes in nothing
+    /// past the trim (F105).
+    static let formatVersion = 5
 }
 
 /// Rendered segments in a package's `Cache/Renders/` folder, one ProRes

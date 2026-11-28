@@ -115,6 +115,12 @@ struct MediaDraw: @unchecked Sendable {
     /// two (Optical Flow) instead of fading (Blend). Drawn so only at full
     /// quality: the viewer blends while it plays.
     var opticalFlow = false
+    /// The end of the clip's trim, in its source time: Blend and Optical
+    /// Flow mix in no frame from there on, which is the next shot's. Slowed
+    /// down, a clip's last frames fall between its last frame and the one
+    /// after the trim, and at 50% its last showed half the next shot's
+    /// first (F105). Nil for none.
+    var trimEnd: CMTime?
     /// For Echo: earlier frames, nearest first, layered under the current one.
     var echoes: [TrackCopy] = []
     /// For Trails: the footage as it was at earlier moments, nearest first,

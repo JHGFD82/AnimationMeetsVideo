@@ -196,6 +196,8 @@ struct PlacementExtras {
     var ahead: Placement?
     var frameDuration = CMTime.zero
     var alignmentOffset = CMTime.zero
+    /// The end of the clip's trim, in its source time (`MediaDraw.trimEnd`).
+    var trimEnd: CMTime?
 }
 
 /// An ordered run of non-overlapping placements that share composition
@@ -291,6 +293,7 @@ final class BuildNode {
                     frameDuration: extras.frameDuration, alignmentOffset: extras.alignmentOffset,
                     nextFrame: extras.next.flatMap { copy($0, 1) },
                     opticalFlow: extras.opticalFlow,
+                    trimEnd: extras.trimEnd,
                     echoes: extras.echoes.compactMap { copy($0.placement, $0.strength) },
                     trails: extras.trails.compactMap { copy($0.placement, $0.strength) },
                     moments: extras.moments.compactMap { copy($0, 1) },

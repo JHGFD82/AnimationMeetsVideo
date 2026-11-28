@@ -761,7 +761,10 @@ struct Drawing {
             let local = clip.stack.localTime(atRoot: time)
             let position = (clip.stack.sourceTime(atLocal: local).seconds + media.alignmentOffset.seconds) / media.frameDuration.seconds
             let fraction = position - (position + 1e-6).rounded(.down)
-            if fraction > 0.01 {
+            // The next frame's start in the file, against the trim's end there.
+            let nextStart = ((position + 1e-6).rounded(.down) + 1) * media.frameDuration.seconds
+            let withinTrim = media.trimEnd.map { nextStart < $0.seconds + media.alignmentOffset.seconds - 1e-6 } ?? true
+            if fraction > 0.01, withinTrim {
                 // Optical Flow moves the frames along the motion between
                 // them. It costs too much to do while the viewer plays or
                 // is drawing for display; renders and export do (they draw

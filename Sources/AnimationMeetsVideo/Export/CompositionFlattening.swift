@@ -251,7 +251,8 @@ extension CompositionExporter {
                             let media = project.mediaClip(id: mediaID)
                             var extras = PlacementExtras(
                                 frameDuration: Timeline.frameDuration(for: media.map { $0.frameRate > 0 ? $0.frameRate : timeline.frameRate } ?? timeline.frameRate),
-                                alignmentOffset: media?.alignmentOffset ?? .zero
+                                alignmentOffset: media?.alignmentOffset ?? .zero,
+                                trimEnd: clip.trimEnd
                             )
                             func copy(_ delay: CMTime, inFileBy fileShift: CMTime = .zero) -> Placement {
                                 let copy = placement.shifted(by: delay, inFileBy: fileShift)

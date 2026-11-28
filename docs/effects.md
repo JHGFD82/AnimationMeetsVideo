@@ -405,7 +405,9 @@ works on frames already chosen:
   ramped clip's end moves to the true length, and nothing migrates them.
 - **Frame Blending**: Off, Blend (mix the two nearest frames when the
   speed doesn't land on whole frames), or Optical Flow (build in-between
-  frames from Vision's optical flow). Optical Flow is too slow to draw
+  frames from Vision's optical flow). Neither mixes in a frame from the
+  end of the clip's trim on, the next shot's: the clip's last frames hold
+  its last frame (`MediaDraw.trimEnd`). Optical Flow is too slow to draw
   live, so it is drawn only in background renders and export; until a
   stretch is rendered, the viewer shows it with Blend. The motion between
   two frames is measured once and kept for every moment drawn between
